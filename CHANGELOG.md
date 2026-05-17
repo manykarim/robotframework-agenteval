@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Story 1a.2 code-review patches (3 commits: f2ab79b → 6e654fd → 3d978af):
+  - **HIGH-1**: `dogfood-integration.yml` downgraded to honest Phase-1 install-smoke. Previous version was fake-green — `continue-on-error: true` masked 72 rf-mcp test failures + 6 robotframework-agentskills collection errors caused by missing downstream deps in the wheel-only venv. Real cross-repo testing waits for Story 9.1+9.2.
+  - **HIGH-3**: `release.yml` publish step gated on `startsWith(github.ref, 'refs/tags/v')`. workflow_dispatch from non-tag refs still builds (smoke) but cannot publish to PyPI, even when `TRUSTED_PUBLISHER_CONFIGURED=true`.
+  - **MED-1**: Bumped `github/codeql-action/{init,analyze}@v3` → `@v4`.
+  - **MED-3**: `docs-build.yml` section-presence check is now per-file (4 distinct sections per `docs/contracts/*.md`), replacing the aggregate-count check that allowed false-pass.
+  - **MED-4**: `docs-build.yml` libdoc placeholder now sweep-imports all submodules via `pkgutil.walk_packages` instead of only the top-level `AgentEval` package.
+  - **MED-6**: `dogfood-integration.yml` runs `uv sync --all-extras` before `uv build` per AC-1a.2.5 spec text.
+  - **LOW-1**: Dismissed CodeQL alert #2 (`src/AgentEval/security/protocols.py:54 py/ineffectual-statement`) as PEP 544 false positive (`...` Protocol-body convention).
+  - **LOW-1a / Round-2 NEW MED**: CodeQL `paths-ignore` moved to `.github/codeql/codeql-config.yml` + referenced via `config-file:` input (CodeQL v4 silently rejects `paths-ignore` as a workflow input). Spike + skill paths now correctly excluded.
+  - **LOW-2**: `nightly-live.yml` writes pass/fail summary table to `$GITHUB_STEP_SUMMARY` per AC-1a.2.2.
+
 ### Added
 
 - 7 GitHub Actions CI workflows (Story 1a.2):

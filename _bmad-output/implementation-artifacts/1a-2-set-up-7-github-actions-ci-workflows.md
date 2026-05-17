@@ -1,6 +1,6 @@
 # Story 1a.2: Set Up 7 GitHub Actions CI Workflows
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -389,3 +389,96 @@ The reviewer should specifically scrutinize:
 | 2026-05-17 | 0.1.0   | Initial story creation (ready-for-dev). Honors architecture.md project tree. | Bob    |
 | 2026-05-17 | 0.2.0   | Dev-story complete. 7 workflows authored + tests/unit/conventions/ baseline gap closed. All 10 ACs locally green; AC-1a.2.8 trivial-PR verification deferred to Many (workspace is not a git repo). Status: review. | Amelia |
 | 2026-05-17 | 0.2.1   | AC-1a.2.8 fully verified post-push. Repo created at github.com/manykarim/robotframework-agenteval (public). All 7 workflows green on first attempt (initial commit f2ab79b). All 3 critical branches (dogfood-integration continue-on-error, docs-build empty-dir, release dry-run) verified via gh run view --log. | Amelia |
+| 2026-05-17 | 0.3.0   | Code-review applied. Cross-LLM adversarial review (Claude + Codex CLI) caught 11 findings; Round-2 forensic re-check (per Many's "analyze CI runs even if passed" guidance) caught the dogfood fake-green + CodeQL v4 silent-ignore that Round-1 missed. All approved patches landed across 3 commits (f2ab79b → 6e654fd → 3d978af). 0 open CodeQL alerts; all 7 workflows green with verified-real signal. | Amelia |
+
+## Senior Developer Review (AI)
+
+**Reviewers:** Claude Opus 4.7 (1M context) + Codex CLI 0.117.0 (gpt-5.4 — adversarial cross-LLM-family per Epic 0 retro Norm #1)
+**Review date:** 2026-05-17
+**Outcome:** **APPROVED post-patch** (NO-GO at Round 1 → GO at Round 3)
+**Methodology:** per-run forensic log inspection (NOT just status=success); workflow YAML self-review; CodeQL alert API inspection; cross-LLM adversarial review on YAMLs + story spec.
+
+### Round-1 Findings (initial review)
+
+11 findings total. Detailed analysis at `_bmad-output/implementation-artifacts/1a-2-code-review-findings-2026-05-17.md`.
+
+- **HIGH (2):**
+  - HIGH-1 (Claude — CI-log forensics): `dogfood-integration.yml` was fake-green. `continue-on-error: true` masked rf-mcp 72 failed + 14 errors (`ModuleNotFoundError: numpy/django`) and robotframework-agentskills 6 collection errors (`ModuleNotFoundError: rf_agentskills`). Venv only had agenteval wheel, not downstream deps. Per Many's explicit guidance: "A lot of failures were visible inside the run UI" — Round-1 reviewers (Claude initial pass) missed this because it required deep log forensics.
+  - HIGH-3 (Codex): `release.yml` `workflow_dispatch` could publish from any ref once `TRUSTED_PUBLISHER_CONFIGURED=true`. Real concern.
+
+- **MED (5):**
+  - MED-1 (Claude): CodeQL action v3 deprecated (December 2026).
+  - MED-2 (Claude): Node 20 deprecation (waits for upstream v5 → defer).
+  - MED-3 (Codex): docs-build aggregate header count not per-file — false-pass possible.
+  - MED-4 (Codex): docs-build libdoc placeholder only imported top-level `AgentEval`.
+  - MED-6 (Codex): dogfood missing `uv sync --all-extras` per AC-1a.2.5 spec text.
+
+- **LOW (4):**
+  - LOW-1 (Claude): 13 CodeQL findings, all severity `note`; 1 in-source PEP 544 false positive.
+  - LOW-1a: paths-ignore for spike + skill code.
+  - LOW-2 (Codex): nightly-live missing `$GITHUB_STEP_SUMMARY` per AC-1a.2.2.
+  - LOW-3, LOW-4 (Codex): SHA-pinning + downstream ref pinning (Phase-2 follow-ups).
+
+- **Codex false positive (Round-1 HIGH-2):** Codex claimed `v[0-9]+.[0-9]+.[0-9]+*` tag glob was invalid GHA syntax. Verified against GHA filter-pattern docs — `+` IS supported as "one or more of preceding character". Pattern works.
+
+### Round-2 Finding (Claude verification after Round-1 patches landed)
+
+- **NEW MED (caught by Round-2 forensic verification per Many's rule):** CodeQL action v4 silently rejects `paths-ignore` as a workflow input — emitted `##[warning]Unexpected input(s) 'paths-ignore'` twice and silently dropped the setting. Alert count went 13→12 (just the dismissed in-source one), not 13→2 as intended. The 11 spike/skill alerts remained open. This was the exact failure mode Many warned about: "passed" status hiding a silent ignore.
+  - **Fix:** moved `paths-ignore` into `.github/codeql/codeql-config.yml` + referenced via `config-file:` input (the documented v4 mechanism). Round-3 verification: 0 open CodeQL alerts.
+
+### Action Items
+
+- [x] HIGH-1 [Claude]: Rewrite `dogfood-integration.yml` as honest Phase-1 install-smoke check. Downstream pytest runs deferred to Story 9.1+9.2.
+- [x] HIGH-3 [Codex]: Add `if: startsWith(github.ref, 'refs/tags/v')` to release.yml publish step. Non-tag dispatches build smoke-only.
+- [x] MED-1 [Claude]: Bump `github/codeql-action/{init,analyze}@v3` → `@v4`.
+- [x] MED-3 [Codex]: docs-build per-file 4-distinct-section assertion (replaces aggregate count).
+- [x] MED-4 [Codex]: docs-build submodule sweep via `pkgutil.walk_packages`.
+- [x] MED-6 [Codex]: Add `uv sync --all-extras` to dogfood before `uv build`.
+- [x] LOW-1 [Claude]: Dismiss CodeQL alert #2 (protocols.py:54) as PEP 544 false positive (via `gh api PATCH`).
+- [x] LOW-1a [Many's choice]: paths-ignore for spike + skill paths (initially via workflow input — silently ignored; Round-2 moved to config-file).
+- [x] LOW-2 [Codex]: nightly-live `$GITHUB_STEP_SUMMARY` writes (table + overall verdict).
+- [x] **Round-2 NEW MED**: Move CodeQL paths-ignore to config-file per v4 docs.
+- [ ] LOW-3 [Codex — deferred Phase-1.5]: SHA-pin all `uses:` references.
+- [ ] LOW-4 [Codex — moot after HIGH-1]: pin downstream clone refs (no longer applicable since dogfood is smoke-only).
+- [ ] MED-2 [Claude — wait-for-upstream]: Bump `actions/checkout@v4` → v5 when released.
+
+### Round-3 Verification Evidence (post all patches)
+
+All 7 workflows green AT BOTH status-level AND log-forensic level:
+
+| Workflow | Round-3 run | Verified-real signal |
+| --- | --- | --- |
+| `ci` | [26001317262](https://github.com/manykarim/robotframework-agenteval/actions/runs/26001317262) | ruff + format + mypy + 4× collect-only sweep all green |
+| `security-scan` | [26001317267](https://github.com/manykarim/robotframework-agenteval/actions/runs/26001317267) | CodeQL @v4 + config-file paths-ignore applied; 0 open alerts |
+| `nightly-live` | [26001258631](https://github.com/manykarim/robotframework-agenteval/actions/runs/26001258631) | exit-5 leniency + `$GITHUB_STEP_SUMMARY` table written |
+| `conformance` | [26001259140](https://github.com/manykarim/robotframework-agenteval/actions/runs/26001259140) | exit-5 leniency applied |
+| `dogfood-integration` | [26001259716](https://github.com/manykarim/robotframework-agenteval/actions/runs/26001259716) | `Smoke OK: AgentEval 0.0.1 installed cleanly into fresh venv` — REAL signal |
+| `docs-build` | [26001260284](https://github.com/manykarim/robotframework-agenteval/actions/runs/26001260284) | `AgentEval 0.0.1 — 19 submodules imported cleanly` + per-file empty-dir branch |
+| `release` | [26001261195](https://github.com/manykarim/robotframework-agenteval/actions/runs/26001261195) | `Smoke build complete; publish skipped (ref refs/heads/main is not a tag)` — tag gate engaged |
+
+### Project Norms Validated
+
+- **Norm #1 (cross-LLM adversarial review):** Claude alone caught 4/12 findings; Codex caught 7 (+ 1 false positive); Round-2 forensic verification caught 1 more that BOTH Round-1 reviewers missed. Cross-family pair is structurally necessary — same-family blind spots are real.
+- **Norm #2 (machine-verified numeric claims):** Every numeric claim (12→0 CodeQL alerts, 19 submodules swept, 7 workflows pass) verified via `gh api` / `gh run view --log` / pytest exit-code introspection before recording.
+- **NEW NORM CANDIDATE (Many's rule, demonstrated load-bearing 2026-05-17):** Code-review must analyze CI runs IN DETAIL even when job-level status is "success". Specifically: any step with `continue-on-error: true` MUST be log-inspected for actual exit codes; any workflow input must be verified accepted by the action (not silently dropped). This rule caught BOTH the dogfood fake-green AND the CodeQL silent-ignore — neither was visible at the job-status level. Should be ratified at Epic 1a retrospective.
+
+### Phase-1 Deferred Items (project debt registry)
+
+- LOW-3: SHA-pin all `uses:` references (supply-chain hardening).
+- MED-2: Bump `actions/checkout@v4` → v5 when released (Node 20 deprecation; expected before June 2026).
+- LOW-4 was scoped out after HIGH-1 rewrite (dogfood no longer clones downstream).
+
+### Files Modified This Round
+
+**Patches:**
+- `.github/workflows/dogfood-integration.yml` (rewritten — HIGH-1 + MED-6)
+- `.github/workflows/release.yml` (HIGH-3 tag-gate + non-tag smoke path)
+- `.github/workflows/security-scan.yml` (MED-1 v4 + LOW-1a → Round-2 → config-file)
+- `.github/workflows/docs-build.yml` (MED-3 per-file + MED-4 submodule sweep)
+- `.github/workflows/nightly-live.yml` (LOW-2 step-summary)
+
+**New:**
+- `.github/codeql/codeql-config.yml` (Round-2 NEW MED — paths-ignore via config-file)
+- `_bmad-output/implementation-artifacts/1a-2-code-review-findings-2026-05-17.md` (Round-1 findings doc)
+
+**Commits:** f2ab79b (initial) → 6e654fd (Round-1 patches) → 3d978af (Round-2 CodeQL fix)
