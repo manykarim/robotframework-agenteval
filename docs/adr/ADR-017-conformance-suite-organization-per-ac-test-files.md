@@ -42,7 +42,9 @@ Each test file parametrizes over all registered adapters via an `adapter_registr
 - Truncation-injection mock-agent harness per ADR-006.
 - Mock provider with known cost/runtime characteristics per ADR-015.
 
-**Entry point** — `tests/conformance/__init__.py` enables `python -m agenteval.conformance [--adapter <name>]` per FR45 + FR57. Community adapter authors run this command against their adapter from outside agenteval's repo.
+**Entry point — Phase 1:** `pytest tests/conformance --adapter <name>` is the invocation. The `conformance.yml` workflow (Story 1a.2) runs this command on per-release trigger; community adapter authors run the same command against their adapter from outside agenteval's repo (after `pip install agenteval && git clone ...` to obtain the test corpus). The `tests/conformance/` package is NOT shipped in the wheel (`pyproject.toml`'s `[tool.hatch.build.targets.wheel] packages = ["src/AgentEval"]`); community authors fetch the corpus alongside the wheel.
+
+**Entry point — Phase 2 (deferred):** A `python -m AgentEval.conformance` CLI proxy at `src/AgentEval/conformance/` is a Phase-2 deliverable. It will re-export the harness machinery so consumers who install only the wheel can still drive conformance without a corpus clone. Out of scope for Story 1a.3.
 
 ## Consequences
 

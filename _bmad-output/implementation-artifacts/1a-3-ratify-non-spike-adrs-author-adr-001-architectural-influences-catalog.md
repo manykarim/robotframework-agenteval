@@ -1,6 +1,6 @@
 # Story 1a.3: Ratify Non-Spike ADRs + Author ADR-001 Architectural Influences Catalog
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -384,3 +384,61 @@ Expected files (16 created + 3 updated):
 | ---------- | ------- | ---------------------------------------------------------------------------- | ------ |
 | 2026-05-17 | 0.1.0   | Initial story creation (ready-for-dev). Pre-create-story drift check applied per `feedback_spec_vs_ratified_doc_precheck`: counts + renumbering plan reconcile (10 + 7 - 3 = 14 + 1 = 15 deliverables → 18 ADRs in final namespace). One minor stale ref flagged in sidecar L117 — addressed via AC-1a.3.11. | Bob    |
 | 2026-05-17 | 0.2.0   | Dev-story complete. 14 new ADRs authored + ADR-001 catalog body filled (22 agentguard ADRs + 2 competitor MCP-evals + 2 standards = 26 catalog rows) + §Amendments Log preserved byte-identical (sha256 gate passed) + 14 new ratification entries appended + docs/adr/README.md index authored + sidecar L117 cleanup applied. Final state: 19 files in docs/adr/, 18 with Status: accepted, zero stubs, all cross-refs resolve. Status: review. | Amelia |
+| 2026-05-17 | 0.3.0   | Code-review patches applied. Cross-LLM adversarial review (Claude + Codex CLI) caught 5 findings: HIGH-1 (sandbox classification `adopt-verbatim` overstated inheritance), HIGH-2 (conformance entry-point path incoherent — `tests/conformance/` outside the shipped wheel), MED-1 (entry-point group count wording 5→4 in namespace), MED-2 (wrong ADR cross-reference in ADR-010), LOW-1 (numeric drift "9 leaves"→11 in ADR-014). Many approved HIGH-1, HIGH-2 (Option B), MED-1 patches; MED-2 + LOW-1 deferred. After patches: agentguard catalog section has 0 `adopt-verbatim` rows (5 N/A + 4 borrow-concept + 1 explicitly-diverge + 12 adapt = 22; more honest framing — agentguard is INSPIRATION ONLY). All 14 new ADRs still have 4 MADR sections; sha256 gate still passes. Status: done. | Amelia |
+
+## Senior Developer Review (AI)
+
+**Reviewers:** Claude Opus 4.7 + Codex CLI 0.117.0 (gpt-5.4) — adversarial cross-LLM-family pair per Epic 0 retro Norm #1
+**Review date:** 2026-05-17
+**Outcome:** **APPROVED post-patch** (Changes Requested at Round 1 → Approved after 3 patches landed)
+**Methodology:** Independent Claude re-verification of all 8 dev-story gates (all PASS); Codex CLI adversarial pass on 1136 lines of ADR content using GitHub MCP for cross-referencing against agentguard's source ADRs; spot-verification of each Codex finding before triage.
+
+### Findings
+
+Claude solo's independent verification: all 8 dev-story gates PASSED on re-check. Cross-LLM coverage was load-bearing — Claude's same-LLM-family blind spots prevented it from catching its own consistency drift. **Codex caught all 5 findings; Claude solo would have shipped the catalog + ADR-013 + ADR-017 + ADR-010 + ADR-014 inaccuracies.**
+
+**HIGH (2 — both patched):**
+
+- **HIGH-1**: ADR-001 catalog row for agentguard ADR-013 (sandbox policy) labeled `adopt-verbatim`. Codex verified against agentguard's actual ADR-013: agentguard requires Inspect AI integration + `--allow-code-execution` flag; agenteval ADR-018 drops both for `NullSandbox` + entry-points sandbox plugins. The label materially overstates inheritance. **Patched**: decision label changed to `adapt`; rationale rewritten to name what's preserved (sandbox-required posture, error-on-refusal gate) vs what's diverged (Inspect AI dep, opt-in mechanism, error-class hierarchy).
+
+- **HIGH-2**: ADR-017 documented `python -m agenteval.conformance` as the community entry point, but `tests/conformance/` is not shipped in the wheel (`pyproject.toml` `[tool.hatch.build.targets.wheel] packages = ["src/AgentEval"]`). Advertised UX is impossible. **Patched (Option B)**: changed Phase-1 entry-point invocation to `pytest tests/conformance --adapter <name>` (what `conformance.yml` actually runs); added Phase-2-deferred note about future `src/AgentEval/conformance/` CLI proxy.
+
+**MEDIUM (2 — 1 patched, 1 deferred):**
+
+- **MED-1**: ADR-013 said "5 `agenteval.*` entry-point groups" but pyproject.toml has 4 in the `agenteval.*` namespace + 1 legacy `robotframework_agenteval.adapters` + 1 RF-owned `robot.listener` = 6 tables (5 agenteval-owned). **Patched**: normalized wording in Decision + Consequences sections to use the "4 in namespace + 1 legacy + 1 RF-owned = 6 tables (5 agenteval-owned)" framing throughout.
+
+- **MED-2** (deferred per Many): ADR-010 line 37 cites "ADR-013" for the Generic LiteLLM-backed adapter, but ADR-013 is Entry-Points Discovery. Wrong cross-reference. Trivial 1-line fix; will be addressed in a future cleanup pass.
+
+**LOW (1 — deferred per Many):**
+
+- **LOW-1** (deferred): ADR-014 says "9 leaves explicitly named" but the table names 11 (`SafetyError: 2` + `BudgetError: 2` + `CompatError: 4` + `IntegrityError: 3` = 11). Numeric drift caught by Codex (Norm #2 violation). Will be addressed in a future cleanup pass.
+
+### Action Items
+
+- [x] HIGH-1: ADR-001 catalog row for agentguard ADR-013 → `adapt`
+- [x] HIGH-2: ADR-017 Phase-1 entry point → `pytest tests/conformance`; Phase-2 CLI proxy deferred
+- [x] MED-1: ADR-013 entry-point group count wording normalized
+- [ ] MED-2 (deferred): ADR-010 line 37 wrong cross-reference
+- [ ] LOW-1 (deferred): ADR-014 "9 leaves" → "11 leaves"
+
+### Round-2 Verification Evidence
+
+Post-patch machine-verification:
+- All 14 new ADRs still have 4 strict-match MADR section headers (no patches broke the template structure)
+- §Amendments Log sha256 still `9ff36b0bb2f8488c79cb188aaff7cdf19d23ade66341a5838e52d4ba8d7f0c86` (preservation invariant intact)
+- Catalog decision distribution after HIGH-1: **12 `adapt` + 5 `not-applicable` + 4 `borrow-concept` + 1 `explicitly-diverge` + 0 `adopt-verbatim`** in the agentguard ADR section (= 22 rows). 2 `adopt-verbatim` rows remain in the industry-standards section (OTel GenAI semconv, MCP spec) which is the correct place for verbatim adoption.
+- All cross-references resolve; no broken links introduced by patches.
+
+### Project Norms Validated
+
+- **Norm #1 (cross-LLM adversarial review)**: load-bearing again — Codex 5, Claude solo 0 on this round. Same-family blind spots are real.
+- **Norm #2 (machine-verified numeric claims)**: Codex caught LOW-1 (deferred) and MED-1 (patched). The "9 leaves" drift in ADR-014 would have shipped without Norm #2 enforcement; reinforces the rule.
+- **Pre-create-story spec-vs-ratified-doc check**: applied 2026-05-17 with no critical drift.
+- **CI log forensics**: post-patch CI (`ci` + `security-scan`) green; 0 open CodeQL alerts.
+
+### Phase-1 Deferred Items (project debt registry)
+
+- **MED-2 (cleanup)**: ADR-010 L37 wrong cross-reference to ADR-013 (should cite ADR-003 or drop). Single-line fix.
+- **LOW-1 (cleanup)**: ADR-014 leaf count drift (9 → 11). Single-line fix.
+
+Both will be addressed in a future cleanup pass — possibly as part of Story 1a.5 (project hygiene) or a dedicated debt-cleanup batch.

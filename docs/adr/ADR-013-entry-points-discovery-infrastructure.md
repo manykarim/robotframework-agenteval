@@ -15,7 +15,9 @@ agenteval has multiple distinct extension surfaces that all use Python's entry-p
 - `[project.entry-points."robot.listener"]` — Robot Framework Listener v3 entry point (FR33a) for the OTel listener.
 - Plus a **direct-composition path** (`plugins=[...]` library argument per FR48 + FR17b) for testing and one-off override.
 
-Plus a legacy `[project.entry-points."robotframework_agenteval.adapters"]` group per FR17a (kept for backward compatibility with the original PRD-defined adapter-registration mechanism — counts as one of the 5 agenteval-owned entry-point tables in ADR-018's reckoning).
+Plus a legacy `[project.entry-points."robotframework_agenteval.adapters"]` group per FR17a (kept for backward compatibility with the original PRD-defined adapter-registration mechanism — agenteval-owned but outside the `agenteval.*` namespace).
+
+**Counting axes (load-bearing for ADR-018's reckoning):** 4 groups in the `agenteval.*` namespace + 1 legacy agenteval-owned group + 1 RF-owned group = **6 entry-point tables total, of which 5 are agenteval-owned**.
 
 Without a unified discovery layer, each sub-library independently calling `importlib.metadata.entry_points` would risk:
 - **Inconsistent precedence semantics** between `__init__` direct args, entry-points-discovered registrations, and built-in defaults.
@@ -42,7 +44,7 @@ Concrete behavior:
 
 ## Consequences
 
-- 5 `agenteval.*` entry-point groups + 1 legacy adapter group + 1 `robot.listener` group documented in `pyproject.toml` template + contributor docs. Story 1a.1 baseline already declares the 6 tables (`pyproject.toml` lines 79-95).
+- **6 entry-point tables total, of which 5 are agenteval-owned:** 4 groups in the `agenteval.*` namespace (`coding_agents`, `providers`, `judges`, `sandboxes`) + 1 legacy agenteval-owned group (`robotframework_agenteval.adapters`, FR17a registration mechanism predating the namespace convention) + 1 RF-owned group (`robot.listener` per FR33a). Story 1a.1 baseline declares all 6 tables (`pyproject.toml` lines 79-95).
 - Error path tested in conformance suite (`tests/conformance/test_ac_*_discovery.py` parametrized over installed-extras scenarios) per ADR-017.
 - Community adapter authors get a single documented registration pattern (one `setup.cfg`/`pyproject.toml` snippet per adapter); they don't need to learn each sub-library's discovery quirks.
 - Lazy discovery → first lookup pays the cost; subsequent lookups hit a process-lifetime cache.
