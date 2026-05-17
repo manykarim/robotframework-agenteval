@@ -76,7 +76,12 @@ jobs:
           echo "::notice::Phase-1: release-pending label gate is documented but not enforced."
           echo "::notice::Story 9.1 wires real label enforcement via GitHub API lookup."
 
-      - name: Publish to PyPI (OIDC trusted publishing)
+      # HIGH-3 fix (2026-05-17): publish is GATED on tag ref. workflow_dispatch
+      # from non-tag refs (main, branches) builds but does NOT publish, even
+      # after TRUSTED_PUBLISHER_CONFIGURED flips true in Story 9.1. Prevents
+      # accidental publish of untagged builds (e.g., main HEAD) to PyPI.
+      - name: Publish to PyPI (OIDC trusted publishing — tag-gated)
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           TRUSTED_PUBLISHER_CONFIGURED: ${{ vars.TRUSTED_PUBLISHER_CONFIGURED }}
         run: |
@@ -88,3 +93,10 @@ jobs:
             exit 0
           fi
           uv publish
+
+      - name: Non-tag dispatch — smoke build only
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          echo "::notice::Smoke build complete; publish skipped (ref ${{ github.ref }} is not a tag)."
+          echo "::notice::Built artifacts:"
+          ls -la dist/

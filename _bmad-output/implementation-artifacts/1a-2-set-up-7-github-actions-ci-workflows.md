@@ -320,7 +320,15 @@ Claude Opus 4.7 (1M context) — dev-story workflow invocation 2026-05-17.
   - AC-1a.2.5 (dogfood-integration.yml) — workflow_dispatch + release + PR-with-release-pending-label; clones rf-mcp + robotframework-agentskills; installs local agenteval wheel; `continue-on-error: true` Phase-1.
   - AC-1a.2.6 (docs-build.yml) — workflow_dispatch + release + PR path-filtered; grep-based 4-section assertion (`## Purpose / ## Scope / ## Contract / ## Change Policy`); empty-dir graceful skip. **Simulated locally: empty `docs/contracts/` → notice + exit 0.**
   - AC-1a.2.7 (release.yml) — tag push + workflow_dispatch; `id-token: write` for OIDC; Phase-1 dry-run via `vars.TRUSTED_PUBLISHER_CONFIGURED`; release-pending label gate documented (notice-only Phase-1; real enforcement in Story 9.1). **Dry-run mechanic simulated locally: works.**
-  - AC-1a.2.8 (trivial-PR green): **partial local verification** — ci.yml pipeline simulated green locally; full GitHub Actions runs require Many to `git init` + push + open PR + capture run URLs. Documented as code-review handoff.
+  - AC-1a.2.8 (trivial-PR green): **fully verified 2026-05-17** — repo created at https://github.com/manykarim/robotframework-agenteval (public, Apache-2.0); initial commit f2ab79b pushed to main. All 7 workflows green on first attempt:
+    - `ci` (push:main, 18s): https://github.com/manykarim/robotframework-agenteval/actions/runs/26000697223
+    - `security-scan` (push:main, 1m03s): https://github.com/manykarim/robotframework-agenteval/actions/runs/26000697230
+    - `nightly-live` (workflow_dispatch, 12s): https://github.com/manykarim/robotframework-agenteval/actions/runs/26000775894
+    - `conformance` (workflow_dispatch, 10s): https://github.com/manykarim/robotframework-agenteval/actions/runs/26000776507
+    - `dogfood-integration` (workflow_dispatch, 1m29s): https://github.com/manykarim/robotframework-agenteval/actions/runs/26000776999
+    - `docs-build` (workflow_dispatch, 13s): https://github.com/manykarim/robotframework-agenteval/actions/runs/26000777504
+    - `release` (workflow_dispatch, 12s): https://github.com/manykarim/robotframework-agenteval/actions/runs/26000778059
+    - Critical branches verified via gh run view --log: dogfood-integration cloned downstream repos successfully + Phase-1 notice fired; docs-build empty-dir branch fired the correct `::notice::` skip; release.yml built wheel + sdist + dry-run guard correctly skipped `uv publish` (TRUSTED_PUBLISHER_CONFIGURED unset).
   - AC-1a.2.9 (workflow hygiene): all 7 workflows pass — pinned actions, timeout-minutes, named jobs, top-of-file comments with NFR/AC references, concurrency on ci.yml.
   - AC-1a.2.10 (no agentguard-drift-check.yml): verified absent; CodeQL takes its slot.
 
@@ -380,3 +388,4 @@ The reviewer should specifically scrutinize:
 | ---------- | ------- | ---------------------------------------------------------------------------- | ------ |
 | 2026-05-17 | 0.1.0   | Initial story creation (ready-for-dev). Honors architecture.md project tree. | Bob    |
 | 2026-05-17 | 0.2.0   | Dev-story complete. 7 workflows authored + tests/unit/conventions/ baseline gap closed. All 10 ACs locally green; AC-1a.2.8 trivial-PR verification deferred to Many (workspace is not a git repo). Status: review. | Amelia |
+| 2026-05-17 | 0.2.1   | AC-1a.2.8 fully verified post-push. Repo created at github.com/manykarim/robotframework-agenteval (public). All 7 workflows green on first attempt (initial commit f2ab79b). All 3 critical branches (dogfood-integration continue-on-error, docs-build empty-dir, release dry-run) verified via gh run view --log. | Amelia |

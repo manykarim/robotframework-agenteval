@@ -41,13 +41,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # MED-1 fix (2026-05-17): bumped @v3 → @v4 to silence the December 2026
+      # deprecation warning emitted on the first CI run.
+      # LOW-1a fix (2026-05-17): paths-ignore silences CodeQL alerts on the 11
+      # spike + skill files that are not part of the shippable agenteval surface.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: python
           queries: security-and-quality
+          paths-ignore: |
+            _bmad-output/spikes/**
+            .claude/skills/**
+            _bmad/**
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: "/language:python"

@@ -52,15 +52,41 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
 
-      # Phase-1 placeholder libdoc step: full libdoc invocation lands in Story 1a.4 +
-      # Epic 1b once RF Library keyword classes exist. For now, just verify the
-      # AgentEval package imports cleanly.
-      - name: Verify AgentEval package imports (Phase-1 libdoc placeholder)
-        run: uv run python -c "import AgentEval; print(f'AgentEval {AgentEval.__version__} imports OK')"
+      # MED-4 fix (2026-05-17): sweep ALL submodules via pkgutil.walk_packages
+      # instead of only importing top-level AgentEval. Broken submodules (syntax
+      # errors, missing imports) are now caught before Story 1a.4 + Epic 1b add
+      # real RF Library keyword classes.
+      - name: Sweep-import all AgentEval submodules (Phase-1 libdoc placeholder)
+        run: |
+          uv run python -c "
+          import importlib
+          import pkgutil
+          import sys
 
-      # NFR-MAINT-04 section-presence assertion: every docs/contracts/*.md MUST contain
-      # all 4 section headers. Edge case: directory empty in Phase 1 → notice + exit 0.
-      - name: Assert NFR-MAINT-04 section presence in docs/contracts/
+          import AgentEval
+
+          failures = []
+          modules_imported = 0
+          for module_info in pkgutil.walk_packages(AgentEval.__path__, prefix='AgentEval.'):
+              try:
+                  importlib.import_module(module_info.name)
+                  modules_imported += 1
+              except Exception as exc:
+                  failures.append((module_info.name, type(exc).__name__, str(exc)))
+
+          print(f'AgentEval {AgentEval.__version__} — {modules_imported} submodules imported cleanly')
+          if failures:
+              print('::error::Submodule import failures:')
+              for name, exc_type, msg in failures:
+                  print(f'  - {name}: {exc_type}: {msg}')
+              sys.exit(1)
+          "
+
+      # MED-3 fix (2026-05-17): per-file 4-distinct-section assertion instead of
+      # aggregate header count. Previous implementation summed header occurrences
+      # across all files which allowed false-pass: a file with 2x ## Purpose +
+      # missing ## Contract would still pass if another file had a 5th header.
+      - name: Assert NFR-MAINT-04 per-file section presence in docs/contracts/
         shell: bash
         run: |
           set -euo pipefail
@@ -70,23 +96,31 @@ jobs:
             exit 0
           fi
 
-          file_count=$(find docs/contracts -maxdepth 1 -name "*.md" -type f | wc -l)
-          if [ "$file_count" -eq 0 ]; then
+          mapfile -t files < <(find docs/contracts -maxdepth 1 -name "*.md" -type f | sort)
+          if [ "${#files[@]}" -eq 0 ]; then
             echo "::notice::Docs-build skipped: docs/contracts/ has no .md files (Phase-1 placeholder; Story 1a.4 fills it)"
             exit 0
           fi
 
-          expected_sections=$((4 * file_count))
-          actual_sections=$(grep -c -hE '^## (Purpose|Scope|Contract|Change Policy)' docs/contracts/*.md 2>/dev/null | awk '{sum += $1} END {print sum+0}')
+          fail=0
+          required_sections=("Purpose" "Scope" "Contract" "Change Policy")
+          for f in "${files[@]}"; do
+            missing=()
+            for section in "${required_sections[@]}"; do
+              if ! grep -qE "^## ${section}\$" "$f"; then
+                missing+=("## ${section}")
+              fi
+            done
+            if [ "${#missing[@]}" -gt 0 ]; then
+              echo "::error file=${f}::NFR-MAINT-04 violation: missing required section header(s): ${missing[*]}"
+              fail=1
+            else
+              echo "::notice file=${f}::All 4 NFR-MAINT-04 sections present"
+            fi
+          done
 
-          echo "docs/contracts/ files: $file_count"
-          echo "Expected section headers: $expected_sections (4 per file)"
-          echo "Actual section headers: $actual_sections"
-
-          if [ "$actual_sections" -lt "$expected_sections" ]; then
-            echo "::error::NFR-MAINT-04 violation: $((expected_sections - actual_sections)) required section headers missing across docs/contracts/*.md"
+          if [ "$fail" -eq 1 ]; then
             echo "::error::Each contract doc MUST contain: ## Purpose, ## Scope, ## Contract, ## Change Policy"
             exit 1
           fi
-
-          echo "::notice::NFR-MAINT-04 section-presence assertion passed ($actual_sections / $expected_sections headers found)"
+          echo "::notice::NFR-MAINT-04 per-file section-presence assertion passed for ${#files[@]} file(s)"

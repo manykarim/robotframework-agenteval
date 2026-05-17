@@ -51,6 +51,10 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
 
+      # LOW-2 fix (2026-05-17): write pass/fail summary to $GITHUB_STEP_SUMMARY
+      # per AC-1a.2.2 spec text. Original implementation only emitted ::error::
+      # annotations — failures were visible in the run UI but not summarized.
+      #
       # Phase-1 collect-only sweep. pytest exits 5 on empty dirs; accept as success.
       # Drop --collect-only + remove exit-5 leniency + add live-API key env vars when
       # Epic 4 lands first @pytest.mark.live test.
@@ -59,16 +63,35 @@ jobs:
         run: |
           set +e
           fail=0
+          {
+            echo "## nightly-live results ($(date -u +'%Y-%m-%d %H:%M UTC'))"
+            echo ""
+            echo "| Suite | Exit code | Status |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
           collect() {
             uv run pytest $1
             local code=$?
             if [ "$code" -eq 0 ] || [ "$code" -eq 5 ]; then
               echo "::notice::pytest $1 OK (exit $code)"
+              echo "| \`pytest $1\` | $code | ✅ OK |" >> "$GITHUB_STEP_SUMMARY"
             else
               echo "::error::pytest $1 failed with exit $code"
+              echo "| \`pytest $1\` | $code | ❌ FAIL |" >> "$GITHUB_STEP_SUMMARY"
               fail=1
             fi
           }
           collect "tests/integration -m live -q --collect-only"
           collect "tests/acceptance -m tier3 -q --collect-only"
+
+          {
+            echo ""
+            if [ "$fail" -eq 0 ]; then
+              echo "**Overall:** all suites green (exit codes 0 or 5 — Phase-1 collect-only placeholder allows exit 5 \"no tests collected\")"
+            else
+              echo "**Overall:** FAIL — see ::error:: annotations above + the run log"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
           exit "$fail"
