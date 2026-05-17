@@ -1,0 +1,25 @@
+# CodeQL custom config for robotframework-agenteval
+#
+# Referenced from .github/workflows/security-scan.yml via config-file: input.
+#
+# WHY paths-ignore is here, not in the workflow YAML:
+# CodeQL Action v4 does NOT accept `paths-ignore` as a workflow input
+# (it's a config-file-only setting). Round-2 verification on 2026-05-17 caught
+# this — the initial attempt to set paths-ignore directly in security-scan.yml
+# emitted `##[warning]Unexpected input(s) 'paths-ignore'` and silently ignored
+# the setting, leaving 12 spike/skill alerts open.
+#
+# Paths ignored (rationale):
+# - _bmad-output/spikes/**: Epic 0 throwaway probe code; not shipped on PyPI.
+# - .claude/skills/**: 3rd-party BMad skill scripts; not our code.
+# - _bmad/**: BMad framework config + helper scripts; not our shippable surface.
+
+name: "robotframework-agenteval CodeQL config"
+
+paths-ignore:
+  - "_bmad-output/spikes/**"
+  - ".claude/skills/**"
+  - "_bmad/**"
+
+queries:
+  - uses: security-and-quality

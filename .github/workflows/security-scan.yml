@@ -43,17 +43,18 @@ jobs:
 
       # MED-1 fix (2026-05-17): bumped @v3 → @v4 to silence the December 2026
       # deprecation warning emitted on the first CI run.
-      # LOW-1a fix (2026-05-17): paths-ignore silences CodeQL alerts on the 11
-      # spike + skill files that are not part of the shippable agenteval surface.
+      #
+      # LOW-1a fix (2026-05-17, Round 2): paths-ignore is set via
+      # .github/codeql/codeql-config.yml (NOT as a workflow input — CodeQL v4
+      # rejects paths-ignore as an unexpected input; it's a config-file-only
+      # setting). Round-1 attempt used the input form and was silently ignored,
+      # leaving 12 spike/skill alerts open. Round-2 uses config-file: per
+      # https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/customizing-your-advanced-setup-for-code-scanning#using-a-custom-configuration-file
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
           languages: python
-          queries: security-and-quality
-          paths-ignore: |
-            _bmad-output/spikes/**
-            .claude/skills/**
-            _bmad/**
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
