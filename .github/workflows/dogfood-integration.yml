@@ -1,0 +1,96 @@
+# dogfood-integration.yml — NFR-REL-05 cross-repo dogfood integration
+#
+# Purpose: Per-release per NFR-REL-05, invokes downstream rf-mcp +
+# robotframework-agentskills CI against the locally-built agenteval wheel.
+# Catches API drift before contributors discover it on PyPI.
+#
+# AC reference: AC-1a.2.5 (dogfood-integration.yml), AC-1a.2.9 (workflow hygiene).
+# NFR reference: NFR-REL-05 (dogfood integration).
+#
+# Phase-1 placeholder rationale:
+# - rf-mcp + robotframework-agentskills do not yet integrate `agenteval`. They're
+#   Phase-1 dogfood TARGETS (Epics 3, 5, 6 add the integration), not Phase-1
+#   baselines. Until then, every downstream step uses `continue-on-error: true`
+#   so a missing clone or failing pytest doesn't fail this workflow.
+# - Story 9.1 (port rf-mcp) + Story 9.2 (port robotframework-agentskills) remove
+#   `continue-on-error: true` from this workflow.
+#
+# Trigger: release published, workflow_dispatch, AND PRs with the release-pending
+# label. The label gate is enforced via an `if:` job-level expression.
+
+name: dogfood-integration
+
+on:
+  workflow_dispatch: {}
+  release:
+    types: [published]
+  pull_request:
+    types: [labeled, synchronize]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dogfood:
+    name: dogfood-integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Phase-1: only run on PRs that explicitly carry the release-pending label.
+    # release + workflow_dispatch always pass this gate.
+    if: >
+      github.event_name == 'release' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'release-pending'))
+
+    steps:
+      - name: Checkout agenteval
+        uses: actions/checkout@v4
+        with:
+          path: agenteval
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "agenteval/pyproject.toml"
+
+      - name: Set Python version
+        run: echo "3.12" > agenteval/.python-version
+
+      - name: Build agenteval wheel
+        working-directory: agenteval
+        run: uv build
+
+      # Phase-1: clone is best-effort. Repos may not exist yet (placeholder URLs).
+      - name: Clone rf-mcp (downstream dogfood target)
+        continue-on-error: true
+        run: git clone --depth=1 https://github.com/manykarim/rf-mcp.git rf-mcp
+
+      - name: Clone robotframework-agentskills (downstream dogfood target)
+        continue-on-error: true
+        run: git clone --depth=1 https://github.com/manykarim/robotframework-agentskills.git robotframework-agentskills
+
+      # Phase-1: downstream test suites may fail because they don't integrate agenteval yet.
+      # Story 9.1 + 9.2 remove `continue-on-error: true` after full parity is verified.
+      - name: rf-mcp tests against local agenteval wheel
+        continue-on-error: true
+        working-directory: rf-mcp
+        run: |
+          uv venv
+          uv pip install ../agenteval/dist/*.whl
+          uv run pytest tests/ -q
+
+      - name: robotframework-agentskills tests against local agenteval wheel
+        continue-on-error: true
+        working-directory: robotframework-agentskills
+        run: |
+          uv venv
+          uv pip install ../agenteval/dist/*.whl
+          uv run pytest tests/ -q
+
+      - name: Phase-1 notice
+        run: |
+          echo "::notice::Phase-1 dogfood-integration: continue-on-error is intentional."
+          echo "::notice::Story 9.1 + 9.2 remove continue-on-error after full-parity verification."

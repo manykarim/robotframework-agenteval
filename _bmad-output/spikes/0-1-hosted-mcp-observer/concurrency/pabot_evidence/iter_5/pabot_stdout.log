@@ -1,0 +1,45 @@
+Initialized logging in concurrency/pabot_results/pabot_results
+Warning: specified pabotlibport 8270 is already in use. A free port will be assigned automatically.
+Robot Framework remote server at 127.0.0.1:45281 started.
+2026-05-17 15:06:05.390472 [PID:3307200] [0] [ID:0] EXECUTING Test Pabot.T01 Dual Transport
+2026-05-17 15:06:05.395872 [PID:3307201] [2] [ID:2] EXECUTING Test Pabot.T03 Dual Transport
+2026-05-17 15:06:05.402427 [PID:3307204] [1] [ID:1] EXECUTING Test Pabot.T02 Dual Transport
+2026-05-17 15:06:05.406184 [PID:3307206] [3] [ID:3] EXECUTING Test Pabot.T04 Dual Transport
+2026-05-17 15:06:08.539885 [PID:3307201] [2] [ID:2] PASSED Test Pabot.T03 Dual Transport in 3.1 seconds
+2026-05-17 15:06:08.555941 [PID:3307355] [0] [ID:4] EXECUTING Test Pabot.T05 Dual Transport
+2026-05-17 15:06:08.742673 [PID:3307204] [1] [ID:1] PASSED Test Pabot.T02 Dual Transport in 3.3 seconds
+2026-05-17 15:06:08.743008 [PID:3307200] [0] [ID:0] PASSED Test Pabot.T01 Dual Transport in 3.3 seconds
+2026-05-17 15:06:08.753014 [PID:3307378] [1] [ID:5] EXECUTING Test Pabot.T06 Dual Transport
+2026-05-17 15:06:08.756490 [PID:3307379] [2] [ID:6] EXECUTING Test Pabot.T07 Hosted In Process Only
+2026-05-17 15:06:08.935678 [PID:3307206] [3] [ID:3] PASSED Test Pabot.T04 Dual Transport in 3.5 seconds
+2026-05-17 15:06:08.945671 [PID:3307386] [3] [ID:7] EXECUTING Test Pabot.T08 Hosted In Process Only
+2026-05-17 15:06:10.382417 [PID:3307379] [2] [ID:6] PASSED Test Pabot.T07 Hosted In Process Only in 1.6 seconds
+2026-05-17 15:06:10.393346 [PID:3307483] [0] [ID:8] EXECUTING Test Pabot.T09 Hosted In Process Only
+2026-05-17 15:06:10.679371 [PID:3307386] [3] [ID:7] PASSED Test Pabot.T08 Hosted In Process Only in 1.7 seconds
+2026-05-17 15:06:10.689626 [PID:3307504] [1] [ID:9] EXECUTING Test Pabot.T10 Subprocess Only
+2026-05-17 15:06:11.495946 [PID:3307355] [0] [ID:4] PASSED Test Pabot.T05 Dual Transport in 2.9 seconds
+2026-05-17 15:06:11.512707 [PID:3307542] [2] [ID:10] EXECUTING Test Pabot.T11 Subprocess Only
+2026-05-17 15:06:11.782917 [PID:3307378] [1] [ID:5] PASSED Test Pabot.T06 Dual Transport in 3.0 seconds
+2026-05-17 15:06:11.794180 [PID:3307548] [3] [ID:11] EXECUTING Test Pabot.T12 Subprocess Only
+2026-05-17 15:06:12.618605 [PID:3307483] [0] [ID:8] PASSED Test Pabot.T09 Hosted In Process Only in 2.2 seconds
+2026-05-17 15:06:12.629180 [PID:3307581] [0] [ID:12] EXECUTING Test Pabot.T13 External Mixed
+2026-05-17 15:06:13.719167 [PID:3307504] [1] [ID:9] PASSED Test Pabot.T10 Subprocess Only in 3.0 seconds
+2026-05-17 15:06:13.731009 [PID:3307659] [1] [ID:13] EXECUTING Test Pabot.T14 External Mixed
+2026-05-17 15:06:14.248550 [PID:3307542] [2] [ID:10] PASSED Test Pabot.T11 Subprocess Only in 2.7 seconds
+2026-05-17 15:06:14.255796 [PID:3307581] [0] [ID:12] PASSED Test Pabot.T13 External Mixed in 1.6 seconds
+2026-05-17 15:06:14.263493 [PID:3307681] [2] [ID:14] EXECUTING Test Pabot.T15 External Mixed
+2026-05-17 15:06:14.515340 [PID:3307548] [3] [ID:11] PASSED Test Pabot.T12 Subprocess Only in 2.7 seconds
+2026-05-17 15:06:15.565774 [PID:3307659] [1] [ID:13] PASSED Test Pabot.T14 External Mixed in 1.8 seconds
+2026-05-17 15:06:15.893869 [PID:3307681] [2] [ID:14] PASSED Test Pabot.T15 External Mixed in 1.6 seconds
+15 tests, 15 passed, 0 failed, 0 skipped.
+===================================================
+Output:  /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-1-hosted-mcp-observer/concurrency/pabot_results/output.xml
+Log:     /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-1-hosted-mcp-observer/concurrency/pabot_results/log.html
+Report:  /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-1-hosted-mcp-observer/concurrency/pabot_results/report.html
+Finalizing Pabot execution...
+Stopping PabotLib process
+Robot Framework remote server at 127.0.0.1:45281 stopped.
+PabotLib process stopped
+Total testing: 38.0 seconds
+Elapsed time:  11.51 seconds
+Logs flushed successfully.

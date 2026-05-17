@@ -1,0 +1,74 @@
+# nightly-live.yml — NFR-REL-03 nightly live-LLM integration tests
+#
+# Purpose: Runs nightly cron + on-demand to exercise live-LLM integration tests
+# (@pytest.mark.live) and tier3 acceptance tests against real coding-agent backends.
+#
+# AC reference: AC-1a.2.2 (nightly-live.yml), AC-1a.2.9 (workflow hygiene).
+# NFR reference: NFR-REL-03 (nightly live-LLM coverage).
+#
+# Phase-1 placeholder: tests/integration/ + tests/acceptance/tier3/ are empty (created
+# by Story 1a.1 as .gitkeep dirs). Real @pytest.mark.live tests + tier3 acceptance tests
+# land in Epic 4+ when first live coding-agent adapter (claude_code_cli) is wired.
+# Use --collect-only Phase-1 to avoid exit-code-5 "no tests collected" red.
+#
+# Secrets gating: when real live tests land, this workflow will require
+# OPENAI_API_KEY / ANTHROPIC_API_KEY GitHub secrets to exercise live providers.
+# Secret setup is deferred to the Epic 4 story that first uses them.
+#
+# Failure handling Phase 1: per MAINTAINERS.md (solo + AI-agent-assisted posture),
+# no Slack/PagerDuty integration — Many reviews failures via the GitHub Actions UI.
+
+name: nightly-live
+
+on:
+  schedule:
+    # 06:00 UTC daily (~07:00 CET) — when Many is most likely to triage failures same-day.
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  nightly:
+    name: nightly-live
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set Python version
+        run: echo "3.12" > .python-version
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      # Phase-1 collect-only sweep. pytest exits 5 on empty dirs; accept as success.
+      # Drop --collect-only + remove exit-5 leniency + add live-API key env vars when
+      # Epic 4 lands first @pytest.mark.live test.
+      - name: pytest Phase-1 collect-only sweep (integration -m live + acceptance -m tier3)
+        shell: bash
+        run: |
+          set +e
+          fail=0
+          collect() {
+            uv run pytest $1
+            local code=$?
+            if [ "$code" -eq 0 ] || [ "$code" -eq 5 ]; then
+              echo "::notice::pytest $1 OK (exit $code)"
+            else
+              echo "::error::pytest $1 failed with exit $code"
+              fail=1
+            fi
+          }
+          collect "tests/integration -m live -q --collect-only"
+          collect "tests/acceptance -m tier3 -q --collect-only"
+          exit "$fail"

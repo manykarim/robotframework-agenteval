@@ -1,0 +1,53 @@
+# security-scan.yml — CodeQL SAST + supply-chain analysis
+#
+# Purpose: Runs CodeQL on every PR + push to main + weekly full-repo scan.
+# Surfaces findings in PR annotations + the GitHub Security tab.
+#
+# AC reference: AC-1a.2.4 (security-scan.yml), AC-1a.2.9 (workflow hygiene),
+# AC-1a.2.10 (replaces retired agentguard-drift-check.yml).
+#
+# REPLACES retired agentguard-drift-check.yml (originally proposed under retired
+# NFR-MAINT-06 / ADR-A4). Per feedback_agentguard_inspiration_not_dependency memory
+# + ADR-A4 retirement in Story 0.3: robotframework-agentguard is inspiration-only,
+# not a dependency to drift-check against. CodeQL takes that workflow's slot.
+#
+# Python repos use CodeQL's interpreter mode — no autobuild step needed (pure-Python
+# package; CodeQL analyzes .py source directly). If C extensions land in Phase 2+,
+# add `github/codeql-action/autobuild@v3` between init + analyze.
+
+name: security-scan
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Weekly full-repo scan: Monday 06:00 UTC.
+    - cron: "0 6 * * 1"
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  codeql:
+    name: codeql-analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          queries: security-and-quality
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:python"

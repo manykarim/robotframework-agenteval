@@ -1,0 +1,1 @@
+iter 2 [sigterm_default] signal=TERM: harness_exit_rc=143 leaks=3 → LEAKED 3 (orphaned to PID 1)

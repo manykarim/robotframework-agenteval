@@ -1,0 +1,39 @@
+# Lint + format config — agenteval Story 1a.1 bootstrap.
+# Phase-1 minimal config; tightened per architecture.md §Pattern Categories Defined
+# as sub-libraries land (Epic 1b onward).
+
+target-version = "py312"
+line-length = 120
+
+extend-exclude = [
+  ".venv",
+  "build",
+  "dist",
+  "_bmad-output/spikes",  # spike scratch — not in lint scope
+  "_bmad-output/implementation-artifacts",  # planning docs
+]
+
+[lint]
+# Phase-1 starter rule set; extended per Epic 1b conventions tests.
+select = [
+  "E",      # pycodestyle errors
+  "W",      # pycodestyle warnings
+  "F",      # pyflakes
+  "I",      # isort
+  "B",      # flake8-bugbear
+  "UP",     # pyupgrade (target py312)
+  "C4",     # flake8-comprehensions
+  "SIM",    # flake8-simplify
+  "TID",    # flake8-tidy-imports
+]
+ignore = [
+  # Phase-1 placeholder; specific suppressions added when patterns crystallize.
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["E501"]  # tests may have longer literal data lines
+
+[format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true

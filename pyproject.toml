@@ -1,0 +1,111 @@
+[project]
+name = "robotframework-agenteval"
+version = "0.0.1"
+description = "Robot Framework library for evaluating AI coding agents (skills, subagents, hooks, MCP servers, tools)."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+  { name = "Many Kasiriha" },
+]
+keywords = ["robotframework", "ai", "agents", "mcp", "evaluation", "testing"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Framework :: Robot Framework",
+  "Framework :: Robot Framework :: Library",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Testing",
+]
+
+# Pin discipline (Story 0.1+0.2 spike-validated; AC-1a.1.5 + Epic 0 retro Norm #2):
+# - mcp / robotframework / robotframework-pabot / anyio are EXACT-pinned to the spike-validated versions.
+#   AdapterVersionDriftWarning (Epic 5 Story 5.2 deliverable per ADR-004 Consequences) will detect
+#   future mcp SDK refactors that break the `request_handlers` dict-wrap pattern.
+# - litellm / opentelemetry / pyyaml / jsonschema are range-pinned with sane upper-bound caps;
+#   Phase 1 stories that exercise them (Epic 4 / Epic 5 / Epic 6) will tighten pins if needed.
+dependencies = [
+  "mcp==1.27.1",
+  "robotframework==7.4.2",
+  "anyio==4.13.0",
+  "litellm>=1.50,<2.0",
+  "opentelemetry-api>=1.20,<2.0",
+  "opentelemetry-sdk>=1.20,<2.0",
+  "pyyaml>=6.0,<7.0",
+  "jsonschema>=4.0,<5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0,<9.0",
+  "pytest-cov>=5.0,<7.0",
+  "ruff>=0.6,<1.0",
+  "mypy>=1.10,<2.0",
+  "robotframework-pabot==5.2.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/manykarim/robotframework-agenteval"
+Repository = "https://github.com/manykarim/robotframework-agenteval"
+Issues = "https://github.com/manykarim/robotframework-agenteval/issues"
+# PyPI placeholder — populated when first release publishes.
+# PyPI = "https://pypi.org/project/robotframework-agenteval/"
+
+[project.scripts]
+agenteval = "AgentEval.cli:main"
+
+# Entry-point tables — 6 total. Count per ADR-013 (entry-points discovery; was ADR-A2;
+# ratification trajectory closes when Story 1a.3 ratifies the remaining non-spike ADRs):
+#
+#   4 `agenteval.*` discovery groups:
+#     - agenteval.coding_agents (Epic 4)
+#     - agenteval.providers (Epic 4)
+#     - agenteval.judges (Phase 2)
+#     - agenteval.sandboxes (5th group added by ADR-018; ratified 2026-05-17)
+#
+#   1 legacy `robotframework_agenteval.adapters` group per FR17a (agenteval-owned;
+#     pre-existed the agenteval.* naming convention; counts toward the
+#     5 "agenteval-owned" entry-point tables in ADR-018's reckoning).
+#
+#   1 RF-owned `robot.listener` group (RF Listener v3 entry point per FR33a).
+#
+# All tables START EMPTY in Story 1a.1; sub-libraries register entries when authored
+# (Epic 4 for coding_agents/providers; Epic 5 for telemetry/listener; Phase 2+ for
+# judges/sandboxes).
+[project.entry-points."agenteval.coding_agents"]
+# Empty — populated by Epic 4 Story 4.1 (generic) + 4.2 (claude_code_cli).
+
+[project.entry-points."agenteval.providers"]
+# Empty — populated by Epic 4 Story 4.1 (litellm).
+
+[project.entry-points."agenteval.judges"]
+# Empty — Phase 2 (Epic 12).
+
+[project.entry-points."agenteval.sandboxes"]
+# Empty — Phase 3 (real sandbox backends ship; ADR-018 §Cross-cutting forward references).
+
+[project.entry-points."robot.listener"]
+# Empty — populated by Epic 5 Story 5.1 (OTel listener).
+
+[project.entry-points."robotframework_agenteval.adapters"]
+# Empty — FR17a registration mechanism; populated by Epic 4 adapter implementations.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/AgentEval"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/AgentEval",
+  "README.md",
+  "LICENSE",
+  "CHANGELOG.md",
+  "pyproject.toml",
+]

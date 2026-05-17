@@ -1,0 +1,23 @@
+Initialized logging in pabot_results/pabot_results
+Warning: specified pabotlibport 8270 is already in use. A free port will be assigned automatically.
+Robot Framework remote server at 127.0.0.1:39857 started.
+2026-05-17 15:08:51.616512 [PID:3316840] [1] [ID:1] EXECUTING Multi Suite.Suite B
+2026-05-17 15:08:51.621513 [PID:3316839] [0] [ID:0] EXECUTING Multi Suite.Suite A
+2026-05-17 15:08:51.621933 [PID:3316841] [3] [ID:3] EXECUTING Multi Suite.Suite D
+2026-05-17 15:08:51.627491 [PID:3316843] [2] [ID:2] EXECUTING Multi Suite.Suite C
+2026-05-17 15:08:52.246043 [PID:3316841] [3] [ID:3] PASSED Multi Suite.Suite D in 0.6 seconds
+2026-05-17 15:08:52.249045 [PID:3316840] [1] [ID:1] PASSED Multi Suite.Suite B in 0.6 seconds
+2026-05-17 15:08:52.252518 [PID:3316839] [0] [ID:0] PASSED Multi Suite.Suite A in 0.6 seconds
+2026-05-17 15:08:52.341844 [PID:3316843] [2] [ID:2] PASSED Multi Suite.Suite C in 0.7 seconds
+16 tests, 16 passed, 0 failed, 0 skipped.
+===================================================
+Output:  /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/pabot_results/output.xml
+Log:     /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/pabot_results/log.html
+Report:  /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/pabot_results/report.html
+Finalizing Pabot execution...
+Stopping PabotLib process
+Robot Framework remote server at 127.0.0.1:39857 stopped.
+PabotLib process stopped
+Total testing: 2.50 seconds
+Elapsed time:  1.49 seconds
+Logs flushed successfully.

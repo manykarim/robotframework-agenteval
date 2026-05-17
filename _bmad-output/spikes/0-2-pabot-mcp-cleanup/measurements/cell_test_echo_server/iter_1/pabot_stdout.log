@@ -1,0 +1,57 @@
+Initialized logging in pabot_results/pabot_results
+Warning: specified pabotlibport 8270 is already in use. A free port will be assigned automatically.
+Robot Framework remote server at 127.0.0.1:48407 started.
+Storing .pabotsuitenames file
+2026-05-17 15:06:34.637996 [PID:3308785] [1] [ID:1] EXECUTING Test Scope All 16.T02
+2026-05-17 15:06:34.639060 [PID:3308786] [4] [ID:4] EXECUTING Test Scope All 16.T05
+2026-05-17 15:06:34.643891 [PID:3308787] [2] [ID:2] EXECUTING Test Scope All 16.T03
+2026-05-17 15:06:34.651468 [PID:3308791] [7] [ID:7] EXECUTING Test Scope All 16.T08
+2026-05-17 15:06:34.662188 [PID:3308795] [0] [ID:0] EXECUTING Test Scope All 16.T01
+2026-05-17 15:06:34.671784 [PID:3308794] [3] [ID:3] EXECUTING Test Scope All 16.T04
+2026-05-17 15:06:34.675736 [PID:3308797] [5] [ID:5] EXECUTING Test Scope All 16.T06
+2026-05-17 15:06:34.679545 [PID:3308799] [6] [ID:6] EXECUTING Test Scope All 16.T07
+2026-05-17 15:06:35.310063 [PID:3308786] [4] [ID:4] FAILED Test Scope All 16.T05
+2026-05-17 15:06:35.320537 [PID:3308794] [3] [ID:3] FAILED Test Scope All 16.T04
+2026-05-17 15:06:35.326027 [PID:3308838] [0] [ID:8] EXECUTING Test Scope All 16.T09
+2026-05-17 15:06:35.340670 [PID:3308839] [1] [ID:9] EXECUTING Test Scope All 16.T10
+2026-05-17 15:06:35.396225 [PID:3308787] [2] [ID:2] FAILED Test Scope All 16.T03
+2026-05-17 15:06:35.406222 [PID:3308846] [2] [ID:10] EXECUTING Test Scope All 16.T11
+2026-05-17 15:06:35.484865 [PID:3308791] [7] [ID:7] FAILED Test Scope All 16.T08
+2026-05-17 15:06:35.494076 [PID:3308850] [3] [ID:11] EXECUTING Test Scope All 16.T12
+2026-05-17 15:06:35.496583 [PID:3308795] [0] [ID:0] FAILED Test Scope All 16.T01
+2026-05-17 15:06:35.509756 [PID:3308854] [4] [ID:12] EXECUTING Test Scope All 16.T13
+2026-05-17 15:06:35.592005 [PID:3308785] [1] [ID:1] FAILED Test Scope All 16.T02
+2026-05-17 15:06:35.606624 [PID:3308797] [5] [ID:5] FAILED Test Scope All 16.T06
+2026-05-17 15:06:35.612737 [PID:3308862] [5] [ID:13] EXECUTING Test Scope All 16.T14
+2026-05-17 15:06:35.623016 [PID:3308799] [6] [ID:6] FAILED Test Scope All 16.T07
+2026-05-17 15:06:35.635930 [PID:3308867] [6] [ID:14] EXECUTING Test Scope All 16.T15
+2026-05-17 15:06:35.644689 [PID:3308871] [7] [ID:15] EXECUTING Test Scope All 16.T16
+2026-05-17 15:06:36.145173 [PID:3308846] [2] [ID:10] FAILED Test Scope All 16.T11
+2026-05-17 15:06:36.225808 [PID:3308850] [3] [ID:11] FAILED Test Scope All 16.T12
+2026-05-17 15:06:36.251825 [PID:3308838] [0] [ID:8] PASSED Test Scope All 16.T09 in 0.9 seconds
+2026-05-17 15:06:36.358500 [PID:3308839] [1] [ID:9] PASSED Test Scope All 16.T10 in 1.0 seconds
+2026-05-17 15:06:36.440671 [PID:3308862] [5] [ID:13] FAILED Test Scope All 16.T14
+2026-05-17 15:06:36.447104 [PID:3308854] [4] [ID:12] FAILED Test Scope All 16.T13
+2026-05-17 15:06:36.463229 [PID:3308867] [6] [ID:14] FAILED Test Scope All 16.T15
+2026-05-17 15:06:36.468411 [PID:3308871] [7] [ID:15] FAILED Test Scope All 16.T16
+[ WARNING ]: No output files in "pabot_results/pabot_results"
+0 tests, 0 passed, 0 failed, 0 skipped.
+===================================================
+Output:  
+From Internal Rebot: [ ERROR ] Reading XML source '' failed: No such file or directory
+From Internal Rebot: Try --help for usage information.
+[ WARNING ] One or more subprocesses encountered an error and the internal .xml files could not be generated. Please check the following stderr files to identify the cause:
+'pabot_results/pabot_results/8/robot_stderr.out'
+'pabot_results/pabot_results/0/robot_stderr.out'
+'pabot_results/pabot_results/3/robot_stderr.out'
+'pabot_results/pabot_results/1/robot_stderr.out'
+'pabot_results/pabot_results/2/robot_stderr.out'
+'pabot_results/pabot_results/9/robot_stderr.out'
+[ ERROR ] The output, log and report files produced by Pabot are incomplete and do not contain all test cases.
+Finalizing Pabot execution...
+Stopping PabotLib process
+Robot Framework remote server at 127.0.0.1:48407 stopped.
+PabotLib process stopped
+Total testing: 12.90 seconds
+Elapsed time:  2.57 seconds
+Logs flushed successfully.

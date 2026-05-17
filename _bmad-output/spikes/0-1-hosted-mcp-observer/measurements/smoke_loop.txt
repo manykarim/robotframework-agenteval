@@ -1,0 +1,12 @@
+=== Story 0.1 5-iter pabot smoke loop (--processes 4) ===
+started: 2026-05-17T15:05:01+02:00
+
+iter 1: 15 tests, 15 passed, 0 failed, 0 skipped. wall=15.79s runs=15 tool_calls=39 coverages=[external_mixed=3,hosted_in_process=9,subprocess_with_observer=3]
+iter 2: 15 tests, 15 passed, 0 failed, 0 skipped. wall=15.61s runs=15 tool_calls=39 coverages=[external_mixed=3,hosted_in_process=9,subprocess_with_observer=3]
+iter 3: 15 tests, 15 passed, 0 failed, 0 skipped. wall=16.20s runs=15 tool_calls=39 coverages=[external_mixed=3,hosted_in_process=9,subprocess_with_observer=3]
+iter 4: 15 tests, 15 passed, 0 failed, 0 skipped. wall=14.41s runs=15 tool_calls=39 coverages=[external_mixed=3,hosted_in_process=9,subprocess_with_observer=3]
+iter 5: 15 tests, 15 passed, 0 failed, 0 skipped. wall=12.02s runs=15 tool_calls=39 coverages=[external_mixed=3,hosted_in_process=9,subprocess_with_observer=3]
+
+completed: 2026-05-17T15:06:16+02:00
+evidence preserved at: concurrency/pabot_evidence/iter_{1..5}/
+

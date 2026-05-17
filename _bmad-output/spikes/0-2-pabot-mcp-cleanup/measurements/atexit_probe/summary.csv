@@ -1,0 +1,10 @@
+scenario,iter,signal_used,leak_count,parent_exit_code,result
+sigterm_with_handler,1,TERM,0,0,CLEAN (no leaks)
+sigterm_with_handler,2,TERM,0,0,CLEAN (no leaks)
+sigterm_with_handler,3,TERM,0,0,CLEAN (no leaks)
+sigterm_default,1,TERM,3,143,LEAKED 3 (orphaned to PID 1)
+sigterm_default,2,TERM,3,143,LEAKED 3 (orphaned to PID 1)
+sigterm_default,3,TERM,3,143,LEAKED 3 (orphaned to PID 1)
+sigkill_parent,1,KILL,3,137,LEAKED 3 (orphaned to PID 1)
+sigkill_parent,2,KILL,3,137,LEAKED 3 (orphaned to PID 1)
+sigkill_parent,3,KILL,3,137,LEAKED 3 (orphaned to PID 1)

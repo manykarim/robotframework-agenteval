@@ -1,0 +1,17 @@
+[project]
+name = "spike-0-2-pabot-mcp-cleanup"
+version = "0.0.0"
+description = "Scratch environment for Story 0.2 spike. NOT shipped — discarded after Story 0.3 ratification."
+requires-python = ">=3.12"
+# Exact pins matching Story 0.1 spike per the cross-spike consistency rule. The
+# `_kernel/context.py` draft must align with Story 0.1's observer prototype since
+# both feed Story 1b.1.
+dependencies = [
+  "mcp==1.27.1",
+  "robotframework==7.4.2",
+  "robotframework-pabot==5.2.2",
+  "anyio==4.13.0",
+]
+
+[tool.uv]
+package = false

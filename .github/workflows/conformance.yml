@@ -1,0 +1,65 @@
+# conformance.yml — Per-release Tier-1 adapter conformance harness
+#
+# Purpose: Runs tests/conformance/ against all Tier-1 adapters registered in the
+# `agenteval.coding_agents` entry-point group. Catches adapter implementations
+# that drift from the conformance contract.
+#
+# AC reference: AC-1a.2.3 (conformance.yml), AC-1a.2.9 (workflow hygiene).
+#
+# Phase-1 placeholder: the conformance harness + 6 reference fixtures land in
+# Story 1b.5. Phase-1 baseline = empty entry-point set + empty tests/conformance/,
+# so --collect-only is the right placeholder.
+#
+# Trigger rationale: Per architecture L1174 "Per-release: tests/conformance/ runs
+# against all Tier-1 adapters". `release.types: [published]` triggers when a GitHub
+# release is published; `workflow_dispatch` allows manual runs during dev iteration.
+# Not added to PR-gating ci.yml because conformance is SDK-version-pinned + slow.
+
+name: conformance
+
+on:
+  workflow_dispatch: {}
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    name: conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set Python version
+        run: echo "3.12" > .python-version
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      # Phase-1 collect-only: tests/conformance/ empty (harness lands in Story 1b.5).
+      # pytest exits 5 on empty dirs; accept as success. Drop --collect-only + remove
+      # exit-5 leniency when Story 1b.5 lands the conformance harness.
+      - name: pytest tests/conformance (Phase-1 collect-only)
+        shell: bash
+        run: |
+          set +e
+          uv run pytest tests/conformance -q --collect-only
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ] || [ "$code" -eq 5 ]; then
+            echo "::notice::pytest tests/conformance OK (exit $code)"
+            exit 0
+          fi
+          echo "::error::pytest tests/conformance failed with exit $code"
+          exit "$code"

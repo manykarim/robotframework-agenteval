@@ -1,0 +1,17 @@
+[project]
+name = "spike-0-1-hosted-mcp-observer"
+version = "0.0.0"
+description = "Scratch environment for Story 0.1 spike. NOT shipped — discarded after Story 0.3 ratification."
+requires-python = ">=3.12"
+# Exact pins per P8 (review): the spike's findings claim mcp 1.27.1 + RF 7.4.2 +
+# pabot 5.2.2 + anyio 4.13.0. uv.lock locks the full transitive graph for reproducibility.
+dependencies = [
+  "mcp==1.27.1",
+  "robotframework==7.4.2",
+  "robotframework-pabot==5.2.2",
+  "anyio==4.13.0",
+  "uvicorn==0.47.0",
+]
+
+[tool.uv]
+package = false

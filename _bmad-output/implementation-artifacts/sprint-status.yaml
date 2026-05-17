@@ -1,0 +1,151 @@
+# generated: 2026-05-17
+# last_updated: 2026-05-17 (Story 1a.2 review. 7 GitHub Actions workflows authored: ci, nightly-live, conformance, security-scan, dogfood-integration, docs-build, release. All 10 ACs satisfied locally; AC-1a.2.8 trivial-PR verification deferred to Many (workspace not yet a git repo). Story 1a.1 baseline gap closed: tests/unit/conventions/ added (architecture-mandated; Story 1a.1's Task 2 missed it). pytest --collect-only exit-5 leniency added to ci/nightly-live/conformance for empty-dir Phase-1 placeholders. CHANGELOG.md Unreleased entry added. Ready for /bmad-code-review (Using current Claude + Codex CLI subagent). Epic 1a 1/6 done; 1a.2 in review.)
+# project: robotframework-agenteval
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-05-17
+last_updated: 2026-05-17
+project: robotframework-agenteval
+project_key: NOKEY
+tracking_system: file-system
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+development_status:
+  epic-0: done  # All 3 stories done 2026-05-17. Retrospective is optional; can be triggered via /bmad-retrospective.
+  0-1-run-hosted-mcp-universal-observer-spike: done
+  0-2-run-per-test-mcp-cleanup-under-pabot-spike: done
+  0-3-amend-and-ratify-spike-dependent-adrs: done
+  epic-0-retrospective: done  # Retrospective completed 2026-05-17; saved at epic-0-retro-2026-05-17.md. Three project-level norms ratified: adversarial review pattern; numeric claims machine-verified; serialized multi-agent reproductions. No significant discoveries; Epic 1a plan stands.
+
+  epic-1a: in-progress  # Started 2026-05-17 with Story 1a.1 create-story.
+  1a-1-project-bootstrap-standalone-python-rf-library: done
+  1a-2-set-up-7-github-actions-ci-workflows: review
+  1a-3-ratify-non-spike-adrs-author-adr-001-architectural-influences-catalog: backlog
+  1a-4-author-9-doc-contract-skeletons: backlog
+  1a-5-project-hygiene-contributing-security-issue-templates-license-headers: backlog
+  1a-6-wire-fr42-fr43-fr44-library-defaults-stability-exit-criteria-doc-stubs: backlog
+  epic-1a-retrospective: optional
+
+  epic-1b: backlog
+  1b-1-foundational-kernel-context-tier-async-bridge: backlog
+  1b-2-trace-observability-kernel-trace-store-redaction-coverage: backlog
+  1b-3-discovery-guardrails-kernel-entry-points-fan-out-decorator: backlog
+  1b-4-codingagentadapter-protocol-inprocessadapter-subprocessadapter-abcs: backlog
+  1b-5-conformance-harness-loader-fixture-schema-6-reference-fixtures: backlog
+  1b-6-determinism-contract-doc-5-ci-enforcement-conventions-tests: backlog
+  epic-1b-retrospective: optional
+
+  epic-2: backlog
+  2-1-skill-static-inspection-keywords: backlog
+  2-2-subagent-hook-static-inspection-keywords: backlog
+  2-3-mcp-static-inspection-keywords: backlog
+  2-4-epic-2-conformance-fixtures-integration-tests-against-real-sample-files: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-mcp-server-lifecycle-keywords-start-connect-stop-spec-version-gate: backlog
+  3-2-mcp-tool-inspection-keywords-list-tools-call-tool: backlog
+  3-3-interleaved-dogfood-port-rf-mcp-mcp-surface-tests: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-provider-layer-generic-coding-agent-adapter: backlog
+  4-2-claude-code-cli-adapter: backlog
+  4-3-orchestration-keywords-config-precedence: backlog
+  4-4-mvp-tool-discoverability-fr10a-single-runtime-discoverability-check: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-otel-listener-span-generation-memory-jsonl-backends: backlog
+  5-2-hosted-mcp-observer-honesty-fields-incompletetraceerror: backlog
+  5-3-evidence-block-redaction-wiring-runmanifest: backlog
+  5-4-degradedtracewarning-get-last-warnings-per-test-scope-polish: backlog
+  5-5-interleaved-dogfood-port-rf-mcp-trace-assertions: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-tool-call-metrics-library: backlog
+  6-2-trajectory-tool-call-response-assertions: backlog
+  6-3-statistical-primitives-tier-acl-determinism-enforcement: backlog
+  6-4-interleaved-dogfood-port-robotframework-agentskills-metrics-tests: backlog
+  epic-6-retrospective: optional
+
+  epic-7: backlog
+  7-1-skill-get-activation-decision-keyword: backlog
+  7-2-skill-get-discoverability-cohort-keyword-skill-should-activate-for-assertion: backlog
+  7-3-devons-stacked-validation-recipe-integration-test: backlog
+  7-4-interleaved-dogfood-skill-discoverability-against-robotframework-agentskills: backlog
+  epic-7-retrospective: optional
+
+  epic-8a: backlog
+  8a-1-enrich-rf-xunit-output-via-listener-v3-xunit-file-hook-structured-exit-codes: backlog
+  8a-2-trace-id-surfacing-in-output-xml-polling-ban-error-testability-conformance-report: backlog
+  epic-8a-retrospective: optional
+
+  epic-8b: backlog
+  8b-1-agenteval-init-scaffolding-command: backlog
+  8b-2-agenteval-new-adapter-scaffolding-terminal-run-summary-cohort-heatmap-ascii-dict: backlog
+  8b-3-8-recipe-gallery-entries-otel-trace-visual-doc: backlog
+  epic-8b-retrospective: optional
+
+  epic-9: backlog
+  9-1-verify-rf-mcp-full-parity-cross-repo-ci-workflow-stays-green: backlog
+  9-2-verify-robotframework-agentskills-full-parity: backlog
+  9-3-phase-1-retrospective-fr65-exit-criteria-doc-final-content: backlog
+  epic-9-retrospective: optional
+
+  epic-10: backlog
+  10-1-claude-agent-sdk-adapter: backlog
+  10-2-openai-agents-sdk-adapter: backlog
+  epic-10-retrospective: optional
+
+  epic-11: backlog
+  11-1-codex-cli-adapter: backlog
+  11-2-copilot-cli-adapter: backlog
+  11-3-adapterversiondriftwarning-fully-wired: backlog
+  epic-11-retrospective: optional
+
+  epic-12: backlog
+  12-1-judge-get-score-keyword-basic-rubric-support: backlog
+  12-2-judge-calibration-suite-agreement-scoring-threshold-tuning: backlog
+  12-3-three-tier-stacked-validation-integration-completes-devons-journey-4: backlog
+  epic-12-retrospective: optional
+
+  epic-13: backlog
+  13-1-advanced-statistical-primitives-behind-agenteval-advanced-extra: backlog
+  13-2-otlp-trace-backend: backlog
+  13-3-compare-tool-discoverability-cross-adapter: backlog
+  13-4-cohort-heatmap-html-rendering: backlog
+  13-5-compare-skill-discoverability-cross-adapter-fr4c: backlog
+  epic-13-retrospective: optional

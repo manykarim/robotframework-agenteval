@@ -1,0 +1,90 @@
+# release.yml — NFR-MAINT-03 tagged release via PyPI OIDC trusted publishing
+#
+# Purpose: On semver-tag push (v[0-9]+.[0-9]+.[0-9]+*), builds wheel + sdist via
+# `uv build` and publishes to PyPI via `uv publish` using OIDC trusted publishing
+# (no PYPI_TOKEN secret).
+#
+# AC reference: AC-1a.2.7 (release.yml), AC-1a.2.9 (workflow hygiene).
+# NFR reference: NFR-MAINT-03 (PyPI OIDC trusted publishing + semver tags).
+#
+# Phase-1 dry-run mechanic:
+# - First real release is Story 9.1. Until the PyPI project exists + the trusted-
+#   publisher claim is configured, `uv publish` would 401. The dry-run mechanic
+#   below skips `uv publish` unless the `TRUSTED_PUBLISHER_CONFIGURED` repo
+#   variable is set to `true` (a repo-level Actions variable Many flips when the
+#   PyPI claim is registered).
+# - `release-pending` label gate: documented in story Dev Notes as Phase-1 intent;
+#   enforced by checking the merge commit's PR labels. For Phase-1, the gate is
+#   a no-op `::notice::` annotation — real label enforcement lands in Story 9.1
+#   when the first real release happens.
+#
+# PyPI Trusted Publishers setup: https://docs.pypi.org/trusted-publishers/
+#   The PyPI project owner adds a trusted-publisher entry that names:
+#     - PyPI project: robotframework-agenteval
+#     - GitHub repo: manykarim/robotframework-agenteval
+#     - workflow filename: release.yml
+#     - environment name: (none, or "release" if you add `environment:` here)
+#   Once configured, set repo variable TRUSTED_PUBLISHER_CONFIGURED=true to flip
+#   this workflow from dry-run to live publish.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+  workflow_dispatch: {}
+
+permissions:
+  # id-token: write is REQUIRED for PyPI OIDC trusted publishing — without it,
+  # the JWT exchange fails and `uv publish` falls back to PYPI_TOKEN (which we
+  # explicitly don't use per NFR-MAINT-03).
+  id-token: write
+  contents: read
+
+jobs:
+  release:
+    name: build-and-publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set Python version
+        run: echo "3.12" > .python-version
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Build wheel + sdist
+        run: |
+          uv build
+          ls -la dist/
+
+      # Phase-1 release-pending label gate: documented intent. Real enforcement
+      # via GitHub API lookup against the merge commit's PR lands in Story 9.1.
+      - name: release-pending label gate (Phase-1 notice)
+        run: |
+          echo "::notice::Phase-1: release-pending label gate is documented but not enforced."
+          echo "::notice::Story 9.1 wires real label enforcement via GitHub API lookup."
+
+      - name: Publish to PyPI (OIDC trusted publishing)
+        env:
+          TRUSTED_PUBLISHER_CONFIGURED: ${{ vars.TRUSTED_PUBLISHER_CONFIGURED }}
+        run: |
+          if [ "${TRUSTED_PUBLISHER_CONFIGURED:-}" != "true" ]; then
+            echo "::warning::Dry-run: PyPI OIDC claim not yet configured."
+            echo "::warning::Set repo variable TRUSTED_PUBLISHER_CONFIGURED=true after Story 9.1 registers the PyPI trusted-publisher claim."
+            echo "::notice::Built artifacts:"
+            ls -la dist/
+            exit 0
+          fi
+          uv publish

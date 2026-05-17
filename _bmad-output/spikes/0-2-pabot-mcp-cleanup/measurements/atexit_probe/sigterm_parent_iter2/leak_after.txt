@@ -1,0 +1,3 @@
+3282796 /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/.venv/bin/python -m servers.echo_server SPIKE-0-2-ECHO
+3282797 /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/.venv/bin/python -m servers.echo_server SPIKE-0-2-ECHO
+3282798 /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/.venv/bin/python -m servers.echo_server SPIKE-0-2-ECHO

@@ -1,0 +1,48 @@
+Initialized logging in pabot_results/pabot_results
+Warning: specified pabotlibport 8270 is already in use. A free port will be assigned automatically.
+Robot Framework remote server at 127.0.0.1:48637 started.
+Storing .pabotsuitenames file
+2026-05-17 15:07:38.081895 [PID:3313192] [6] [ID:6] EXECUTING Test Scope All 16.T07
+2026-05-17 15:07:38.091806 [PID:3313193] [5] [ID:5] EXECUTING Test Scope All 16.T06
+2026-05-17 15:07:38.092883 [PID:3313195] [0] [ID:0] EXECUTING Test Scope All 16.T01
+2026-05-17 15:07:38.113902 [PID:3313204] [3] [ID:3] EXECUTING Test Scope All 16.T04
+2026-05-17 15:07:38.114529 [PID:3313198] [2] [ID:2] EXECUTING Test Scope All 16.T03
+2026-05-17 15:07:38.115371 [PID:3313205] [4] [ID:4] EXECUTING Test Scope All 16.T05
+2026-05-17 15:07:38.125611 [PID:3313207] [1] [ID:1] EXECUTING Test Scope All 16.T02
+2026-05-17 15:07:38.136294 [PID:3313213] [7] [ID:7] EXECUTING Test Scope All 16.T08
+2026-05-17 15:07:38.924417 [PID:3313195] [0] [ID:0] PASSED Test Scope All 16.T01 in 0.8 seconds
+2026-05-17 15:07:38.932846 [PID:3313240] [0] [ID:8] EXECUTING Test Scope All 16.T09
+2026-05-17 15:07:38.947878 [PID:3313204] [3] [ID:3] PASSED Test Scope All 16.T04 in 0.8 seconds
+2026-05-17 15:07:38.960151 [PID:3313207] [1] [ID:1] PASSED Test Scope All 16.T02 in 0.9 seconds
+2026-05-17 15:07:38.961796 [PID:3313244] [1] [ID:9] EXECUTING Test Scope All 16.T10
+2026-05-17 15:07:38.963903 [PID:3313213] [7] [ID:7] PASSED Test Scope All 16.T08 in 0.8 seconds
+2026-05-17 15:07:38.973526 [PID:3313248] [2] [ID:10] EXECUTING Test Scope All 16.T11
+2026-05-17 15:07:38.978821 [PID:3313249] [3] [ID:11] EXECUTING Test Scope All 16.T12
+2026-05-17 15:07:39.011480 [PID:3313192] [6] [ID:6] PASSED Test Scope All 16.T07 in 0.9 seconds
+2026-05-17 15:07:39.021599 [PID:3313256] [4] [ID:12] EXECUTING Test Scope All 16.T13
+2026-05-17 15:07:39.047691 [PID:3313205] [4] [ID:4] PASSED Test Scope All 16.T05 in 0.9 seconds
+2026-05-17 15:07:39.057914 [PID:3313260] [5] [ID:13] EXECUTING Test Scope All 16.T14
+2026-05-17 15:07:39.113554 [PID:3313193] [5] [ID:5] PASSED Test Scope All 16.T06 in 1.0 seconds
+2026-05-17 15:07:39.127836 [PID:3313264] [6] [ID:14] EXECUTING Test Scope All 16.T15
+2026-05-17 15:07:39.151097 [PID:3313198] [2] [ID:2] PASSED Test Scope All 16.T03 in 1.0 seconds
+2026-05-17 15:07:39.177430 [PID:3313273] [7] [ID:15] EXECUTING Test Scope All 16.T16
+2026-05-17 15:07:39.870167 [PID:3313240] [0] [ID:8] PASSED Test Scope All 16.T09 in 0.9 seconds
+2026-05-17 15:07:39.895075 [PID:3313249] [3] [ID:11] PASSED Test Scope All 16.T12 in 0.9 seconds
+2026-05-17 15:07:39.946020 [PID:3313256] [4] [ID:12] PASSED Test Scope All 16.T13 in 0.9 seconds
+2026-05-17 15:07:39.996641 [PID:3313244] [1] [ID:9] PASSED Test Scope All 16.T10 in 1.0 seconds
+2026-05-17 15:07:39.998629 [PID:3313248] [2] [ID:10] PASSED Test Scope All 16.T11 in 1.0 seconds
+2026-05-17 15:07:40.081754 [PID:3313260] [5] [ID:13] PASSED Test Scope All 16.T14 in 1.0 seconds
+2026-05-17 15:07:40.151261 [PID:3313264] [6] [ID:14] PASSED Test Scope All 16.T15 in 1.0 seconds
+2026-05-17 15:07:40.196022 [PID:3313273] [7] [ID:15] PASSED Test Scope All 16.T16 in 1.0 seconds
+16 tests, 16 passed, 0 failed, 0 skipped.
+===================================================
+Output:  /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/pabot_results/output.xml
+Log:     /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/pabot_results/log.html
+Report:  /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/pabot_results/report.html
+Finalizing Pabot execution...
+Stopping PabotLib process
+Robot Framework remote server at 127.0.0.1:48637 stopped.
+PabotLib process stopped
+Total testing: 14.80 seconds
+Elapsed time:  2.87 seconds
+Logs flushed successfully.

@@ -1,0 +1,55 @@
+Initialized logging in pabot_results/pabot_results
+Warning: specified pabotlibport 8270 is already in use. A free port will be assigned automatically.
+Robot Framework remote server at 127.0.0.1:53163 started.
+Storing .pabotsuitenames file
+2026-05-17 15:07:34.169724 [PID:3312966] [0] [ID:0] EXECUTING Test Scope All 16.T01
+2026-05-17 15:07:34.170375 [PID:3312967] [1] [ID:1] EXECUTING Test Scope All 16.T02
+2026-05-17 15:07:34.171305 [PID:3312968] [5] [ID:5] EXECUTING Test Scope All 16.T06
+2026-05-17 15:07:34.180152 [PID:3312969] [3] [ID:3] EXECUTING Test Scope All 16.T04
+2026-05-17 15:07:34.187032 [PID:3312977] [4] [ID:4] EXECUTING Test Scope All 16.T05
+2026-05-17 15:07:34.188599 [PID:3312976] [6] [ID:6] EXECUTING Test Scope All 16.T07
+2026-05-17 15:07:34.195504 [PID:3312982] [7] [ID:7] EXECUTING Test Scope All 16.T08
+2026-05-17 15:07:34.200667 [PID:3312986] [2] [ID:2] EXECUTING Test Scope All 16.T03
+2026-05-17 15:07:35.100853 [PID:3312967] [1] [ID:1] PASSED Test Scope All 16.T02 in 0.9 seconds
+2026-05-17 15:07:35.109183 [PID:3313016] [0] [ID:8] EXECUTING Test Scope All 16.T09
+2026-05-17 15:07:35.119839 [PID:3312977] [4] [ID:4] PASSED Test Scope All 16.T05 in 0.9 seconds
+2026-05-17 15:07:35.127918 [PID:3312982] [7] [ID:7] PASSED Test Scope All 16.T08 in 0.9 seconds
+2026-05-17 15:07:35.129350 [PID:3313020] [1] [ID:9] EXECUTING Test Scope All 16.T10
+2026-05-17 15:07:35.138206 [PID:3313024] [2] [ID:10] EXECUTING Test Scope All 16.T11
+2026-05-17 15:07:35.195786 [PID:3312966] [0] [ID:0] PASSED Test Scope All 16.T01 in 1.0 seconds
+2026-05-17 15:07:35.205473 [PID:3313028] [3] [ID:11] EXECUTING Test Scope All 16.T12
+2026-05-17 15:07:35.206740 [PID:3312969] [3] [ID:3] PASSED Test Scope All 16.T04 in 1.0 seconds
+2026-05-17 15:07:35.216260 [PID:3313032] [4] [ID:12] EXECUTING Test Scope All 16.T13
+2026-05-17 15:07:35.221141 [PID:3312976] [6] [ID:6] PASSED Test Scope All 16.T07 in 1.0 seconds
+2026-05-17 15:07:35.231997 [PID:3313036] [5] [ID:13] EXECUTING Test Scope All 16.T14
+2026-05-17 15:07:35.237511 [PID:3312986] [2] [ID:2] PASSED Test Scope All 16.T03 in 1.0 seconds
+2026-05-17 15:07:35.250792 [PID:3313040] [6] [ID:14] EXECUTING Test Scope All 16.T15
+2026-05-17 15:07:35.301836 [PID:3312968] [5] [ID:5] PASSED Test Scope All 16.T06 in 1.1 seconds
+2026-05-17 15:07:35.324542 [PID:3313044] [7] [ID:15] EXECUTING Test Scope All 16.T16
+2026-05-17 15:07:35.769836 [PID:3313024] [2] [ID:10] FAILED Test Scope All 16.T11
+2026-05-17 15:07:35.770890 [PID:3313020] [1] [ID:9] FAILED Test Scope All 16.T10
+2026-05-17 15:07:35.831546 [PID:3313016] [0] [ID:8] FAILED Test Scope All 16.T09
+2026-05-17 15:07:35.924251 [PID:3313028] [3] [ID:11] FAILED Test Scope All 16.T12
+2026-05-17 15:07:35.938830 [PID:3313032] [4] [ID:12] FAILED Test Scope All 16.T13
+2026-05-17 15:07:35.954186 [PID:3313036] [5] [ID:13] FAILED Test Scope All 16.T14
+2026-05-17 15:07:35.966839 [PID:3313040] [6] [ID:14] FAILED Test Scope All 16.T15
+2026-05-17 15:07:36.046940 [PID:3313044] [7] [ID:15] FAILED Test Scope All 16.T16
+[ WARNING ]: No output files in "pabot_results/pabot_results"
+0 tests, 0 passed, 0 failed, 0 skipped.
+===================================================
+Output:  
+From Internal Rebot: [ ERROR ] Reading XML source '' failed: No such file or directory
+From Internal Rebot: Try --help for usage information.
+[ WARNING ] One or more subprocesses encountered an error and the internal .xml files could not be generated. Please check the following stderr files to identify the cause:
+'pabot_results/pabot_results/0/robot_stderr.out'
+'pabot_results/pabot_results/3/robot_stderr.out'
+'pabot_results/pabot_results/1/robot_stderr.out'
+'pabot_results/pabot_results/2/robot_stderr.out'
+[ ERROR ] The output, log and report files produced by Pabot are incomplete and do not contain all test cases.
+Finalizing Pabot execution...
+Stopping PabotLib process
+Robot Framework remote server at 127.0.0.1:53163 stopped.
+PabotLib process stopped
+Total testing: 13.20 seconds
+Elapsed time:  2.44 seconds
+Logs flushed successfully.

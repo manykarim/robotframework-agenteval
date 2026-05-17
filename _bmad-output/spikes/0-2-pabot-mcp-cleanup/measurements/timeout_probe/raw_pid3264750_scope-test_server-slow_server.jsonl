@@ -1,0 +1,1 @@
+{"event": "release_test", "test_id": "s1-t1", "scope": "test", "server_module": "slow_server", "handle_id": "f7f161e7-132c-4dc1-8180-3040deb0bfbd", "pid": 3264767, "spawned_at_unix": 1779018205.072508, "released_at_unix": 1779018205.5815256, "startup_latency_ms": 501.4669895172119, "shutdown_latency_ms": 7.550477981567383, "signaled_with": "SIGTERM", "killed_by_timeout": false}

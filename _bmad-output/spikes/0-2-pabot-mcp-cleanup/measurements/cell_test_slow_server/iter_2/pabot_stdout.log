@@ -1,0 +1,66 @@
+Initialized logging in pabot_results/pabot_results
+Warning: specified pabotlibport 8270 is already in use. A free port will be assigned automatically.
+Robot Framework remote server at 127.0.0.1:53457 started.
+Storing .pabotsuitenames file
+Traceback (most recent call last):
+  File "/home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/.venv/lib/python3.12/site-packages/pabot/pabot.py", line 280, in execute_and_wait_with
+    os.makedirs(outs_dir)
+  File "<frozen os>", line 225, in makedirs
+FileExistsError: [Errno 17] File exists: 'pabot_results/pabot_results/2'
+Traceback (most recent call last):
+  File "/home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/.venv/lib/python3.12/site-packages/pabot/pabot.py", line 280, in execute_and_wait_with
+    os.makedirs(outs_dir)
+  File "<frozen os>", line 225, in makedirs
+FileExistsError: [Errno 17] File exists: 'pabot_results/pabot_results/0'
+Traceback (most recent call last):
+  File "/home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/.venv/lib/python3.12/site-packages/pabot/pabot.py", line 280, in execute_and_wait_with
+    os.makedirs(outs_dir)
+  File "<frozen os>", line 225, in makedirs
+FileExistsError: [Errno 17] File exists: 'pabot_results/pabot_results/3'
+Traceback (most recent call last):
+  File "/home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/.venv/lib/python3.12/site-packages/pabot/pabot.py", line 280, in execute_and_wait_with
+    os.makedirs(outs_dir)
+  File "<frozen os>", line 225, in makedirs
+FileExistsError: [Errno 17] File exists: 'pabot_results/pabot_results/1'
+2026-05-17 15:07:22.710209 [PID:3312325] [0] [ID:8] EXECUTING Test Scope All 16.T09
+2026-05-17 15:07:22.714944 [PID:3312326] [4] [ID:4] EXECUTING Test Scope All 16.T05
+2026-05-17 15:07:22.728638 [PID:3312330] [5] [ID:5] EXECUTING Test Scope All 16.T06
+2026-05-17 15:07:22.729067 [PID:3312327] [1] [ID:9] EXECUTING Test Scope All 16.T10
+2026-05-17 15:07:22.736136 [PID:3312328] [2] [ID:10] EXECUTING Test Scope All 16.T11
+2026-05-17 15:07:22.737757 [PID:3312333] [7] [ID:7] EXECUTING Test Scope All 16.T08
+2026-05-17 15:07:22.748495 [PID:3312337] [3] [ID:11] EXECUTING Test Scope All 16.T12
+2026-05-17 15:07:22.757143 [PID:3312343] [6] [ID:6] EXECUTING Test Scope All 16.T07
+2026-05-17 15:07:23.771962 [PID:3312328] [2] [ID:10] PASSED Test Scope All 16.T11 in 1.1 seconds
+2026-05-17 15:07:23.786406 [PID:3312374] [4] [ID:12] EXECUTING Test Scope All 16.T13
+2026-05-17 15:07:23.874049 [PID:3312325] [0] [ID:8] PASSED Test Scope All 16.T09 in 1.2 seconds
+2026-05-17 15:07:23.880831 [PID:3312333] [7] [ID:7] PASSED Test Scope All 16.T08 in 1.1 seconds
+2026-05-17 15:07:23.886705 [PID:3312382] [5] [ID:13] EXECUTING Test Scope All 16.T14
+2026-05-17 15:07:23.891541 [PID:3312383] [6] [ID:14] EXECUTING Test Scope All 16.T15
+2026-05-17 15:07:23.973410 [PID:3312330] [5] [ID:5] PASSED Test Scope All 16.T06 in 1.3 seconds
+2026-05-17 15:07:23.983476 [PID:3312390] [7] [ID:15] EXECUTING Test Scope All 16.T16
+2026-05-17 15:07:23.986704 [PID:3312337] [3] [ID:11] PASSED Test Scope All 16.T12 in 1.2 seconds
+2026-05-17 15:07:23.989392 [PID:3312343] [6] [ID:6] PASSED Test Scope All 16.T07 in 1.3 seconds
+2026-05-17 15:07:24.053930 [PID:3312326] [4] [ID:4] PASSED Test Scope All 16.T05 in 1.3 seconds
+2026-05-17 15:07:24.066785 [PID:3312327] [1] [ID:9] PASSED Test Scope All 16.T10 in 1.3 seconds
+2026-05-17 15:07:24.432019 [PID:3312374] [4] [ID:12] FAILED Test Scope All 16.T13
+2026-05-17 15:07:24.610422 [PID:3312383] [6] [ID:14] PASSED Test Scope All 16.T15 in 0.7 seconds
+2026-05-17 15:07:24.611969 [PID:3312382] [5] [ID:13] PASSED Test Scope All 16.T14 in 0.7 seconds
+2026-05-17 15:07:24.705165 [PID:3312390] [7] [ID:15] PASSED Test Scope All 16.T16 in 0.7 seconds
+Reading XML source 'pabot_results/pabot_results/13/output.xml' failed: No such file or directory
+Skipping 'pabot_results/pabot_results/13/output.xml' from final result
+Reading XML source 'pabot_results/pabot_results/14/output.xml' failed: No such file or directory
+Skipping 'pabot_results/pabot_results/14/output.xml' from final result
+Reading XML source 'pabot_results/pabot_results/15/output.xml' failed: No such file or directory
+Skipping 'pabot_results/pabot_results/15/output.xml' from final result
+12 tests, 12 passed, 0 failed, 0 skipped.
+===================================================
+Output:  /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/pabot_results/output.xml
+Log:     /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/pabot_results/log.html
+Report:  /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/pabot_results/report.html
+Finalizing Pabot execution...
+Stopping PabotLib process
+Robot Framework remote server at 127.0.0.1:53457 stopped.
+PabotLib process stopped
+Total testing: 12.50 seconds
+Elapsed time:  5.86 seconds
+Logs flushed successfully.

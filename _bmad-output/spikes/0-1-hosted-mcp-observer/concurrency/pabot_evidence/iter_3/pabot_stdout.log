@@ -1,0 +1,46 @@
+Initialized logging in concurrency/pabot_results/pabot_results
+Warning: specified pabotlibport 8270 is already in use. A free port will be assigned automatically.
+Robot Framework remote server at 127.0.0.1:57355 started.
+2026-05-17 15:05:34.601114 [PID:3305354] [0] [ID:0] EXECUTING Test Pabot.T01 Dual Transport
+2026-05-17 15:05:34.602686 [PID:3305355] [3] [ID:3] EXECUTING Test Pabot.T04 Dual Transport
+2026-05-17 15:05:34.614838 [PID:3305356] [1] [ID:1] EXECUTING Test Pabot.T02 Dual Transport
+2026-05-17 15:05:34.620112 [PID:3305360] [2] [ID:2] EXECUTING Test Pabot.T03 Dual Transport
+2026-05-17 15:05:39.168886 [PID:3305356] [1] [ID:1] PASSED Test Pabot.T02 Dual Transport in 4.5 seconds
+2026-05-17 15:05:39.191906 [PID:3305686] [0] [ID:4] EXECUTING Test Pabot.T05 Dual Transport
+2026-05-17 15:05:39.459867 [PID:3305355] [3] [ID:3] PASSED Test Pabot.T04 Dual Transport in 4.9 seconds
+2026-05-17 15:05:39.472529 [PID:3305354] [0] [ID:0] PASSED Test Pabot.T01 Dual Transport in 4.9 seconds
+2026-05-17 15:05:39.485813 [PID:3305694] [1] [ID:5] EXECUTING Test Pabot.T06 Dual Transport
+2026-05-17 15:05:39.510839 [PID:3305696] [2] [ID:6] EXECUTING Test Pabot.T07 Hosted In Process Only
+2026-05-17 15:05:39.641477 [PID:3305360] [2] [ID:2] still running Test Pabot.T03 Dual Transport after 5.0s
+2026-05-17 15:05:39.754373 [PID:3305360] [2] [ID:2] PASSED Test Pabot.T03 Dual Transport in 5.1 seconds
+2026-05-17 15:05:39.777145 [PID:3305704] [3] [ID:7] EXECUTING Test Pabot.T08 Hosted In Process Only
+2026-05-17 15:05:42.046241 [PID:3305696] [2] [ID:6] PASSED Test Pabot.T07 Hosted In Process Only in 2.5 seconds
+2026-05-17 15:05:42.060801 [PID:3305845] [0] [ID:8] EXECUTING Test Pabot.T09 Hosted In Process Only
+2026-05-17 15:05:42.238944 [PID:3305704] [3] [ID:7] PASSED Test Pabot.T08 Hosted In Process Only in 2.5 seconds
+2026-05-17 15:05:42.276682 [PID:3305871] [1] [ID:9] EXECUTING Test Pabot.T10 Subprocess Only
+2026-05-17 15:05:43.530724 [PID:3305686] [0] [ID:4] PASSED Test Pabot.T05 Dual Transport in 4.3 seconds
+2026-05-17 15:05:43.543056 [PID:3305899] [2] [ID:10] EXECUTING Test Pabot.T11 Subprocess Only
+2026-05-17 15:05:44.223975 [PID:3305694] [1] [ID:5] PASSED Test Pabot.T06 Dual Transport in 4.7 seconds
+2026-05-17 15:05:44.256757 [PID:3305942] [3] [ID:11] EXECUTING Test Pabot.T12 Subprocess Only
+2026-05-17 15:05:44.921132 [PID:3305845] [0] [ID:8] PASSED Test Pabot.T09 Hosted In Process Only in 2.8 seconds
+2026-05-17 15:05:44.940878 [PID:3305996] [0] [ID:12] EXECUTING Test Pabot.T13 External Mixed
+2026-05-17 15:05:46.245379 [PID:3305871] [1] [ID:9] PASSED Test Pabot.T10 Subprocess Only in 4.0 seconds
+2026-05-17 15:05:46.258904 [PID:3306056] [1] [ID:13] EXECUTING Test Pabot.T14 External Mixed
+2026-05-17 15:05:46.773491 [PID:3305996] [0] [ID:12] PASSED Test Pabot.T13 External Mixed in 1.8 seconds
+2026-05-17 15:05:46.803210 [PID:3306137] [2] [ID:14] EXECUTING Test Pabot.T15 External Mixed
+2026-05-17 15:05:46.880405 [PID:3305899] [2] [ID:10] PASSED Test Pabot.T11 Subprocess Only in 3.3 seconds
+2026-05-17 15:05:48.300698 [PID:3305942] [3] [ID:11] PASSED Test Pabot.T12 Subprocess Only in 4.0 seconds
+2026-05-17 15:05:48.582393 [PID:3306056] [1] [ID:13] PASSED Test Pabot.T14 External Mixed in 2.3 seconds
+2026-05-17 15:05:49.220905 [PID:3306137] [2] [ID:14] PASSED Test Pabot.T15 External Mixed in 2.4 seconds
+15 tests, 15 passed, 0 failed, 0 skipped.
+===================================================
+Output:  /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-1-hosted-mcp-observer/concurrency/pabot_results/output.xml
+Log:     /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-1-hosted-mcp-observer/concurrency/pabot_results/log.html
+Report:  /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-1-hosted-mcp-observer/concurrency/pabot_results/report.html
+Finalizing Pabot execution...
+Stopping PabotLib process
+Robot Framework remote server at 127.0.0.1:57355 stopped.
+PabotLib process stopped
+Total testing: 54.0 seconds
+Elapsed time:  15.72 seconds
+Logs flushed successfully.

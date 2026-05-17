@@ -1,0 +1,66 @@
+Initialized logging in pabot_results/pabot_results
+Warning: specified pabotlibport 8270 is already in use. A free port will be assigned automatically.
+Robot Framework remote server at 127.0.0.1:49545 started.
+Storing .pabotsuitenames file
+Traceback (most recent call last):
+  File "/home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/.venv/lib/python3.12/site-packages/pabot/pabot.py", line 280, in execute_and_wait_with
+    os.makedirs(outs_dir)
+  File "<frozen os>", line 225, in makedirs
+FileExistsError: [Errno 17] File exists: 'pabot_results/pabot_results/3'
+Traceback (most recent call last):
+  File "/home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/.venv/lib/python3.12/site-packages/pabot/pabot.py", line 280, in execute_and_wait_with
+    os.makedirs(outs_dir)
+  File "<frozen os>", line 225, in makedirs
+FileExistsError: [Errno 17] File exists: 'pabot_results/pabot_results/1'
+Traceback (most recent call last):
+  File "/home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/.venv/lib/python3.12/site-packages/pabot/pabot.py", line 280, in execute_and_wait_with
+    os.makedirs(outs_dir)
+  File "<frozen os>", line 225, in makedirs
+FileExistsError: [Errno 17] File exists: 'pabot_results/pabot_results/2'
+Traceback (most recent call last):
+  File "/home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/.venv/lib/python3.12/site-packages/pabot/pabot.py", line 280, in execute_and_wait_with
+    os.makedirs(outs_dir)
+  File "<frozen os>", line 225, in makedirs
+FileExistsError: [Errno 17] File exists: 'pabot_results/pabot_results/0'
+2026-05-17 15:06:48.200591 [PID:3309769] [5] [ID:5] EXECUTING Test Scope All 16.T06
+2026-05-17 15:06:48.216263 [PID:3309772] [7] [ID:7] EXECUTING Test Scope All 16.T08
+2026-05-17 15:06:48.252897 [PID:3309773] [6] [ID:6] EXECUTING Test Scope All 16.T07
+2026-05-17 15:06:48.253690 [PID:3309782] [1] [ID:9] EXECUTING Test Scope All 16.T10
+2026-05-17 15:06:48.254501 [PID:3309780] [0] [ID:8] EXECUTING Test Scope All 16.T09
+2026-05-17 15:06:48.255249 [PID:3309781] [4] [ID:4] EXECUTING Test Scope All 16.T05
+2026-05-17 15:06:48.261343 [PID:3309783] [2] [ID:10] EXECUTING Test Scope All 16.T11
+2026-05-17 15:06:48.278691 [PID:3309784] [3] [ID:11] EXECUTING Test Scope All 16.T12
+2026-05-17 15:06:49.084986 [PID:3309772] [7] [ID:7] PASSED Test Scope All 16.T08 in 0.9 seconds
+2026-05-17 15:06:49.110824 [PID:3309809] [4] [ID:12] EXECUTING Test Scope All 16.T13
+2026-05-17 15:06:49.290135 [PID:3309781] [4] [ID:4] PASSED Test Scope All 16.T05 in 1.0 seconds
+2026-05-17 15:06:49.314915 [PID:3309817] [5] [ID:13] EXECUTING Test Scope All 16.T14
+2026-05-17 15:06:49.441679 [PID:3309769] [5] [ID:5] PASSED Test Scope All 16.T06 in 1.2 seconds
+2026-05-17 15:06:49.465709 [PID:3309825] [6] [ID:14] EXECUTING Test Scope All 16.T15
+2026-05-17 15:06:49.689872 [PID:3309780] [0] [ID:8] PASSED Test Scope All 16.T09 in 1.4 seconds
+2026-05-17 15:06:49.691911 [PID:3309783] [2] [ID:10] PASSED Test Scope All 16.T11 in 1.4 seconds
+2026-05-17 15:06:49.698339 [PID:3309782] [1] [ID:9] PASSED Test Scope All 16.T10 in 1.5 seconds
+2026-05-17 15:06:49.702559 [PID:3309833] [7] [ID:15] EXECUTING Test Scope All 16.T16
+2026-05-17 15:06:49.782237 [PID:3309773] [6] [ID:6] PASSED Test Scope All 16.T07 in 1.6 seconds
+2026-05-17 15:06:49.818282 [PID:3309784] [3] [ID:11] PASSED Test Scope All 16.T12 in 1.6 seconds
+2026-05-17 15:06:50.042386 [PID:3309809] [4] [ID:12] FAILED Test Scope All 16.T13
+2026-05-17 15:06:50.045228 [PID:3309817] [5] [ID:13] FAILED Test Scope All 16.T14
+2026-05-17 15:06:50.085210 [PID:3309825] [6] [ID:14] FAILED Test Scope All 16.T15
+2026-05-17 15:06:50.319795 [PID:3309833] [7] [ID:15] PASSED Test Scope All 16.T16 in 0.6 seconds
+1 tests, 1 passed, 0 failed, 0 skipped.
+===================================================
+Output:  /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/pabot_results/output.xml
+Log:     /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/pabot_results/log.html
+Report:  /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/pabot_results/report.html
+[ WARNING ] One or more subprocesses encountered an error and the internal .xml files could not be generated. Please check the following stderr files to identify the cause:
+'pabot_results/pabot_results/0/robot_stderr.out'
+'pabot_results/pabot_results/3/robot_stderr.out'
+'pabot_results/pabot_results/1/robot_stderr.out'
+'pabot_results/pabot_results/2/robot_stderr.out'
+[ ERROR ] The output, log and report files produced by Pabot are incomplete and do not contain all test cases.
+Finalizing Pabot execution...
+Stopping PabotLib process
+Robot Framework remote server at 127.0.0.1:49545 stopped.
+PabotLib process stopped
+Total testing: 13.40 seconds
+Elapsed time:  2.96 seconds
+Logs flushed successfully.

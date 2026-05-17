@@ -1,0 +1,96 @@
+# ci.yml — PR-gating CI workflow
+#
+# Purpose: Runs on every PR + push to main. Gates merges on lint, format, typecheck,
+# and (Phase-1) collect-only pytest invocations across unit + acceptance-smoke +
+# acceptance-tier1 + unit/conventions test directories.
+#
+# AC reference: AC-1a.2.1 (ci.yml), AC-1a.2.9 (workflow hygiene), AC-1a.2.10 (no agentguard-drift-check.yml).
+#
+# Phase-1 placeholders documented per Dev Notes:
+# - `pytest --collect-only` is used for all test directories because Story 1a.1 produced empty
+#   tests/ directories (only .gitkeep + __init__.py). Running `pytest tests/unit -q` against an
+#   empty dir yields exit-code-5 "no tests collected" which would fail CI red. `--collect-only`
+#   exits 0 on empty dirs AND 0 on real test discovery — it's the right Phase-1 placeholder.
+#   Each epic's first story that adds real tests MUST update this YAML to drop --collect-only.
+#
+# Linux-only matrix per D2.1 architect waiver (Story 0.2 review, 2026-05-17): macOS validation
+# is a Phase-1.5 carry-over. Architecture's `Python 3.12+3.13 × Linux+macOS` is the eventual
+# target; Phase-1 ships Linux-only and documents the gap.
+
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set Python version
+        run: echo "${{ matrix.python-version }}" > .python-version
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Lint (ruff check)
+        run: uv run ruff check src/ tests/
+
+      - name: Format check (ruff format --check)
+        run: uv run ruff format --check src/ tests/
+
+      - name: Typecheck (mypy)
+        run: uv run mypy src/
+
+      # Phase-1 collect-only sweep across 4 test directories. Story 1a.1 baseline
+      # produces empty tests/ dirs (only .gitkeep + __init__.py). pytest exits 5
+      # ("no tests collected") on empty dirs, which we accept as Phase-1 success.
+      # Each epic's first story that adds real tests for a directory MUST update
+      # this step to drop --collect-only for that directory + remove exit-5 leniency.
+      - name: pytest Phase-1 collect-only sweep (unit + acceptance smoke/tier1 + conventions)
+        shell: bash
+        run: |
+          set +e
+          fail=0
+          collect() {
+            uv run pytest "$1" -q --collect-only
+            local code=$?
+            if [ "$code" -eq 0 ]; then
+              echo "::notice::pytest $1 collect-only OK"
+            elif [ "$code" -eq 5 ]; then
+              echo "::notice::pytest $1 collect-only OK (exit 5: no tests collected — Phase-1 placeholder)"
+            else
+              echo "::error::pytest $1 failed with exit $code"
+              fail=1
+            fi
+          }
+          collect tests/unit
+          collect tests/acceptance/smoke
+          collect tests/acceptance/tier1
+          collect tests/unit/conventions
+          exit "$fail"

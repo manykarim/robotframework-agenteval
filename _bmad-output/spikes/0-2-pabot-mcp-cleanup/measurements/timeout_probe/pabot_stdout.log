@@ -1,0 +1,23 @@
+Initialized logging in measurements/timeout_probe/pabot_results/pabot_results
+Robot Framework remote server at 127.0.0.1:8270 started.
+Storing .pabotsuitenames file
+2026-05-17 13:43:24.632195 [PID:3264749] [2] [ID:2] EXECUTING Timeout Probe.Timeout During Test 3
+2026-05-17 13:43:24.635899 [PID:3264750] [1] [ID:1] EXECUTING Timeout Probe.Timeout During Test 2
+2026-05-17 13:43:24.644956 [PID:3264754] [3] [ID:3] EXECUTING Timeout Probe.Timeout During Test 4
+2026-05-17 13:43:24.647884 [PID:3264756] [0] [ID:0] EXECUTING Timeout Probe.Timeout During Test 1
+2026-05-17 13:43:25.767383 [PID:3264749] [2] [ID:2] FAILED Timeout Probe.Timeout During Test 3
+2026-05-17 13:43:25.863316 [PID:3264750] [1] [ID:1] FAILED Timeout Probe.Timeout During Test 2
+2026-05-17 13:43:25.869800 [PID:3264754] [3] [ID:3] FAILED Timeout Probe.Timeout During Test 4
+2026-05-17 13:43:25.870712 [PID:3264756] [0] [ID:0] FAILED Timeout Probe.Timeout During Test 1
+4 tests, 0 passed, 4 failed, 0 skipped.
+===================================================
+Output:  /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/measurements/timeout_probe/pabot_results/output.xml
+Log:     /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/measurements/timeout_probe/pabot_results/log.html
+Report:  /home/many/workspace/robotframework-agenteval/_bmad-output/spikes/0-2-pabot-mcp-cleanup/measurements/timeout_probe/pabot_results/report.html
+Finalizing Pabot execution...
+Stopping PabotLib process
+Robot Framework remote server at 127.0.0.1:8270 stopped.
+PabotLib process stopped
+Total testing: 4.70 seconds
+Elapsed time:  2.11 seconds
+Logs flushed successfully.

@@ -1,0 +1,21 @@
+# Story 0.2 spike — rf-mcp substitution note
+#
+# The story's Task 4 calls for testing against the real rf-mcp at
+# https://github.com/manykarim/rf-mcp. The current execution environment has no
+# git access AND no network access for clone operations. This spike substitutes
+# `servers/rf_mcp_substitute.py` — a Python-only server that mimics rf-mcp's
+# qualitative profile (multi-tool + moderate startup + per-call CPU work).
+#
+# real rf-mcp commit tested: NONE (substitution used; Phase-1 carry-over)
+# substitute startup budget: ~250-500ms (configured via _STARTUP_BUDGET_S)
+# substitute keyword count: 10 (8 synthetic + echo + add for cross-server parity)
+#
+# When the architect re-runs this spike independently per D5 (Story 0.1 review),
+# they should:
+# 1. Clone https://github.com/manykarim/rf-mcp to a temp dir.
+# 2. Replace `servers/rf_mcp_substitute.py` with a thin wrapper that invokes
+#    the real rf-mcp server entry point via stdio.
+# 3. Re-run the smoke loop to capture real-rf-mcp evidence in measurements/.
+#
+# The findings document captures this substitution explicitly so any reviewer
+# can audit the gap.

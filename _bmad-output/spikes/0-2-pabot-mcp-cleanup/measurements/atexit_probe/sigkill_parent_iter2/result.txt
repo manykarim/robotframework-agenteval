@@ -1,0 +1,1 @@
+iter 2 [sigkill_parent] signal=KILL: harness_exit_rc=137 leaks=3 → LEAKED 3 (orphaned to PID 1)
