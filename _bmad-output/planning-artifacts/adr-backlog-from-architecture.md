@@ -48,7 +48,7 @@ ci_workflow_added:
 
 # ADR Backlog Seeded from Architecture Step (Phase 2 of Phase-3 Planning)
 
-7 active ADRs surfaced via First Principles + FMA + ADR-method elicitation rounds at Step 2 of `/bmad-create-architecture`. Working IDs `ADR-A1..A8` (ADR-A4 retired 2026-05-17). Status: **Proposed (to be ratified at Phase 1 close).**
+7 active ADRs surfaced via First Principles + FMA + ADR-method elicitation rounds at Step 2 of `/bmad-create-architecture`. Working IDs `ADR-A1..A8` (ADR-A4 retired 2026-05-17). Status: **Ratified 2026-05-17 by Story 1a.3 into `docs/adr/` namespace.** Working IDs map to: A1→ADR-012, A2→ADR-013, A3→ADR-014, A5→ADR-015, A6→ADR-016 (Epic 0), A7→ADR-017, A8→ADR-018 (Epic 0).
 
 ---
 
@@ -114,7 +114,7 @@ Single import path: `from agenteval.errors import AgentEvalError, AgentEvalBudge
 
 ## ADR-A4: RETIRED 2026-05-17
 
-See `_bmad-output/planning-artifacts/memory/feedback_agentguard_inspiration_not_dependency.md` for the reframing that retired this ADR. NFR-MAINT-06 retired in the same pass; no drift-check CI is needed because there is no dependency to drift-check. agenteval treats robotframework-agentguard as one reviewed pattern source among others (alongside wolfeidau/mcp-evals, lastmile-ai/mcp-eval, OpenTelemetry GenAI semconv, etc.) and is free to diverge from agentguard's choices whenever a different approach serves agenteval better.
+See `docs/adr/ADR-001-architectural-influences-catalog.md` §Scope + obligation framing (ratified 2026-05-17 by Story 1a.3) for the reframing that retired this ADR. NFR-MAINT-06 retired in the same pass; no drift-check CI is needed because there is no dependency to drift-check. agenteval treats robotframework-agentguard as one reviewed pattern source among others (alongside wolfeidau/mcp-evals, lastmile-ai/mcp-eval, OpenTelemetry GenAI semconv, etc.) and is free to diverge from agentguard's choices whenever a different approach serves agenteval better. [Story 1a.3 cleanup 2026-05-17: original reference pointed to non-existent `_bmad-output/planning-artifacts/memory/feedback_agentguard_inspiration_not_dependency.md`; updated to cite the ratified catalog row instead.]
 
 ---
 

@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Story 1a.3: ratified 18 ADRs in `docs/adr/` + `docs/adr/README.md` index file (1136 lines of architectural-decision content total):
+  - **14 new ADRs authored**: 9 PRD-renumbered (ADR-002 Tier-1 ceiling rule, ADR-003 CodingAgentAdapter Protocol internal class split, ADR-005 conformance fidelity oracles, ADR-006 completeness field, ADR-007 mcp_coverage + IncompleteTraceError, ADR-008 MCP spec version validation, ADR-009 per-test MCP server scope, ADR-010 Copilot CLI adapter trace extraction, ADR-011 three-persona model) + 5 architecture-renumbered (ADR-012 async-to-sync bridge kernel module, ADR-013 entry-points discovery infrastructure, ADR-014 error-class hierarchy, ADR-015 cost+runtime guardrail decorator, ADR-017 conformance suite organization).
+  - **ADR-001 body authored**: Architectural Influences Catalog with 22 reviewed `robotframework-agentguard` patterns + 2 competitor MCP-eval projects + 2 industry standards (OTel GenAI semconv, MCP spec), each with explicit `adopt-verbatim` / `adapt` / `borrow-concept` / `explicitly-diverge` / `not-applicable` decision + rationale. §Scope + obligation framing explicit on the no-obligation posture (`agentguard inspiration-only` per `feedback_agentguard_inspiration_not_dependency`). §Amendments Log preserved byte-identical from Story 0.3 (sha256 gate verified) + 14 new ratification entries appended.
+  - **`docs/adr/README.md`**: ADR convention paragraph + 18-row sorted index + cross-reference + maintenance instructions.
+  - All cross-references resolve; all 18 ADRs `Status: accepted`; zero remaining stubs.
+
 ### Changed
 
 - Story 1a.2 code-review patches (3 commits: f2ab79b → 6e654fd → 3d978af):

@@ -1,5 +1,5 @@
 # generated: 2026-05-17
-# last_updated: 2026-05-17 (Story 1a.2 DONE. Cross-LLM code-review (Claude + Codex CLI) caught 11 findings: 2 H + 5 M + 4 L (+ 1 Codex false positive). Round-2 forensic re-check (per Many's "analyze CI runs even if passed" guidance) caught CodeQL v4 silently rejecting paths-ignore as workflow input — Round-1 review missed. All approved patches landed across 3 commits (f2ab79b → 6e654fd → 3d978af): dogfood downgraded to honest install-smoke (was fake-green via continue-on-error masking 72 rf-mcp failures + 6 agentskills collection errors); release.yml publish gated on tag ref; CodeQL v3→v4 + config-file paths-ignore; docs-build per-file + submodule sweep; nightly-live $GITHUB_STEP_SUMMARY. Result: 0 open CodeQL alerts; all 7 workflows green with verified-real signal. NEW NORM CANDIDATE for Epic 1a retro: code-review MUST log-inspect continue-on-error steps + verify workflow inputs aren't silently dropped. Epic 1a 2/6 done.)
+# last_updated: 2026-05-17 (Story 1a.3 review. 14 new ADRs authored + ADR-001 body filled (22 agentguard ADRs + 2 competitor MCP-evals + 2 standards = 26 catalog rows) + docs/adr/README.md index. §Amendments Log byte-identical preservation gate PASSED (sha256 match: 9ff36b0b...). 14 new ratification entries appended. Final state: 19 files in docs/adr/ (18 ADRs all Status:accepted + README), 1136 lines of architectural-decision content, all cross-refs resolve, zero stubs. Sidecar L117 stale-ref cleanup applied. Epic 1a 3/6 done.)
 # project: robotframework-agenteval
 # project_key: NOKEY
 # tracking_system: file-system
@@ -51,7 +51,7 @@ development_status:
   epic-1a: in-progress  # Started 2026-05-17 with Story 1a.1 create-story.
   1a-1-project-bootstrap-standalone-python-rf-library: done
   1a-2-set-up-7-github-actions-ci-workflows: done
-  1a-3-ratify-non-spike-adrs-author-adr-001-architectural-influences-catalog: backlog
+  1a-3-ratify-non-spike-adrs-author-adr-001-architectural-influences-catalog: review
   1a-4-author-9-doc-contract-skeletons: backlog
   1a-5-project-hygiene-contributing-security-issue-templates-license-headers: backlog
   1a-6-wire-fr42-fr43-fr44-library-defaults-stability-exit-criteria-doc-stubs: backlog
