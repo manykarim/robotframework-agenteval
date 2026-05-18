@@ -1,5 +1,5 @@
 # generated: 2026-05-17
-# last_updated: 2026-05-18 (Story 1a.6 review. AgentEval class wired with 9 keyword-only __init__ params per PRD FR42+FR11b (provider, telemetry, trace_backend, allow_validate_operator, default_temperature, mcp_per_test: bool|Literal["suite"], allow_external_mcp_blind, max_cost_usd, max_runtime_seconds) + Get Effective Config keyword + _get_rf_test_id stub. FR42 acceptance test (6 tests) passes — FIRST non-collect-only Phase-1 test. stability-surface.md Phase-1 registry populated (AgentEval class + 9 params + Get Effective Config keyword all `provisional`). exit-criteria-0x-to-1x.md 4-criteria stub filled (placeholders + rationale; Epic 9 Story 9.3 fills numeric bars). SECURITY.md NFR-SEC-05 forward-ref retired. All gates clean: ruff + mypy + license-check + 6/6 FR42 tests; ci.yml exit-5 leniency continues for other 3 test dirs. Epic 1a 5/6 done; 1a.6 in review.)
+# last_updated: 2026-05-18 (Story 1a.6 DONE → Epic 1a 6/6 stories complete. AgentEval class wired with 9 keyword-only __init__ params per PRD FR42+FR11b (provider, telemetry, trace_backend, allow_validate_operator, default_temperature, mcp_per_test: bool|Literal["suite"], allow_external_mcp_blind, max_cost_usd, max_runtime_seconds) + Get Effective Config keyword + _rf_test_id lazy attribute. FR42 acceptance test (6 tests) PASSES in CI (real execution — code-review HIGH-1 patch removed --collect-only leniency for tier1). New `tests/acceptance/smoke/test_agenteval_library.robot` verifies RF static-library discovery + Get Effective Config keyword exposure. stability-surface.md Phase-1 registry populated (AgentEval class + 9 params + Get Effective Config keyword all `provisional`). exit-criteria-0x-to-1x.md 4-criteria stub filled (placeholders + rationale; Epic 9 Story 9.3 fills numeric bars). SECURITY.md NFR-SEC-05 reframed as Phase-1 control-surface-only kwarg. Code-review: 6th cross-LLM adversarial pass — Claude solo 0 / Codex 9 (same-family blind spot pattern continues to be load-bearing). All 9 patches applied + commits 3c0d505 (initial dev) + 344ccc1 (review patches) pushed. CI all green (ci + security-scan + docs-build). Epic 1a complete; ready for /bmad-retrospective.)
 # project: robotframework-agenteval
 # project_key: NOKEY
 # tracking_system: file-system
@@ -48,13 +48,13 @@ development_status:
   0-3-amend-and-ratify-spike-dependent-adrs: done
   epic-0-retrospective: done  # Retrospective completed 2026-05-17; saved at epic-0-retro-2026-05-17.md. Three project-level norms ratified: adversarial review pattern; numeric claims machine-verified; serialized multi-agent reproductions. No significant discoveries; Epic 1a plan stands.
 
-  epic-1a: in-progress  # Started 2026-05-17 with Story 1a.1 create-story.
+  epic-1a: done  # All 6 stories done 2026-05-18 (1a.1 → 1a.6). Retrospective is optional; can be triggered via /bmad-retrospective.
   1a-1-project-bootstrap-standalone-python-rf-library: done
   1a-2-set-up-7-github-actions-ci-workflows: done
   1a-3-ratify-non-spike-adrs-author-adr-001-architectural-influences-catalog: done
   1a-4-author-11-doc-contract-skeletons: done  # Renamed 9→11 per 2026-05-18 Story 1a.4 ratification (architecture L1419 updated; epics.md L716 updated). Pre-create-story drift check (4th consecutive use of the norm) caught title:9 / body:10 / AC:11 / final:9 mismatch + 4 non-architecture contracts in AC + 2 PRD-named dropped.
   1a-5-project-hygiene-contributing-security-issue-templates-license-headers: done
-  1a-6-wire-fr42-fr43-fr44-library-defaults-stability-exit-criteria-doc-stubs: review
+  1a-6-wire-fr42-fr43-fr44-library-defaults-stability-exit-criteria-doc-stubs: done  # Code-review HIGH-1 caught fake-green-via-collect-only CI pattern (6 FR42 tests collected but never executed); ci.yml restructured — tier1 + smoke now get dedicated real-execution steps. All 9 patches applied; CI green at SHA 344ccc1.
   epic-1a-retrospective: optional
 
   epic-1b: backlog

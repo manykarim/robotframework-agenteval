@@ -1,6 +1,6 @@
 # Story 1a.6: Wire FR42 + FR43 + FR44 Library Defaults + Stability/Exit-Criteria Doc Stubs
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -321,3 +321,56 @@ Expected files (2 created + 6 updated):
 | 2026-05-18 | 0.1.0   | Initial story creation (ready-for-dev). Pre-create-story drift check (6th consecutive use) caught 5 drifts in Story 1a.6 spec vs ratified sources: (1) `mcp_per_test` default `True` vs `"suite"`; (2) FR42 defaults set count 8 vs 6; (3) stability labels 3-label vs 4-label set; (4) exit-criteria slug `exit-criteria-0x-to-1x.md` vs `exit-criteria.md`; (5) `max_runtime_seconds` Library default vs FR11b keyword arg. All 5 resolved by honoring ratified sources (PRD FR42 + ADR-009 + Story 1a.4 stability-surface.md + architecture L1423 + FR11b); epics.md L812-822 + `.env.example` updated pre-authoring. | Bob |
 | 2026-05-18 | 0.2.0   | Dev-story complete. All 11 ACs satisfied with machine-verified evidence. AgentEval class wired with 9 keyword-only __init__ params + Get Effective Config keyword + _get_rf_test_id stub. FR42 acceptance test (6 tests) passes — first non-collect-only Phase-1 test. stability-surface.md + exit-criteria-0x-to-1x.md content filled (4 NFR-MAINT-04 sections preserved in both). SECURITY.md NFR-SEC-05 forward-ref retired (telemetry=False now wired). All gates: ruff clean (incl. N801/N802/N806), ruff format 23 files, mypy 20 source files clean (incl. bool | Literal["suite"]), license-headers 20/20, FR42 6/6 pass. Phase-1 collect-only sweep: tier1 now exits 0 (real test); other 3 dirs still exit 5 (placeholder); ci.yml exit-5 leniency continues. Status: review. | Amelia |
 | 2026-05-18 | 0.3.0   | Code-review patches applied (cross-LLM adversarial review — Claude Opus 4.7 + Codex CLI 0.117.0; findings doc at `1a-6-code-review-findings-2026-05-18.md`). 9 patches: HIGH-1 ci.yml restructured (tier1 + smoke now have dedicated real-execution steps; collect-only sweep narrowed to 2 placeholder dirs — assertions actually run in CI now); MED-2 `__init__` calls `self._get_rf_test_id()` + stores `self._rf_test_id`; MED-3 added `tests/acceptance/smoke/test_agenteval_library.robot` for RF static-library discovery verification; MED-6 SECURITY.md NFR-SEC-05 reframed as "control-surface kwarg only" Phase-1 (not eliminating egress until Epic 5); MED-8 + LOW-9 this artifact aligned with reality (6 tests, HIGH-1 ci patch); LOW-4 `mcp_per_test` citations split (ADR-009 True/False; architecture L314+NFR-PERF-03d for `"suite"`); LOW-5 stability-surface Purpose/Scope updated to mention both AgentEval + sandbox surfaces; LOW-7 exit-criteria doc gate updated 11→12. 6th consecutive cross-LLM review where Claude solo 0 / Codex 9 — same-family blind spot pattern continues to be load-bearing. Status: review (ready for Many's final approval). | Amelia |
+| 2026-05-18 | 1.0.0   | Story 1a.6 DONE. All 9 code-review patches approved by Many; commit `344ccc1` pushed; CI forensics confirm the HIGH-1 fix landed correctly (CI run 26028176201 → `pytest tests/acceptance/tier1 -q` reports `6 passed in 0.41s`; `robot tests/acceptance/smoke` reports `1 test, 1 passed, 0 failed`; collect-only sweep covers only the 2 remaining placeholder dirs). All 3 workflows green for SHA `344ccc1`: ci (success), security-scan/CodeQL (success), docs-build (success — manually dispatched since docs-build is PR-only-triggered + this commit pushed directly to main). Senior Developer Review section added. Status: review → done. Epic 1a: 6/6 stories done. | Amelia |
+
+## Senior Developer Review (AI)
+
+**Reviewer:** Many Kasiriha
+**Review Date:** 2026-05-18
+**Review Outcome:** **APPROVED** (after applying 9 code-review patches from the cross-LLM adversarial review pair Claude Opus 4.7 + Codex CLI 0.117.0)
+
+### Summary
+
+Story 1a.6 wires the `AgentEval` Robot Framework Library entry point with 9 keyword-only `__init__` parameters per PRD FR42 + FR11b, exposes the `Get Effective Config` keyword for kwarg-resolved config inspection, lands the Phase-1 stability-surface registry entries for the AgentEval surface, fills substantive content for `docs/contracts/exit-criteria-0x-to-1x.md`, and retires SECURITY.md NFR-SEC-05's forward-reference banner. Story 1a.6 is the **final story of Epic 1a** — Epic 1a is now 6/6 done.
+
+### Key Findings From Review
+
+The `/bmad-code-review (Using current Claude + Codex CLI subagent)` pass found **1 HIGH + 4 MED + 4 LOW**:
+
+- **HIGH-1 (critical):** `ci.yml`'s pytest sweep was using `--collect-only` for `tests/acceptance/tier1`, meaning the 6 FR42 acceptance tests got *collected* but never *executed* in CI. Locally `pytest tests/acceptance/tier1 -q` reported `6 passed`; in CI the assertions were silently skipped. A regression in `AgentEval.__init__` would have passed CI green. Patch restructures the sweep: dedicated execution step for tier1 (no `--collect-only`, no exit-5 leniency), dedicated `robot` step for smoke, collect-only sweep narrowed to the 2 still-empty placeholder dirs.
+- **MED-2:** `_get_rf_test_id()` was defined but never called from `__init__`. Patched.
+- **MED-3:** No `.robot` smoke test verified RF's static-library discovery model + `@keyword` exposure. Patched — added `tests/acceptance/smoke/test_agenteval_library.robot`.
+- **MED-6:** SECURITY.md NFR-SEC-05 overclaimed that `telemetry=False` "eliminates" egress in present tense, but no listener exists yet. Patched to clarify the kwarg is wired as a control surface only; full egress elimination lands Epic 5 Story 5.1.
+- **MED-8 + LOW-9:** Story artifact drift (2 vs 6 tests; `PythonLibCore / dynamic-library` wording). Patched.
+- **LOW-4 + LOW-5 + LOW-7:** Documentation precision (ADR-009 only ratifies True/False for `mcp_per_test`; stability-surface Purpose/Scope referenced only sandbox; exit-criteria 11→12 contracts). Patched.
+
+**6th consecutive cross-LLM review** where Claude solo found 0 substantive issues and Codex caught real ones. The same-family blind spot pattern is structurally load-bearing for this project — and HIGH-1 is precisely the class of "fake-green-via-collect-only" issue that Many's CI-log-forensics norm exists to surface.
+
+### Acceptance Criteria Coverage
+
+All 11 AC-1a.6.X satisfied:
+
+- **AC-1a.6.1** (9 FR42+FR11b defaults, kwarg-only): `src/AgentEval/__init__.py` — verified by `test_ac_fr42_all_kwargs_keyword_only` + `test_ac_fr42_defaults_with_no_kwargs`.
+- **AC-1a.6.2** (Phase-1 kwarg-only precedence): docstring + stability-surface registry document the Phase-1 boundary.
+- **AC-1a.6.3** (`Get Effective Config` keyword): verified Python-side by `test_ac_fr42_get_effective_config_returns_dict`, RF-side by `tests/acceptance/smoke/test_agenteval_library.robot`.
+- **AC-1a.6.4** (Library + Python import): both paths exercised in tests.
+- **AC-1a.6.5** (tier1 FR42 acceptance test): `tests/acceptance/tier1/test_ac_fr42_library_defaults.py` — 6 tests, all green in CI (real execution post-HIGH-1).
+- **AC-1a.6.6** (stability-surface Phase-1 registry): `docs/contracts/stability-surface.md` registers `AgentEval` class + 9 params + `Get Effective Config` keyword as `provisional`.
+- **AC-1a.6.7** (exit-criteria-0x-to-1x.md 4-criteria stub content): 4 promotion criteria + rationale filled.
+- **AC-1a.6.8** (`_get_rf_test_id()` hook): post-MED-2 patch, called from `__init__` and stored on `self._rf_test_id` (Phase-1 stub returns None).
+- **AC-1a.6.9** (Apache 2.0 license header preserved): license-header script 20/20 PASS.
+- **AC-1a.6.10** (gates clean): ruff + ruff format + mypy + license-headers + tier1 + smoke + CI all green.
+- **AC-1a.6.11** (SECURITY.md NFR-SEC-05 forward-ref retired): banner replaced with control-surface-only Phase-1 framing.
+
+### Test Coverage
+
+- **Local:** `pytest tests/acceptance/tier1 -q` → 6 passed in 0.28s. `robot tests/acceptance/smoke` → 1 passed.
+- **CI (SHA 344ccc1):** ci workflow → both `test (py3.12)` + `test (py3.13)` PASS; tier1 step reports `6 passed in 0.41s`; smoke step reports `1 test, 1 passed, 0 failed`; collect-only sweep over the 2 placeholder dirs → exit-5 (accepted as Phase-1 leniency).
+
+### Action Items
+
+None. All 9 review findings resolved; gates clean; CI forensics confirm HIGH-1 fix landed correctly.
+
+### Outcome
+
+**Status: review → done.** Epic 1a 6/6 stories complete. Ready for `/bmad-retrospective` on Epic 1a.
