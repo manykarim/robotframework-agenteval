@@ -57,8 +57,28 @@ __all__: list[str] = ["AgentEval"]
 
 # Sentinel: distinguishes "user passed this kwarg" from "kwarg defaulted to
 # the FR42 value". Needed so FR41's env-var/.env layers can fire when the
-# user did NOT pass the kwarg. Story 1b.1 introduced this for FR41 wiring.
-_UNSET: Any = object()
+# user did NOT pass the kwarg. Story 1b.1 introduced this for FR41 wiring;
+# Story 1b.1 code review H5 added the `__repr__` so libdoc rendering is
+# deterministic (a bare `object()` renders as `<object object at 0x...>`
+# with a memory address, breaking reproducible doc builds).
+class _UnsetType:
+    """Singleton sentinel type with a stable `__repr__` for libdoc determinism."""
+
+    _instance: _UnsetType | None = None
+
+    def __new__(cls) -> _UnsetType:
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return "_UNSET"
+
+    def __bool__(self) -> bool:
+        return False
+
+
+_UNSET: Any = _UnsetType()
 
 
 class AgentEval:

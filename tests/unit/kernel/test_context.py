@@ -17,7 +17,10 @@ from __future__ import annotations
 
 import errno
 import signal
+import subprocess
 import threading
+import time
+import warnings
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -207,8 +210,16 @@ class _FakePopen:
 
     def wait(self, timeout: float | None = None) -> int:
         self.wait_calls.append(timeout)
-        if self._returncode is None:
-            self._returncode = 0  # synthesize clean exit
+        if self._returncode is not None:
+            return self._returncode
+        # Match real subprocess.Popen.wait semantics: timeout=0 against a live
+        # process raises TimeoutExpired immediately (used by M1 reap-first race
+        # check); positive/None timeout synthesizes clean exit for test scenarios.
+        if timeout == 0:
+            import subprocess as _sp
+
+            raise _sp.TimeoutExpired(cmd=self.args, timeout=0)
+        self._returncode = 0
         return self._returncode
 
 
@@ -276,18 +287,25 @@ def test_mcplifecyclemanager_release_test_returns_releaseresult(
 def test_mcplifecyclemanager_release_suite_collects_all_handles_in_suite(
     _patched_subprocess: dict[str, Any],
 ) -> None:
+    """H1 review fix: in 'suite' scope, acquire is idempotent per suite_id.
+    Two acquires for the same suite return the same handle; two suites = 2 handles.
+    """
     mgr = MCPLifecycleManager("suite", default_spec=_default_spec())
-    mgr.acquire(test_id="t1", suite_id="s1")
-    mgr.acquire(test_id="t2", suite_id="s1")
+    h1 = mgr.acquire(test_id="t1", suite_id="s1")
+    h1_reuse = mgr.acquire(test_id="t2", suite_id="s1")
     mgr.acquire(test_id="t3", suite_id="s2")
+    assert h1 is h1_reuse  # idempotent reuse within same suite
     results = mgr.release_suite("s1")
-    assert len(results) == 2
+    assert len(results) == 1  # one handle released for s1; s2 still alive
+    results = mgr.release_suite("s2")
+    assert len(results) == 1
 
 
-def test_mcplifecyclemanager_shutdown_all_drains_everything(
-    _patched_subprocess: dict[str, Any],
-) -> None:
-    mgr = MCPLifecycleManager("process", default_spec=_default_spec())
+def test_mcplifecyclemanager_shutdown_all_drains_everything(_patched_subprocess: dict[str, Any]) -> None:
+    """In 'test' scope, multiple acquires for different test_ids → multiple handles.
+    shutdown_all drains all of them.
+    """
+    mgr = MCPLifecycleManager("test", default_spec=_default_spec())
     mgr.acquire(test_id="t1", suite_id="s1")
     mgr.acquire(test_id="t2", suite_id="s1")
     results = mgr.shutdown_all()
@@ -344,23 +362,38 @@ def test_mcplifecyclemanager_esrch_treated_as_already_dead(
     assert results[0].signaled_with == "already-dead"
 
 
-def test_mcplifecyclemanager_installs_sigterm_handler_by_default(
-    _patched_subprocess: dict[str, Any],
-) -> None:
+def test_mcplifecyclemanager_installs_sigterm_handler_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """D2.4 LOAD-BEARING: __init__ MUST install a SIGTERM→sys.exit handler by
-    default. Verifies signal.signal was called with SIGTERM.
+    default. Verifies via `signal.getsignal(SIGTERM)` per AC-1b.1.8 + L2
+    review fix (was checking the mocked signal.signal call list).
     """
-    MCPLifecycleManager("test")
-    signal_calls = _patched_subprocess["signal_calls"]
-    assert any(sig == signal.SIGTERM for sig, _ in signal_calls)
+    from AgentEval._kernel.context import _sigterm_to_sysexit
+
+    monkeypatch.setattr(ctx.subprocess, "Popen", _FakePopen)
+    prior = signal.getsignal(signal.SIGTERM)
+    try:
+        mgr = MCPLifecycleManager("test", install_sigterm_handler=True)
+        assert signal.getsignal(signal.SIGTERM) is _sigterm_to_sysexit
+        mgr.close()  # restores prior handler
+    finally:
+        # Defensive: even if mgr.close() failed, ensure prior handler is restored.
+        signal.signal(signal.SIGTERM, prior)
 
 
 def test_mcplifecyclemanager_install_sigterm_handler_false_skips_install(
-    _patched_subprocess: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    MCPLifecycleManager("test", install_sigterm_handler=False)
-    signal_calls = _patched_subprocess["signal_calls"]
-    assert not any(sig == signal.SIGTERM for sig, _ in signal_calls)
+    """When install_sigterm_handler=False, the SIGTERM handler must remain
+    unchanged from the prior state.
+    """
+    monkeypatch.setattr(ctx.subprocess, "Popen", _FakePopen)
+    prior = signal.getsignal(signal.SIGTERM)
+    try:
+        mgr = MCPLifecycleManager("test", install_sigterm_handler=False)
+        assert signal.getsignal(signal.SIGTERM) is prior
+        mgr.close()
+    finally:
+        signal.signal(signal.SIGTERM, prior)
 
 
 def test_mcplifecyclemanager_uses_rlock_not_lock() -> None:
@@ -504,11 +537,20 @@ def test_resolve_config_layer1_kwarg_overrides_env(monkeypatch: pytest.MonkeyPat
     assert cfg["provider"] == "from-kwarg"
 
 
-def test_resolve_config_kwarg_none_falls_through(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """A kwarg explicitly set to None must NOT shadow env-var; it falls through."""
+def test_resolve_config_explicit_none_wins_over_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Story 1b.1 code review H3 fix: explicit None IS a user-passed value and
+    wins over env-vars per FR41 'kwarg wins' invariant. This is load-bearing
+    for max_runtime_seconds=None (meaning 'no cap') overriding a stale env-var.
+    """
+    monkeypatch.setenv("AGENTEVAL_MAX_RUNTIME_SECONDS", "60.0")
+    cfg = resolve_config({"max_runtime_seconds": None}, dotenv_path=tmp_path / "absent.env")
+    assert cfg["max_runtime_seconds"] is None
+
+    # Same invariant for provider (where None isn't semantically meaningful but
+    # the precedence rule is the same).
     monkeypatch.setenv("AGENTEVAL_PROVIDER", "from-env")
     cfg = resolve_config({"provider": None}, dotenv_path=tmp_path / "absent.env")
-    assert cfg["provider"] == "from-env"
+    assert cfg["provider"] is None
 
 
 # ---- AC-1b.1.5: type coercion per param --------------------------------- #
@@ -589,3 +631,210 @@ def test_load_dotenv_skips_comments_and_blanks(tmp_path: Path) -> None:
 
 def test_load_dotenv_missing_file_returns_empty(tmp_path: Path) -> None:
     assert ctx._load_dotenv(tmp_path / "nonexistent.env") == {}
+
+
+# ========================================================================= #
+# Story 1b.1 code-review patches — new test coverage                        #
+# ========================================================================= #
+
+
+# ---- H1 P2.19 scope-aware idempotent acquire ---------------------------- #
+
+
+def test_acquire_test_scope_idempotent_per_test_id(_patched_subprocess: dict[str, Any]) -> None:
+    """H1: 'test' scope acquire is idempotent for the same test_id."""
+    mgr = MCPLifecycleManager("test", default_spec=_default_spec())
+    h1 = mgr.acquire(test_id="t1", suite_id="s1")
+    h2 = mgr.acquire(test_id="t1", suite_id="s1")
+    assert h1 is h2  # same handle returned
+    # Different test_id → different handle.
+    h3 = mgr.acquire(test_id="t2", suite_id="s1")
+    assert h3 is not h1
+
+
+def test_acquire_process_scope_returns_single_shared_handle(_patched_subprocess: dict[str, Any]) -> None:
+    """H1: 'process' scope acquire always returns the same handle regardless of test_id/suite_id."""
+    mgr = MCPLifecycleManager("process", default_spec=_default_spec())
+    h1 = mgr.acquire(test_id="t1", suite_id="s1")
+    h2 = mgr.acquire(test_id="t2", suite_id="s2")
+    h3 = mgr.acquire(test_id="t99", suite_id="s99")
+    assert h1 is h2 is h3
+    # Only shutdown_all (or close) drains; release_test + release_suite are no-ops.
+    assert mgr.release_test("t1") == []
+    assert mgr.release_suite("s1") == []
+    results = mgr.shutdown_all()
+    assert len(results) == 1
+
+
+def test_release_test_no_op_outside_test_scope(_patched_subprocess: dict[str, Any]) -> None:
+    """H1: release_test() in 'suite' or 'process' scope is a no-op."""
+    for scope in ("suite", "process"):
+        mgr = MCPLifecycleManager(scope, default_spec=_default_spec())  # type: ignore[arg-type]
+        mgr.acquire(test_id="t1", suite_id="s1")
+        assert mgr.release_test("t1") == []
+
+
+# ---- H2 process_lifetime_ms uses monotonic-only subtraction ------------ #
+
+
+def test_release_result_process_lifetime_ms_is_non_negative(_patched_subprocess: dict[str, Any]) -> None:
+    """H2: process_lifetime_ms must be computed from monotonic deltas — never
+    negative, never billion-magnitude. Pre-fix value was on the order of
+    -monotonic_origin * 1000 (often -10^12 to -10^13).
+    """
+    mgr = MCPLifecycleManager("test", default_spec=_default_spec())
+    mgr.acquire(test_id="t1", suite_id="s1")
+    time.sleep(0.001)  # ensure a non-zero monotonic delta
+    results = mgr.release_test("t1")
+    assert len(results) == 1
+    rr = results[0]
+    # Monotonic-only math: must be small positive number (a few ms at most for
+    # the sleep + signal overhead in the test fixture).
+    assert 0.0 <= rr.process_lifetime_ms < 1000.0, f"unexpected lifetime: {rr.process_lifetime_ms}"
+
+
+# ---- H7 D-state survivors don't abandon remaining handles --------------- #
+
+
+def test_shutdown_all_continues_when_one_handle_survives(
+    _patched_subprocess: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """H7: shutdown_all() drains ALL handles even if one ends up as 'survived';
+    we must not abandon the rest mid-loop.
+    """
+    mgr = MCPLifecycleManager("test", default_spec=_default_spec())
+    h1 = mgr.acquire(test_id="t1", suite_id="s1")
+    mgr.acquire(test_id="t2", suite_id="s2")
+
+    # Force the first handle to "survive": override its Popen.poll() so it
+    # always returns None (alive) even after wait+kill calls.
+    original_poll = h1.process.poll  # type: ignore[attr-defined]
+
+    def fake_poll() -> None:
+        return None  # Always alive — synthesizes D-state survivor.
+
+    h1.process.poll = fake_poll  # type: ignore[method-assign,attr-defined]
+    # Make wait() also fail to reap (TimeoutExpired forever).
+    h1.process.wait = lambda timeout=None: (_ for _ in ()).throw(  # type: ignore[method-assign,attr-defined]
+        subprocess.TimeoutExpired(cmd=["fake"], timeout=timeout or 0)
+    )
+
+    results = mgr.shutdown_all()
+    assert len(results) == 2  # both handles drained
+    signaled_set = {r.signaled_with for r in results}
+    assert "survived" in signaled_set  # h1 survived
+    assert "SIGTERM" in signaled_set or "SIGKILL" in signaled_set or "already-dead" in signaled_set
+
+    # Restore for cleanup hygiene.
+    h1.process.poll = original_poll  # type: ignore[method-assign,attr-defined]
+
+
+# ---- M2 close() restores prior SIGTERM handler + unregisters atexit ----- #
+
+
+def test_close_unregisters_atexit_and_restores_sigterm_handler(monkeypatch: pytest.MonkeyPatch) -> None:
+    """M2: close() must restore prior SIGTERM handler + remove atexit registration."""
+    monkeypatch.setattr(ctx.subprocess, "Popen", _FakePopen)
+    prior = signal.getsignal(signal.SIGTERM)
+    try:
+        mgr = MCPLifecycleManager("test", install_sigterm_handler=True)
+        from AgentEval._kernel.context import _sigterm_to_sysexit
+
+        assert signal.getsignal(signal.SIGTERM) is _sigterm_to_sysexit
+        mgr.close()
+        assert signal.getsignal(signal.SIGTERM) is prior
+    finally:
+        signal.signal(signal.SIGTERM, prior)
+
+
+# ---- M6 shutdown_timeout_s must be > 0 --------------------------------- #
+
+
+def test_serverspec_rejects_zero_or_negative_shutdown_timeout() -> None:
+    """M6: shutdown_timeout_s must be > 0; zero/negative would skip graceful wait."""
+    with pytest.raises(ValueError, match="shutdown_timeout_s must be > 0"):
+        ServerSpec.create(command=["x"], marker="m", shutdown_timeout_s=0)
+    with pytest.raises(ValueError, match="shutdown_timeout_s must be > 0"):
+        ServerSpec.create(command=["x"], marker="m", shutdown_timeout_s=-1.0)
+
+
+# ---- M7 _load_dotenv handles quoted values + export prefix ------------- #
+
+
+def test_load_dotenv_strips_surrounding_quotes(tmp_path: Path) -> None:
+    """M7: surrounding matching quotes are stripped from values."""
+    dotenv = tmp_path / ".env"
+    dotenv.write_text(
+        'AGENTEVAL_PROVIDER="litellm"\n'
+        "AGENTEVAL_TELEMETRY='true'\n"
+        "AGENTEVAL_TRACE_BACKEND=memory\n"  # no quotes, unchanged
+    )
+    parsed = ctx._load_dotenv(dotenv)
+    assert parsed == {
+        "AGENTEVAL_PROVIDER": "litellm",
+        "AGENTEVAL_TELEMETRY": "true",
+        "AGENTEVAL_TRACE_BACKEND": "memory",
+    }
+
+
+def test_load_dotenv_strips_export_prefix(tmp_path: Path) -> None:
+    """M7: shell-sourced .env files use `export KEY=VALUE`; prefix must be stripped."""
+    dotenv = tmp_path / ".env"
+    dotenv.write_text("export AGENTEVAL_PROVIDER=litellm\n")
+    parsed = ctx._load_dotenv(dotenv)
+    assert parsed == {"AGENTEVAL_PROVIDER": "litellm"}
+
+
+# ---- M8 unknown AGENTEVAL_* keys emit warning -------------------------- #
+
+
+def test_resolve_config_warns_on_unknown_agenteval_env_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """M8: typos like AGENTEVAL_PROVDER must produce UserWarning rather than silent fallback."""
+    monkeypatch.setenv("AGENTEVAL_PROVDER", "anthropic")  # typo
+    with pytest.warns(UserWarning, match=r"Unknown agenteval env-var 'AGENTEVAL_PROVDER'"):
+        resolve_config({}, dotenv_path=tmp_path / "absent.env")
+
+
+# ---- L5 ServerSpec direct constructor still seals env via __post_init__ - #
+
+
+def test_serverspec_post_init_reseals_direct_constructor_env() -> None:
+    """L5: even ServerSpec(env=MappingProxyType(d)) (direct, not .create) must
+    seal the env so caller mutations to `d` after construction can't leak.
+    """
+    from types import MappingProxyType
+
+    mutable = {"K": "v"}
+    spec = ServerSpec(command=["x"], marker="m", env=MappingProxyType(mutable))
+    mutable["K"] = "MUTATED"
+    assert dict(spec.env) == {"K": "v"}, "ServerSpec.env leaked through MappingProxyType view"
+
+
+# ---- H4 SIGTERM install guarded to main thread ------------------------- #
+
+
+def test_sigterm_install_skipped_from_worker_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    """H4: signal.signal() raises ValueError off the main thread; the manager
+    must warn + skip rather than crash.
+    """
+    monkeypatch.setattr(ctx.subprocess, "Popen", _FakePopen)
+    seen_warnings: list[Any] = []
+
+    def worker() -> None:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            try:
+                mgr = MCPLifecycleManager("test", install_sigterm_handler=True)
+                mgr.close()  # cleanup
+            except ValueError:
+                seen_warnings.append(("ValueError raised", None))
+                return
+            seen_warnings.extend(caught)
+
+    t = threading.Thread(target=worker)
+    t.start()
+    t.join()
+
+    # Manager must NOT crash; it must emit a UserWarning instead.
+    sigterm_warnings = [w for w in seen_warnings if hasattr(w, "message") and "SIGTERM auto-install" in str(w.message)]
+    assert sigterm_warnings, f"expected SIGTERM-skip warning from worker thread; got {seen_warnings!r}"

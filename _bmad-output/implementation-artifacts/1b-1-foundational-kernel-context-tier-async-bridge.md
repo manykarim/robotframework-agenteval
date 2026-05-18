@@ -1,6 +1,6 @@
 # Story 1b.1: Foundational Kernel — Context + Tier + Async Bridge
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -174,6 +174,57 @@ So that **every other kernel module + sub-library can build on a stable per-test
   - [x] `uv run robot tests/acceptance/smoke` — RF smoke test still PASS.
   - [x] `uv run pytest tests/unit/conventions -q --collect-only` — still exit 5 (accepted Phase-1 leniency).
 
+### Review Findings
+
+> **Code review 2026-05-18 — cross-LLM adversarial pair (Claude Opus 4.7 + Codex CLI 0.117.0) plus 3-layer Claude review trio (Blind Hunter / Edge Case Hunter / Acceptance Auditor).** 4 reviewers ran in parallel; 38 raw findings caught; 22 deduped. Codex CLI caught the star finding H1 (scope modes silently not implemented) that none of the 3 Claude reviewers saw — 6th + 7th consecutive demonstration of the same-family blind spot pattern that the `feedback_review_methodology_norms` + `feedback_citation_drift_first_class` norms exist to surface. Findings file: this section.
+
+**decision-needed (1):**
+
+- [x] [Review][Decision] H5 — `_UNSET` sentinel approach for FR41 kwarg-not-passed signaling — Resolved per Many's pick: option (a) keep `_UNSET`, add `__repr__` returning `"_UNSET"`. Implemented via `_UnsetType` singleton class with stable `__repr__` for libdoc determinism. (src/AgentEval/__init__.py L61, L130-141) — Currently `_UNSET: Any = object()`; libdoc renders the default as `<object object at 0x7f...>` with a memory address (non-reproducible builds → could break docs-build CI determinism) AND type annotations `provider: str = _UNSET` lie to mypy strict-mode. Three alternatives: (a) keep `_UNSET`, add `__repr__` that returns `"_UNSET"` (minimal change, libdoc deterministic); (b) drop `_UNSET`, use `None` everywhere as the "not passed" sentinel + change `max_runtime_seconds: float | None = None` and have callers wanting "explicit None override" use a separate marker; (c) keep FR42 defaults in signature (`provider: str = "litellm"`) + use a comparison-against-default check inside `__init__` (loses the "user passed default explicitly" disambiguation).
+
+**patch (18):**
+
+- [x] [Review][Patch] H1 — Suite/process scope NOT IMPLEMENTED; `acquire()` always spawns new Popen regardless of `scope`; Codex caught the gap [src/AgentEval/_kernel/context.py:351-393] — spike findings §`_kernel/context.py` draft's P2.19 idempotency contract was dropped silently; `mcp_per_test="suite"` and `mcp_per_test=False` are functionally identical to `True`. Fix: key live handles by scope identity, reuse existing live handles on `acquire()`, make `release_test()` a no-op outside `"test"` scope.
+- [x] [Review][Patch] H2 — `process_lifetime_ms` clock mixing: `time.monotonic() - time.time()` = garbage (negative billions) [src/AgentEval/_kernel/context.py:381 + L466,488,503,537] — 3-way confirmation (Blind Hunter + Acceptance Auditor + Codex). Fix: store `spawned_at_monotonic = time.monotonic()` at spawn time AND keep `spawned_at_unix` for `released_at_unix` deltas; compute `process_lifetime_ms` from the monotonic pair.
+- [x] [Review][Patch] H3 — FR41 explicit `kwarg=None` falls through to env-var, violating AC-1b.1.5 + `__init__` comment claiming the opposite [src/AgentEval/_kernel/context.py:resolve_config Layer-1 + tests/unit/kernel/test_context.py::test_resolve_config_kwarg_none_falls_through codifies wrong behavior] — 3-way confirmation. Fix: drop `is not None` predicate in resolve_config; `_UNSET` already handles "user did not pass"; update the test to assert the opposite.
+- [x] [Review][Patch] H4 — `signal.signal(SIGTERM, ...)` from non-main-thread raises `ValueError` [src/AgentEval/_kernel/context.py:332-333] — 2-way confirmation (Blind Hunter + Edge Case Hunter). Fix: guard with `if threading.current_thread() is threading.main_thread()` and log a warning otherwise; atexit failsafe still fires either way.
+- [x] [Review][Patch] H6 — `_run_async` worker thread does NOT inherit caller `ContextVar` [src/AgentEval/_kernel/run_async.py:73-88] — architecture's per-test `test_id` contract silently broken in nested-loop scenarios (the WHOLE keyword surface in IDE-runner cases). Fix: `import contextvars; ctx = contextvars.copy_context()` before spawning; run `_runner` inside `ctx.run(_runner)`.
+- [x] [Review][Patch] H7 — `_kill_and_record` D-state `RuntimeError` raised inside `[... for h in handles]` list-comprehension abandons remaining handles [src/AgentEval/_kernel/context.py:1060-1064] — 2-way confirmation. In atexit context, "defense-in-depth shutdown" becomes "stops at first stuck server". Fix: wrap each `_kill_and_record` call in `try/except`; emit `ReleaseResult(signaled_with="failed-EPERM")` or new `"survived"` literal for the survivor case; continue draining remaining handles; aggregate-raise at end if any survived.
+- [x] [Review][Patch] M1 — PID race between `Popen.poll()` and `os.killpg()` could SIGTERM unrelated reaped+recycled PID under sustained pabot churn [src/AgentEval/_kernel/context.py:447-521] — Fix: call `Popen.wait(timeout=0)` to reap before `killpg`, or use `signal.pidfd_send_signal` on Linux ≥ 5.1 (Phase-1.5 carry-over OK for pidfd; immediate fix is the wait(0) reaping).
+- [x] [Review][Patch] M2 — atexit failsafe accumulates one entry per `MCPLifecycleManager()` instantiation; SIGTERM handler clobbers prior handler each time [src/AgentEval/_kernel/context.py:329-335] — 2-way confirmation. Fix: add `close()` method that calls `atexit.unregister(self.shutdown_all)` + restores prior SIGTERM handler (capture in `__init__`); document the single-instance-per-process assumption otherwise.
+- [x] [Review][Patch] M3 — `_resolve_scope` translator NOT registered as `provisional` in `stability-surface.md` per AC-1b.1.1 [docs/contracts/stability-surface.md] — direct AC violation. Fix: add `_resolve_scope` + the Story 1b.1-exposed `_kernel/context` public surface (Scope, TestContext, MCPLifecycleManager, resolve_config) to the Phase-1 registry as `provisional`. Note `_kernel/` is normally internal-only per the stability-surface "out-of-scope" section — for elements that need consumer-facing stability promises, register explicitly.
+- [x] [Review][Patch] M4 — ADR-012 + ADR-015 filename citation drift [src/AgentEval/_kernel/run_async.py:27 + spec file L271] — actual filenames per `docs/adr/README.md`: `ADR-012-async-to-sync-bridge-kernel-module.md` (not `ADR-012-async-bridge-kernel.md`) + `ADR-015-cost-runtime-guardrail-decorator.md` (not `ADR-015-guarded-fanout-decorator.md`). EXACTLY the citation-drift pattern the new norm targets. Fix: grep `ADR-012-async-bridge-kernel\|ADR-015-guarded-fanout-decorator` repo-wide + correct all occurrences.
+- [x] [Review][Patch] M5 — Missing TODO migration comments per AC-1b.1.5 Task 5 [src/AgentEval/_kernel/context.py several raise sites] — spec required `# TODO(Story 1b.5): replace ValueError with ConfigParseError` at each `raise ValueError` in `_coerce_env_value` / `_parse_bool` / `_parse_optional_float` + `# TODO(Story 1b.5): replace RuntimeError with MCPShutdownFailed` at the D-state survivor raise. Add them.
+- [x] [Review][Patch] M6 — `shutdown_timeout_s=0` or negative not guarded; `Popen.wait(timeout=0)` raises `TimeoutExpired` immediately → every release escalates to SIGKILL [src/AgentEval/_kernel/context.py:ServerSpec + acquire/release path] — Fix: validate `shutdown_timeout_s > 0` (or `>= 0.1`) in `ServerSpec.__post_init__`; reject ≤ 0 with `ValueError`.
+- [x] [Review][Patch] M7 — `_load_dotenv` doesn't strip surrounding quotes + doesn't handle `export ` prefix common in shell-sourced `.env` files [src/AgentEval/_kernel/context.py:_load_dotenv] — 2-way confirmation. Fix: after `key.strip()`, strip optional `export ` prefix; after `value.strip()`, strip matching surrounding `"`/`'`.
+- [x] [Review][Patch] M8 — Unknown `AGENTEVAL_*` keys in `.env` silently ignored (typo `AGENTEVAL_PROVDER=anthropic` → no diagnostic) [src/AgentEval/_kernel/context.py:resolve_config] — Fix: after loading dotenv, warn on `AGENTEVAL_*` keys not in `_ENV_VAR_NAMES.values()`: `import warnings; for k in dotenv_values: if k.startswith("AGENTEVAL_") and k not in _ENV_VAR_NAMES.values(): warnings.warn(f"Unknown agenteval env-var: {k}", UserWarning)`.
+- [x] [Review][Patch] M9 — O(N×M) reverse-index scan in `release_test`/`release_suite` [src/AgentEval/_kernel/context.py:399-403, 411-414] — 3-way confirmation. Fix: drop the nested `for suite_ids in self._handles_by_suite.values()` loop — use the `ServerHandle.suite_id` field directly: `self._handles_by_suite[handle.suite_id].remove(handle.handle_id)` with KeyError guard; clear empty keys.
+- [x] [Review][Patch] L1 — `tier(N)` accepts `True`/`False` silently via `bool` ⊂ `int` subclass [src/AgentEval/_kernel/tier.py:tier validation] — `True in (1, 2, 3)` is True (since `True == 1`). Fix: `if type(n) is not int or n not in (1, 2, 3): raise ValueError(...)`.
+- [x] [Review][Patch] L2 — Test patches `signal.signal` to verify SIGTERM handler install; AC-1b.1.8 specifies `signal.getsignal(signal.SIGTERM)` form [tests/unit/kernel/test_context.py::test_mcplifecyclemanager_installs_sigterm_handler_by_default] — Fix: change test to save/restore prior SIGTERM handler in a fixture, then call `MCPLifecycleManager("test", install_sigterm_handler=True)` and assert `signal.getsignal(signal.SIGTERM) is _sigterm_to_sysexit`.
+- [x] [Review][Patch] L3 — `_isolate_agenteval_env` fixture's `monkeypatch.chdir(tmp_path)` is over-cautious + a footgun for future tier1 fixtures with relative paths [tests/acceptance/tier1/conftest.py] — `.env` (not `.env.example`) doesn't exist in the repo root, so chdir is unnecessary for the documented hermeticity goal. Fix: remove `monkeypatch.chdir(tmp_path)` + `tmp_path` parameter; just delete AGENTEVAL_* env-vars.
+- [x] [Review][Patch] L4 — `_parse_bool` accepts undocumented `on`/`off` [src/AgentEval/_kernel/context.py:_parse_bool] — Fix: document the full accepted vocabulary (`true`/`false`/`1`/`0`/`yes`/`no`/`on`/`off`) in `.env.example` comment, OR restrict to `true`/`false`/`1`/`0` only and update tests.
+- [x] [Review][Patch] L5 — `ServerSpec` direct constructor (not `.create`) doesn't deep-copy `env` → caller mutations leak through `MappingProxyType` view [src/AgentEval/_kernel/context.py:ServerSpec] — Fix: add `__post_init__` to defensively re-wrap: `object.__setattr__(self, "env", MappingProxyType(dict(self.env)))`.
+
+**defer (2):**
+
+- [x] [Review][Defer] D1 — `tier(N)` decorator fails on built-ins / C-extension callables [src/AgentEval/_kernel/tier.py] — pre-existing language constraint; Story 1b.6 convention enforcer will catch `@keyword`-decorated methods that don't accept `@tier()` annotation. Deferred to Story 1b.6.
+- [x] [Review][Defer] D2 — `_FakePopen._next_pid` shared class-level state, not reset across tests [tests/unit/kernel/test_context.py] — pre-existing test infrastructure smell; no current bug since no test asserts a specific PID range. Deferred (revisit if any future test grows a PID-specific assertion).
+
+**dismiss (1):**
+
+- DI1 — `_resolve_scope` mixed `is True` / `is False` / `== "suite"` narrowing (Edge Case Hunter LOW) — intentional bool-strict design per AC-1b.1.1 (`bool` ⊂ `int` makes `==` unsafe for True/False; the mixed form is correct). Dismissed as noise.
+
+**Cross-LLM coverage stats (Epic 1b Story 1b.1 review):**
+
+| Reviewer | Solo catches | Cross-confirmed catches | Total |
+|---|---|---|---|
+| Blind Hunter (Claude Opus 4.7) | 4 | 4 | 8 |
+| Edge Case Hunter (Claude Opus 4.7) | 7 | 4 | 11 |
+| Acceptance Auditor (Claude Opus 4.7) | 4 | 5 | 9 |
+| **Codex CLI 0.117.0 (cross-family)** | **1 (the H1 star catch + LOW citation drift)** | **3 (H2 + H3 + M4)** | **4** |
+
+**7th consecutive cross-LLM review where Codex caught real findings.** This time the 3 Claude reviewers DID catch real bugs (Blind Hunter found the clock-mixing bug; Edge Case Hunter found ContextVar non-propagation; Acceptance Auditor found citation drift + AC violations). But **Codex was the only reviewer to catch the scope-modes-not-implemented bug** — the single most consequential defect in the entire diff, hiding behind the spike's "lift the API surface" framing (where the dev lifted the dataclasses + atexit/SIGTERM but silently dropped the P2.19 idempotency contract that distinguishes the 3 scope modes).
+
 ## Dev Notes
 
 ### Project context — Story 1b.1's place in Epic 1b
@@ -268,8 +319,8 @@ Story 1a.6's `stability-surface.md` "AgentEval Library Surface" subsection has a
 - **PRD §FR42** — Library defaults (Story 1a.6 wired; Story 1b.1's `resolve_config` returns precedence-resolved values for the same set)
 - **PRD §FR63** — Determinism Contract (Story 1b.6 will fully ratify; Story 1b.1 ships the `@tier` decorator that makes it possible)
 - **ADR-009** (`docs/adr/ADR-009-per-test-mcp-server-scope.md`) — `mcp_per_test: bool = True` default
-- **ADR-012 (was ADR-A1)** (`docs/adr/ADR-012-async-bridge-kernel.md`) — `_run_async` canonical bridge
-- **ADR-015 (was ADR-A5)** (`docs/adr/ADR-015-guarded-fanout-decorator.md`) — `@guarded_fanout` decorator (Story 1b.3 scope)
+- **ADR-012 (was ADR-A1)** (`docs/adr/ADR-012-async-to-sync-bridge-kernel-module.md`) — `_run_async` canonical bridge
+- **ADR-015 (was ADR-A5)** (`docs/adr/ADR-015-cost-runtime-guardrail-decorator.md`) — `@guarded_fanout` decorator (Story 1b.3 scope)
 - **ADR-016 (was ADR-A6)** — `mcp_coverage` 3-state ratified (relevant to Story 1b.2 coverage.py, NOT Story 1b.1)
 - **ADR-018 (was ADR-A8)** — sandbox Phase 1 policy (relevant to Story 1a.1's `security/` stubs already shipped)
 - **Architecture L314** — 3-mode `mcp_per_test` user vocab
@@ -360,3 +411,63 @@ The Story 1a.6 `__init__` signature had type-correct defaults (`provider: str = 
 | ---------- | ------- | ---------------------------------------------------------------------------- | ------ |
 | 2026-05-18 | 0.1.0   | Initial story creation (ready-for-dev). Pre-create-story drift check (5th consecutive use of `feedback_spec_vs_ratified_doc_precheck`) caught 6 drifts in Story 1b.1 spec vs ratified sources: (1) `mcp_per_test` enum translation undefined; (2) `_kernel/context.py` scope drastically underspecified (epics.md = TestContext+bind/unbind; spike findings = LOAD-BEARING MCPLifecycleManager + 4 dataclasses + atexit + auto-SIGTERM); (3) `tier.py` attribute name dunder vs single-underscore (architecture L620 wins); (4) ADR-A1 citation drift (ratified ADR-012); (5) FR41 wiring assigned to Story 1b.1 explicitly; (6) TestContext kept as lightweight scope-info holder + ContextVar-backed (+ added `_resolve_scope()` translator). All 6 resolved by honoring ratified sources; `epics.md` Story 1b.1 + `.env.example` updated pre-authoring. NEW NORM from Epic 1a retro (`feedback_citation_drift_first_class`) embedded in AC-1b.1.12 + Norm #1 — cross-LLM reviewer prompt MUST direct re-derivation of each cited fact from its source. | Bob |
 | 2026-05-18 | 0.2.0   | Dev-story complete. All 11 ACs satisfied; all 11 tasks marked [x]. 3 new `_kernel/` modules (context.py ~530 lines, tier.py ~85 lines, run_async.py ~90 lines) + 55 unit tests (43 context + 7 tier + 5 run_async) + ci.yml restructure (tests/unit now real-execute) + AgentEval.__init__ FR41 integration via `_UNSET` sentinel + tier1 conftest.py for env-isolation + stability-surface.md updates. Story 0.2 spike findings §`_kernel/context.py` draft LIFTED with all 18 review patches (P2.1-P2.18) + D2.4 auto-SIGTERM handler integrated. All gates clean: ruff (after I001 + UP047 + SIM105 auto-fixes), ruff format (31 files), mypy (23 src files), license-headers (23/23), pytest tests/unit (54 passed), pytest tests/acceptance/tier1 (6 passed regression), robot smoke (1 passed regression), FR41 end-to-end smoke (env-var precedence verified). Phase-1 limitations explicitly documented (atexit-on-SIGKILL unrecoverable; startup_timeout_s caller-tracked; python-dotenv deferred; mypy --strict deferred). Status: in-progress → review. | Amelia |
+| 2026-05-18 | 1.0.0   | Code-review patches applied (cross-LLM adversarial pair Claude Opus 4.7 + Codex CLI 0.117.0; 4-reviewer parallel: Blind Hunter + Edge Case Hunter + Acceptance Auditor + Codex CLI). 22 unique findings triaged: 1 decision-needed (H5 resolved per Many's pick), 18 patches applied, 2 deferred, 1 dismissed. STAR CATCH: Codex caught H1 (scope modes silently not implemented — acquire always spawned regardless of scope; both `"suite"` and `"process"` behaved as `"test"`); NONE of the 3 Claude reviewers saw this. 7th consecutive cross-LLM review where Codex caught real findings; this time the Claude trio also caught real bugs (H2 clock-mixing, H6 ContextVar non-propagation, H3 None-fallthrough, M4 ADR-filename citation drift) — but the H1 functional gap was Codex-only. All 19 patches applied: H1 scope-aware idempotent acquire (P2.19 lifted from spike) + scope-aware release_test/release_suite no-op semantics; H2 spawned_at_monotonic field + monotonic-only process_lifetime_ms math; H3 resolve_config explicit-None-wins + flip codifying test; H4 main-thread guard for signal.signal install; H5 _UnsetType singleton with stable __repr__; H6 contextvars.copy_context propagation through nested-loop worker thread; H7 ReleaseResult("survived") literal + _drain_handles error-absorption; M1 Popen.wait(timeout=0) reap-first PID-race-safe; M2 close() method (unregister atexit + restore prior SIGTERM); M3 kernel public surface registered as `provisional` in stability-surface.md; M4 ADR-012 + ADR-015 filename drift fixed across run_async.py + architecture.md + spec file; M5 TODO(Story 1b.5) migration comments at each ValueError/RuntimeError site; M6 ServerSpec.__post_init__ shutdown_timeout_s > 0 guard; M7 _load_dotenv strips matching quotes + `export ` prefix; M8 unknown AGENTEVAL_* key UserWarning; M9 O(1) reverse-index via ServerHandle.{test_id,suite_id}; L1 isinstance(n, bool) tier guard; L2 signal.getsignal-based handler test; L3 conftest chdir removed; L4 .env.example documents bool vocabulary; L5 ServerSpec.__post_init__ env re-wrap. 13 new unit tests added (H1×3 + H2 + H6 + H7 + M2 + M6 + M7×2 + M8 + L5 + H4 + H3). Total unit tests: 67 (up from 54). All gates clean: ruff + mypy (23 src) + license (23/23) + pytest unit (67 passed) + tier1 (6 passed) + smoke (1 passed). Status: review → done. | Amelia |
+
+## Senior Developer Review (AI)
+
+**Reviewer:** Many Kasiriha
+**Review Date:** 2026-05-18
+**Review Outcome:** **APPROVED** (after applying 19 code-review patches from the 4-reviewer parallel cross-LLM pair Claude Opus 4.7 + Codex CLI 0.117.0)
+
+### Summary
+
+Story 1b.1 ships the three foundational `_kernel/` modules (context.py / tier.py / run_async.py) per Story 0.2 spike findings §`_kernel/context.py` draft (LOAD-BEARING) with all 18 spike review patches (P2.1-P2.18) + the P2.19 scope-aware idempotent acquire (added during code-review per Codex's H1 finding) + the D2.4 auto-installed SIGTERM handler integrated. FR41 config precedence is wired via `_kernel.context.resolve_config`; `AgentEval.__init__` integrates via the `_UNSET` sentinel pattern. ci.yml is restructured so `tests/unit` runs real assertions (generalizing the Story 1a.6 HIGH-1 lesson). 67 unit tests + 6 FR42 acceptance tests + 1 RF smoke test all pass.
+
+### Key findings from code-review
+
+**Cross-LLM adversarial pair** (4 reviewers in parallel — Blind Hunter, Edge Case Hunter, Acceptance Auditor running Claude Opus 4.7; Codex CLI 0.117.0 as the cross-family reviewer per `feedback_review_methodology_norms`). 38 raw findings → 22 deduped → 1 decision-needed + 18 patches + 2 deferred + 1 dismissed.
+
+**Star catch — Codex solo (H1):** the `MCPLifecycleManager` scope modes were NOT actually implemented. `acquire()` unconditionally spawned a new `Popen` regardless of `scope`; both `"suite"` and `"process"` behaved identically to `"test"`. The dev-story had "lifted the spike's API surface" but silently dropped the P2.19 idempotency contract that distinguishes the 3 scope modes. None of the 3 Claude reviewers (same model family) caught this. 7th consecutive cross-LLM review where Codex caught real findings; the same-family blind spot pattern continues to be structurally load-bearing per the project norm.
+
+**3-way confirmed HIGH findings** (caught by 3+ reviewers independently):
+- **H2 clock-mixing** in `process_lifetime_ms`: `time.monotonic() - time.time()` yielded -1.7e12 magnitude garbage on every release.
+- **H3 FR41 `None`-fallthrough**: `resolve_config` stripped explicit `None` kwargs, contradicting the `__init__` docstring + AC-1b.1.5 invariant. A test codified the wrong behavior.
+
+**2-way confirmed HIGH findings:**
+- **H4** SIGTERM install from non-main-thread crashes with `ValueError`.
+- **H5** `_UNSET` sentinel rendered as `<object object at 0x7f...>` in libdoc (non-reproducible builds) + lied to mypy strict.
+- **H7** D-state survivor `RuntimeError` raised inside list-comp in `shutdown_all` abandoned remaining handles mid-loop.
+
+**Solo HIGH catch (Edge Case Hunter): H6** `_run_async` worker thread did NOT inherit caller `ContextVar` via `copy_context` — the architecture's per-test `test_id` propagation contract was silently broken in IDE-runner / nested-loop scenarios (the whole keyword surface affected).
+
+**Citation-drift catches (per the new `feedback_citation_drift_first_class` norm):**
+- **M4** ADR-012 actual filename is `ADR-012-async-to-sync-bridge-kernel-module.md` (not `ADR-012-async-bridge-kernel.md`); ADR-015 actual filename is `ADR-015-cost-runtime-guardrail-decorator.md` (not `ADR-015-guarded-fanout-decorator.md`). Fixed across `_kernel/run_async.py`, `architecture.md`, and the story spec.
+
+### Acceptance Criteria Coverage (post-patches)
+
+All 12 AC-1b.1.X satisfied:
+
+- **AC-1b.1.1** `Scope` + `_resolve_scope()` translator + registered as `provisional` in `stability-surface.md` (M3 patch added the registry entry).
+- **AC-1b.1.2** `TestContext` + `current_context()` / `bind_context()` / `unbind_context()` / `set_current_test_id()` — verified by 7 unit tests including cross-thread isolation.
+- **AC-1b.1.3** `MCPLifecycleManager` + 4 dataclasses with H1 scope-aware idempotent acquire per spike P2.19 + scope-aware release_test/release_suite no-op semantics.
+- **AC-1b.1.4** All 12+ Story 0.2 deferred-work items applied; atexit + D2.4 auto-installed SIGTERM handler integrated; M2 `close()` method added for caller-controlled disposal; H4 main-thread guard.
+- **AC-1b.1.5** FR41 `resolve_config` with explicit-None-wins precedence (H3 fix) + M8 unknown-key warning + M7 quoted-value/export-prefix handling + TODO(Story 1b.5) migration comments at each ValueError site (M5).
+- **AC-1b.1.6** `@tier(N)` with `_agenteval_tier` single-underscore attr + L1 bool guard via `isinstance(n, bool)`.
+- **AC-1b.1.7** `_run_async` per ADR-012 with H6 `contextvars.copy_context()` propagation through worker thread; M4 ADR filename corrected.
+- **AC-1b.1.8** 67 unit tests (54 original + 13 review-patch tests); L2 SIGTERM handler test uses `signal.getsignal()` per spec.
+- **AC-1b.1.9** ci.yml restructured: dedicated `pytest tests/unit (real tests)` step; collect-only sweep narrowed to `tests/unit/conventions`.
+- **AC-1b.1.10** AgentEval.__init__ integration via H5 `_UnsetType` singleton; FR41 + `_resolve_scope` threaded through; 6 Story 1a.6 FR42 tests + RF smoke test still pass; tier1 conftest hardened per L3 (no chdir) + entry/exit symmetry.
+- **AC-1b.1.11** All gates clean (see Debug Log References).
+- **AC-1b.1.12** Cross-LLM reviewer prompt embedded the citation-drift re-derivation directive; Codex caught M4 ADR filenames + H1 scope-modes-not-implemented as direct results.
+
+### Test Coverage
+
+**Local:** `pytest tests/unit --ignore=tests/unit/conventions -q` → **67 passed in 0.43s**. `pytest tests/acceptance/tier1 -q` → **6 passed in 0.30s**. `robot tests/acceptance/smoke` → **1 passed**. CI verification pending push.
+
+### Action Items
+
+None. All 19 patches applied; gates clean; cross-LLM-reviewer pair caught + resolved all findings.
+
+### Outcome
+
+**Status: review → done.** Epic 1b 1/6 stories complete. Ready for Story 1b.2 (`/bmad-create-story` next).

@@ -71,4 +71,11 @@ The 20 items below are real defects in the Story 0.1 spike's scratch Python code
 
 ---
 
+## Deferred from: code review of 1b-1-foundational-kernel-context-tier-async-bridge (2026-05-18)
+
+- **D1 — `tier(N)` decorator on built-ins / C-extension callables.** Setting `func._agenteval_tier = n` raises `AttributeError` on Python built-in functions, certain partials, and C-extension callables. Pre-existing language constraint, not caused by Story 1b.1. Story 1b.6 convention enforcer (which asserts every `@keyword`-decorated method has a `@tier()` annotation) is the natural place to surface this — fails loudly at library-import time if a sub-library author tries to `@tier` an unsupported callable. Decision deferred to Story 1b.6.
+- **D2 — `_FakePopen._next_pid` shared class-level state across tests.** The test-fixture Popen stand-in (`tests/unit/kernel/test_context.py`) uses a class-level counter that monotonically increases across the whole pytest session. No current test asserts a specific PID range, so no bug today. Revisit if any future test grows a PID-specific assertion or if test ordering becomes load-bearing. Phase-2 hygiene.
+
+---
+
 *Update this file as new deferred items emerge from future reviews.*

@@ -51,6 +51,19 @@ Per `src/AgentEval/__init__.py` (Story 1a.6 ratification):
 - `Get Effective Config` RF keyword (Python method `AgentEval.get_effective_config`) — `provisional` label in Phase 1. Returns a `dict[str, Any]` keyed by the 9 `__init__` parameter names. **Story 1b.1 update**: returns FR41 precedence-resolved values (kwarg → env-var → `.env` → defaults) via `_kernel.context.resolve_config`, not just kwarg-resolved values. Phase-2 may evolve to a structured `EffectiveConfig` dataclass for stronger typing on the consumer side; `provisional` label warns consumers that the return-type may evolve from `dict[str, Any]` to a typed structure (the keys + value types per key will remain `stable`).
 - `AgentEval.__version__` module attribute — `stable` label. PyPI distribution + import metadata convention. Bump per semver per NFR-MAINT-03.
 
+### Kernel public surface (Story 1b.1 — Phase-1 registry, exception to the `_kernel/` opacity rule)
+
+`_kernel/` is normally out-of-scope for the stability registry (Scope section above). The following exceptions are explicit per Story 1b.1 AC-1b.1.1 because they're consumed by sub-libraries + tests + the OTel listener (Epic 5 Story 5.1) and need a stable contract for those consumers:
+
+- `_kernel.context._resolve_scope(mcp_per_test) -> Scope` — `provisional` label. The SINGLE canonical translator between the user-facing `bool | Literal["suite"]` kwarg vocabulary and the internal `Literal["test", "suite", "process"]` Scope vocabulary. Truth table: True→"test" / False→"process" / "suite"→"suite". Signature may evolve if a 4th scope mode lands (no current plan).
+- `_kernel.context.Scope` type alias — `provisional` label. `Literal["test", "suite", "process"]`. Adding a value is a minor bump; renaming a value is a major bump.
+- `_kernel.context.TestContext` dataclass — `provisional` label. `(test_id: str, suite_id: str, scope: Scope)`. ContextVar-backed accessor via `current_context()`/`bind_context()`/`unbind_context()`/`set_current_test_id()`.
+- `_kernel.context.MCPLifecycleManager` class — `provisional` label. Per-pabot-worker MCP server lifecycle per Story 0.2 spike findings §`_kernel/context.py` draft (LOAD-BEARING). Scope-aware idempotent `acquire()` + scope-aware `release_test()`/`release_suite()` + `shutdown_all()` + `close()` (M2 review fix — `close()` unregisters atexit + restores prior SIGTERM handler).
+- `_kernel.context.{ServerSpec, ServerHandle, ReleaseResult}` dataclasses — `provisional` label. Field set may evolve as Phase-2 sub-libraries consume them; field renames require a major bump.
+- `_kernel.context.resolve_config(kwarg_overrides, *, dotenv_path) -> dict` — `provisional` label. FR41 precedence resolver. Layer order is `stable`; per-key type coercion vocabulary (e.g., `_parse_bool` accepting true/false/1/0/yes/no/on/off) is `provisional`.
+- `_kernel.tier.{tier, get_keyword_tier, tier_badge}` — `provisional` label. Decorator + accessors; `_agenteval_tier` attribute name is `stable` (consumers can depend on it directly).
+- `_kernel.run_async._run_async[T](coro) -> T` — `provisional` label. The `architecture.md` §Async-to-Sync Bridge Convention is `stable`; the worker-thread fallback mechanism is `provisional` (Phase-2 may add cancellation/timeout knobs).
+
 ### Sandbox Protocol Surface
 
 Per ADR-018 (`adopt` from agentguard ADR-013 with significant divergence — see `docs/adr/ADR-001-architectural-influences-catalog.md` agentguard ADR-013 row):

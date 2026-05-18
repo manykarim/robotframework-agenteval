@@ -62,7 +62,13 @@ def tier(n: Literal[1, 2, 3]) -> Callable[[F], F]:
     Raises:
         ValueError: If `n` is not 1, 2, or 3. Raised at decoration time.
     """
-    if n not in (1, 2, 3):
+    # L1 review fix: bool is a subclass of int, so `True in (1, 2, 3)` is True
+    # (since True == 1). Reject bool explicitly to avoid `@tier(True)` silently
+    # acting as `@tier(1)`. The `isinstance(n, bool)` check is reachable at
+    # runtime even though the Literal[1, 2, 3] annotation makes mypy think it
+    # isn't — callers can (and have, in the wild) pass True/False with type:
+    # ignore, and we want a loud failure rather than silent miscategorization.
+    if isinstance(n, bool) or n not in (1, 2, 3):
         raise ValueError("tier must be 1, 2, or 3")
 
     def _decorate(func: F) -> F:

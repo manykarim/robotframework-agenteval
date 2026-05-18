@@ -1409,10 +1409,10 @@ robotframework-agenteval/
 │   │   ├── ADR-009-per-test-mcp-scope.md
 │   │   ├── ADR-010-copilot-cli-trace-strategy.md
 │   │   ├── ADR-011-three-persona-model.md
-│   │   ├── ADR-012-async-bridge-kernel.md          # Was ADR-A1
+│   │   ├── ADR-012-async-to-sync-bridge-kernel-module.md   # Was ADR-A1
 │   │   ├── ADR-013-entry-points-discovery.md       # Was ADR-A2
 │   │   ├── ADR-014-error-class-hierarchy.md        # Was ADR-A3
-│   │   ├── ADR-015-guarded-fanout-decorator.md     # Was ADR-A5 (ADR-A4 retired 2026-05-17 — renumbered down by one)
+│   │   ├── ADR-015-cost-runtime-guardrail-decorator.md     # Was ADR-A5 (ADR-A4 retired 2026-05-17 — renumbered down by one)
 │   │   ├── ADR-016-mcp-coverage-detection-default.md # Was ADR-A6
 │   │   ├── ADR-017-conformance-suite-organization.md # Was ADR-A7
 │   │   └── ADR-018-sandbox-phase-1-policy.md       # Was ADR-A8

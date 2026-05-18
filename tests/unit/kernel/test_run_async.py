@@ -73,3 +73,39 @@ def test_run_async_nested_loop_propagates_exception() -> None:
 
     with pytest.raises(RuntimeError, match="nested boom"):
         asyncio.run(outer())
+
+
+# ---- H6: ContextVar propagation across nested-loop worker thread -------- #
+
+
+def test_run_async_propagates_contextvar_through_worker_thread() -> None:
+    """H6: when the nested-loop fallback fires, the worker thread MUST inherit
+    the caller's ContextVar bindings (per-test test_id propagation per the
+    architecture's Listener v3 contract).
+    """
+    from AgentEval._kernel.context import (
+        TestContext,
+        bind_context,
+        current_context,
+        unbind_context,
+    )
+
+    bind_context(TestContext(test_id="t-caller", suite_id="s-caller", scope="test"))
+
+    async def coro_reads_context_var() -> str:
+        ctx = current_context()
+        return ctx.test_id if ctx is not None else "MISSING"
+
+    async def outer() -> str:
+        # Trigger the nested-loop fallback path of _run_async by calling it
+        # from inside a running event loop.
+        return _run_async(coro_reads_context_var())
+
+    try:
+        result = asyncio.run(outer())
+        assert result == "t-caller", (
+            "ContextVar binding did not propagate through nested-loop worker thread; "
+            "per-test test_id is broken in IDE-runner / nested-loop scenarios"
+        )
+    finally:
+        unbind_context()

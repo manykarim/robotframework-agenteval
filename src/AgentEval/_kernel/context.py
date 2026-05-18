@@ -27,14 +27,32 @@ This module hosts five concerns that share a per-pabot-worker lifecycle:
 3. **`MCPLifecycleManager`** — per-pabot-worker MCP-server-subprocess lifecycle
    per Story 0.2 spike findings §`_kernel/context.py` draft (load-bearing).
    Re-implements the patterns validated by the spike with all 18 review
-   patches (P2.1-P2.18) + the D2.4 auto-installed SIGTERM handler integrated.
+   patches (P2.1-P2.18) + the P2.19 scope-aware idempotent acquire + the D2.4
+   auto-installed SIGTERM handler integrated.
 4. **atexit + auto-installed SIGTERM handler** — defense-in-depth cleanup so
    leaks don't accumulate when a pabot worker terminates. Python's default
    SIGTERM handler does NOT run atexit (D2.4 LOAD-BEARING finding); the
    handler installed here converts SIGTERM into `sys.exit(0)`, which does.
+   `signal.signal()` install is guarded to the main thread (per Python's
+   thread-safety contract); `close()` restores the prior handler + atexit
+   registration on instance disposal.
 5. **FR41 config precedence** — `resolve_config()` resolves the AgentEval
    Library kwargs against the precedence chain `kwarg > env-var > .env > defaults`.
    Story 1a.6's `__init__.py` integrates with this for `Get Effective Config`.
+   Explicit `None` kwargs DO win over env-vars (FR41 invariant — "kwarg wins"
+   has no `None` carve-out); only kwargs absent from the dict fall through.
+
+Scope semantics (Story 0.2 spike §_kernel/context.py draft + P2.19):
+    - `Scope = "test"`: one MCP server per test_id; per-test isolation; correct
+      under `pabot --processes N`. Idempotent `acquire(test_id=X, ...)` returns
+      the existing live handle when X has already-acquired; dead handles are
+      reaped + replaced.
+    - `Scope = "suite"`: one MCP server per suite_id, reused across tests in the
+      same suite. `release_test()` is a no-op; `release_suite()` releases.
+      Recipe-5 dogfood-CI ergonomics override per architecture L410.
+    - `Scope = "process"`: single shared MCP server across all tests in the
+      pabot worker. Both `release_test()` and `release_suite()` are no-ops;
+      only `shutdown_all()` (or `close()`) releases.
 
 Lifecycle guarantees (verified by Story 0.2 spike):
     - 45/45 smoke-matrix iters, zero leaks (Linux, mcp 1.27.1, RF 7.4.2, pabot 5.2.2)
@@ -45,7 +63,7 @@ Lifecycle guarantees (verified by Story 0.2 spike):
 
 Citation index for code-review re-derivation (per `feedback_citation_drift_first_class`):
     - architecture L314 / L410 / L1659 — user `mcp_per_test` 3-mode vocabulary
-    - architecture L620 — `_agenteval_tier` single-underscore attribute convention (cited in tier.py, not here)
+    - architecture L620 — `_agenteval_tier` single-underscore attribute convention (cited in tier.py)
     - architecture L1198 — `context.py # Listener v3 test_id propagation context helpers`
     - architecture L1502 — Per-test scope routing table
     - architecture L1534-1587 — Listener v3 lifecycle flow
@@ -68,6 +86,7 @@ import sys
 import threading
 import time
 import uuid
+import warnings
 from collections.abc import Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -202,12 +221,18 @@ class ServerSpec:
     """How to spawn an MCP server subprocess.
 
     Note on `env`: `frozen=True` does NOT freeze the dict; production uses
-    `MappingProxyType` for true immutability (P2.15 review fix).
+    `MappingProxyType` for true immutability (P2.15 review fix). `__post_init__`
+    defensively re-wraps to seal against direct-constructor leakage.
 
     Note on `startup_timeout_s`: caller-tracked, not enforced by `acquire()`
     (P2.4 — documented, not implemented). `MCPLifecycleManager.acquire`
     returns immediately after `subprocess.Popen`; MCP handshake is the
     caller's responsibility (Epic 3 Story 3.1's `mcp/transport.py`).
+
+    Note on `shutdown_timeout_s`: MUST be > 0 (validated in `__post_init__`).
+    `Popen.wait(timeout=0)` raises `TimeoutExpired` immediately, so a zero or
+    negative value would skip the graceful SIGTERM grace period and always
+    escalate to SIGKILL.
     """
 
     command: Sequence[str]
@@ -215,6 +240,18 @@ class ServerSpec:
     startup_timeout_s: float = 10.0
     shutdown_timeout_s: float = 2.0  # NFR-PERF-03d ceiling per architecture L709
     env: MappingProxyType[str, str] = field(default_factory=lambda: MappingProxyType({}))
+
+    def __post_init__(self) -> None:
+        # M6: guard shutdown_timeout_s > 0; zero/negative would skip graceful wait.
+        if self.shutdown_timeout_s <= 0:
+            raise ValueError(
+                f"shutdown_timeout_s must be > 0 (got {self.shutdown_timeout_s!r}); "
+                "zero/negative would skip the graceful SIGTERM grace period"
+            )
+        # L5: defensively re-wrap env so direct-constructor `ServerSpec(env=MappingProxyType(d))`
+        # can't be mutated through the source dict after construction. `object.__setattr__`
+        # is necessary because dataclass is frozen=True.
+        object.__setattr__(self, "env", MappingProxyType(dict(self.env)))
 
     @classmethod
     def create(
@@ -238,12 +275,21 @@ class ServerSpec:
 
 @dataclass
 class ServerHandle:
-    """Live MCP server subprocess. Returned by `MCPLifecycleManager.acquire()`."""
+    """Live MCP server subprocess. Returned by `MCPLifecycleManager.acquire()`.
+
+    Field notes:
+        - `spawned_at_unix` (wall-clock): used for `released_at_unix` audit math.
+        - `spawned_at_monotonic` (monotonic): used for `process_lifetime_ms`
+          computation. Mixing `time.time()` with `time.monotonic()` produces
+          garbage values (H2 review finding); always pair the two clocks
+          deliberately.
+    """
 
     handle_id: str
     spec: ServerSpec
     process: subprocess.Popen[bytes]
     spawned_at_unix: float
+    spawned_at_monotonic: float
     test_id: str | None
     suite_id: str | None
 
@@ -254,10 +300,14 @@ class ReleaseResult:
 
     Field notes (P2.2 + P-edge-6 review fixes):
         - `process_lifetime_ms` (NOT `startup_latency_ms`) — spawn-to-terminate-start,
-          i.e., the entire lifetime of the process. There is NO startup probe.
+          measured in the monotonic clock domain. There is NO startup probe.
         - `shutdown_latency_ms` — terminate_start → `Popen.wait()` returns. Includes
           both signal delivery and kernel reap. A future story may split into
           `terminate_to_signal_delivered_ms` + `signal_to_reaped_ms`.
+        - `signaled_with="survived"` — H7: a D-state hang or otherwise stuck
+          process that did not respond to SIGTERM + SIGKILL escalation. The
+          atexit failsafe records this and continues with remaining handles
+          rather than raising mid-loop.
     """
 
     handle_id: str
@@ -266,7 +316,7 @@ class ReleaseResult:
     released_at_unix: float
     process_lifetime_ms: float
     shutdown_latency_ms: float
-    signaled_with: Literal["SIGTERM", "SIGKILL", "already-dead", "failed-EPERM"]
+    signaled_with: Literal["SIGTERM", "SIGKILL", "already-dead", "failed-EPERM", "survived"]
     killed_by_timeout: bool
 
 
@@ -281,6 +331,10 @@ class ReleaseResult:
 # minimal whitelist instead. Callers add server-specific keys via `ServerSpec.env`.
 _DEFAULT_ENV_WHITELIST: tuple[str, ...] = ("PATH", "HOME", "LANG", "LC_ALL")
 
+# Sentinel scope key for "process"-mode handle storage. The single shared
+# handle is keyed under this constant in `_handles_by_test` + `_handles_by_suite`.
+_PROCESS_SCOPE_KEY = "__process_scope__"
+
 
 class MCPLifecycleManager:
     """Per-pabot-worker lifecycle manager for MCP server subprocesses.
@@ -294,8 +348,22 @@ class MCPLifecycleManager:
         Python's default SIGTERM handler does NOT run atexit. The handler
         installed by `__init__` converts SIGTERM → `sys.exit(0)`, which DOES
         run atexit, which runs `shutdown_all()`. Override via
-        `install_sigterm_handler=False` if the caller manages signals itself
-        (e.g., a parent framework that already has its own SIGTERM handler).
+        `install_sigterm_handler=False` if the caller manages signals itself.
+        Install is guarded to the main thread (Python `signal.signal` raises
+        `ValueError` from non-main threads); from worker threads, the manager
+        warns + skips the install, relying on atexit alone.
+
+    Lifecycle management:
+        `close()` unregisters the atexit hook + restores the prior SIGTERM
+        handler. Long-lived processes that instantiate multiple managers MUST
+        call `close()` on disposal to prevent atexit-stack accumulation +
+        SIGTERM-handler clobbering.
+
+    Scope semantics (P2.19 idempotent acquire):
+        - "test": acquire idempotent per test_id; release_test releases; release_suite no-op
+        - "suite": acquire idempotent per suite_id; release_test no-op; release_suite releases
+        - "process": single shared handle; release_test + release_suite both no-op; only
+          shutdown_all/close releases
 
     atexit gaps (D2.2 known limitations):
         - SIGKILL of parent: atexit cannot run. Orphans reparent to init/systemd.
@@ -324,17 +392,51 @@ class MCPLifecycleManager:
         self._handles: dict[str, ServerHandle] = {}
         self._handles_by_test: dict[str, list[str]] = {}
         self._handles_by_suite: dict[str, list[str]] = {}
+        self._closed = False
 
-        # P2.16 acknowledgement: atexit.unregister(self.shutdown_all) is the
-        # caller's responsibility for long-lived processes (multiple manager
-        # instantiations accumulate on the atexit stack).
+        # Capture prior SIGTERM handler so close() can restore it (M2 fix).
+        self._prior_sigterm_handler: Any = None
+
+        # Register atexit failsafe. close() unregisters; instance disposal without
+        # close() leaves a stale callable on the atexit stack (manager is dead but
+        # the callable points at it — still safe because shutdown_all on empty state
+        # is a no-op).
         atexit.register(self.shutdown_all)
 
         if install_sigterm_handler:
-            # D2.4 LOAD-BEARING: convert SIGTERM → sys.exit(0) so atexit fires.
-            signal.signal(signal.SIGTERM, _sigterm_to_sysexit)
+            # H4: signal.signal() raises ValueError from non-main threads. Guard +
+            # warn so embedded-framework callers don't crash.
+            if threading.current_thread() is threading.main_thread():
+                self._prior_sigterm_handler = signal.getsignal(signal.SIGTERM)
+                # D2.4 LOAD-BEARING: convert SIGTERM → sys.exit(0) so atexit fires.
+                signal.signal(signal.SIGTERM, _sigterm_to_sysexit)
+            else:
+                warnings.warn(
+                    "MCPLifecycleManager: skipping SIGTERM auto-install (not on main thread); "
+                    "atexit failsafe will still fire on normal exit",
+                    UserWarning,
+                    stacklevel=2,
+                )
 
     # ---- public API ----------------------------------------------------- #
+
+    def close(self) -> list[ReleaseResult]:
+        """Release all handles, unregister atexit, restore prior SIGTERM handler.
+
+        Long-lived processes that instantiate multiple managers MUST call this
+        on disposal to prevent atexit-stack accumulation + SIGTERM-handler
+        clobbering (M2 fix). Safe to call multiple times.
+        """
+        if self._closed:
+            return []
+        results = self.shutdown_all()
+        with contextlib.suppress(Exception):
+            atexit.unregister(self.shutdown_all)
+        if self._prior_sigterm_handler is not None and threading.current_thread() is threading.main_thread():
+            with contextlib.suppress(Exception):
+                signal.signal(signal.SIGTERM, self._prior_sigterm_handler)
+        self._closed = True
+        return results
 
     def acquire(
         self,
@@ -343,14 +445,22 @@ class MCPLifecycleManager:
         suite_id: str,
         spec: ServerSpec | None = None,
     ) -> ServerHandle:
-        """Acquire a server handle per the configured scope.
+        """Acquire a server handle per the configured scope (P2.19 idempotent).
+
+        Scope-dependent reuse semantics:
+            - "test": one handle per test_id. Idempotent — repeat acquire with same
+              test_id returns the live handle (or reaps dead one + replaces).
+            - "suite": one handle per suite_id. Idempotent — repeat acquire with same
+              suite_id returns the live handle.
+            - "process": one handle total. Idempotent — repeat acquire always returns
+              the live handle.
 
         Returns immediately after `subprocess.Popen` — MCP handshake is the
         caller's responsibility (Epic 3 Story 3.1).
 
         Args:
-            test_id: Listener v3 test identifier (used for "test" scope release).
-            suite_id: Listener v3 suite identifier (used for "suite" scope release).
+            test_id: Listener v3 test identifier.
+            suite_id: Listener v3 suite identifier.
             spec: ServerSpec override; falls back to `self._default_spec` if None.
 
         Returns:
@@ -362,6 +472,18 @@ class MCPLifecycleManager:
         resolved_spec = spec or self._default_spec
         if resolved_spec is None:
             raise ValueError("acquire() requires either an explicit spec or a manager-level default_spec")
+
+        # P2.19 idempotent acquire: scope-aware lookup, reuse live or reap-and-replace dead.
+        with self._lock:
+            existing = self._lookup_existing(test_id, suite_id)
+            if existing is not None:
+                if existing.process.poll() is None:
+                    # Alive — return existing handle (idempotent).
+                    return existing
+                # Dead — record the kill, fall through to spawn replacement.
+                with contextlib.suppress(Exception):
+                    self._kill_and_record(existing)
+                self._evict_handle(existing.handle_id)
 
         child_env = self._build_minimized_env(resolved_spec.env)
 
@@ -375,58 +497,122 @@ class MCPLifecycleManager:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        # H2: capture BOTH wall-clock + monotonic at spawn so process_lifetime_ms
+        # is computed from a consistent monotonic pair.
         handle = ServerHandle(
             handle_id=str(uuid.uuid4()),
             spec=resolved_spec,
             process=popen,
             spawned_at_unix=time.time(),
+            spawned_at_monotonic=time.monotonic(),
             test_id=test_id,
             suite_id=suite_id,
         )
 
         with self._lock:
-            self._handles[handle.handle_id] = handle
-            self._handles_by_test.setdefault(test_id, []).append(handle.handle_id)
-            self._handles_by_suite.setdefault(suite_id, []).append(handle.handle_id)
+            self._register_handle(handle, test_id, suite_id)
 
         return handle
 
     def release_test(self, test_id: str) -> list[ReleaseResult]:
-        """Release all handles bound to a test_id; return audit records."""
+        """Release handles bound to a test_id; no-op outside `"test"` scope.
+
+        Per spike findings §`_kernel/context.py` draft scope semantics: only
+        `"test"` scope releases on per-test boundary. `"suite"` reuses across
+        tests in the suite; `"process"` reuses across the worker process.
+        """
+        if self._scope != "test":
+            return []
         with self._lock:
             handle_ids = self._handles_by_test.pop(test_id, [])
             handles = [self._handles.pop(h, None) for h in handle_ids]
-            # Also remove from per-suite reverse index.
-            for hid in handle_ids:
-                for suite_ids in self._handles_by_suite.values():
-                    if hid in suite_ids:
-                        suite_ids.remove(hid)
-        return [self._kill_and_record(h) for h in handles if h is not None]
+            # M9: O(1) reverse-index cleanup via ServerHandle.suite_id, no full scan.
+            for h in handles:
+                if h is not None and h.suite_id is not None:
+                    suite_list = self._handles_by_suite.get(h.suite_id, [])
+                    if h.handle_id in suite_list:
+                        suite_list.remove(h.handle_id)
+                    if not suite_list and h.suite_id in self._handles_by_suite:
+                        del self._handles_by_suite[h.suite_id]
+        return self._drain_handles(handles)
 
     def release_suite(self, suite_id: str) -> list[ReleaseResult]:
-        """Release all handles bound to a suite_id; return audit records."""
+        """Release handles bound to a suite_id; no-op in `"process"` scope.
+
+        In `"test"` scope, called when a suite ends to clean up any per-test
+        handles still bound to that suite (defensive). In `"suite"` scope,
+        this is the primary release path. In `"process"` scope, no-op.
+        """
+        if self._scope == "process":
+            return []
         with self._lock:
             handle_ids = self._handles_by_suite.pop(suite_id, [])
             handles = [self._handles.pop(h, None) for h in handle_ids]
-            for hid in handle_ids:
-                for test_ids in self._handles_by_test.values():
-                    if hid in test_ids:
-                        test_ids.remove(hid)
-        return [self._kill_and_record(h) for h in handles if h is not None]
+            # M9: O(1) reverse-index cleanup via ServerHandle.test_id.
+            for h in handles:
+                if h is not None and h.test_id is not None:
+                    test_list = self._handles_by_test.get(h.test_id, [])
+                    if h.handle_id in test_list:
+                        test_list.remove(h.handle_id)
+                    if not test_list and h.test_id in self._handles_by_test:
+                        del self._handles_by_test[h.test_id]
+        return self._drain_handles(handles)
 
     def shutdown_all(self) -> list[ReleaseResult]:
         """Release every outstanding handle; return audit records.
 
-        Called by the atexit failsafe; also safe to call directly.
+        Called by the atexit failsafe; also safe to call directly. H7: per-handle
+        errors are absorbed into ReleaseResult so a single stuck process doesn't
+        abandon the rest mid-loop.
         """
         with self._lock:
-            handles = list(self._handles.values())
+            handles: list[ServerHandle | None] = list(self._handles.values())
             self._handles.clear()
             self._handles_by_test.clear()
             self._handles_by_suite.clear()
-        return [self._kill_and_record(h) for h in handles]
+        return self._drain_handles(handles)
 
     # ---- internals ------------------------------------------------------ #
+
+    def _lookup_existing(self, test_id: str, suite_id: str) -> ServerHandle | None:
+        """Scope-aware lookup of an existing handle for the given test/suite_id.
+
+        - "test": match by test_id
+        - "suite": match by suite_id
+        - "process": single shared handle keyed under _PROCESS_SCOPE_KEY
+        """
+        if self._scope == "test":
+            hids = self._handles_by_test.get(test_id, [])
+        elif self._scope == "suite":
+            hids = self._handles_by_suite.get(suite_id, [])
+        else:  # process
+            hids = self._handles_by_test.get(_PROCESS_SCOPE_KEY, [])
+        if hids:
+            return self._handles.get(hids[0])
+        return None
+
+    def _register_handle(self, handle: ServerHandle, test_id: str, suite_id: str) -> None:
+        """Index a newly-spawned handle in the scope-appropriate maps."""
+        self._handles[handle.handle_id] = handle
+        if self._scope == "process":
+            # Single-shared-handle case — index under sentinel keys so lookup is O(1).
+            self._handles_by_test.setdefault(_PROCESS_SCOPE_KEY, []).append(handle.handle_id)
+            self._handles_by_suite.setdefault(_PROCESS_SCOPE_KEY, []).append(handle.handle_id)
+        else:
+            self._handles_by_test.setdefault(test_id, []).append(handle.handle_id)
+            self._handles_by_suite.setdefault(suite_id, []).append(handle.handle_id)
+
+    def _evict_handle(self, handle_id: str) -> None:
+        """Remove a handle from all indexes. Used by the dead-handle replace path."""
+        handle = self._handles.pop(handle_id, None)
+        if handle is None:
+            return
+        for index in (self._handles_by_test, self._handles_by_suite):
+            for key, hids in list(index.items()):
+                if handle_id in hids:
+                    hids.remove(handle_id)
+                    if not hids:
+                        del index[key]
 
     @staticmethod
     def _build_minimized_env(spec_env: MappingProxyType[str, str]) -> dict[str, str]:
@@ -444,16 +630,67 @@ class MCPLifecycleManager:
         env.update(dict(spec_env))
         return env
 
+    def _drain_handles(self, handles: list[ServerHandle | None]) -> list[ReleaseResult]:
+        """Kill+record each handle, absorbing per-handle errors into ReleaseResult.
+
+        H7: a stuck process (D-state, EPERM, etc.) MUST NOT abort the loop —
+        defense-in-depth shutdown_all() should reap as many handles as
+        possible. Errors that don't fit the documented ReleaseResult literals
+        are recorded as `signaled_with="survived"`.
+        """
+        results: list[ReleaseResult] = []
+        for h in handles:
+            if h is None:
+                continue
+            try:
+                results.append(self._kill_and_record(h))
+            except Exception as exc:  # noqa: BLE001 — defense-in-depth: log + continue
+                warnings.warn(
+                    f"MCPLifecycleManager: unexpected error reaping pid={h.process.pid}: {exc!r}",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                released_at_unix = time.time()
+                terminate_start_monotonic = time.monotonic()
+                results.append(
+                    ReleaseResult(
+                        handle_id=h.handle_id,
+                        pid=h.process.pid,
+                        spawned_at_unix=h.spawned_at_unix,
+                        released_at_unix=released_at_unix,
+                        process_lifetime_ms=(terminate_start_monotonic - h.spawned_at_monotonic) * 1000.0,
+                        shutdown_latency_ms=0.0,
+                        signaled_with="survived",
+                        killed_by_timeout=False,
+                    )
+                )
+        return results
+
     def _kill_and_record(self, handle: ServerHandle) -> ReleaseResult:
         """Terminate a single handle's process; emit a ReleaseResult.
 
         Always emits a ReleaseResult (P-edge: dead-and-replaced handles don't
         drop silently). EPERM vs ESRCH distinguished. SIGTERM → SIGKILL
         escalation on shutdown_timeout_s. Post-kill liveness verified.
+
+        M1: PID-race-safe — calls `Popen.wait(timeout=0)` to reap before
+        signaling, so we never `os.killpg()` against a recycled PID.
+
+        H7: survived processes are recorded as ReleaseResult("survived") and
+        bubbled up via `_drain_handles`; do NOT raise RuntimeError from this
+        method (would abandon remaining handles in atexit context).
         """
-        terminate_start = time.monotonic()
+        terminate_start_monotonic = time.monotonic()
+        spawned_at_monotonic = handle.spawned_at_monotonic
         spawned_at_unix = handle.spawned_at_unix
         pid = handle.process.pid
+
+        # M1: reap-first to close the poll() → killpg() race window. If the
+        # process has already exited but Popen hasn't been notified, wait(0)
+        # reaps the zombie and marks returncode; subsequent killpg won't
+        # signal a recycled PID.
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            handle.process.wait(timeout=0)
 
         if handle.process.poll() is not None:
             # Already dead — emit ReleaseResult and return.
@@ -463,13 +700,14 @@ class MCPLifecycleManager:
                 pid=pid,
                 spawned_at_unix=spawned_at_unix,
                 released_at_unix=released_at_unix,
-                process_lifetime_ms=(terminate_start - spawned_at_unix) * 1000.0,
+                # H2: monotonic-only subtraction.
+                process_lifetime_ms=(terminate_start_monotonic - spawned_at_monotonic) * 1000.0,
                 shutdown_latency_ms=0.0,
                 signaled_with="already-dead",
                 killed_by_timeout=False,
             )
 
-        signaled_with: Literal["SIGTERM", "SIGKILL", "already-dead", "failed-EPERM"]
+        signaled_with: Literal["SIGTERM", "SIGKILL", "already-dead", "failed-EPERM", "survived"]
         killed_by_timeout = False
 
         try:
@@ -478,15 +716,15 @@ class MCPLifecycleManager:
             os.killpg(pid, signal.SIGTERM)
             signaled_with = "SIGTERM"
         except ProcessLookupError:
-            # ESRCH — process already gone between poll() and killpg.
+            # ESRCH — process already gone between reap-attempt and killpg.
             released_at_unix = time.time()
             return ReleaseResult(
                 handle_id=handle.handle_id,
                 pid=pid,
                 spawned_at_unix=spawned_at_unix,
                 released_at_unix=released_at_unix,
-                process_lifetime_ms=(terminate_start - spawned_at_unix) * 1000.0,
-                shutdown_latency_ms=(time.monotonic() - terminate_start) * 1000.0,
+                process_lifetime_ms=(terminate_start_monotonic - spawned_at_monotonic) * 1000.0,
+                shutdown_latency_ms=(time.monotonic() - terminate_start_monotonic) * 1000.0,
                 signaled_with="already-dead",
                 killed_by_timeout=False,
             )
@@ -500,8 +738,8 @@ class MCPLifecycleManager:
                     pid=pid,
                     spawned_at_unix=spawned_at_unix,
                     released_at_unix=released_at_unix,
-                    process_lifetime_ms=(terminate_start - spawned_at_unix) * 1000.0,
-                    shutdown_latency_ms=(time.monotonic() - terminate_start) * 1000.0,
+                    process_lifetime_ms=(terminate_start_monotonic - spawned_at_monotonic) * 1000.0,
+                    shutdown_latency_ms=(time.monotonic() - terminate_start_monotonic) * 1000.0,
                     signaled_with="failed-EPERM",
                     killed_by_timeout=False,
                 )
@@ -521,11 +759,22 @@ class MCPLifecycleManager:
             handle.process.wait()
 
         # Post-kill liveness verification (deferred-work fix). D-state survivors
-        # would still have poll() == None; we treat that as a runtime error.
+        # would still have poll() == None — record as "survived" + return (do NOT
+        # raise; _drain_handles needs to continue with remaining handles in
+        # atexit context per H7).
+        # TODO(Story 1b.5): once _kernel/errors.py lands, emit a typed
+        # MCPShutdownFailed warning alongside the ReleaseResult.
         if handle.process.poll() is None:
-            raise RuntimeError(
-                f"MCP server pid={pid} survived shutdown signal {signaled_with} "
-                "(possible D-state hang); operator intervention required."
+            released_at_unix = time.time()
+            return ReleaseResult(
+                handle_id=handle.handle_id,
+                pid=pid,
+                spawned_at_unix=spawned_at_unix,
+                released_at_unix=released_at_unix,
+                process_lifetime_ms=(terminate_start_monotonic - spawned_at_monotonic) * 1000.0,
+                shutdown_latency_ms=(time.monotonic() - terminate_start_monotonic) * 1000.0,
+                signaled_with="survived",
+                killed_by_timeout=killed_by_timeout,
             )
 
         released_at_unix = time.time()
@@ -534,8 +783,8 @@ class MCPLifecycleManager:
             pid=pid,
             spawned_at_unix=spawned_at_unix,
             released_at_unix=released_at_unix,
-            process_lifetime_ms=(terminate_start - spawned_at_unix) * 1000.0,
-            shutdown_latency_ms=(time.monotonic() - terminate_start) * 1000.0,
+            process_lifetime_ms=(terminate_start_monotonic - spawned_at_monotonic) * 1000.0,
+            shutdown_latency_ms=(time.monotonic() - terminate_start_monotonic) * 1000.0,
             signaled_with=signaled_with,
             killed_by_timeout=killed_by_timeout,
         )
@@ -585,13 +834,21 @@ _ENV_VAR_NAMES: dict[str, str] = {
     "max_runtime_seconds": "AGENTEVAL_MAX_RUNTIME_SECONDS",
 }
 
+# Reverse map for M8 unknown-env-var warning.
+_KNOWN_ENV_VAR_NAMES: frozenset[str] = frozenset(_ENV_VAR_NAMES.values())
+
 
 def _parse_bool(raw: str, *, key: str) -> bool:
+    """Parse a string to bool. Accepts true/false/1/0/yes/no/on/off (case-insensitive).
+
+    Documented in `.env.example` per L4 review finding.
+    """
     lowered = raw.strip().lower()
     if lowered in ("true", "1", "yes", "on"):
         return True
     if lowered in ("false", "0", "no", "off"):
         return False
+    # TODO(Story 1b.5): once _kernel/errors.py lands, raise ConfigParseError.
     raise ValueError(f"{key}: expected bool-like value (true/false/1/0/yes/no/on/off); got {raw!r}")
 
 
@@ -609,6 +866,7 @@ def _parse_optional_float(raw: str, *, key: str) -> float | None:
     try:
         return float(stripped)
     except ValueError as exc:
+        # TODO(Story 1b.5): once _kernel/errors.py lands, raise ConfigParseError.
         raise ValueError(f"{key}: expected float or empty string; got {raw!r}") from exc
 
 
@@ -622,16 +880,25 @@ def _coerce_env_value(key: str, raw: str) -> Any:
         try:
             return float(raw)
         except ValueError as exc:
+            # TODO(Story 1b.5): once _kernel/errors.py lands, raise ConfigParseError.
             raise ValueError(f"{key}: expected float; got {raw!r}") from exc
     if key == "max_cost_usd":
         try:
             return float(raw)
         except ValueError as exc:
+            # TODO(Story 1b.5): once _kernel/errors.py lands, raise ConfigParseError.
             raise ValueError(f"{key}: expected float; got {raw!r}") from exc
     if key == "max_runtime_seconds":
         return _parse_optional_float(raw, key=key)
     # provider, trace_backend — strings; pass through.
     return raw
+
+
+def _strip_dotenv_value(value: str) -> str:
+    """Strip surrounding matching quotes from a .env value (M7 review fix)."""
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+        return value[1:-1]
+    return value
 
 
 def _load_dotenv(path: Path = Path(".env")) -> dict[str, str]:
@@ -640,6 +907,12 @@ def _load_dotenv(path: Path = Path(".env")) -> dict[str, str]:
     Reads `KEY=VALUE` lines; skips blank lines and `#` comments. Returns a
     `dict` mapping AGENTEVAL_* keys → raw string values. Missing file returns
     an empty dict.
+
+    M7 review fixes:
+        - Optional `export ` prefix is stripped from the key (common in
+          shell-sourced .env files).
+        - Surrounding matching quotes (`"..."` or `'...'`) are stripped from
+          the value (standard dotenv convention).
     """
     if not path.exists():
         return {}
@@ -651,7 +924,12 @@ def _load_dotenv(path: Path = Path(".env")) -> dict[str, str]:
         if "=" not in stripped:
             continue
         key, _, value = stripped.partition("=")
-        result[key.strip()] = value.strip()
+        key = key.strip()
+        # M7: handle `export KEY=VALUE` shell-sourcing convention.
+        if key.startswith("export "):
+            key = key[len("export ") :].strip()
+        value = _strip_dotenv_value(value.strip())
+        result[key] = value
     return result
 
 
@@ -667,8 +945,10 @@ def resolve_config(
 
     Args:
         kwarg_overrides: User-supplied kwargs passed to `AgentEval.__init__`.
-            Only non-None values count as overrides; None falls through to
-            lower precedence layers.
+            **Key presence — not non-None-ness — signals "user passed this kwarg"**
+            (H3 review fix). Callers wishing to fall through to env-var resolution
+            must omit the key entirely from this dict (e.g., by stripping
+            `_UNSET` sentinels at `__init__` time).
         dotenv_path: Path to the `.env` file. Defaults to `.env` in cwd.
 
     Returns:
@@ -683,14 +963,24 @@ def resolve_config(
         Internal Scope translation via `_resolve_scope()` happens at the
         consumer boundary (e.g., `AgentEval.__init__` calls it for
         `self._scope`).
+
+    Notes on unknown env-vars (M8 review fix):
+        Any `AGENTEVAL_*` key in the .env file (or `os.environ`) that is NOT
+        in `_ENV_VAR_NAMES.values()` is flagged via `warnings.warn` with
+        `UserWarning` so typos like `AGENTEVAL_PROVDER` surface visibly
+        instead of silently falling back to defaults.
     """
     dotenv_values = _load_dotenv(dotenv_path)
+    _warn_on_unknown_agenteval_keys(dotenv_values, source=str(dotenv_path))
+    _warn_on_unknown_agenteval_keys(os.environ, source="os.environ")
     resolved: dict[str, Any] = {}
 
     for key, default_value in _FR42_DEFAULTS.items():
-        # Layer 1 — kwarg override (only if explicitly non-None; None means
-        # "fall through" so consumers can opt into env-var resolution).
-        if key in kwarg_overrides and kwarg_overrides[key] is not None:
+        # Layer 1 — kwarg override. H3: presence in the dict is the override
+        # signal; explicit None IS a real user value (e.g., max_runtime_seconds=None
+        # disables a wall-clock cap). Callers strip _UNSET sentinels before
+        # passing; absence from this dict means "not passed".
+        if key in kwarg_overrides:
             resolved[key] = kwarg_overrides[key]
             continue
         # Layer 2 — environment variable.
@@ -707,3 +997,14 @@ def resolve_config(
         resolved[key] = default_value
 
     return resolved
+
+
+def _warn_on_unknown_agenteval_keys(env_like: Any, *, source: str) -> None:
+    """Emit UserWarning for any AGENTEVAL_* key not in the known set (M8)."""
+    for k in env_like:
+        if k.startswith("AGENTEVAL_") and k not in _KNOWN_ENV_VAR_NAMES:
+            warnings.warn(
+                f"Unknown agenteval env-var {k!r} in {source}; ignored. Known: {sorted(_KNOWN_ENV_VAR_NAMES)}.",
+                UserWarning,
+                stacklevel=3,
+            )
