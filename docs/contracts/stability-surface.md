@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Defines agenteval's **per-API-element stability label scheme** (`stable` / `provisional` / `experimental`) + the rules for promoting/demoting elements between labels. The **registry** of currently-labeled elements is filled **incrementally**: Story 1a.6 lands the initial Phase-1 labels; each subsequent epic-owning story registers its public elements as they ship. Phase-1 baseline contains only the sandbox-related elements (see `### Sandbox Protocol Surface` subsection); other public elements are added to the registry by the owning stories. Release notes link here so consumers know what is safe to depend on across versions.
+Defines agenteval's **per-API-element stability label scheme** (`stable` / `provisional` / `experimental`) + the rules for promoting/demoting elements between labels. The **registry** of currently-labeled elements is filled **incrementally**: Story 1a.6 lands the initial Phase-1 labels; each subsequent epic-owning story registers its public elements as they ship. Phase-1 baseline contains the AgentEval Library surface (Story 1a.6 — class + 9 `__init__` params + `Get Effective Config` keyword; see `### AgentEval Library Surface` subsection) AND the sandbox surface (Story 1a.4 — `SandboxBackend` Protocol + related entry-point group; see `### Sandbox Protocol Surface` subsection); other public elements are added to the registry by the owning stories as they ship. Release notes link here so consumers know what is safe to depend on across versions.
 
 ## Scope
 
@@ -15,7 +15,7 @@ Defines agenteval's **per-API-element stability label scheme** (`stable` / `prov
 
 - The 3 stability labels + their semantics (consumer-facing guarantee per label).
 - Label-change policy (when is a `provisional` element promoted to `stable`? when must a `stable` element be deprecated?).
-- The Phase-1-baseline registry entries (currently: the sandbox surface — `### Sandbox Protocol Surface` subsection). Story 1a.6 + each epic-owning story registers additional elements as they ship.
+- The Phase-1-baseline registry entries: the AgentEval Library surface (Story 1a.6 — `### AgentEval Library Surface` subsection) AND the sandbox surface (Story 1a.4 — `### Sandbox Protocol Surface` subsection). Each epic-owning story registers additional elements as they ship.
 - The procedure for adding a new public element to the registry (per-story checklist in Maintenance section).
 
 ### Out-of-scope
@@ -44,7 +44,7 @@ Per `src/AgentEval/__init__.py` (Story 1a.6 ratification):
   - `trace_backend: str = "memory"` (FR42 + FR33b)
   - `allow_validate_operator: bool = False` (FR42 + FR43; NFR-SEC-02)
   - `default_temperature: float = 0.0` (FR42)
-  - `mcp_per_test: bool | Literal["suite"] = True` (FR42 + ADR-009)
+  - `mcp_per_test: bool | Literal["suite"] = True` (FR42 + ADR-009 for True/False; architecture L314 + NFR-PERF-03d for `"suite"` mode — `"suite"` is NOT ratified by ADR-009 proper)
   - `allow_external_mcp_blind: bool = False` (FR42 + ADR-016)
   - `max_cost_usd: float = 5.00` (FR42 + ADR-015)
   - `max_runtime_seconds: float | None = None` (FR11b + ADR-015)

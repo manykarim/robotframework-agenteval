@@ -74,14 +74,14 @@ class AgentEval:
         default_temperature: Default provider temperature for non-stochastic
             keywords (FR42). 0.0 enforces deterministic provider calls where
             the underlying model supports it.
-        mcp_per_test: MCP server scope per ADR-009 + architecture L314's 3-mode
-            design:
+        mcp_per_test: MCP server scope.
 
             - True (default): per-test isolation; correct under
-              `pabot --processes N`.
-            - "suite": per-suite scope; recipe-5 dogfood-CI ergonomics override.
+              `pabot --processes N`. (ADR-009 §Decision — ratified True/False.)
             - False: single shared instance across all tests; only correct
-              serial.
+              serial. (ADR-009 §Decision — ratified True/False.)
+            - "suite": per-suite scope; recipe-5 dogfood-CI ergonomics override.
+              (Architecture L314 + NFR-PERF-03d — not in ADR-009 proper.)
         allow_external_mcp_blind: Opt-in to running with
             `mcp_coverage="external_mixed"` without `IncompleteTraceError`
             (FR42 + ADR-016 D4 adapter contract). Default False enforces
@@ -134,6 +134,9 @@ class AgentEval:
         self._allow_external_mcp_blind = allow_external_mcp_blind
         self._max_cost_usd = max_cost_usd
         self._max_runtime_seconds = max_runtime_seconds
+        # AC-1a.6.8: lazy RF Listener v3 context hook. Phase-1 stub returns None;
+        # Epic 5 Story 5.1 wires the real `test_id` read for per-test MCP scoping.
+        self._rf_test_id = self._get_rf_test_id()
 
     @keyword(name="Get Effective Config")
     def get_effective_config(self) -> dict[str, Any]:

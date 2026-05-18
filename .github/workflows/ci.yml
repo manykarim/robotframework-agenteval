@@ -73,12 +73,28 @@ jobs:
       - name: License headers check (Apache 2.0)
         run: uv run python scripts/check-license-headers.py
 
-      # Phase-1 collect-only sweep across 4 test directories. Story 1a.1 baseline
-      # produces empty tests/ dirs (only .gitkeep + __init__.py). pytest exits 5
-      # ("no tests collected") on empty dirs, which we accept as Phase-1 success.
-      # Each epic's first story that adds real tests for a directory MUST update
-      # this step to drop --collect-only for that directory + remove exit-5 leniency.
-      - name: pytest Phase-1 collect-only sweep (unit + acceptance smoke/tier1 + conventions)
+      # tests/acceptance/tier1 has real tests as of Story 1a.6 (FR42 acceptance
+      # test landed). EXECUTE the tests (not just collect) — exit-5 leniency
+      # removed for this dir per Story 1a.6 code-review HIGH-1.
+      - name: pytest tests/acceptance/tier1 (real tests)
+        run: uv run pytest tests/acceptance/tier1 -q
+
+      # tests/acceptance/smoke has 1 .robot smoke test as of Story 1a.6
+      # (verifies Library AgentEval + Get Effective Config via RF static-library
+      # discovery). EXECUTE the smoke test via robot (not pytest).
+      - name: robot tests/acceptance/smoke (RF smoke tests)
+        run: uv run robot --output NONE --report NONE --log NONE tests/acceptance/smoke
+
+      # Phase-1 collect-only sweep across the 2 still-empty test directories.
+      # Story 1a.1 baseline produces empty tests/ dirs (only .gitkeep + __init__.py).
+      # pytest exits 5 ("no tests collected") on empty dirs, which we accept as
+      # Phase-1 success. Each epic's first story that adds real tests for a
+      # directory MUST move that dir to its own execute step + remove from the
+      # collect-only sweep below. As of Story 1a.6:
+      #   - tests/acceptance/tier1: real-execute step above
+      #   - tests/acceptance/smoke: real-execute robot step above
+      #   - tests/unit + tests/unit/conventions: still placeholder; collect-only
+      - name: pytest Phase-1 collect-only sweep (still-empty placeholder dirs)
         shell: bash
         run: |
           set +e
@@ -96,7 +112,5 @@ jobs:
             fi
           }
           collect tests/unit
-          collect tests/acceptance/smoke
-          collect tests/acceptance/tier1
           collect tests/unit/conventions
           exit "$fail"

@@ -31,7 +31,7 @@ so that **the library has a coherent first-import experience from Day 1, the `st
    ```
 
 4. **AC-1a.6.4 — Both Library + non-RF invocation paths work.** The `AgentEval` class is invokable as:
-   - **Robot Framework Library**: `Library    AgentEval    <kwargs>` from a `.robot` file (RF discovers the class via PythonLibCore / dynamic-library convention).
+   - **Robot Framework Library**: `Library    AgentEval    <kwargs>` from a `.robot` file (RF discovers the class via the **static-library discovery model** — when `Library    AgentEval` is encountered, RF imports the `AgentEval` module and looks for a class with the same name as the module; `src/AgentEval/__init__.py` exports that class, which RF instantiates with the `Library` directive's kwargs; static libraries auto-register all `@keyword`-decorated methods).
    - **Direct Python instantiation**: `from AgentEval import AgentEval; agent = AgentEval(allow_validate_operator=True)` from a Python script.
    - The class MUST have a top-level export from `src/AgentEval/__init__.py` (update the existing `__all__: list[str] = []` to `__all__: list[str] = ["AgentEval"]`).
 
@@ -40,7 +40,7 @@ so that **the library has a coherent first-import experience from Day 1, the `st
    - Asserts each of the 9 defaults via `Get Effective Config`.
    - Instantiates `AgentEval(allow_validate_operator=True, telemetry=False)`.
    - Asserts the 2 kwarg overrides + the other 7 defaults still apply.
-   - **Phase-1 note**: this test is the first NON-COLLECT-ONLY test under `tests/acceptance/tier1/` — exit-code-5 leniency in `ci.yml` no longer applies once this test exists. Verify ci.yml still passes (the collect-only-sweep step now finds 1 actual test + accepts exit code 0 not exit code 5).
+   - **Phase-1 note**: this test is the first NON-COLLECT-ONLY test under `tests/acceptance/tier1/`. Per Story 1a.6 code-review HIGH-1 (2026-05-18): the original Story 1a.2 collect-only sweep was leaving tier1 as `--collect-only`, which meant assertions were never executed in CI. ci.yml is restructured by this story to give `tests/acceptance/tier1/` its own dedicated `uv run pytest tests/acceptance/tier1 -q` step (no `--collect-only`, no exit-5 leniency); the collect-only sweep continues to cover the 2 still-empty placeholder dirs (`tests/unit`, `tests/unit/conventions`). `tests/acceptance/smoke/` gets its own dedicated `uv run robot tests/acceptance/smoke` step.
 
 6. **AC-1a.6.6 — `docs/contracts/stability-surface.md` Phase-1 registry populated.** Update the existing skeleton (Story 1a.4 stub + Story 1a.5 scope-narrowing) to ADD substantive Phase-1 registry entries for:
    - `AgentEval` class — `provisional` (Phase-1; signature may evolve as Epic 1b kernel wires env-var precedence). Future-stability date: post Epic 1b retrospective.
@@ -115,16 +115,20 @@ so that **the library has a coherent first-import experience from Day 1, the `st
   - [x] Update status banner: skeleton → accepted (Story 1a.6 initial stub).
   - [x] Machine-verify: 4 section headers preserved.
 
-- [x] **Task 7: Verify `ci.yml` Phase-1 collect-only sweep still passes (AC: 1a.6.5, 1a.6.10)**
-  - [x] After Task 4 commit, `tests/acceptance/tier1/` has 1 real test + 0 collect-only files. The Story 1a.2 collect-only-sweep step accepts exit code 0 OR 5; with 1 real passing test, exit code = 0. Verify via `uv run pytest tests/acceptance/tier1 -q` returns 0.
-  - [x] Re-run the collect-only sweep simulation locally per Story 1a.2's ci.yml: `tests/unit`, `tests/acceptance/smoke`, `tests/unit/conventions` MUST still be exit 5 (empty); `tests/acceptance/tier1` now exit 0 (1 real test). All accepted as success.
+- [x] **Task 7: Restructure `ci.yml` to actually execute tier1 + smoke tests (AC: 1a.6.5, 1a.6.10) — REVISED per code-review HIGH-1 (2026-05-18)**
+  - [x] **Original sketch (incorrect)**: relied on Story 1a.2's collect-only sweep to cover tier1, accepting exit 0 (real test passes) or exit 5 (empty). Codex flagged that `--collect-only` only verifies collection succeeded — assertions were NEVER executed in CI.
+  - [x] **Revised implementation (HIGH-1 patch)**: ci.yml now has THREE test-execution steps:
+    1. `uv run pytest tests/acceptance/tier1 -q` — real execution, no leniency (the 6 FR42 tests run their assertions in CI).
+    2. `uv run robot tests/acceptance/smoke` — real execution of the 1 RF smoke test (MED-3 patch, adds `tests/acceptance/smoke/test_agenteval_library.robot`).
+    3. Collect-only sweep across the 2 still-empty placeholder dirs (`tests/unit`, `tests/unit/conventions`) with exit-5 leniency preserved.
+  - [x] Local verification: `uv run pytest tests/acceptance/tier1 -q` → 6 passed; `uv run robot tests/acceptance/smoke` → smoke test passes; collect-only sweep for the 2 placeholder dirs → exit 5 (accepted).
 
 - [x] **Task 8: Run all post-implementation gates (AC: 1a.6.10)**
   - [x] `uv run ruff check src/ tests/` — clean.
   - [x] `uv run ruff format --check src/ tests/` — clean (run `uv run ruff format src/ tests/` if anything's off, then re-check).
   - [x] `uv run mypy src/` — clean. Pay attention to `mcp_per_test: bool | Literal["suite"]` annotation strict-mode compliance.
   - [x] `uv run python scripts/check-license-headers.py` — PASS: 20/20.
-  - [x] `uv run pytest tests/acceptance/tier1 -q` — 2 tests pass (per AC-1a.6.5).
+  - [x] `uv run pytest tests/acceptance/tier1 -q` — 6 tests pass (AC-1a.6.5 was satisfied with finer-grained coverage than the original 2-test sketch).
 
 - [x] **Task 9: Cross-story cleanup — SECURITY.md NFR-SEC-05 forward-ref (AC: 1a.6.11)**
   - [x] Edit `SECURITY.md` §NFR-SEC-05 — remove the "**Phase-1 status:** **forward-reference.**" banner around `__init__(telemetry=False)` since Story 1a.6 has now wired it. Replace with current-state language: "The library `__init__(telemetry=False)` parameter is now wired by Story 1a.6 (this commit); when set, it disables the OTel listener (FR44). Full OTel-listener disable behavior (preventing all egress paths) is still gated on Epic 5 Story 5.1 which lands the listener itself."
@@ -236,7 +240,7 @@ The class is a **static library** (no `ROBOT_LIBRARY_LISTENER`) — not a Librar
 | Acceptance Tier-3 | `tests/acceptance/tier3/test_<scenario>.py` |
 | Conformance | `tests/conformance/test_ac_<label>.py` |
 
-Story 1a.6's FR42 acceptance test goes at `tests/acceptance/tier1/test_ac_fr42_library_defaults.py`. This is the FIRST non-collect-only test in the Phase-1 baseline — `ci.yml`'s exit-code-5 leniency continues to be valid (other tier dirs still empty), but `tests/acceptance/tier1/` now reports exit-0 with a real test passing.
+Story 1a.6's FR42 acceptance test goes at `tests/acceptance/tier1/test_ac_fr42_library_defaults.py` (6 tests covering kwarg-only enforcement, default values, kwarg overrides, the `bool | Literal["suite"]` type, and the `Get Effective Config` dict shape). This is the FIRST real-execution test in the Phase-1 baseline. Per code-review HIGH-1, `ci.yml` is restructured so `tests/acceptance/tier1/` AND `tests/acceptance/smoke/` get their own dedicated execution steps (no `--collect-only`, no exit-5 leniency); the collect-only sweep continues to cover only the 2 still-empty placeholder dirs (`tests/unit`, `tests/unit/conventions`).
 
 ### Project debt cleanup (Story 1a.5 forward-refs become current-state)
 
@@ -247,9 +251,9 @@ NFR-SEC-01's banner (`config.redact_env()` + `config.add_redaction_pattern()`) s
 ### Project norms applied
 
 1. **Norm #1 (cross-LLM adversarial review)**: code-review will use `/bmad-code-review (Using current Claude + Codex CLI subagent)`. Expect Codex to find edge cases in: type-annotation strict-mode mypy compliance for `mcp_per_test: bool | Literal["suite"]`; RF `@keyword` decorator usage correctness; cross-reference accuracy between docstring + stability-surface.md + exit-criteria-0x-to-1x.md.
-2. **Norm #2 (machine-verified numeric claims)**: 9 defaults, 4 NFR-MAINT-04 sections per file, 20 license-headered files, 2 FR42 tests — all machine-verified before commit.
+2. **Norm #2 (machine-verified numeric claims)**: 9 defaults, 4 NFR-MAINT-04 sections per file, 20 license-headered files, 6 FR42 tests — all machine-verified before commit.
 3. **Pre-create-story spec-vs-ratified-doc check (Norm #4)**: applied 2026-05-18 with **5 drifts caught + ratified** (largest drift set per single story; same scale as Story 1a.4's drift). All resolved by honoring ratified sources.
-4. **CI-log-forensics (Norm #5)**: post-push verification will include: ci.yml's collect-only sweep changing one step from exit-5 to exit-0 for tests/acceptance/tier1/; the new FR42 acceptance test fires green; mypy strict-mode passes the `bool | Literal["suite"]` annotation.
+4. **CI-log-forensics (Norm #5)**: post-push verification will confirm — per code-review HIGH-1 fix — that the dedicated tier1 step (`uv run pytest tests/acceptance/tier1 -q`) actually runs the 6 FR42 assertions in CI (not just collection), the dedicated smoke step runs the new `.robot` smoke test, mypy strict-mode passes the `bool | Literal["suite"]` annotation, and the collect-only sweep over the 2 still-empty placeholder dirs continues to exit-0 via exit-5 leniency.
 5. **Honest framing**: Phase-1 boundaries documented (`telemetry=False` wires the param but full listener-disable lands Epic 5; `mcp_per_test` 3-mode supported but Library `__init__` precedence only — env-var precedence is Epic 1b).
 6. **agentguard inspiration-only**: ratified.
 
@@ -296,16 +300,18 @@ NFR-SEC-01's banner (`config.redact_env()` + `config.add_redaction_pattern()`) s
 
 <!-- To be filled by dev-story workflow -->
 
-Expected files (1 created + 5 updated):
+Expected files (2 created + 6 updated):
 
-**New files (1):**
-- `tests/acceptance/tier1/test_ac_fr42_library_defaults.py` (FR42 acceptance test — first non-collect-only Phase-1 test)
+**New files (2):**
+- `tests/acceptance/tier1/test_ac_fr42_library_defaults.py` (FR42 acceptance test — 6 tests, first real-execution Phase-1 test)
+- `tests/acceptance/smoke/test_agenteval_library.robot` (RF smoke test — verifies `Library AgentEval` static-library discovery + `Get Effective Config` keyword exposure; added per code-review MED-3)
 
-**Updated files (5):**
-- `src/AgentEval/__init__.py` (add `AgentEval` class with 9 keyword-only `__init__` params + `Get Effective Config` keyword + `_get_rf_test_id()` helper; preserve Apache 2.0 header)
-- `docs/contracts/stability-surface.md` (add Phase-1 registry entries for `AgentEval` class + 9 config params + `Get Effective Config` keyword; preserve `### Sandbox Protocol Surface` subsection)
-- `docs/contracts/exit-criteria-0x-to-1x.md` (fill 4-criteria-with-rationale stub content)
-- `SECURITY.md` (retire NFR-SEC-05 `__init__(telemetry=False)` forward-ref banner per Task 9)
+**Updated files (6):**
+- `src/AgentEval/__init__.py` (add `AgentEval` class with 9 keyword-only `__init__` params + `Get Effective Config` keyword + `_get_rf_test_id()` helper called from `__init__` per MED-2; preserve Apache 2.0 header)
+- `docs/contracts/stability-surface.md` (add Phase-1 registry entries for `AgentEval` class + 9 config params + `Get Effective Config` keyword; preserve `### Sandbox Protocol Surface` subsection; Purpose/Scope intros updated per LOW-5)
+- `docs/contracts/exit-criteria-0x-to-1x.md` (fill 4-criteria-with-rationale stub content; documentation gate updated 11→12 per LOW-7)
+- `SECURITY.md` (retire NFR-SEC-05 `__init__(telemetry=False)` forward-ref banner per Task 9; rephrase per MED-6 to "control-surface kwarg only" Phase-1 framing)
+- `.github/workflows/ci.yml` (restructure test sweep per HIGH-1: dedicated tier1 + smoke execution steps; collect-only sweep narrowed to 2 still-empty placeholder dirs)
 - `CHANGELOG.md` (Unreleased entry)
 
 ## Change Log
@@ -314,3 +320,4 @@ Expected files (1 created + 5 updated):
 | ---------- | ------- | ---------------------------------------------------------------------------- | ------ |
 | 2026-05-18 | 0.1.0   | Initial story creation (ready-for-dev). Pre-create-story drift check (6th consecutive use) caught 5 drifts in Story 1a.6 spec vs ratified sources: (1) `mcp_per_test` default `True` vs `"suite"`; (2) FR42 defaults set count 8 vs 6; (3) stability labels 3-label vs 4-label set; (4) exit-criteria slug `exit-criteria-0x-to-1x.md` vs `exit-criteria.md`; (5) `max_runtime_seconds` Library default vs FR11b keyword arg. All 5 resolved by honoring ratified sources (PRD FR42 + ADR-009 + Story 1a.4 stability-surface.md + architecture L1423 + FR11b); epics.md L812-822 + `.env.example` updated pre-authoring. | Bob |
 | 2026-05-18 | 0.2.0   | Dev-story complete. All 11 ACs satisfied with machine-verified evidence. AgentEval class wired with 9 keyword-only __init__ params + Get Effective Config keyword + _get_rf_test_id stub. FR42 acceptance test (6 tests) passes — first non-collect-only Phase-1 test. stability-surface.md + exit-criteria-0x-to-1x.md content filled (4 NFR-MAINT-04 sections preserved in both). SECURITY.md NFR-SEC-05 forward-ref retired (telemetry=False now wired). All gates: ruff clean (incl. N801/N802/N806), ruff format 23 files, mypy 20 source files clean (incl. bool | Literal["suite"]), license-headers 20/20, FR42 6/6 pass. Phase-1 collect-only sweep: tier1 now exits 0 (real test); other 3 dirs still exit 5 (placeholder); ci.yml exit-5 leniency continues. Status: review. | Amelia |
+| 2026-05-18 | 0.3.0   | Code-review patches applied (cross-LLM adversarial review — Claude Opus 4.7 + Codex CLI 0.117.0; findings doc at `1a-6-code-review-findings-2026-05-18.md`). 9 patches: HIGH-1 ci.yml restructured (tier1 + smoke now have dedicated real-execution steps; collect-only sweep narrowed to 2 placeholder dirs — assertions actually run in CI now); MED-2 `__init__` calls `self._get_rf_test_id()` + stores `self._rf_test_id`; MED-3 added `tests/acceptance/smoke/test_agenteval_library.robot` for RF static-library discovery verification; MED-6 SECURITY.md NFR-SEC-05 reframed as "control-surface kwarg only" Phase-1 (not eliminating egress until Epic 5); MED-8 + LOW-9 this artifact aligned with reality (6 tests, HIGH-1 ci patch); LOW-4 `mcp_per_test` citations split (ADR-009 True/False; architecture L314+NFR-PERF-03d for `"suite"`); LOW-5 stability-surface Purpose/Scope updated to mention both AgentEval + sandbox surfaces; LOW-7 exit-criteria doc gate updated 11→12. 6th consecutive cross-LLM review where Claude solo 0 / Codex 9 — same-family blind spot pattern continues to be load-bearing. Status: review (ready for Many's final approval). | Amelia |

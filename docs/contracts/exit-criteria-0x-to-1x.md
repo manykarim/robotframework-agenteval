@@ -42,7 +42,7 @@ Documents the **objective gates** that must be satisfied before agenteval is rel
 The exit criteria document at Phase 1 close (Epic 9 Story 9.3) will additionally cover:
 
 - **Functional coverage:** which Phase-1 FRs from PRD §Functional Requirements are wired + tested (per conformance suite + acceptance suite + unit suite).
-- **Documentation coverage:** all 11 `docs/contracts/` files have populated content (not Phase-1 stubs); ≥8 Phase-1 recipes in `docs/recipes/`; libdoc rendered + asserted via `docs-build.yml`.
+- **Documentation coverage:** all `docs/contracts/*.md` files (11 contract files + `README.md` index = 12 total) have populated content (not Phase-1 stubs); ≥8 Phase-1 recipes in `docs/recipes/`; libdoc rendered + asserted via `docs-build.yml`.
 - **Phase-1.5 carry-over registry:** macOS validation (D2.1 architect waiver), SHA-pinning of CI actions (Story 1a.2 LOW-3 deferred), full dogfood integration tests (Story 1a.2 + Stories 9.1/9.2), `src/AgentEval/conformance/` CLI proxy (Story 1a.4 HIGH-2 forward-reference), DCO check workflow (Story 1a.5 MED-3 deferred), PR template (Story 1a.5 LOW-8 deferred). Each carry-over documented with target story.
 
 The 4 criteria + the additional requirements are the **objective bar** for agenteval to claim 1.0. Per `feedback_honest_framing` working norm, numeric bars MUST be specified (no vibes — empirical thresholds anchored to Phase-1-retrospective data).
