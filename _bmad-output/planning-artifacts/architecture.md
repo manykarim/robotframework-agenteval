@@ -1416,7 +1416,7 @@ robotframework-agenteval/
 │   │   ├── ADR-016-mcp-coverage-detection-default.md # Was ADR-A6
 │   │   ├── ADR-017-conformance-suite-organization.md # Was ADR-A7
 │   │   └── ADR-018-sandbox-phase-1-policy.md       # Was ADR-A8
-│   ├── contracts/                          # 9 doc contracts per NFR-MAINT-04 + Step-4/Step-5 additions; agentguard-inheritance.md retired 2026-05-17
+│   ├── contracts/                          # 11 doc contracts: 9 NFR-MAINT-04/Step-4/Step-5 + 2 empirical adds (Story 1a.4 ratification 2026-05-18); agentguard-inheritance.md retired 2026-05-17
 │   │   ├── evidence-block-format.md
 │   │   ├── determinism-contract.md
 │   │   ├── stability-surface.md
@@ -1425,7 +1425,9 @@ robotframework-agenteval/
 │   │   ├── error-class-hierarchy.md
 │   │   ├── mcp-coverage-detection.md
 │   │   ├── conformance-fixture-format.md
-│   │   └── coding-conventions.md           # Per Step-5 reference card
+│   │   ├── coding-conventions.md           # Per Step-5 reference card
+│   │   ├── listener-integration.md         # Story 0.1/0.2 empirical add — RF Library vs Regular Listener scoping
+│   │   └── junit-xml-enrichment.md         # FR49 contract — empirical add 2026-05-18 by Story 1a.4 ratification
 │   ├── keywords/                           # Auto-generated libdoc HTML per release
 │   ├── scenarios/                          # Annotated YAML scenario examples
 │   │   ├── basic.yaml

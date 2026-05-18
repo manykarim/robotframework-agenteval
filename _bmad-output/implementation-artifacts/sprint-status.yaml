@@ -1,5 +1,5 @@
 # generated: 2026-05-17
-# last_updated: 2026-05-17 (Story 1a.3 DONE. Cross-LLM code-review (Claude + Codex CLI) caught 5 findings (2 H + 2 M + 1 L) — Claude solo would have shipped all 5 (same-family blind spot demonstrated again). Patches applied per Many's approval: HIGH-1 (sandbox classification adopt-verbatim→adapt; agenteval drops Inspect AI dep), HIGH-2 (conformance entry-point pytest tests/conformance not python -m agenteval.conformance — tests/ outside wheel), MED-1 (entry-point group count wording 4 namespace + 1 legacy + 1 RF-owned = 6 total / 5 agenteval-owned). MED-2 + LOW-1 deferred per Many. Post-patch: 12 adapt + 5 N/A + 4 borrow-concept + 1 explicitly-diverge + 0 adopt-verbatim in agentguard section (more honest framing — inspiration only). §Amendments Log sha256 still 9ff36b0b... preserved. Epic 1a 3/6 done.)
+# last_updated: 2026-05-18 (Story 1a.4 review. 11 doc-contract skeletons authored at docs/contracts/ per architecture L1419-1430 canonical list: 5 PRD-named + 4 architecture-introduced + 2 empirical adds (listener-integration + junit-xml-enrichment). error-class-hierarchy.md has SUBSTANTIVE content per AC-1a.4.2 (FR59 + 11-leaf ADR-014 table). determinism-contract.md has ### Tier Model subsection; stability-surface.md has ### Sandbox Protocol Surface subsection. docs/contracts/README.md index. Machine-verified: all 12 .md files (11 contracts + README) pass docs-build.yml's per-file assertion; all cross-refs resolve; no extras. Epic 1a 3/6 done.)
 # project: robotframework-agenteval
 # project_key: NOKEY
 # tracking_system: file-system
@@ -52,7 +52,7 @@ development_status:
   1a-1-project-bootstrap-standalone-python-rf-library: done
   1a-2-set-up-7-github-actions-ci-workflows: done
   1a-3-ratify-non-spike-adrs-author-adr-001-architectural-influences-catalog: done
-  1a-4-author-9-doc-contract-skeletons: backlog
+  1a-4-author-11-doc-contract-skeletons: review  # Renamed 9→11 per 2026-05-18 Story 1a.4 ratification (architecture L1419 updated; epics.md L716 updated). Pre-create-story drift check (4th consecutive use of the norm) caught title:9 / body:10 / AC:11 / final:9 mismatch + 4 non-architecture contracts in AC + 2 PRD-named dropped.
   1a-5-project-hygiene-contributing-security-issue-templates-license-headers: backlog
   1a-6-wire-fr42-fr43-fr44-library-defaults-stability-exit-criteria-doc-stubs: backlog
   epic-1a-retrospective: optional

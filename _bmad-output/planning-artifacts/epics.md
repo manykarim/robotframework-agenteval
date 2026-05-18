@@ -755,23 +755,27 @@ So that every subsequent epic implements against ratified decisions, and the pro
 
 ---
 
-#### Story 1a.4: Author 9 Doc-Contract Skeletons
+#### Story 1a.4: Author 11 Doc-Contract Skeletons
 
 As a **contributor or downstream consumer**,
-I want all 10 doc-contract skeletons present at `docs/contracts/` with consistent structure (purpose, scope, contract, change-policy),
+I want all 11 doc-contract skeletons present at `docs/contracts/` with consistent structure (purpose, scope, contract, change-policy),
 So that future epics can fill in contract details against an agreed structure, and external consumers can audit the library's contracts without spelunking the code.
+
+**Source-of-truth ratification (2026-05-18):** The 11-contract list comes from architecture.md §Complete Project Directory Structure → `docs/contracts/` (L1419-1428) — the 9 architecture-canonical contracts — PLUS 2 empirically-justified additions (`listener-integration.md` per Story 0.1/0.2 RF Library vs Regular Listener findings; `junit-xml-enrichment.md` per FR49 JUnit XML emission contract). Previous epics.md spec drift (title:9 / body:10 / AC:11 / final-sentence:9, plus dropping evidence-block-format + otel-trace-visual, plus adding non-architecture-blessed tier-model + sandbox-protocol) corrected pre-create-story 2026-05-18 per `feedback_spec_vs_ratified_doc_precheck` project norm.
 
 **Acceptance Criteria:**
 
-**Given** the 10 doc-contract names (net of 2026-05-17 churn — `agentguard-inheritance.md` retired per agentguard reframe; `listener-integration.md` + `junit-xml-enrichment.md` added per empirical findings on RF Library vs Regular Listener scope): `error-class-hierarchy.md`, `mcp-coverage-detection.md`, `conformance-fixture-format.md`, `coding-conventions.md`, `tier-model.md`, `sandbox-protocol.md`, `determinism-contract.md` (skeleton — content per Epic 1b), `stability-surface.md`, `exit-criteria.md`, `listener-integration.md`, `junit-xml-enrichment.md`,
+**Given** the 11 doc-contract names — **9 architecture-canonical** (per architecture.md L1419-1428: `evidence-block-format.md`, `determinism-contract.md`, `stability-surface.md`, `exit-criteria-0x-to-1x.md`, `otel-trace-visual.md`, `error-class-hierarchy.md`, `mcp-coverage-detection.md`, `conformance-fixture-format.md`, `coding-conventions.md`) PLUS **2 empirically-justified additions** (`listener-integration.md` per Story 0.1/0.2 RF Library vs Regular Listener scoping findings; `junit-xml-enrichment.md` per FR49 contract),
 **When** I create each file at `docs/contracts/<name>.md`,
 **Then** each has at minimum: (a) Purpose section (≤100 words explaining what this contract governs), (b) Scope section (in-scope / out-of-scope bullets), (c) Contract section (placeholder for the formal specification — filled by the epic that owns the contract), (d) Change Policy section (how the contract can evolve — links to `stability-surface.md` labels).
 
 **And Given** the `error-class-hierarchy.md` skeleton,
 **When** I author its initial content,
-**Then** it specifies the FR59 error-format requirement: every Tier-1 setup-failure error MUST surface (file path, line number, field name at fault, fix suggestion if applicable) in its `__str__` representation; lists the 14 planned error classes from architecture Step-3 (`AgentEvalError` base + 4 sub-bases + 9 leaves) with one-line description each; references which epic implements each class.
+**Then** it specifies the FR59 error-format requirement: every Tier-1 setup-failure error MUST surface (file path, line number, field name at fault, fix suggestion if applicable) in its `__str__` representation; lists all error leaves from ratified ADR-014 (`AgentEvalError` base + 4 sub-bases + 11 leaves — see ADR-014 table) with one-line description each; references which epic implements each class.
 
-**And** `docs/contracts/README.md` index file lists all 9 contracts with one-line description each, linked.
+**And** `docs/contracts/README.md` index file lists all 11 contracts with one-line description each, linked.
+
+**Note (2026-05-18 spec correction):** Previously-listed `tier-model.md` and `sandbox-protocol.md` are NOT separate doc contracts — they are subsections of `determinism-contract.md` (tier model + ACL gates) and `stability-surface.md` (sandbox Protocol surface). `agentguard-inheritance.md` remains retired per ADR-A4 / NFR-MAINT-06 retirement (2026-05-17).
 
 ---
 
