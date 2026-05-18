@@ -37,7 +37,7 @@ Defines agenteval's **per-API-element stability label scheme** (`stable` / `prov
 
 Per `src/AgentEval/__init__.py` (Story 1a.6 ratification):
 
-- `AgentEval` class at `src/AgentEval/__init__.py` — `provisional` label in Phase 1. Public RF Library entry point invoked via `Library    AgentEval    <kwargs>`. Signature may evolve as Epic 1b wires env-var precedence (FR41) + as sub-libraries land their config knobs; `provisional` label warns consumers that the kwarg set may grow.
+- `AgentEval` class at `src/AgentEval/__init__.py` — `provisional` label in Phase 1. Public RF Library entry point invoked via `Library    AgentEval    <kwargs>`. FR41 precedence chain (kwarg → env-var → `.env` → defaults) is wired by Story 1b.1 via `_kernel.context.resolve_config`; signature may continue to evolve as sub-libraries land their config knobs. `provisional` label warns consumers that the kwarg set may grow.
 - `AgentEval.__init__` 9 keyword-only parameters — all `provisional` label in Phase 1 (parameter names + types stable; default values may tighten via ADR amendment as empirical data accumulates). Default values per PRD FR42 + FR11b + ratified ADRs:
   - `provider: str = "litellm"` (FR42 + ADR-013)
   - `telemetry: bool = True` (FR42 + FR44)
@@ -48,7 +48,7 @@ Per `src/AgentEval/__init__.py` (Story 1a.6 ratification):
   - `allow_external_mcp_blind: bool = False` (FR42 + ADR-016)
   - `max_cost_usd: float = 5.00` (FR42 + ADR-015)
   - `max_runtime_seconds: float | None = None` (FR11b + ADR-015)
-- `Get Effective Config` RF keyword (Python method `AgentEval.get_effective_config`) — `provisional` label in Phase 1. Returns a `dict[str, Any]` keyed by the 9 `__init__` parameter names. Phase-2 may evolve to a structured `EffectiveConfig` dataclass for stronger typing on the consumer side; `provisional` label warns consumers that the return-type may evolve from `dict[str, Any]` to a typed structure (the keys + value types per key will remain `stable`).
+- `Get Effective Config` RF keyword (Python method `AgentEval.get_effective_config`) — `provisional` label in Phase 1. Returns a `dict[str, Any]` keyed by the 9 `__init__` parameter names. **Story 1b.1 update**: returns FR41 precedence-resolved values (kwarg → env-var → `.env` → defaults) via `_kernel.context.resolve_config`, not just kwarg-resolved values. Phase-2 may evolve to a structured `EffectiveConfig` dataclass for stronger typing on the consumer side; `provisional` label warns consumers that the return-type may evolve from `dict[str, Any]` to a typed structure (the keys + value types per key will remain `stable`).
 - `AgentEval.__version__` module attribute — `stable` label. PyPI distribution + import metadata convention. Bump per semver per NFR-MAINT-03.
 
 ### Sandbox Protocol Surface

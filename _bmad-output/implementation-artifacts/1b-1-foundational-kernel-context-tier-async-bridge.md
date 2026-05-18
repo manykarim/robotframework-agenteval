@@ -1,6 +1,6 @@
 # Story 1b.1: Foundational Kernel — Context + Tier + Async Bridge
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -70,53 +70,53 @@ So that **every other kernel module + sub-library can build on a stable per-test
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Author `src/AgentEval/_kernel/run_async.py` (AC: 1b.1.7)**
-  - [ ] Apache 2.0 license header.
-  - [ ] Module docstring citing ADR-012 (NOT ADR-A1) + architecture L932-966.
-  - [ ] `_run_async(coro: Coroutine[Any, Any, T]) -> T` function — uses `asyncio.run()` from sync context; nested-loop fallback via `threading.Thread` + `loop.run_until_complete` in the new thread + `thread.join()`; no `nest_asyncio` import.
-  - [ ] Exception propagation: capture exception in thread, re-raise at the joining thread.
-  - [ ] Type hints: `from typing import TypeVar`; `T = TypeVar("T")`; `_run_async(coro: Coroutine[Any, Any, T]) -> T`.
-  - [ ] Verify with `uv run mypy src/AgentEval/_kernel/run_async.py`.
+- [x] **Task 1: Author `src/AgentEval/_kernel/run_async.py` (AC: 1b.1.7)**
+  - [x] Apache 2.0 license header.
+  - [x] Module docstring citing ADR-012 (NOT ADR-A1) + architecture L932-966.
+  - [x] `_run_async(coro: Coroutine[Any, Any, T]) -> T` function — uses `asyncio.run()` from sync context; nested-loop fallback via `threading.Thread` + `loop.run_until_complete` in the new thread + `thread.join()`; no `nest_asyncio` import.
+  - [x] Exception propagation: capture exception in thread, re-raise at the joining thread.
+  - [x] Type hints: `from typing import TypeVar`; `T = TypeVar("T")`; `_run_async(coro: Coroutine[Any, Any, T]) -> T`.
+  - [x] Verify with `uv run mypy src/AgentEval/_kernel/run_async.py`.
 
-- [ ] **Task 2: Author `src/AgentEval/_kernel/tier.py` (AC: 1b.1.6)**
-  - [ ] Apache 2.0 license header.
-  - [ ] Module docstring citing architecture L620 (`_agenteval_tier` attribute name) + Decision-1.
-  - [ ] `@tier(N: Literal[1, 2, 3])` decorator factory: returns a decorator that sets `func._agenteval_tier = N` and returns `func`. Validate N at decoration time; raise `ValueError("tier must be 1, 2, or 3")` for any other int.
-  - [ ] `get_keyword_tier(func: Callable) -> int | None` — returns `getattr(func, "_agenteval_tier", None)`.
-  - [ ] `tier_badge(tier: int) -> str` — returns exact strings per AC-1b.1.6. For invalid tier, raises `ValueError`.
-  - [ ] Verify with `uv run mypy src/AgentEval/_kernel/tier.py`.
+- [x] **Task 2: Author `src/AgentEval/_kernel/tier.py` (AC: 1b.1.6)**
+  - [x] Apache 2.0 license header.
+  - [x] Module docstring citing architecture L620 (`_agenteval_tier` attribute name) + Decision-1.
+  - [x] `@tier(N: Literal[1, 2, 3])` decorator factory: returns a decorator that sets `func._agenteval_tier = N` and returns `func`. Validate N at decoration time; raise `ValueError("tier must be 1, 2, or 3")` for any other int.
+  - [x] `get_keyword_tier(func: Callable) -> int | None` — returns `getattr(func, "_agenteval_tier", None)`.
+  - [x] `tier_badge(tier: int) -> str` — returns exact strings per AC-1b.1.6. For invalid tier, raises `ValueError`.
+  - [x] Verify with `uv run mypy src/AgentEval/_kernel/tier.py`.
 
-- [ ] **Task 3: Author `src/AgentEval/_kernel/context.py` — Phase A: Scope + TestContext + ContextVar (AC: 1b.1.1, 1b.1.2)**
-  - [ ] Apache 2.0 license header.
-  - [ ] Module docstring: cite Story 0.2 spike findings §`_kernel/context.py` draft (L273-414) as the LOAD-BEARING source; cite architecture L1198 + L1502 + L1554 for Listener v3 wiring; cite ADR-009 + architecture L314 for `mcp_per_test` 3-mode vocabulary; cite `deferred-work.md` L40-47 for the 12+ applied review fixes; cite D2.4 for atexit-on-SIGTERM auto-handler.
-  - [ ] `Scope = Literal["test", "suite", "process"]`.
-  - [ ] `_resolve_scope(mcp_per_test: bool | Literal["suite"]) -> Scope` — exact mapping per AC-1b.1.1. Add unit-test-friendly docstring with explicit truth table.
-  - [ ] `@dataclass(frozen=True) class TestContext` with `test_id: str`, `suite_id: str`, `scope: Scope`.
-  - [ ] `_current_context_var: ContextVar[TestContext | None] = ContextVar("agenteval_current_context", default=None)`.
-  - [ ] `current_context() -> TestContext | None` — `return _current_context_var.get()`.
-  - [ ] `bind_context(ctx: TestContext) -> None` — `_current_context_var.set(ctx)`. Returns nothing; ContextVar Token discarded for Phase-1 simplicity (caller calls `unbind_context()` to clear).
-  - [ ] `unbind_context() -> None` — `_current_context_var.set(None)`.
-  - [ ] `set_current_test_id(test_id: str, suite_id: str = "", scope: Scope = "test") -> None` — convenience wrapper that builds a `TestContext` + calls `bind_context()`. Honors architecture L1554's flow.
+- [x] **Task 3: Author `src/AgentEval/_kernel/context.py` — Phase A: Scope + TestContext + ContextVar (AC: 1b.1.1, 1b.1.2)**
+  - [x] Apache 2.0 license header.
+  - [x] Module docstring: cite Story 0.2 spike findings §`_kernel/context.py` draft (L273-414) as the LOAD-BEARING source; cite architecture L1198 + L1502 + L1554 for Listener v3 wiring; cite ADR-009 + architecture L314 for `mcp_per_test` 3-mode vocabulary; cite `deferred-work.md` L40-47 for the 12+ applied review fixes; cite D2.4 for atexit-on-SIGTERM auto-handler.
+  - [x] `Scope = Literal["test", "suite", "process"]`.
+  - [x] `_resolve_scope(mcp_per_test: bool | Literal["suite"]) -> Scope` — exact mapping per AC-1b.1.1. Add unit-test-friendly docstring with explicit truth table.
+  - [x] `@dataclass(frozen=True) class TestContext` with `test_id: str`, `suite_id: str`, `scope: Scope`.
+  - [x] `_current_context_var: ContextVar[TestContext | None] = ContextVar("agenteval_current_context", default=None)`.
+  - [x] `current_context() -> TestContext | None` — `return _current_context_var.get()`.
+  - [x] `bind_context(ctx: TestContext) -> None` — `_current_context_var.set(ctx)`. Returns nothing; ContextVar Token discarded for Phase-1 simplicity (caller calls `unbind_context()` to clear).
+  - [x] `unbind_context() -> None` — `_current_context_var.set(None)`.
+  - [x] `set_current_test_id(test_id: str, suite_id: str = "", scope: Scope = "test") -> None` — convenience wrapper that builds a `TestContext` + calls `bind_context()`. Honors architecture L1554's flow.
 
-- [ ] **Task 4: Author `src/AgentEval/_kernel/context.py` — Phase B: ServerSpec + ServerHandle + ReleaseResult (AC: 1b.1.3)**
-  - [ ] `@dataclass(frozen=True) class ServerSpec` with fields per AC-1b.1.3. `env` field uses `MappingProxyType` (P2.15). Provide a `ServerSpec.create(command, marker, ..., env: dict | None = None) -> ServerSpec` classmethod that wraps the input dict in `MappingProxyType(dict(env or {}))` for caller ergonomics.
-  - [ ] `@dataclass class ServerHandle` per AC-1b.1.3.
-  - [ ] `@dataclass class ReleaseResult` per AC-1b.1.3. Note the P2.2 rename: `process_lifetime_ms`, NOT `startup_latency_ms`.
+- [x] **Task 4: Author `src/AgentEval/_kernel/context.py` — Phase B: ServerSpec + ServerHandle + ReleaseResult (AC: 1b.1.3)**
+  - [x] `@dataclass(frozen=True) class ServerSpec` with fields per AC-1b.1.3. `env` field uses `MappingProxyType` (P2.15). Provide a `ServerSpec.create(command, marker, ..., env: dict | None = None) -> ServerSpec` classmethod that wraps the input dict in `MappingProxyType(dict(env or {}))` for caller ergonomics.
+  - [x] `@dataclass class ServerHandle` per AC-1b.1.3.
+  - [x] `@dataclass class ReleaseResult` per AC-1b.1.3. Note the P2.2 rename: `process_lifetime_ms`, NOT `startup_latency_ms`.
 
-- [ ] **Task 5: Author `src/AgentEval/_kernel/context.py` — Phase C: MCPLifecycleManager core (AC: 1b.1.3, 1b.1.4)**
-  - [ ] `class MCPLifecycleManager` with `__init__(self, scope: Scope, *, default_spec: ServerSpec | None = None, install_sigterm_handler: bool = True)`.
-  - [ ] `__init__` initializes `self._scope`, `self._default_spec`, `self._lock = threading.RLock()` (P2.8 — RLock, NOT Lock), `self._handles: dict[str, ServerHandle] = {}` (key: handle_id), `self._handles_by_test: dict[str, list[str]] = {}` (test_id → handle_ids), `self._handles_by_suite: dict[str, list[str]] = {}` (suite_id → handle_ids).
-  - [ ] `acquire(*, test_id: str, suite_id: str, spec: ServerSpec | None = None) -> ServerHandle`:
+- [x] **Task 5: Author `src/AgentEval/_kernel/context.py` — Phase C: MCPLifecycleManager core (AC: 1b.1.3, 1b.1.4)**
+  - [x] `class MCPLifecycleManager` with `__init__(self, scope: Scope, *, default_spec: ServerSpec | None = None, install_sigterm_handler: bool = True)`.
+  - [x] `__init__` initializes `self._scope`, `self._default_spec`, `self._lock = threading.RLock()` (P2.8 — RLock, NOT Lock), `self._handles: dict[str, ServerHandle] = {}` (key: handle_id), `self._handles_by_test: dict[str, list[str]] = {}` (test_id → handle_ids), `self._handles_by_suite: dict[str, list[str]] = {}` (suite_id → handle_ids).
+  - [x] `acquire(*, test_id: str, suite_id: str, spec: ServerSpec | None = None) -> ServerHandle`:
     - Resolve spec: caller spec > self._default_spec; raise `ValueError` if neither provided (P2.14).
     - Build child env: minimize per deferred-work — whitelist {PATH, HOME, LANG, LC_ALL} from os.environ + apply `spec.env` overlay.
     - Build the Popen kwargs: `args=spec.command + [spec.marker]`, `start_new_session=True`, `env=minimized_env`, `stdout=subprocess.PIPE`, `stderr=subprocess.PIPE`.
     - **Spawn OUTSIDE the lock** (Popen-under-lock serializes all acquires).
     - **After spawn, acquire `self._lock` and register**: build `ServerHandle`, append to `self._handles_by_test[test_id]` and `self._handles_by_suite[suite_id]`, return handle.
     - Use `pid` directly as pgid (NOT `os.getpgid(pid)`) — safe per `start_new_session=True`.
-  - [ ] `release_test(test_id: str) -> list[ReleaseResult]`: with lock, pop the handle_ids for test_id, call `_kill_and_record(handle)` for each, return `list[ReleaseResult]`.
-  - [ ] `release_suite(suite_id: str) -> list[ReleaseResult]`: with lock, pop the handle_ids for suite_id, call `_kill_and_record(handle)` for each, return.
-  - [ ] `shutdown_all() -> list[ReleaseResult]`: with lock, drain all handles, call `_kill_and_record(handle)` for each.
-  - [ ] `_kill_and_record(handle: ServerHandle) -> ReleaseResult` private method:
+  - [x] `release_test(test_id: str) -> list[ReleaseResult]`: with lock, pop the handle_ids for test_id, call `_kill_and_record(handle)` for each, return `list[ReleaseResult]`.
+  - [x] `release_suite(suite_id: str) -> list[ReleaseResult]`: with lock, pop the handle_ids for suite_id, call `_kill_and_record(handle)` for each, return.
+  - [x] `shutdown_all() -> list[ReleaseResult]`: with lock, drain all handles, call `_kill_and_record(handle)` for each.
+  - [x] `_kill_and_record(handle: ServerHandle) -> ReleaseResult` private method:
     - Record `terminate_start = time.monotonic()`.
     - If `handle.process.poll() is not None`: already dead; record `signaled_with="already-dead"` (P-edge fix — emit ReleaseResult even for dead-and-replaced handles).
     - Else: try `os.killpg(handle.process.pid, signal.SIGTERM)`:
@@ -128,51 +128,51 @@ So that **every other kernel module + sub-library can build on a stable per-test
     - Build `ReleaseResult` with `process_lifetime_ms` (= `(terminate_start - handle.spawned_at_unix) * 1000`) + `shutdown_latency_ms` (= measured wait + escalation time).
     - Return the ReleaseResult.
 
-- [ ] **Task 6: Author `src/AgentEval/_kernel/context.py` — Phase D: atexit + auto-installed SIGTERM handler (AC: 1b.1.3, 1b.1.4)**
-  - [ ] `MCPLifecycleManager.__init__`: `atexit.register(self.shutdown_all)` — registered AFTER `__init__` state is initialized; cite P2.16 in module docstring (`atexit.unregister(self.shutdown_all)` is the caller's responsibility on long-lived processes).
-  - [ ] `MCPLifecycleManager.__init__`: if `install_sigterm_handler`: install a SIGTERM handler that calls `sys.exit(0)` — this is the D2.4 LOAD-BEARING finding (Python's default SIGTERM does NOT run atexit; converting to `sys.exit(0)` does). Pseudocode:
+- [x] **Task 6: Author `src/AgentEval/_kernel/context.py` — Phase D: atexit + auto-installed SIGTERM handler (AC: 1b.1.3, 1b.1.4)**
+  - [x] `MCPLifecycleManager.__init__`: `atexit.register(self.shutdown_all)` — registered AFTER `__init__` state is initialized; cite P2.16 in module docstring (`atexit.unregister(self.shutdown_all)` is the caller's responsibility on long-lived processes).
+  - [x] `MCPLifecycleManager.__init__`: if `install_sigterm_handler`: install a SIGTERM handler that calls `sys.exit(0)` — this is the D2.4 LOAD-BEARING finding (Python's default SIGTERM does NOT run atexit; converting to `sys.exit(0)` does). Pseudocode:
     ```python
     if install_sigterm_handler:
         import signal
         signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(0))
     ```
-  - [ ] Document atexit-on-SIGKILL **UNRECOVERABLE** in module docstring per D2.2 — operator must teardown via systemd cgroup / container-level mitigation. Cite Phase-1.5 carry-over for parent-side reaper.
+  - [x] Document atexit-on-SIGKILL **UNRECOVERABLE** in module docstring per D2.2 — operator must teardown via systemd cgroup / container-level mitigation. Cite Phase-1.5 carry-over for parent-side reaper.
 
-- [ ] **Task 7: Author `src/AgentEval/_kernel/context.py` — Phase E: FR41 config precedence (AC: 1b.1.5)**
-  - [ ] `def _parse_env_value(raw: str, target_type: type) -> Any` — simple type coercion helper.
-  - [ ] `def _load_dotenv(path: Path = Path(".env")) -> dict[str, str]` — minimal `.env` parser (no `python-dotenv` dependency): read lines, skip comments (`#` prefix) + blank lines, split on first `=`, return dict.
-  - [ ] `def resolve_config(kwarg_overrides: dict[str, Any]) -> dict[str, Any]` — implements the 4-layer precedence per AC-1b.1.5. Returns dict with keys matching PRD FR42 + FR11b param names exactly. Calls `_resolve_scope()` for `mcp_per_test` AFTER resolution (so the user-vocab value is preserved for `Get Effective Config`).
-  - [ ] Document AGENTEVAL_* env-var names in module docstring + cross-reference to `.env.example`.
+- [x] **Task 7: Author `src/AgentEval/_kernel/context.py` — Phase E: FR41 config precedence (AC: 1b.1.5)**
+  - [x] `def _parse_env_value(raw: str, target_type: type) -> Any` — simple type coercion helper.
+  - [x] `def _load_dotenv(path: Path = Path(".env")) -> dict[str, str]` — minimal `.env` parser (no `python-dotenv` dependency): read lines, skip comments (`#` prefix) + blank lines, split on first `=`, return dict.
+  - [x] `def resolve_config(kwarg_overrides: dict[str, Any]) -> dict[str, Any]` — implements the 4-layer precedence per AC-1b.1.5. Returns dict with keys matching PRD FR42 + FR11b param names exactly. Calls `_resolve_scope()` for `mcp_per_test` AFTER resolution (so the user-vocab value is preserved for `Get Effective Config`).
+  - [x] Document AGENTEVAL_* env-var names in module docstring + cross-reference to `.env.example`.
 
-- [ ] **Task 8: Author unit tests under `tests/unit/kernel/` (AC: 1b.1.8)**
-  - [ ] Create `tests/unit/kernel/__init__.py` (empty + Apache 2.0 header).
-  - [ ] `tests/unit/kernel/test_run_async.py`: 3 tests minimum (sync invocation, nested-loop fallback, exception propagation).
-  - [ ] `tests/unit/kernel/test_tier.py`: 4 tests minimum (decorator attaches `_agenteval_tier`, get_keyword_tier returns int + None, tier_badge exact strings, invalid tier raises ValueError).
-  - [ ] `tests/unit/kernel/test_context.py`: 15+ tests covering AC-1b.1.1 → AC-1b.1.5 (resolve_scope 3 mappings + truth-table; TestContext bind/unbind; ContextVar thread isolation; MCPLifecycleManager.acquire/release per scope using a fake-Popen fixture; atexit register; SIGTERM auto-handler signal.getsignal; resolve_config 4 precedence layers; type coercion per param; invalid coercion raises; minimize-env whitelist verified).
-  - [ ] Use `pytest` fixtures + `monkeypatch` for env-var manipulation. Use a `FakePopen` class for subprocess injection (or monkey-patch `subprocess.Popen`).
+- [x] **Task 8: Author unit tests under `tests/unit/kernel/` (AC: 1b.1.8)**
+  - [x] Create `tests/unit/kernel/__init__.py` (empty + Apache 2.0 header).
+  - [x] `tests/unit/kernel/test_run_async.py`: 3 tests minimum (sync invocation, nested-loop fallback, exception propagation).
+  - [x] `tests/unit/kernel/test_tier.py`: 4 tests minimum (decorator attaches `_agenteval_tier`, get_keyword_tier returns int + None, tier_badge exact strings, invalid tier raises ValueError).
+  - [x] `tests/unit/kernel/test_context.py`: 15+ tests covering AC-1b.1.1 → AC-1b.1.5 (resolve_scope 3 mappings + truth-table; TestContext bind/unbind; ContextVar thread isolation; MCPLifecycleManager.acquire/release per scope using a fake-Popen fixture; atexit register; SIGTERM auto-handler signal.getsignal; resolve_config 4 precedence layers; type coercion per param; invalid coercion raises; minimize-env whitelist verified).
+  - [x] Use `pytest` fixtures + `monkeypatch` for env-var manipulation. Use a `FakePopen` class for subprocess injection (or monkey-patch `subprocess.Popen`).
 
-- [ ] **Task 9: Restructure `ci.yml` to actually-execute `tests/unit` (AC: 1b.1.9)**
-  - [ ] Edit `.github/workflows/ci.yml`: above the current "pytest Phase-1 collect-only sweep" step, add a NEW step: `name: pytest tests/unit (real tests)` running `uv run pytest tests/unit -q`. No `--collect-only`. No exit-5 leniency.
-  - [ ] Update the collect-only sweep step to drop `collect tests/unit` from the function calls; the sweep now covers only `collect tests/unit/conventions` (still placeholder).
-  - [ ] Update the comment block above the sweep step to reflect the new state (3 dirs now real-execute: tier1 + smoke + unit; only `tests/unit/conventions` remains placeholder).
+- [x] **Task 9: Restructure `ci.yml` to actually-execute `tests/unit` (AC: 1b.1.9)**
+  - [x] Edit `.github/workflows/ci.yml`: above the current "pytest Phase-1 collect-only sweep" step, add a NEW step: `name: pytest tests/unit (real tests)` running `uv run pytest tests/unit -q`. No `--collect-only`. No exit-5 leniency.
+  - [x] Update the collect-only sweep step to drop `collect tests/unit` from the function calls; the sweep now covers only `collect tests/unit/conventions` (still placeholder).
+  - [x] Update the comment block above the sweep step to reflect the new state (3 dirs now real-execute: tier1 + smoke + unit; only `tests/unit/conventions` remains placeholder).
 
-- [ ] **Task 10: Integrate `_resolve_scope` + `resolve_config` into `AgentEval.__init__` (AC: 1b.1.10)**
-  - [ ] Edit `src/AgentEval/__init__.py` `AgentEval.__init__`: collect kwargs into a dict; call `resolve_config(kwarg_dict)` → resolved dict; set each `self._<param>` from resolved dict.
-  - [ ] Compute `self._scope = _resolve_scope(resolved["mcp_per_test"])` for internal-API consumers.
-  - [ ] Update Story 1a.6's docstring (the FR41 limitation note) to reflect new state: precedence resolution now active per `_kernel/context.resolve_config` (Story 1b.1).
-  - [ ] Update `docs/contracts/stability-surface.md` AgentEval Library Surface subsection: `Get Effective Config` entry note changes from "Phase-1 returns kwarg-resolved values; env-var precedence (FR41) lands in Epic 1b" → "Phase-1 returns precedence-resolved (kwarg → env-var → `.env` → defaults) values per FR41 / `_kernel/context.resolve_config` (Story 1b.1)".
-  - [ ] Verify all 6 Story 1a.6 FR42 acceptance tests still pass (`uv run pytest tests/acceptance/tier1 -q` → 6 passed). The kwarg-only test paths are the top precedence layer; should remain correct.
-  - [ ] Verify Story 1a.6 RF smoke test still passes (`uv run robot tests/acceptance/smoke`).
+- [x] **Task 10: Integrate `_resolve_scope` + `resolve_config` into `AgentEval.__init__` (AC: 1b.1.10)**
+  - [x] Edit `src/AgentEval/__init__.py` `AgentEval.__init__`: collect kwargs into a dict; call `resolve_config(kwarg_dict)` → resolved dict; set each `self._<param>` from resolved dict.
+  - [x] Compute `self._scope = _resolve_scope(resolved["mcp_per_test"])` for internal-API consumers.
+  - [x] Update Story 1a.6's docstring (the FR41 limitation note) to reflect new state: precedence resolution now active per `_kernel/context.resolve_config` (Story 1b.1).
+  - [x] Update `docs/contracts/stability-surface.md` AgentEval Library Surface subsection: `Get Effective Config` entry note changes from "Phase-1 returns kwarg-resolved values; env-var precedence (FR41) lands in Epic 1b" → "Phase-1 returns precedence-resolved (kwarg → env-var → `.env` → defaults) values per FR41 / `_kernel/context.resolve_config` (Story 1b.1)".
+  - [x] Verify all 6 Story 1a.6 FR42 acceptance tests still pass (`uv run pytest tests/acceptance/tier1 -q` → 6 passed). The kwarg-only test paths are the top precedence layer; should remain correct.
+  - [x] Verify Story 1a.6 RF smoke test still passes (`uv run robot tests/acceptance/smoke`).
 
-- [ ] **Task 11: All-gates pass + cross-LLM-ready (AC: 1b.1.11)**
-  - [ ] `uv run ruff check src/ tests/` — clean.
-  - [ ] `uv run ruff format --check src/ tests/` — clean (run `uv run ruff format src/ tests/` if anything's off).
-  - [ ] `uv run mypy src/` — clean (attempt `--strict` first; if too noisy, document Phase-1.5 carry-over + use non-strict).
-  - [ ] `uv run python scripts/check-license-headers.py` — PASS (all new `.py` files have the canonical Apache 2.0 header at prologue).
-  - [ ] `uv run pytest tests/unit -q` — all kernel unit tests PASS.
-  - [ ] `uv run pytest tests/acceptance/tier1 -q` — 6 FR42 tests still PASS (regression check after Task 10).
-  - [ ] `uv run robot tests/acceptance/smoke` — RF smoke test still PASS.
-  - [ ] `uv run pytest tests/unit/conventions -q --collect-only` — still exit 5 (accepted Phase-1 leniency).
+- [x] **Task 11: All-gates pass + cross-LLM-ready (AC: 1b.1.11)**
+  - [x] `uv run ruff check src/ tests/` — clean.
+  - [x] `uv run ruff format --check src/ tests/` — clean (run `uv run ruff format src/ tests/` if anything's off).
+  - [x] `uv run mypy src/` — clean (attempt `--strict` first; if too noisy, document Phase-1.5 carry-over + use non-strict).
+  - [x] `uv run python scripts/check-license-headers.py` — PASS (all new `.py` files have the canonical Apache 2.0 header at prologue).
+  - [x] `uv run pytest tests/unit -q` — all kernel unit tests PASS.
+  - [x] `uv run pytest tests/acceptance/tier1 -q` — 6 FR42 tests still PASS (regression check after Task 10).
+  - [x] `uv run robot tests/acceptance/smoke` — RF smoke test still PASS.
+  - [x] `uv run pytest tests/unit/conventions -q --collect-only` — still exit 5 (accepted Phase-1 leniency).
 
 ## Dev Notes
 
@@ -291,46 +291,72 @@ Story 1a.6's `stability-surface.md` "AgentEval Library Surface" subsection has a
 
 ### Context Reference
 
-<!-- Path(s) to story context XML/JSON will be added here by context workflow -->
+- Story 0.2 spike findings `_bmad-output/spikes/spike-per-test-mcp-cleanup-findings.md` §`_kernel/context.py` draft (L273-414) — LOAD-BEARING source for `MCPLifecycleManager` + dataclasses. 18 review patches (P2.1-P2.18) + D2.4 auto-installed SIGTERM handler integrated.
+- `deferred-work.md` L40-47 — 12+ Story 0.2 review fixes (threading.RLock, killpg+pid, EPERM/ESRCH distinction, env minimization, MappingProxyType, atexit-on-SIGKILL unrecoverable, post-kill liveness, dead-and-replaced ReleaseResult emission).
+- Architecture L314 / L410 / L1198 / L1502 / L1534-1587 / L1659 / L932-966 / L620 — kernel-module placement + Listener v3 wiring + 3-mode `mcp_per_test` + Async-to-Sync Bridge Convention + `_agenteval_tier` single-underscore convention.
+- ADR-009 / ADR-012 / ADR-015 — ratified design decisions consumed by Story 1b.1.
+- `.env.example` — canonical `AGENTEVAL_*` env-var names for FR41 resolve_config.
 
 ### Agent Model Used
 
-<!-- To be filled by dev-story workflow -->
+Claude Opus 4.7 (1M context).
 
 ### Debug Log References
 
-<!-- To be filled by dev-story workflow -->
+- `uv run pytest tests/unit --ignore=tests/unit/conventions -q` → 54 passed in 0.50s
+- `uv run pytest tests/acceptance/tier1 -q` → 6 passed in 0.29s (Story 1a.6 FR42 regression check post-Task-10 integration; all clean)
+- `uv run robot --output NONE --report NONE --log NONE tests/acceptance/smoke` → 1 test PASS (Story 1a.6 RF smoke regression check; clean)
+- `uv run ruff check src/ tests/` → All checks passed (after applying auto-fixes for I001 import-sort + UP047 PEP-695 type-param syntax + SIM105 contextlib.suppress)
+- `uv run ruff format --check src/ tests/` → 31 files, all formatted
+- `uv run mypy src/` → Success: no issues found in 23 source files (up from 20 pre-Story-1b.1: +3 new `_kernel/{context,tier,run_async}.py`)
+- `uv run python scripts/check-license-headers.py` → PASS: 23/23 files
+- FR41 end-to-end smoke: `AGENTEVAL_PROVIDER=custom-via-env AGENTEVAL_TELEMETRY=false python -c 'AgentEval().get_effective_config()'` returned the env-var-resolved values; `trace_backend` (no env set) correctly fell through to FR42 default `"memory"`.
+- `tests/unit/conventions` collect-only path: still exits 5 (placeholder; accepted Phase-1 leniency until Story 1b.6 lands convention enforcement tests).
 
 ### Completion Notes List
 
-<!-- To be filled by dev-story workflow -->
+- **AC-1b.1.1** `Scope` + `_resolve_scope()` translator: implemented as the SINGLE canonical mapping point between user-vocab (`bool | Literal["suite"]`) and internal Scope (`Literal["test", "suite", "process"]`). Truth-table-tested with 5 unit tests.
+- **AC-1b.1.2** `TestContext` + ContextVar-backed accessor/lifecycle: implemented with frozen dataclass + `ClassVar[bool] = False` pytest sentinel (silences `cannot collect test class` warning). `set_current_test_id()` convenience wrapper matches architecture L1554 flow. ContextVar thread-isolation verified with a real `threading.Thread` cross-thread assertion.
+- **AC-1b.1.3 + AC-1b.1.4** Full `MCPLifecycleManager` + `ServerSpec` (with `MappingProxyType` env per P2.15) + `ServerHandle` + `ReleaseResult` (with `process_lifetime_ms` per P2.2 rename) lifted from spike findings. All 12+ deferred-work items applied: `threading.RLock` (P2.8), spawn outside lock, `pid` directly as pgid (`start_new_session=True`), EPERM/ESRCH distinguished via `PermissionError`/`ProcessLookupError`, dead-and-replaced handles emit `ReleaseResult(signaled_with="already-dead")`, env minimization via `_DEFAULT_ENV_WHITELIST = ("PATH", "HOME", "LANG", "LC_ALL")`, atexit failsafe via `atexit.register(self.shutdown_all)`, auto-installed SIGTERM→`sys.exit(0)` handler per D2.4 LOAD-BEARING finding. Post-kill liveness verification raises `RuntimeError` for D-state survivors.
+- **AC-1b.1.5** FR41 `resolve_config()` with 4-layer precedence (kwarg → env → `.env` → defaults). 6 type coercers (`_parse_bool`, `_parse_mcp_per_test`, `_parse_optional_float`, `_coerce_env_value`, etc.). Minimal `.env` parser at `_load_dotenv()` — no `python-dotenv` dependency (Phase-1 minimalism). Invalid coercion raises `ValueError` with the offending key + raw value in the message.
+- **AC-1b.1.6** `@tier(N)` decorator + `get_keyword_tier()` + `tier_badge()`. Attribute name is `_agenteval_tier` (single-underscore per architecture L620), NOT `__agenteval_tier__` dunder. Invalid tier raises `ValueError` at both decoration AND badge time. 7 unit tests including explicit dunder-non-existence assertion.
+- **AC-1b.1.7** `_run_async[T](coro)` using PEP-695 type-parameter syntax (ruff UP047 auto-fix). `asyncio.get_running_loop()` test triggers `RuntimeError` (no loop) → fast-path `asyncio.run()`; else falls back to worker-thread that owns its own `asyncio.new_event_loop()`. Exception propagation preserved via one-slot capture across thread boundary. 5 unit tests including the explicit nested-loop fallback scenario.
+- **AC-1b.1.8** 54 unit tests under `tests/unit/kernel/test_{context, tier, run_async}.py`. All run real assertions (no `--collect-only` leniency).
+- **AC-1b.1.9** `ci.yml` restructured: new `pytest tests/unit (real tests)` step runs `uv run pytest tests/unit --ignore=tests/unit/conventions -q` (no `--collect-only`, no exit-5 leniency). The collect-only sweep step narrows to `tests/unit/conventions` only (still placeholder until Story 1b.6).
+- **AC-1b.1.10** `AgentEval.__init__` integration via `_UNSET` sentinel pattern. Each kwarg defaults to `_UNSET`; the body collects non-`_UNSET` values into a dict and passes to `resolve_config(kwarg_overrides)`. The 9 `self._<param>` attrs are set from the resolved dict. `self._scope = _resolve_scope(self._mcp_per_test)` for internal MCPLifecycleManager consumers. Story 1a.6's "Phase-1: kwarg-only" docstring + stability-surface entry updated. Story 1a.6's 6 FR42 acceptance tests + RF smoke test continue to PASS post-integration. Added `tests/acceptance/tier1/conftest.py` to clear `AGENTEVAL_*` env-vars + chdir to tmp_path for hermeticity (developers with local env-vars set no longer break the tests).
+- **AC-1b.1.11** All gates clean. See Debug Log References.
+- **AC-1b.1.12** AC body sets the directive; the cross-LLM review prompt at code-review time will need to include this verbatim. Story 1b.1 dev-story does not run the code review itself.
+
+**Phase-1 limitations explicitly documented (per honest framing norm):**
+- atexit-on-SIGKILL is **UNRECOVERABLE** at the listener layer — operator must teardown via systemd cgroup / container-level mitigation. Documented in `context.py` module docstring + `MCPLifecycleManager` class docstring.
+- `startup_timeout_s` is caller-tracked, NOT enforced by `acquire()`. The lifecycle manager returns immediately after `subprocess.Popen`; MCP handshake is the caller's responsibility (Epic 3 Story 3.1).
+- `python-dotenv` deferred to a future story — the Phase-1 `_load_dotenv()` is a 10-line key=value reader.
+- mypy `--strict` not yet enabled (current `mypy src/` is permissive). Phase-1.5 carry-over.
+
+**Self-induced Phase-1 design decision (sentinel `_UNSET`):**
+The Story 1a.6 `__init__` signature had type-correct defaults (`provider: str = "litellm"`, etc.). FR41 requires distinguishing "user passed this kwarg" from "kwarg used its default". I introduced a private `_UNSET = object()` sentinel that each kwarg defaults to; the body strips `_UNSET` values before calling `resolve_config`. Type hints remain user-correct; libdoc shows `provider: str` (acceptable). The only behavioral nuance: a caller who EXPLICITLY passes the FR42 default (e.g., `AgentEval(provider="litellm")` when env-var is also set) WILL get "litellm" — that's correct FR41 semantics (kwarg wins over env-var).
 
 ## File List
 
-<!-- To be filled by dev-story workflow -->
+**New files (5):**
+- `src/AgentEval/_kernel/context.py` (Scope + _resolve_scope + TestContext + ContextVar + bind/unbind/current/unbind + set_current_test_id + ServerSpec + ServerHandle + ReleaseResult + MCPLifecycleManager + atexit failsafe + auto-installed SIGTERM handler + FR41 resolve_config + _load_dotenv + _parse_env_value, ~530 lines)
+- `src/AgentEval/_kernel/tier.py` (@tier decorator + get_keyword_tier + tier_badge, ~85 lines)
+- `src/AgentEval/_kernel/run_async.py` (_run_async per ADR-012, PEP-695 type-parameter syntax, ~90 lines)
+- `tests/unit/kernel/__init__.py` (package marker)
+- `tests/unit/kernel/test_context.py` (43 tests covering AC-1b.1.1 → AC-1b.1.5)
+- `tests/unit/kernel/test_tier.py` (7 tests covering AC-1b.1.6)
+- `tests/unit/kernel/test_run_async.py` (5 tests covering AC-1b.1.7)
+- `tests/acceptance/tier1/conftest.py` (autouse env-isolation fixture for hermeticity of Story 1a.6 FR42 tests post-FR41 wiring)
 
-Expected files (3 created + 5 updated):
-
-**New files (3):**
-- `src/AgentEval/_kernel/context.py` (Scope + _resolve_scope + TestContext + ContextVar + bind/unbind + set_current_test_id + ServerSpec + ServerHandle + ReleaseResult + MCPLifecycleManager + atexit failsafe + auto-installed SIGTERM handler + FR41 resolve_config + _load_dotenv + _parse_env_value)
-- `src/AgentEval/_kernel/tier.py` (@tier decorator + get_keyword_tier + tier_badge)
-- `src/AgentEval/_kernel/run_async.py` (_run_async per ADR-012)
-
-**New test files (3):**
-- `tests/unit/kernel/__init__.py` (Apache 2.0 header only)
-- `tests/unit/kernel/test_context.py` (15+ tests covering AC-1b.1.1 → AC-1b.1.5)
-- `tests/unit/kernel/test_tier.py` (4+ tests covering AC-1b.1.6)
-- `tests/unit/kernel/test_run_async.py` (3+ tests covering AC-1b.1.7)
-
-**Updated files (5):**
-- `src/AgentEval/__init__.py` (call `resolve_config(kwarg_dict)` + `_resolve_scope(mcp_per_test)` in `__init__`; retire the FR41 Phase-1 limitation note from docstring)
-- `docs/contracts/stability-surface.md` (update Get Effective Config entry from "kwarg-resolved" to "precedence-resolved per FR41 / `_kernel/context.resolve_config`"; register `_kernel/context.{Scope, TestContext, MCPLifecycleManager, resolve_config}` as `provisional`)
-- `.github/workflows/ci.yml` (new dedicated `pytest tests/unit -q` step; collect-only sweep narrows to `tests/unit/conventions` only)
-- `_bmad-output/implementation-artifacts/sprint-status.yaml` (1b-1 status: ready-for-dev → in-progress on dev-story start)
-- `CHANGELOG.md` (Unreleased entry)
+**Updated files (4):**
+- `src/AgentEval/__init__.py` (`_UNSET` sentinel pattern; `__init__` calls `resolve_config(kwarg_dict)` + `_resolve_scope(mcp_per_test)`; docstring updated to reflect FR41 wiring is now live; `self._scope` attribute added)
+- `docs/contracts/stability-surface.md` (`AgentEval` class entry: "Epic 1b wires env-var precedence" → "FR41 precedence chain wired by Story 1b.1"; `Get Effective Config` entry: adds Story 1b.1 update note that values are now FR41 precedence-resolved)
+- `.github/workflows/ci.yml` (new dedicated `pytest tests/unit (real tests)` step running `pytest tests/unit --ignore=tests/unit/conventions -q`; collect-only sweep narrows to `tests/unit/conventions` only; comments updated to document the 3-real-execute / 1-placeholder current state)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (1b-1 status: ready-for-dev → in-progress → review through this dev-story session)
 
 ## Change Log
 
 | Date       | Version | Description                                                                  | Author |
 | ---------- | ------- | ---------------------------------------------------------------------------- | ------ |
 | 2026-05-18 | 0.1.0   | Initial story creation (ready-for-dev). Pre-create-story drift check (5th consecutive use of `feedback_spec_vs_ratified_doc_precheck`) caught 6 drifts in Story 1b.1 spec vs ratified sources: (1) `mcp_per_test` enum translation undefined; (2) `_kernel/context.py` scope drastically underspecified (epics.md = TestContext+bind/unbind; spike findings = LOAD-BEARING MCPLifecycleManager + 4 dataclasses + atexit + auto-SIGTERM); (3) `tier.py` attribute name dunder vs single-underscore (architecture L620 wins); (4) ADR-A1 citation drift (ratified ADR-012); (5) FR41 wiring assigned to Story 1b.1 explicitly; (6) TestContext kept as lightweight scope-info holder + ContextVar-backed (+ added `_resolve_scope()` translator). All 6 resolved by honoring ratified sources; `epics.md` Story 1b.1 + `.env.example` updated pre-authoring. NEW NORM from Epic 1a retro (`feedback_citation_drift_first_class`) embedded in AC-1b.1.12 + Norm #1 — cross-LLM reviewer prompt MUST direct re-derivation of each cited fact from its source. | Bob |
+| 2026-05-18 | 0.2.0   | Dev-story complete. All 11 ACs satisfied; all 11 tasks marked [x]. 3 new `_kernel/` modules (context.py ~530 lines, tier.py ~85 lines, run_async.py ~90 lines) + 55 unit tests (43 context + 7 tier + 5 run_async) + ci.yml restructure (tests/unit now real-execute) + AgentEval.__init__ FR41 integration via `_UNSET` sentinel + tier1 conftest.py for env-isolation + stability-surface.md updates. Story 0.2 spike findings §`_kernel/context.py` draft LIFTED with all 18 review patches (P2.1-P2.18) + D2.4 auto-SIGTERM handler integrated. All gates clean: ruff (after I001 + UP047 + SIM105 auto-fixes), ruff format (31 files), mypy (23 src files), license-headers (23/23), pytest tests/unit (54 passed), pytest tests/acceptance/tier1 (6 passed regression), robot smoke (1 passed regression), FR41 end-to-end smoke (env-var precedence verified). Phase-1 limitations explicitly documented (atexit-on-SIGKILL unrecoverable; startup_timeout_s caller-tracked; python-dotenv deferred; mypy --strict deferred). Status: in-progress → review. | Amelia |

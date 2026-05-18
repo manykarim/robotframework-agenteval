@@ -14,8 +14,13 @@
 
 """robotframework-agenteval — Robot Framework library for evaluating AI coding agents.
 
-Phase 1 surface (Story 1a.6): the AgentEval RF Library class with FR42 + FR11b
-defaults wired into __init__, plus the `Get Effective Config` keyword.
+Phase 1 surface:
+- Story 1a.6 wired the AgentEval RF Library class with FR42 + FR11b defaults
+  + the `Get Effective Config` keyword.
+- Story 1b.1 integrated FR41 config precedence (kwarg → env-var → `.env` →
+  defaults) via `_kernel.context.resolve_config`. `Get Effective Config` now
+  returns precedence-resolved values, not just kwarg-resolved values.
+
 Sub-libraries (coding_agent, mcp, telemetry, metrics, stats, judge, ...) land in
 Epic 1b onward.
 
@@ -44,17 +49,25 @@ from typing import Any, Literal
 
 from robot.api.deco import keyword
 
+from AgentEval._kernel.context import _resolve_scope, resolve_config
+
 __version__ = "0.0.1"
 __all__: list[str] = ["AgentEval"]
+
+
+# Sentinel: distinguishes "user passed this kwarg" from "kwarg defaulted to
+# the FR42 value". Needed so FR41's env-var/.env layers can fire when the
+# user did NOT pass the kwarg. Story 1b.1 introduced this for FR41 wiring.
+_UNSET: Any = object()
 
 
 class AgentEval:
     """Robot Framework library for evaluating AI coding agents.
 
-    Wires the 9 PRD FR42 + FR11b defaults into a single Library entry point.
-    Phase-1 scope: kwarg-only config resolution + `Get Effective Config` accessor.
-    Env-var precedence (FR41 — kwarg > env var > .env > defaults) lands in Epic
-    1b `_kernel/context.py`.
+    Wires the 9 PRD FR42 + FR11b defaults into a single Library entry point
+    + the FR41 precedence chain (kwarg → env-var → `.env` → defaults) via
+    `_kernel.context.resolve_config` (Story 1b.1). `Get Effective Config`
+    returns the precedence-resolved values.
 
     Args:
         provider: Provider plugin name resolved via `agenteval.providers`
@@ -94,11 +107,13 @@ class AgentEval:
             value). Sibling to `max_cost_usd`; catches slow MCP-server startup
             compounded across trials.
 
-    Phase-1 limitation: env-var precedence (FR41) is wired by Epic 1b
-    `_kernel/context.py`. This class accepts kwarg-only config; defaults come
-    from the parameter defaults below. `.env.example` documents the
-    Phase-1.5+ `AGENTEVAL_*` env-var names per architecture §Configuration
-    Parameter Naming.
+    FR41 precedence behavior (Story 1b.1):
+        Each `__init__` parameter defaults to a private sentinel; if the caller
+        does NOT pass it, the value falls through to `AGENTEVAL_*` env-vars,
+        then to a `.env` file in cwd, then to the FR42 + FR11b defaults
+        documented in this docstring. Callers who want to force a value
+        explicitly (even when an env-var is set) pass that value as a kwarg.
+        `.env.example` documents the canonical `AGENTEVAL_*` env-var names.
 
     References:
         - PRD FR42 (defaults) + FR43 (validate gate) + FR44 (telemetry disable)
@@ -115,25 +130,49 @@ class AgentEval:
     def __init__(
         self,
         *,
-        provider: str = "litellm",
-        telemetry: bool = True,
-        trace_backend: str = "memory",
-        allow_validate_operator: bool = False,
-        default_temperature: float = 0.0,
-        mcp_per_test: bool | Literal["suite"] = True,
-        allow_external_mcp_blind: bool = False,
-        max_cost_usd: float = 5.00,
-        max_runtime_seconds: float | None = None,
+        provider: str = _UNSET,
+        telemetry: bool = _UNSET,
+        trace_backend: str = _UNSET,
+        allow_validate_operator: bool = _UNSET,
+        default_temperature: float = _UNSET,
+        mcp_per_test: bool | Literal["suite"] = _UNSET,
+        allow_external_mcp_blind: bool = _UNSET,
+        max_cost_usd: float = _UNSET,
+        max_runtime_seconds: float | None = _UNSET,
     ) -> None:
-        self._provider = provider
-        self._telemetry = telemetry
-        self._trace_backend = trace_backend
-        self._allow_validate_operator = allow_validate_operator
-        self._default_temperature = default_temperature
-        self._mcp_per_test = mcp_per_test
-        self._allow_external_mcp_blind = allow_external_mcp_blind
-        self._max_cost_usd = max_cost_usd
-        self._max_runtime_seconds = max_runtime_seconds
+        # Story 1b.1 FR41 wiring: strip _UNSET sentinels, pass the remainder
+        # to resolve_config() so the env-var / .env / defaults layers can fire
+        # for kwargs the caller did NOT pass. Explicit None IS a user-passed
+        # value (e.g., max_runtime_seconds=None) and takes precedence over
+        # env-vars.
+        kwarg_overrides: dict[str, Any] = {
+            "provider": provider,
+            "telemetry": telemetry,
+            "trace_backend": trace_backend,
+            "allow_validate_operator": allow_validate_operator,
+            "default_temperature": default_temperature,
+            "mcp_per_test": mcp_per_test,
+            "allow_external_mcp_blind": allow_external_mcp_blind,
+            "max_cost_usd": max_cost_usd,
+            "max_runtime_seconds": max_runtime_seconds,
+        }
+        kwarg_overrides = {k: v for k, v in kwarg_overrides.items() if v is not _UNSET}
+        resolved = resolve_config(kwarg_overrides)
+
+        self._provider = resolved["provider"]
+        self._telemetry = resolved["telemetry"]
+        self._trace_backend = resolved["trace_backend"]
+        self._allow_validate_operator = resolved["allow_validate_operator"]
+        self._default_temperature = resolved["default_temperature"]
+        self._mcp_per_test = resolved["mcp_per_test"]
+        self._allow_external_mcp_blind = resolved["allow_external_mcp_blind"]
+        self._max_cost_usd = resolved["max_cost_usd"]
+        self._max_runtime_seconds = resolved["max_runtime_seconds"]
+
+        # Internal scope for MCP server lifecycle (Story 1b.1 _resolve_scope
+        # translates the user-vocab `mcp_per_test` into the internal Scope enum).
+        self._scope = _resolve_scope(self._mcp_per_test)
+
         # AC-1a.6.8: lazy RF Listener v3 context hook. Phase-1 stub returns None;
         # Epic 5 Story 5.1 wires the real `test_id` read for per-test MCP scoping.
         self._rf_test_id = self._get_rf_test_id()
@@ -142,9 +181,8 @@ class AgentEval:
     def get_effective_config(self) -> dict[str, Any]:
         """Return the resolved config as a dict.
 
-        Phase 1: returns the kwarg-resolved values. Env-var precedence (FR41)
-        lands in Epic 1b `_kernel/context.py`; this keyword will then return
-        the precedence-resolved values.
+        Story 1b.1: returns the FR41 precedence-resolved values (kwarg →
+        env-var → `.env` → FR42 defaults).
 
         Returns:
             dict[str, Any]: One entry per `__init__` parameter, in declared

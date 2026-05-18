@@ -85,15 +85,22 @@ jobs:
       - name: robot tests/acceptance/smoke (RF smoke tests)
         run: uv run robot --output NONE --report NONE --log NONE tests/acceptance/smoke
 
-      # Phase-1 collect-only sweep across the 2 still-empty test directories.
-      # Story 1a.1 baseline produces empty tests/ dirs (only .gitkeep + __init__.py).
-      # pytest exits 5 ("no tests collected") on empty dirs, which we accept as
-      # Phase-1 success. Each epic's first story that adds real tests for a
-      # directory MUST move that dir to its own execute step + remove from the
-      # collect-only sweep below. As of Story 1a.6:
+      # tests/unit has real kernel unit tests as of Story 1b.1 (54+ tests covering
+      # _kernel/{context, tier, run_async}.py). EXECUTE the tests (not just
+      # collect) — exit-5 leniency removed for this dir per Story 1b.1 (HIGH-1
+      # lesson generalized).
+      - name: pytest tests/unit (real tests)
+        run: uv run pytest tests/unit --ignore=tests/unit/conventions -q
+
+      # Phase-1 collect-only sweep across the 1 still-empty test directory.
+      # Story 1a.1 baseline produces empty tests/ dirs (only .gitkeep +
+      # __init__.py). pytest exits 5 ("no tests collected") on empty dirs,
+      # which we accept as Phase-1 success. As of Story 1b.1:
       #   - tests/acceptance/tier1: real-execute step above
       #   - tests/acceptance/smoke: real-execute robot step above
-      #   - tests/unit + tests/unit/conventions: still placeholder; collect-only
+      #   - tests/unit (excluding conventions): real-execute step above
+      #   - tests/unit/conventions: still placeholder; collect-only (Story 1b.6
+      #     will land the 5 convention-enforcement tests + retire this leniency).
       - name: pytest Phase-1 collect-only sweep (still-empty placeholder dirs)
         shell: bash
         run: |
@@ -111,6 +118,5 @@ jobs:
               fail=1
             fi
           }
-          collect tests/unit
           collect tests/unit/conventions
           exit "$fail"
