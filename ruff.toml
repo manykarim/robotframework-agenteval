@@ -25,9 +25,19 @@ select = [
   "C4",     # flake8-comprehensions
   "SIM",    # flake8-simplify
   "TID",    # flake8-tidy-imports
+  "N",      # pep8-naming — backs docs/contracts/coding-conventions.md naming table (Story 1a.5 code-review MED-6)
 ]
 ignore = [
-  # Phase-1 placeholder; specific suppressions added when patterns crystallize.
+  # N999 (Invalid module name): suppressed because agenteval intentionally uses
+  # PascalCase `AgentEval` as the Python package name to match Robot Framework's
+  # Library naming convention (RF Libraries are conventionally PascalCase like
+  # `BuiltIn`, `Collections`, `String`, `Process`). The PyPI distribution name is
+  # `robotframework-agenteval` (lowercase per PyPI convention) but the imported
+  # Python package is `AgentEval`. This is an intentional convention deviation
+  # documented in docs/contracts/coding-conventions.md §Naming Conventions.
+  # Other N-series rules (N801 PascalCase classes, N802 lowercase_snake functions,
+  # N806 lowercase_snake variables) ARE enforced.
+  "N999",
 ]
 
 [lint.per-file-ignores]

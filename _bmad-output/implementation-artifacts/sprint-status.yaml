@@ -1,5 +1,5 @@
 # generated: 2026-05-17
-# last_updated: 2026-05-18 (Story 1a.5 review. All 7 deliverable categories shipped + 2 Story 1a.3 debt items closed: CONTRIBUTING.md (147 lines) + SECURITY.md full content (replaces Story 1a.1 placeholder; 5 NFR-SEC guarantees + SLA table) + 3 ISSUE_TEMPLATE/*.md + Apache 2.0 license headers on 20/20 .py files (idempotent script verified) + .pre-commit-config.yaml + ci.yml license-header step + coding-conventions.md substantive content (Phase-1 skeleton replaced; 4 NFR-MAINT-04 sections preserved) + 6 GitHub labels active (good first issue + help wanted + documentation created/updated; bug + enhancement + question verified) + ADR-014 LOW-1 fixed (9→11 leaves prose) + ADR-010 MED-2 fixed (ADR-013→ADR-003 cross-ref). Ruff + mypy clean post-header-application. Epic 1a 4/6 done.)
+# last_updated: 2026-05-18 (Story 1a.5 DONE. Cross-LLM code-review (Claude + Codex CLI) caught 9 findings (6 M + 3 L). Claude solo found 0 (5th consecutive same-family blind spot). All 9 patches applied: MED-1 SECURITY.md forward-ref framing (config.redact_env + telemetry=False not yet shipped); MED-2 pre-commit added to pyproject.toml [dev] extras; MED-3 DCO CI-claim softened (no DCO workflow yet); MED-4 license-header check validates canonical block at file prologue; MED-5 shebang + PEP 263 encoding cookie handling; MED-6 ruff `N` enabled + N999 ignore documented (AgentEval PascalCase package is RF Library convention exception); LOW-7 listener command Phase-1 forward-ref; LOW-8 PR-template wording softened; LOW-9 pre-commit-config refactored to repo:local + uv run (prevents version-pin drift). Post-patch: all ruff (including N801/N802/N806 enforcement) + mypy + license-check clean. Epic 1a 5/6 done.)
 # project: robotframework-agenteval
 # project_key: NOKEY
 # tracking_system: file-system
@@ -53,7 +53,7 @@ development_status:
   1a-2-set-up-7-github-actions-ci-workflows: done
   1a-3-ratify-non-spike-adrs-author-adr-001-architectural-influences-catalog: done
   1a-4-author-11-doc-contract-skeletons: done  # Renamed 9→11 per 2026-05-18 Story 1a.4 ratification (architecture L1419 updated; epics.md L716 updated). Pre-create-story drift check (4th consecutive use of the norm) caught title:9 / body:10 / AC:11 / final:9 mismatch + 4 non-architecture contracts in AC + 2 PRD-named dropped.
-  1a-5-project-hygiene-contributing-security-issue-templates-license-headers: review
+  1a-5-project-hygiene-contributing-security-issue-templates-license-headers: done
   1a-6-wire-fr42-fr43-fr44-library-defaults-stability-exit-criteria-doc-stubs: backlog
   epic-1a-retrospective: optional
 

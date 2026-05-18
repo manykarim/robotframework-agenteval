@@ -1,6 +1,6 @@
 # Story 1a.5: Project Hygiene — CONTRIBUTING + SECURITY + Issue Templates + License Headers
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -430,3 +430,82 @@ Expected files (8 created + 5 updated):
 | ---------- | ------- | ---------------------------------------------------------------------------- | ------ |
 | 2026-05-18 | 0.1.0   | Initial story creation (ready-for-dev). Pre-create-story drift check (5th consecutive use) found NO drift — clean first time. Scope expanded per Many's ratifications: fold 2 Story 1a.3 deferred debt items (LOW-1 + MED-2); fill `docs/contracts/coding-conventions.md` content (Story 1a.4 banner-stated owner); add `good first issue` + 2 other GitHub labels per NFR-MAINT-01. | Bob |
 | 2026-05-18 | 0.2.0   | Dev-story complete. All 10 ACs satisfied with machine-verified evidence. 8 new files (CONTRIBUTING.md, SECURITY.md full content, 3 ISSUE_TEMPLATE/*.md, 2 scripts, .pre-commit-config.yaml) + 5 updated (ci.yml license-header step, coding-conventions.md substantive content, ADR-014 + ADR-010 debt fixes, CHANGELOG.md, sprint-status.yaml). 20 .py files in src/AgentEval/ headered with Apache 2.0 license (idempotent script verified). 6 GitHub labels created/updated. Ruff + mypy clean post-header-application. Story 1a.3 LOW-1 + MED-2 debt closed. Status: review. | Amelia |
+| 2026-05-18 | 0.3.0   | Code-review patches applied. Cross-LLM adversarial review (Claude + Codex CLI) caught 9 findings (6 M + 3 L). Claude solo found 0 (5th consecutive same-family blind spot). All 9 approved patches applied: MED-1 SECURITY.md forward-ref framing for unshipped APIs (config.redact_env, telemetry=False, conformance oracles); MED-2 added `pre-commit>=3.0,<5.0` to pyproject.toml [dev] extras + re-lock; MED-3 softened DCO CI-claim wording (no DCO workflow yet); MED-4 license-header check validates canonical block at file prologue (not substring anywhere); MED-5 license-header scripts handle shebang + PEP 263 encoding cookie preservation; MED-6 enabled ruff `N` (pep8-naming) in ruff.toml with documented N999 ignore for AgentEval PascalCase package (RF Library convention); LOW-7 listener command framed Phase-1 forward-reference; LOW-8 PR-template wording softened; LOW-9 pre-commit-config refactored to `repo: local` + `uv run` (uses project env, prevents version-pin drift from CI). Post-patch ruff + mypy + license-check all clean; ruff N801/N802/N806 actively catching violations (verified via temp file with bad naming). Status: done. | Amelia |
+
+## Senior Developer Review (AI)
+
+**Reviewers:** Claude Opus 4.7 + Codex CLI 0.117.0 (gpt-5.4) — adversarial cross-LLM-family pair per Epic 0 retro Norm #1
+**Review date:** 2026-05-18
+**Outcome:** **APPROVED post-patch** (Changes Requested at Round 1 → Approved after 9 patches landed)
+**Methodology:** Independent Claude re-verification of all 6 dev-story gates (all PASS); Codex CLI adversarial pass on 8 hygiene files via GitHub MCP, searching for cited-but-unshipped APIs + missing CI workflows; Claude spot-verified all 9 Codex findings locally before triage.
+
+### Findings (all 9 patched)
+
+Claude solo's gates: 100% PASSED. Codex caught **9 substantive findings — Claude solo 0** (5th consecutive demonstration of the same-family blind spot pattern).
+
+**MED (6 — all patched):**
+
+- **MED-1 (SECURITY APIs)**: SECURITY.md cited `config.redact_env()`, `config.add_redaction_pattern()`, `__init__(telemetry=False)`, and "Assert No Egress To" conformance fixture as if present. None exist in Phase-1 baseline. Patched: explicit `**Phase-1 status:** forward-reference` framing per NFR section (Epic 5 Story 5.3 + Story 1a.6 + Epic 1b Story 1b.5 ownership cited).
+
+- **MED-2 (pre-commit missing from dev extras)**: `uv run pre-commit install` would fail on clean install. Patched: added `pre-commit>=3.0,<5.0` to pyproject.toml `[dev]` extras; `uv lock` re-run.
+
+- **MED-3 (DCO CI-claim false)**: CONTRIBUTING.md said "The DCO check enforces this in CI" but no DCO workflow exists. Patched: softened to "PRs without DCO sign-off will be asked to amend during review. A CI-side DCO check is a forthcoming hygiene deliverable".
+
+- **MED-4 (substring search loophole)**: License-header check used `LICENSE_MARKER in content` substring search — could false-pass a file with the marker in a docstring NOT at prologue. Patched: validate canonical header block at file prologue (after optional shebang + encoding cookie); false-positive test verifies the loophole is closed.
+
+- **MED-5 (shebang + encoding handling)**: Scripts blindly prepended at byte 0 — would break future shebangs/encoding cookies. Patched: `split_prologue()` helper preserves shebang + PEP 263 encoding cookie; license header inserted AFTER prologue.
+
+- **MED-6 (ruff N-series not enabled)**: coding-conventions.md cited `N999`, `N801`, `N802`, `N806` as enforced rules but ruff.toml didn't select `"N"`. Patched: added `"N"` to ruff select; surfaced N999 failures on `AgentEval` PascalCase package (intentional RF Library convention deviation); added `N999` to ignore list with documented rationale; updated coding-conventions.md to document the "Top-level package exception". Other N-rules (N801/N802/N806) ACTIVELY enforced — verified via temp file with bad naming triggering N801.
+
+**LOW (3 — all patched):**
+
+- **LOW-7 (dead listener command)**: CONTRIBUTING.md `robot --listener AgentEval.telemetry.listener` is forward-reference to Epic 5 Story 5.1. Patched: inline Phase-1-status comment + suggested alternative `robot tests/` for Phase-1 contributors.
+
+- **LOW-8 (PR template false claim)**: CONTRIBUTING.md said "The PR template enforces this" but no template file exists. Patched: softened to "convention enforced by reviewer feedback rather than automated checks; PR template is a future hygiene deliverable".
+
+- **LOW-9 (rev-pin drift)**: Pre-commit hard-pinned ruff 0.6.9 + mypy 1.10.0 while CI used floating ranges. Patched: refactored `.pre-commit-config.yaml` to `repo: local` + `uv run` invocations — hooks now execute against the project's resolved environment, preventing drift from CI.
+
+### Round-2 Verification (post-patch machine-verified)
+
+All 9 fixes verified:
+- MED-1: 2 forward-ref banners present in SECURITY.md (NFR-SEC-01 + NFR-SEC-05).
+- MED-2: `pre-commit>=3.0,<5.0` in pyproject.toml [dev]; pre-commit 4.6.0 installed via `uv sync`.
+- MED-3: 0 matches for "The DCO check enforces this in CI" + 1 match for softened replacement.
+- MED-4: false-positive test confirms strict prologue check rejects docstring-only marker presence.
+- MED-5: `split_prologue()` + `has_header_at_prologue()` handle shebangs + encoding cookies.
+- MED-6: ruff `N` enabled + N999 in ignore + `ruff check src/ tests/` PASS + N801 actively catching test violations.
+- LOW-7 + LOW-8: 3 framing edits applied in CONTRIBUTING.md.
+- LOW-9: `.pre-commit-config.yaml` uses `repo: local` exclusively (zero `astral-sh/ruff-pre-commit` or `pre-commit/mirrors-mypy` references).
+- All ruff + format + mypy + license-check pass post-patch.
+
+### Action Items
+
+- [x] MED-1: SECURITY.md forward-ref framing for unshipped APIs
+- [x] MED-2: pre-commit added to [dev] extras + re-lock
+- [x] MED-3: DCO CI-claim softened
+- [x] MED-4: license-header check validates canonical block at prologue
+- [x] MED-5: license-header scripts handle shebang + encoding cookie
+- [x] MED-6: ruff `N` enabled + N999 ignore documented
+- [x] LOW-7: listener command Phase-1 forward-ref framing
+- [x] LOW-8: PR-template wording softened
+- [x] LOW-9: pre-commit-config refactored to `repo: local` + `uv run`
+
+### Project Norms Validated
+
+- **Norm #1 (cross-LLM adversarial review)**: 5th consecutive load-bearing demonstration. Claude solo 0 / Codex 9.
+- **Norm #2 (machine-verified numeric claims)**: every count in this story's Dev Notes machine-verified.
+- **Norm #4 (pre-create-story spec-vs-ratified-doc check)**: applied 2026-05-18 with NO drift caught — first clean pre-check since the norm started.
+- **Norm #5 (CI-log-forensics)**: post-patch CI runs will need forensic inspection of the license-header step + N-series rule firings.
+
+### Files Modified This Round
+
+- `SECURITY.md` (MED-1 forward-ref framing)
+- `CONTRIBUTING.md` (MED-3 + LOW-7 + LOW-8 wording softening)
+- `pyproject.toml` (MED-2 pre-commit dev extra)
+- `uv.lock` (MED-2 re-lock with pre-commit)
+- `.pre-commit-config.yaml` (LOW-9 refactor to repo: local + uv run)
+- `scripts/apply-license-headers.py` (MED-4 + MED-5 prologue + shebang handling)
+- `scripts/check-license-headers.py` (MED-4 + MED-5 same)
+- `ruff.toml` (MED-6 N rule + N999 ignore)
+- `docs/contracts/coding-conventions.md` (MED-6 naming-table accuracy + top-level package exception)
+- `_bmad-output/implementation-artifacts/1a-5-code-review-findings-2026-05-18.md` (new — findings doc)

@@ -35,7 +35,11 @@ uv run pytest tests/acceptance/tier1 -q
 # Conformance suite — adapter-specific (slow; runs in conformance.yml per release)
 uv run pytest tests/conformance --adapter <name>
 
-# Robot Framework integration — requires the OTel listener (Story 5.1 deliverable)
+# Robot Framework integration — **Phase-1 status: forward-reference.**
+# The `AgentEval.telemetry.listener` module lands in Epic 5 Story 5.1; the
+# command below is NOT runnable on Phase-1 builds (commit 90d6f5c). Phase-1
+# users can run RF tests without the agenteval listener via `uv run robot tests/`
+# (no per-test scoping; no OTel spans emitted).
 uv run robot --listener AgentEval.telemetry.listener tests/
 ```
 
@@ -75,7 +79,7 @@ PR titles MUST follow the same format. Single-commit PRs use the commit message 
 
 ### Link to issue
 
-Every PR description SHOULD link to a GitHub issue (or a planning artifact). The PR template enforces this.
+Every PR description SHOULD link to a GitHub issue (or a planning artifact). A `.github/pull_request_template.md` PR-template file is a future hygiene deliverable (not yet present at commit `90d6f5c`); until then this is a convention enforced by reviewer feedback rather than automated checks.
 
 ## DCO Sign-off (required)
 
@@ -93,7 +97,7 @@ This appends a trailer to the commit message:
 Signed-off-by: Your Name <your.email@example.com>
 ```
 
-PRs without DCO sign-off will be asked to amend their commits. The DCO check enforces this in CI.
+PRs without DCO sign-off will be asked to amend their commits during review. A CI-side DCO check is a forthcoming hygiene deliverable (tracked as project debt — see [Project Debt Registry](_bmad-output/implementation-artifacts/sprint-status.yaml)); until then maintainers verify the trailer manually during PR review.
 
 DCO sign-off is the project standard chosen on merit for agenteval's contribution model (solo + AI-agent-assisted maintainership per [MAINTAINERS.md](MAINTAINERS.md)). It is lighter-weight than a CLA — no separate document to sign; the sign-off lives in the commit message.
 

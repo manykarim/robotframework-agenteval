@@ -46,13 +46,15 @@ agenteval makes the following structural security guarantees to its consumers. E
 
 ### NFR-SEC-01: Credential Redaction (FR38a/b)
 
-The library **never persists user-provided credentials** (API keys, OAuth tokens, vendor credentials) to disk or trace artifacts in their original form. All credentials are routed through `config.redact_env()` and user-extensible patterns via `config.add_redaction_pattern()` before any serialization.
+The library **will never persist user-provided credentials** (API keys, OAuth tokens, vendor credentials) to disk or trace artifacts in their original form. All credentials will be routed through `config.redact_env()` and user-extensible patterns via `config.add_redaction_pattern()` before any serialization.
 
-**Implementation:**
+> **Phase-1 status:** **forward-reference.** `config.redact_env()` + `config.add_redaction_pattern()` are NOT yet shipped — they are Epic 5 Story 5.3 (Evidence Block Redaction Wiring) deliverables. The conformance oracles for FR38a/b are Epic 1b Story 1b.5 deliverables. Phase-1 baseline (Story 1a.1 src/AgentEval/ scaffolding) does NOT yet enforce credential redaction; the binding guarantee activates when Epic 5 lands. Consumers running pre-Epic-5 builds MUST NOT pass real credentials through the library's surface.
 
-- The OTel trace exporter (Epic 5 Story 5.3) redacts known API-key patterns + user-supplied regexes from span attributes.
-- The Evidence Block format (per [`docs/contracts/evidence-block-format.md`](docs/contracts/evidence-block-format.md)) applies the same redaction to `traces[].request_body`, `traces[].response_body`, and any `metadata.*` fields containing credential-shaped substrings.
-- The conformance suite verifies unknown-shape redaction via FR38a/b oracles (Epic 1b Story 1b.5 deliverable).
+**Forthcoming implementation (Epic 5+):**
+
+- The OTel trace exporter (Epic 5 Story 5.3) will redact known API-key patterns + user-supplied regexes from span attributes.
+- The Evidence Block format (per [`docs/contracts/evidence-block-format.md`](docs/contracts/evidence-block-format.md)) will apply the same redaction to `traces[].request_body`, `traces[].response_body`, and any `metadata.*` fields containing credential-shaped substrings.
+- The conformance suite will verify unknown-shape redaction via FR38a/b oracles (Epic 1b Story 1b.5).
 
 **Limits:** the library can only redact patterns it recognizes (built-in regex set) or that consumers register via `add_redaction_pattern()`. Custom credential formats not matching either path may slip through; consumers are responsible for registering their own patterns.
 
@@ -86,9 +88,11 @@ The library **does NOT phone home**. Only the following network egress is possib
 - **LLM provider endpoints** (per user-configured providers — explicit setup required).
 - **OTLP endpoints** (Phase 2, opt-in via `[otlp]` extra + explicit endpoint configuration).
 
-The library `__init__(telemetry=False)` eliminates all OTel listener egress.
+The library `__init__(telemetry=False)` will eliminate all OTel listener egress.
 
-The conformance suite verifies this via the `Assert No Egress To` fixture in default-configured + `telemetry=False` configurations.
+> **Phase-1 status:** **forward-reference.** The `__init__(telemetry=False)` Library kwarg is wired by Story 1a.6 (FR44). The `Assert No Egress To` conformance fixture lands in Epic 1b Story 1b.5. Phase-1 baseline (commit `90d6f5c`) ships only Story 1a.1's `src/AgentEval/cli.py` Phase-1 placeholder + 3 security stubs — no OTel listener, no network egress paths exist yet to disable.
+
+The conformance suite will verify this via the `Assert No Egress To` fixture in default-configured + `telemetry=False` configurations once the relevant stories land.
 
 ## CodeQL Continuous Scanning
 

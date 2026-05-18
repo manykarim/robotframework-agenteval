@@ -33,15 +33,20 @@ Documents agenteval's **coding conventions** as a side-by-side good / anti-patte
 
 | Element | ✅ Good | ❌ Anti-pattern | Enforcement |
 | --- | --- | --- | --- |
-| Module file | `coding_agent.py` (lowercase_snake) | `CodingAgent.py`, `coding-agent.py` | ruff N999 + Python import convention |
-| Class | `CodingAgentAdapter` (PascalCase) | `coding_agent_adapter`, `codingAgentAdapter` | ruff N801 |
-| Function / method | `get_tool_calls()` (lowercase_snake) | `getToolCalls()`, `GetToolCalls()` | ruff N802 |
-| Variable | `mcp_coverage` (lowercase_snake) | `MCPCoverage`, `mcpCoverage` | ruff N806 |
-| Constant | `MAX_COST_USD` (UPPER_SNAKE) | `max_cost_usd`, `MaxCostUSD` | convention; not auto-enforced |
+| Module file | `coding_agent.py` (lowercase_snake) | `CodingAgent.py`, `coding-agent.py` | Python import convention; ruff N999 suppressed (see "Top-level package exception" below) |
+| Top-level package (intentional exception) | `AgentEval` (PascalCase, matches RF Library naming like `BuiltIn`/`Collections`) | renaming to `agenteval` lowercase | ruff N999 is suppressed for this case via `ruff.toml` ignore list with documented rationale. PyPI distribution name remains `robotframework-agenteval` (lowercase per PyPI convention). |
+| Class | `CodingAgentAdapter` (PascalCase) | `coding_agent_adapter`, `codingAgentAdapter` | ruff N801 (enforced) |
+| Function / method | `get_tool_calls()` (lowercase_snake) | `getToolCalls()`, `GetToolCalls()` | ruff N802 (enforced) |
+| Variable | `mcp_coverage` (lowercase_snake) | `MCPCoverage`, `mcpCoverage` | ruff N806 (enforced for in-function vars) |
+| Constant | `MAX_COST_USD` (UPPER_SNAKE) | `max_cost_usd`, `MaxCostUSD` | convention; module-level constants by visual inspection |
 | RF keyword (public surface) | `Get Tool Call Count` (Title Case With Spaces) | `getToolCallCount`, `get_tool_call_count` | RF Library convention |
-| Underlying Python method for RF keyword | `get_tool_call_count` (lowercase_snake) | `getToolCallCount` | ruff N802 |
-| Private function / variable | `_resolve_adapter()`, `_cache` (leading underscore) | `__resolve_adapter`, `private_resolve_adapter` | convention |
-| Error class | `IncompleteTraceError`, `ValidateOperatorDisallowed` (PascalCase, often `*Error` suffix) | `incomplete_trace_error` | convention; ADR-014 lists ratified names |
+| Underlying Python method for RF keyword | `get_tool_call_count` (lowercase_snake) | `getToolCallCount` | ruff N802 (enforced) |
+| Private function / variable | `_resolve_adapter()`, `_cache` (leading underscore) | `__resolve_adapter`, `private_resolve_adapter` | convention; PEP 8 indicates leading underscore for non-public |
+| Error class | `IncompleteTraceError`, `ValidateOperatorDisallowed` (PascalCase, often `*Error` suffix; `ValidateOperatorDisallowed` is the documented exception per ADR-014) | `incomplete_trace_error` | ruff N801 enforces PascalCase; ADR-014 lists the 11 ratified leaf names |
+
+**Top-level package exception (intentional convention deviation):**
+
+The Python package name `AgentEval` (PascalCase) intentionally deviates from PEP 8's lowercase_snake module/package convention. Rationale: agenteval is a Robot Framework Library, and RF Libraries are conventionally PascalCase (`BuiltIn`, `Collections`, `String`, `Process`, etc.) — matching this convention makes agenteval's `Library AgentEval` import feel native to RF users. The PyPI distribution name remains `robotframework-agenteval` (lowercase per PyPI convention). `ruff.toml` suppresses `N999` (invalid module name) with a comment documenting this rationale. All sub-modules under `AgentEval/` (e.g., `_kernel/`, `coding_agent/`, `mcp/`, `telemetry/`) follow lowercase_snake per PEP 8.
 
 ### Type Annotations
 

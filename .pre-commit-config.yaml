@@ -6,27 +6,40 @@
 # The hooks fire on every `git commit`. The same checks are also enforced
 # in CI (.github/workflows/ci.yml) — defense-in-depth: pre-commit catches
 # local; CI catches `--no-verify` bypass.
+#
+# Design choice (Story 1a.5 code-review LOW-9): all hooks use `repo: local`
+# + invoke tools via `uv run` so they execute against the project's resolved
+# environment (per `pyproject.toml`'s `[dev]` extras and `uv.lock`). This
+# prevents version-pin drift between local pre-commit and CI: both run the
+# same `uv run ruff` / `uv run mypy` / `uv run python` against the same lock.
 
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
-    hooks:
-      - id: ruff
-        args: [--fix]
-      - id: ruff-format
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.10.0
-    hooks:
-      - id: mypy
-        files: ^src/
-        additional_dependencies:
-          - robotframework==7.4.2
-
   - repo: local
     hooks:
+      - id: ruff-check
+        name: ruff check (auto-fix)
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]
+        require_serial: true
+
+      - id: mypy
+        name: mypy (src/)
+        entry: uv run mypy src/
+        language: system
+        files: ^src/
+        pass_filenames: false
+        require_serial: true
+
       - id: license-headers
-        name: Check Apache 2.0 license headers
+        name: Apache 2.0 license-header check
         entry: uv run python scripts/check-license-headers.py
         language: system
         files: ^src/AgentEval/.*\.py$
