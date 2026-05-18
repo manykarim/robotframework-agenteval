@@ -987,6 +987,19 @@ def emit_tool_call_span(name: str, args: dict, result: Any, error: str | None, l
 
 **Anti-pattern:** Custom span names that conflict with OTel semconv (`run`, `query`, `call`); attribute names without namespace prefix; mixing `gen_ai.*` and custom names for the same concept.
 
+**`agenteval.*` namespacing extensions** (ratified 2026-05-19 per Story 1b.2 code-review H_R11 — was implicitly cited but unratified before):
+
+| Attribute | Type | Description | Source |
+| --- | --- | --- | --- |
+| `agenteval.test_id` | str | Listener v3 test identifier (set on TracerProvider Resource per Story 5.1) | architecture L652-663 |
+| `agenteval.tool.success` | bool | True when the tool call returned without error | original (L984) |
+| `agenteval.tool.duration_ms` | float | Tool-call wall-clock duration (milliseconds) | original (L985) |
+| `agenteval.tool.source` | Literal["adapter", "hosted_mcp"] | Which observation path emitted the trace (FR35) | Story 1b.2 H_R11 ratification |
+| `agenteval.tool.args` | str (JSON-encoded) | Post-redaction tool-call arguments. OTel SDK doesn't accept dict attributes, so producers JSON-serialize at emission time; `_kernel/trace_store.get_tool_calls` JSON-parses at projection time. | Story 1b.2 H_R11 ratification |
+| `agenteval.tool.result` | str / int / float / bool | Post-redaction tool-call return value (primitive OTel-compatible type; complex results JSON-serialized like args). | Story 1b.2 H_R11 ratification |
+| `agenteval.tool.error` | str \| None | Tool-call error message (None on success). | Story 1b.2 H_R11 ratification |
+| `agenteval.tier` | Literal[1, 2, 3] | OTel-style span-attribute carrying the tier annotation; counted by `RunManifest.agenteval_tier_breakdown`. Producers emit this on every `@tier`-annotated keyword's spans (Epic 5 Story 5.1 wires the Listener-side propagation from `_agenteval_tier` decorator attribute → span attribute). | Story 1b.2 M_R5 ratification |
+
 CI enforcement: `tests/conformance/test_otel_semconv.py` asserts emitted spans match the documented semconv contract; deviation = test failure.
 
 ### Logging Conventions

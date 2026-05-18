@@ -25,16 +25,19 @@ def test_redact_openai_anthropic_key_prefix() -> None:
 
 
 def test_redact_bearer_token() -> None:
-    text = "Authorization: Bearer abc.def.ghi-12345"
+    # Story 1b.2 M_R3 fix: Bearer pattern now requires 20+ chars after `Bearer `
+    # (avoids over-redacting "Bearer expected at line 3").
+    text = "Authorization: Bearer abcdef.ghi-12345-jklmn"
     out = redact(text)
-    assert "abc.def.ghi-12345" not in out
+    assert "abcdef.ghi-12345-jklmn" not in out
     assert "[REDACTED]" in out
 
 
 def test_redact_bearer_token_case_insensitive() -> None:
-    out = redact("bearer xyzABC123")
+    # 20+ chars after `bearer ` per M_R3 length floor.
+    out = redact("bearer xyzABC1234567890ABCDEFG")
     assert "[REDACTED]" in out
-    assert "xyzABC123" not in out
+    assert "xyzABC1234567890ABCDEFG" not in out
 
 
 def test_redact_anthropic_api_key_env_var() -> None:
@@ -96,9 +99,9 @@ def test_redact_dict_top_level_strings() -> None:
 
 
 def test_redact_dict_nested_dicts() -> None:
-    d = {"level1": {"level2": {"credentials": "Bearer secrettoken123"}}}
+    d = {"level1": {"level2": {"credentials": "Bearer secrettoken123abcdefghij"}}}
     out = redact_dict(d)
-    assert "secrettoken123" not in out["level1"]["level2"]["credentials"]
+    assert "secrettoken123abcdefghij" not in out["level1"]["level2"]["credentials"]
 
 
 def test_redact_dict_list_and_tuple_recursion() -> None:
@@ -222,3 +225,183 @@ def test_redaction_processor_on_end_handles_none_attributes() -> None:
     span._attributes = None
     # Should not raise.
     RedactionProcessor().on_end(span)
+
+
+# ========================================================================= #
+# Story 1b.2 code-review patches — new test coverage                       #
+# ========================================================================= #
+
+
+# ---- H_R1: RedactionProcessor against real OTel TracerProvider ---- #
+
+
+def test_h_r1_redaction_processor_integration_real_otel() -> None:
+    """H_R1: integration test verifying RedactionProcessor mutates span attributes
+    against the REAL OTel TracerProvider → SimpleSpanProcessor(InMemorySpanExporter)
+    chain — not just MagicMock fixtures. Pre-fix this raised TypeError; the
+    `_set_span_attribute_in_place` helper handles BoundedAttributes correctly.
+    """
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    # Add RedactionProcessor FIRST per architecture L679 chain order.
+    provider.add_span_processor(RedactionProcessor())
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    tr = provider.get_tracer("agenteval.test")
+
+    span = tr.start_span(
+        "execute_tool",
+        attributes={
+            "gen_ai.request.messages": "User said: my key is sk-AbCdEfGh1234567890XYZxyz",
+            "agenteval.tool.args": "command=Bearer ABCDEFGHIJ1234567890",
+        },
+    )
+    span.end()
+
+    finished = exporter.get_finished_spans()
+    assert len(finished) == 1
+    final_attrs = finished[0].attributes
+    assert final_attrs is not None
+    # Credentials scrubbed; [REDACTED] present.
+    assert "sk-AbCdEfGh" not in final_attrs["gen_ai.request.messages"]
+    assert "[REDACTED]" in final_attrs["gen_ai.request.messages"]
+    assert "ABCDEFGHIJ1234567890" not in final_attrs["agenteval.tool.args"]
+
+
+def test_h_r1_redaction_processor_handles_sequence_str_attribute() -> None:
+    """H_R1/Blind 2: Sequence[str] attributes (gen_ai.request.messages can be a list)
+    must be element-wise redacted, not silently dropped.
+    """
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(RedactionProcessor())
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    tr = provider.get_tracer("agenteval.test")
+
+    span = tr.start_span(
+        "chat",
+        attributes={
+            "gen_ai.request.messages": ("Hello", "sk-AbCdEfGh1234567890XYZxyz", "goodbye"),
+        },
+    )
+    span.end()
+
+    final_attrs = exporter.get_finished_spans()[0].attributes
+    assert final_attrs is not None
+    messages = final_attrs["gen_ai.request.messages"]
+    assert "sk-AbCdEfGh" not in str(messages)
+    assert "[REDACTED]" in str(messages)
+
+
+# ---- M_R2: sk-ant- pattern catches naked Anthropic keys ---- #
+
+
+def test_m_r2_redact_naked_sk_ant_key() -> None:
+    """M_R2: standalone `sk-ant-foo123` without env-var prefix must be scrubbed."""
+    out = redact("Anthropic key leaked: sk-ant-foo123 in error message")
+    assert "sk-ant-foo123" not in out
+    assert "[REDACTED]" in out
+
+
+# ---- M_R3: Bearer doesn't over-redact prose ---- #
+
+
+def test_m_r3_redact_bearer_prose_not_over_redacted() -> None:
+    """M_R3: 'Bearer expected at line 3' (prose) MUST NOT be redacted."""
+    out = redact("Bearer expected at line 3")
+    # The 20-char minimum on the Bearer pattern means `expected` (8 chars) isn't matched.
+    assert out == "Bearer expected at line 3", f"over-redacted: {out!r}"
+
+
+def test_m_r3_redact_real_bearer_token_still_redacted() -> None:
+    """Confirm real bearer tokens (20+ chars) still match."""
+    out = redact("Authorization: Bearer abcdef1234567890ABCDEFGH")
+    assert "abcdef1234567890ABCDEFGH" not in out
+    assert "[REDACTED]" in out
+
+
+# ---- M_R7: new credential pattern coverage ---- #
+
+
+def test_m_r7_redact_aws_access_key() -> None:
+    out = redact("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE in config")
+    assert "AKIAIOSFODNN7EXAMPLE" not in out
+    assert "[REDACTED]" in out
+
+
+def test_m_r7_redact_github_personal_access_token() -> None:
+    pat = "ghp_AbCdEf1234567890AbCdEf1234567890AbCd"  # 36 chars after ghp_
+    out = redact(f"GitHub PAT leak: {pat}")
+    assert pat not in out
+    assert "[REDACTED]" in out
+
+
+def test_m_r7_redact_huggingface_token() -> None:
+    pat = "hf_AbCdEf1234567890AbCdEf1234567890AbCd"  # 34 chars after hf_
+    out = redact(f"HuggingFace: {pat}")
+    assert pat not in out
+    assert "[REDACTED]" in out
+
+
+def test_m_r7_redact_slack_family() -> None:
+    """Original test covered xoxb-; M_R7 expands to xoxa/xoxp/xoxr/xoxs."""
+    for prefix in ("xoxa-", "xoxp-", "xoxr-", "xoxs-"):
+        token = f"{prefix}1234-5678-abcdef"
+        out = redact(f"Slack token: {token}")
+        assert token not in out, f"{prefix} not redacted"
+
+
+# ---- M_R8: JWT with standard-base64 padding ---- #
+
+
+def test_m_r8_redact_jwt_with_base64_padding() -> None:
+    """M_R8: JWT pattern accepts `=` padding for standard-base64-encoded segments."""
+    jwt = "eyJhbGciOiJIUzI1NiJ9==.eyJzdWIiOiIxMjMifQ==.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c="
+    out = redact(f"JWT: {jwt}")
+    assert jwt not in out
+
+
+# ---- H_R9: redaction_policy_hash includes flags ---- #
+
+
+def test_h_r9_redaction_policy_hash_includes_flags() -> None:
+    """H_R9: identical pattern strings with different flags produce DIFFERENT hashes."""
+    original_count = len(DEFAULT_PATTERNS)
+    try:
+        h1 = redaction_policy_hash()
+        # Add an IGNORECASE pattern, then check.
+        DEFAULT_PATTERNS.append(re.compile(r"customfoo", re.IGNORECASE))
+        h2 = redaction_policy_hash()
+        assert h1 != h2
+
+        # Swap to inline-flag variant (different flags value, same `.pattern`).
+        DEFAULT_PATTERNS.pop()
+        DEFAULT_PATTERNS.append(re.compile(r"(?i)customfoo"))
+        h3 = redaction_policy_hash()
+        # Different flags between h2 and h3 → different hash even though
+        # behavior is semantically equivalent.
+        assert h3 != h2
+    finally:
+        # Restore.
+        while len(DEFAULT_PATTERNS) > original_count:
+            DEFAULT_PATTERNS.pop()
+
+
+# ---- H_R12: redact_dict recurses on Mapping (not just dict) ---- #
+
+
+def test_h_r12_redact_dict_recurses_into_mappingproxytype() -> None:
+    """H_R12: nested MappingProxyType (not just dict) must get scrubbed."""
+    from types import MappingProxyType
+
+    nested = MappingProxyType({"secret": "Bearer ABCDEFGHIJ1234567890ABCDEFG"})
+    d = {"level1": nested}
+    out = redact_dict(d)
+    assert "ABCDEFGHIJ1234567890ABCDEFG" not in str(out["level1"])

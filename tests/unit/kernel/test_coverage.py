@@ -103,3 +103,31 @@ def test_raised_error_caught_via_base_class() -> None:
         _check_mcp_coverage(run)
     with pytest.raises(AgentEvalError):
         _check_mcp_coverage(run)
+
+
+# ---- Story 1b.2 code-review M_R1: unknown coverage values ---- #
+
+
+def test_m_r1_unknown_coverage_value_raises_incomplete_trace_error() -> None:
+    """M_R1: unknown mcp_coverage strings raise IncompleteTraceError (loud refusal)."""
+    run = _FakeRun(metadata=_FakeMetadata(mcp_coverage="bogus_value"))
+    with pytest.raises(IncompleteTraceError) as exc_info:
+        _check_mcp_coverage(run)
+    assert "unknown mcp_coverage" in str(exc_info.value)
+    assert "'bogus_value'" in str(exc_info.value)
+
+
+def test_m_r1_unknown_coverage_value_raises_even_with_allow_blind() -> None:
+    """M_R1: allow_external_mcp_blind=True does NOT bypass the unknown-value gate
+    (that opt-out specifically targets the documented 'external_mixed' case).
+    """
+    run = _FakeRun(metadata=_FakeMetadata(mcp_coverage="typo_value"))
+    with pytest.raises(IncompleteTraceError):
+        _check_mcp_coverage(run, allow_external_mcp_blind=True)
+
+
+def test_m_r1_empty_string_coverage_raises() -> None:
+    """Empty string is not in the ratified 3-state set."""
+    run = _FakeRun(metadata=_FakeMetadata(mcp_coverage=""))
+    with pytest.raises(IncompleteTraceError, match="unknown mcp_coverage"):
+        _check_mcp_coverage(run)

@@ -243,11 +243,20 @@ def test_get_run_manifest_populates_all_fields(tracer: trace.Tracer) -> None:
 
 
 def test_get_run_manifest_empty_run(tracer: trace.Tracer) -> None:
-    """A test with no spans gets a manifest with zero-epoch timestamps + empty tier breakdown."""
+    """A test with no spans gets a manifest with zero-epoch timestamps + empty tier breakdown.
+
+    M_R10 fix (Story 1b.2 code review): explicit timestamp-sanity assertions added.
+    """
+    from datetime import UTC, datetime
+
     bind_context(TestContext(test_id="t-empty", suite_id="s", scope="test"))
     manifest = ts.get_run_manifest("t-empty")
     assert manifest.test_id == "t-empty"
     assert dict(manifest.agenteval_tier_breakdown) == {}
+    # M_R10: per docstring contract, empty runs use zero-epoch timestamps.
+    epoch = datetime.fromtimestamp(0, tz=UTC)
+    assert manifest.started_at == epoch
+    assert manifest.ended_at == epoch
 
 
 # ---- AC-1b.2.2: clear_spans -------------------------------------------- #
@@ -281,3 +290,210 @@ def test_configure_tracer_provider_initializes_exporter() -> None:
     ts._configure_tracer_provider()
     assert ts._exporter is not None
     assert isinstance(ts._exporter, InMemorySpanExporter)
+
+
+# ========================================================================= #
+# Story 1b.2 code-review patches — new test coverage                       #
+# ========================================================================= #
+
+
+# ---- H_R2: resource-attribute primary path (test_id on TracerProvider Resource) ---- #
+
+
+def test_h_r2_resource_attribute_path() -> None:
+    """H_R2: When test_id is on `span.resource.attributes` (production path
+    per architecture L652), the projection accessors find spans.
+
+    The pre-fix code filtered only `span.attributes`; this test wires a
+    TracerProvider with `Resource.create({"agenteval.test_id": "t-res"})` so
+    spans carry the test_id at the resource level, NOT the per-span level.
+    """
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    exporter = InMemorySpanExporter()
+    ts._set_exporter(exporter)
+    provider = TracerProvider(resource=Resource.create({"agenteval.test_id": "t-res"}))
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    tr = provider.get_tracer("agenteval.test")
+
+    # NO span-level agenteval.test_id — only the resource attribute.
+    span = tr.start_span("op-res")
+    span.end()
+
+    found = ts.get_run_spans("t-res")
+    assert len(found) == 1
+    assert found[0].name == "op-res"
+
+
+# ---- H_R3: get_latency wall-clock not double-counting nested spans ---- #
+
+
+def test_h_r3_get_latency_does_not_double_count_nested_spans(tracer: trace.Tracer) -> None:
+    """H_R3: latency = wall-clock (max_end - min_start), NOT sum of all spans.
+
+    Prior bug: a parent + 2 children → sum reported ~2× wall-clock. The fix
+    computes `max(end_time) - min(start_time)` for the test's spans.
+    """
+    # Emit a parent + 2 children, all with the same test_id.
+    parent = tracer.start_span("parent", attributes={"agenteval.test_id": "t-lat"})
+    child1 = tracer.start_span("child1", attributes={"agenteval.test_id": "t-lat"})
+    child1.end()
+    child2 = tracer.start_span("child2", attributes={"agenteval.test_id": "t-lat"})
+    child2.end()
+    parent.end()
+
+    latency = ts.get_latency("t-lat")
+    # All spans emitted in rapid succession; wall-clock is tiny but >= max
+    # individual span duration, and certainly < (3 × any individual span).
+    individual_durations = []
+    for s in ts.get_run_spans("t-lat"):
+        if s.start_time is not None and s.end_time is not None:
+            individual_durations.append((s.end_time - s.start_time) / 1_000_000_000.0)
+    sum_durations = sum(individual_durations)
+    # H_R3 invariant: wall-clock latency MUST NOT exceed (or even approach)
+    # the sum-of-durations for nested span trees.
+    assert latency <= sum_durations + 0.001  # tolerance for floating point
+    # Specifically: 3 spans summed > wall-clock.
+    if len(individual_durations) == 3:
+        assert latency < sum_durations - 1e-9 or sum_durations < 1e-6
+
+
+# ---- H_R4: missing source defaults to "adapter" + DegradedTraceWarning ---- #
+
+
+def test_h_r4_missing_source_defaults_to_adapter_with_warning(tracer: trace.Tracer) -> None:
+    """H_R4: per Many's pick option (a), missing source defaults + warns."""
+    import warnings as _warnings
+
+    from AgentEval.errors import DegradedTraceWarning
+
+    _emit_span(
+        tracer,
+        "execute_tool",
+        test_id="t1",
+        attributes={
+            "gen_ai.tool.name": "bash",
+            # NOTE: no `agenteval.tool.source` attribute
+        },
+    )
+
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter("always")
+        tool_calls = ts.get_tool_calls("t1")
+
+    assert len(tool_calls) == 1
+    assert tool_calls[0].source == "adapter"
+    # Verify DegradedTraceWarning was emitted.
+    degraded_warnings = [w for w in caught if issubclass(w.category, DegradedTraceWarning)]
+    assert len(degraded_warnings) >= 1
+
+
+def test_h_r4_unknown_source_value_skipped_with_warning(tracer: trace.Tracer) -> None:
+    """H_R4: unknown source values (typo) get skipped + warned (not defaulted)."""
+    import warnings as _warnings
+
+    from AgentEval.errors import DegradedTraceWarning
+
+    _emit_span(
+        tracer,
+        "execute_tool",
+        test_id="t1",
+        attributes={"gen_ai.tool.name": "bash", "agenteval.tool.source": "TYPO"},
+    )
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter("always")
+        tool_calls = ts.get_tool_calls("t1")
+    assert tool_calls == []  # skipped (not silently dropped — warning emitted)
+    assert any(issubclass(w.category, DegradedTraceWarning) for w in caught)
+
+
+# ---- H_R5: _attr_to_mapping JSON-parses string args ---- #
+
+
+def test_h_r5_attr_to_mapping_json_parses_string(tracer: trace.Tracer) -> None:
+    """H_R5: OTel serializes dict attrs as JSON strings; `_attr_to_mapping`
+    must parse them so `tool_call.args["command"]` works in production.
+    """
+    import json as _json
+
+    _emit_span(
+        tracer,
+        "execute_tool",
+        test_id="t1",
+        attributes={
+            "gen_ai.tool.name": "bash",
+            "agenteval.tool.source": "adapter",
+            # OTel-canonical: JSON string, not a dict.
+            "agenteval.tool.args": _json.dumps({"command": "ls", "cwd": "/tmp"}),
+        },
+    )
+    tool_calls = ts.get_tool_calls("t1")
+    assert len(tool_calls) == 1
+    assert dict(tool_calls[0].args) == {"command": "ls", "cwd": "/tmp"}
+
+
+def test_h_r5_attr_to_mapping_falls_back_to_raw_on_invalid_json(tracer: trace.Tracer) -> None:
+    """H_R5: malformed JSON strings fall back to the `_raw` wrapping (so the
+    Mapping[str, Any] contract still holds).
+    """
+    _emit_span(
+        tracer,
+        "execute_tool",
+        test_id="t1",
+        attributes={
+            "gen_ai.tool.name": "bash",
+            "agenteval.tool.source": "adapter",
+            "agenteval.tool.args": "not-valid-json",
+        },
+    )
+    tool_calls = ts.get_tool_calls("t1")
+    assert len(tool_calls) == 1
+    assert tool_calls[0].args.get("_raw") == "not-valid-json"
+
+
+# ---- H_R6: sequence_index derived from chronological order ---- #
+
+
+def test_h_r6_get_tool_calls_assigns_monotonic_sequence_index(tracer: trace.Tracer) -> None:
+    """H_R6: per PRD FR35 + FR45(d), `sequence_index` is monotonic per run."""
+    _emit_span(
+        tracer,
+        "execute_tool",
+        test_id="t1",
+        attributes={"gen_ai.tool.name": "first", "agenteval.tool.source": "adapter"},
+    )
+    _emit_span(
+        tracer,
+        "execute_tool",
+        test_id="t1",
+        attributes={"gen_ai.tool.name": "second", "agenteval.tool.source": "adapter"},
+    )
+    _emit_span(
+        tracer,
+        "execute_tool",
+        test_id="t1",
+        attributes={"gen_ai.tool.name": "third", "agenteval.tool.source": "hosted_mcp"},
+    )
+
+    tool_calls = ts.get_tool_calls("t1")
+    assert [tc.sequence_index for tc in tool_calls] == [0, 1, 2]
+    assert [tc.name for tc in tool_calls] == ["first", "second", "third"]
+
+
+# ---- M_R5: tier_breakdown reads `agenteval.tier` (OTel-style) ---- #
+
+
+def test_m_r5_run_manifest_tier_breakdown_uses_agenteval_tier(tracer: trace.Tracer) -> None:
+    """M_R5: `agenteval.tier` (OTel semconv-style) is the canonical span attribute;
+    `_agenteval_tier` (Story 1b.1 decorator-private) is the fallback only.
+    """
+    bind_context(TestContext(test_id="t-tier", suite_id="s", scope="test"))
+    _emit_span(tracer, "op", test_id="t-tier", attributes={"agenteval.tier": 1})
+    _emit_span(tracer, "op", test_id="t-tier", attributes={"agenteval.tier": 1})
+    _emit_span(tracer, "op", test_id="t-tier", attributes={"agenteval.tier": 3})
+
+    manifest = ts.get_run_manifest("t-tier")
+    assert dict(manifest.agenteval_tier_breakdown) == {1: 2, 3: 1}

@@ -33,10 +33,19 @@ def test_incomplete_trace_error_code_is_class_attribute() -> None:
     assert instance.error_code == "INCOMPLETE_TRACE"
 
 
-def test_incomplete_trace_error_message_round_trip() -> None:
-    """Standard Exception message round-trip works."""
+def test_incomplete_trace_error_str_format_per_h_r7() -> None:
+    """H_R7 fix (Story 1b.2 code review): __str__ renders 'error_code: message'
+    so FR49 JUnit XML emission + FR50 exit-code mapping can pull the prefix
+    from str(exc) directly.
+    """
     e = IncompleteTraceError("specific message")
-    assert str(e) == "specific message"
+    assert str(e) == "INCOMPLETE_TRACE: specific message"
+
+
+def test_agenteval_error_base_str_no_prefix() -> None:
+    """Bare AgentEvalError (no error_code) returns bare message — no prefix."""
+    e = AgentEvalError("raw message")
+    assert str(e) == "raw message"
 
 
 def test_no_leaf_inherits_directly_from_agenteval_error() -> None:
@@ -57,3 +66,29 @@ def test_catching_base_class_catches_leaf() -> None:
         raise IncompleteTraceError("test")
     with pytest.raises(AgentEvalIntegrityError):
         raise IncompleteTraceError("test")
+
+
+# ---- H_R4 fix: DegradedTraceWarning class ------------------------------ #
+
+
+def test_degraded_trace_warning_inherits_user_warning() -> None:
+    """DegradedTraceWarning is a Python Warning (NOT an AgentEvalError) per architecture L997."""
+    from AgentEval.errors import DegradedTraceWarning
+
+    assert issubclass(DegradedTraceWarning, UserWarning)
+    assert issubclass(DegradedTraceWarning, Warning)
+    # Distinct from the AgentEvalError hierarchy.
+    assert not issubclass(DegradedTraceWarning, AgentEvalError)
+
+
+def test_degraded_trace_warning_emits_via_warnings_warn() -> None:
+    """DegradedTraceWarning integrates with the Python warnings module."""
+    import warnings
+
+    from AgentEval.errors import DegradedTraceWarning
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        warnings.warn("test", DegradedTraceWarning, stacklevel=2)
+    assert len(caught) == 1
+    assert issubclass(caught[0].category, DegradedTraceWarning)

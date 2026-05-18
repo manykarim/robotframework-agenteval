@@ -69,6 +69,7 @@ __all__ = [
     "AgentEvalError",
     "AgentEvalIntegrityError",
     "IncompleteTraceError",
+    "DegradedTraceWarning",
 ]
 
 
@@ -84,9 +85,21 @@ class AgentEvalError(Exception):
     safely read `error_code` without an AttributeError on the rare instance
     that the base is raised directly (which they shouldn't — always raise a
     leaf).
+
+    `__str__` format (per Story 1b.2 code-review H_R7 fix): when `error_code`
+    is non-empty, render as `f"{error_code}: {message}"`. This makes downstream
+    FR49 JUnit XML emission + FR50 exit-code mapping pull the prefix from
+    str(exc) directly. Base instances (rare; consumers shouldn't raise the
+    base) keep the bare-Exception `__str__`.
     """
 
     error_code: ClassVar[str] = ""
+
+    def __str__(self) -> str:
+        base = super().__str__()
+        if self.error_code:
+            return f"{self.error_code}: {base}"
+        return base
 
 
 class AgentEvalIntegrityError(AgentEvalError):
@@ -122,3 +135,31 @@ class IncompleteTraceError(AgentEvalIntegrityError):
     """
 
     error_code: ClassVar[str] = "INCOMPLETE_TRACE"
+
+
+# --------------------------------------------------------------------------- #
+# Warnings (per architecture L997: DegradedTraceWarning + AdapterVersionDriftWarning) #
+# --------------------------------------------------------------------------- #
+
+
+class DegradedTraceWarning(UserWarning):
+    """Emitted when trace data is recoverable-but-incomplete (architecture L997).
+
+    Distinct from `AgentEvalError`-hierarchy errors: this is a Python `Warning`
+    subclass that integrates with `warnings.warn()`. Callers can opt into
+    treating warnings as errors via `warnings.filterwarnings("error", category=DegradedTraceWarning)`.
+
+    Story 1b.2 wires this for the `get_tool_calls` missing-source case
+    (H_R4 fix per code-review 2026-05-18): when an `execute_tool` span is
+    missing `agenteval.tool.source`, the projection accessor defaults the
+    source to `"adapter"` AND emits a `DegradedTraceWarning` so trace
+    producers see the convention violation. Epic 5 Story 5.4 ratifies the
+    full DegradedTraceWarning + `Get Last Warnings` keyword surface per
+    FR61 (Phase-1.5 scope; Story 1b.2 ships the warning class only).
+
+    Future code paths that emit this warning:
+        - `mcp_coverage="partial"` runs (FR61, Epic 5)
+        - Adapter version drift detected (separate `AdapterVersionDriftWarning`
+          class, Epic 4 Story 4.2)
+        - Span data missing required `agenteval.*` attributes
+    """

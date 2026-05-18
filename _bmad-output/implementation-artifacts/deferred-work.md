@@ -78,4 +78,13 @@ The 20 items below are real defects in the Story 0.1 spike's scratch Python code
 
 ---
 
+## Deferred from: code review of 1b-2-trace-observability-kernel-trace-store-redaction-coverage (2026-05-18)
+
+- **L_R3 — `redact_dict` doesn't redact dict KEYS, only values** [src/AgentEval/_kernel/redaction.py] — credentials are typically values not keys; Phase-1 scope decision. Module docstring documents the asymmetry. Phase-1.5 hygiene revisit if a real key-credential leak pattern emerges.
+- **L_R4 — `IncompleteTraceError` message references `docs/contracts/mcp-coverage-detection.md` which is currently a Story 1a.4 skeleton** — substantive trust-floor decision-tree + per-adapter detection contract lands in Epic 4 Story 4.2 (Claude Code CLI adapter). Acceptable: the message points consumers to the right place when content fills.
+- **L_R9 — `_resolve_test_id` raises `ValueError` when called from a raw `threading.Thread` (NOT via `_run_async`'s `copy_context()` wrapper)** [src/AgentEval/_kernel/trace_store.py] — Story 1b.6 convention enforcer will catch sub-libraries spawning raw threads (architecture mandates `_run_async` per Story 1b.1). No code change in Story 1b.2.
+- **Pre-flag for Story 1b.4 / `completeness` enum drift** — PRD FR36a defines `completeness: Literal["complete", "truncated", "partial"]` (prd.md L1553) but Story 1b.4 epics.md L963 uses `Literal["full", "partial", "incomplete"]`. NOT in Story 1b.2's diff; Story 1b.4 create-story drift check will hit this. Bonus catch from Edge Case Hunter during 1b.2 review.
+
+---
+
 *Update this file as new deferred items emerge from future reviews.*

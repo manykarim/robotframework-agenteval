@@ -79,19 +79,32 @@ __all__ = [
 # Module-level mutable list — extended via register_pattern().
 # Thread-safety caveat documented in module docstring + register_pattern().
 DEFAULT_PATTERNS: list[re.Pattern[str]] = [
-    # OpenAI/Anthropic-style API key prefixes (sk-XXXXXXXXXXX).
+    # OpenAI / Anthropic API key prefixes. Two patterns for full coverage:
+    #   - `sk-` followed by 16+ chars (covers OpenAI sk-AbCdEfGh1234567890XYZ shape)
+    #   - `sk-ant-` followed by 8+ chars (covers Anthropic sk-ant-foo123 short shape)
+    # The dedicated sk-ant- pattern fixes M_R2 (sk- 16+ floor missed naked sk-ant-foo123).
     re.compile(r"sk-[A-Za-z0-9_\-]{16,}"),
-    # HTTP Bearer tokens (case-insensitive header form).
-    re.compile(r"(?i)Bearer\s+[A-Za-z0-9_\-\.=]+"),
+    re.compile(r"sk-ant-[A-Za-z0-9_\-]+"),
+    # HTTP Bearer tokens. Require 20+ chars after `Bearer ` to avoid M_R3
+    # over-redaction of prose like "Bearer expected at line 3".
+    re.compile(r"(?i)Bearer\s+[A-Za-z0-9_\-\.=]{20,}"),
     # Environment-variable-style credential leaks.
     re.compile(r"(?i)ANTHROPIC_API_KEY=\S+"),
     re.compile(r"(?i)OPENAI_API_KEY=\S+"),
-    # Slack bot tokens.
-    re.compile(r"xoxb-[A-Za-z0-9_\-]+"),
+    # AWS access keys (M_R7).
+    re.compile(r"AKIA[0-9A-Z]{16}"),
+    # GitHub personal access tokens, OAuth tokens, server tokens, user tokens (M_R7).
+    re.compile(r"gh[psoru]_[A-Za-z0-9]{36}"),
+    # HuggingFace user tokens (M_R7).
+    re.compile(r"hf_[A-Za-z0-9]{34}"),
+    # Slack token family: bot (xoxb-), app (xoxa-), user (xoxp-), refresh (xoxr-),
+    # session (xoxs-). M_R7 expands the original xoxb-only pattern.
+    re.compile(r"xox[abprs]-[A-Za-z0-9_\-]+"),
     # JWT shape: 3 base64-url-encoded segments joined by `.`. Anchor on the
     # standard JWT header prefix `eyJ` to avoid false positives on arbitrary
-    # 3-segment dotted identifiers.
-    re.compile(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+"),
+    # 3-segment dotted identifiers. M_R8 adds `=` to the charset for
+    # standard-base64-padded variants some libraries leak.
+    re.compile(r"eyJ[A-Za-z0-9_\-=]+\.[A-Za-z0-9_\-=]+\.[A-Za-z0-9_\-=]+"),
 ]
 
 # Replacement string used by all patterns. Kept as a module constant so the
@@ -146,10 +159,15 @@ def redact_dict(d: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _redact_value(value: Any) -> Any:
-    """Recursive helper for redact_dict — handles arbitrary nested types."""
+    """Recursive helper for redact_dict — handles arbitrary nested types.
+
+    H_R12 fix (Story 1b.2 code review): recurse on the broader `Mapping` type
+    (not just `dict`), so nested `BoundedAttributes` / `MappingProxyType` /
+    `frozendict` payloads also get scrubbed.
+    """
     if isinstance(value, str):
         return redact(value)
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return redact_dict(value)
     if isinstance(value, list):
         return [_redact_value(v) for v in value]
@@ -173,8 +191,14 @@ def redaction_policy_hash() -> str:
 
     Consumed by `RunManifest.redaction_policy_hash` per FR39 so downstream
     consumers can verify the redaction policy in effect at run time.
+
+    H_R9 fix (Story 1b.2 code review): includes `p.flags` in the hash input
+    so semantically-identical pattern strings with different flags (e.g.,
+    `re.compile("foo", re.IGNORECASE)` vs `re.compile("(?i)foo")`) produce
+    different hashes. Without this, a future flag change could silently
+    break FR39 reproducibility.
     """
-    joined = "|".join(p.pattern for p in DEFAULT_PATTERNS)
+    joined = "|".join(f"{p.pattern}|flags={p.flags}" for p in DEFAULT_PATTERNS)
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
 
@@ -208,7 +232,20 @@ class RedactionProcessor(_OTelSpanProcessor):
         return None
 
     def on_end(self, span: ReadableSpan) -> None:
-        """Scrub sensitive attributes in-place before the span flushes downstream."""
+        """Scrub sensitive attributes in-place before the span flushes downstream.
+
+        H_R1 fix (Story 1b.2 code review — 4-way reviewer confirmation):
+        Real OTel `ReadableSpan.attributes` is `BoundedAttributes` (a
+        `MappingProxyType`-backed read-only Mapping). The earlier
+        `attributes[key] = new_value` path passed mock tests with plain dicts
+        but raised `TypeError`/silently no-op'd against real spans. The fix
+        mutates the underlying `_dict` of the SDK's `_Span._attributes`
+        directly — opentelemetry-sdk 1.20+ keeps this contract stable;
+        pyproject.toml pins the range.
+
+        Sequence-typed credentials (Blind 2's NFR-SEC-01 concern): a list/tuple
+        of strings now gets element-wise `redact()` instead of falling through.
+        """
         attributes = span.attributes
         if attributes is None:
             return
@@ -221,18 +258,17 @@ class RedactionProcessor(_OTelSpanProcessor):
                 new_value = redact(value)
             elif isinstance(value, Mapping):
                 new_value = redact_dict(value)
+            elif isinstance(value, (list, tuple)) and value and all(isinstance(v, str) for v in value):
+                # Real-OTel-shaped Sequence[str] (gen_ai.request.messages is
+                # commonly emitted as a list). Previously these fell through
+                # unredacted — Blind 2's NFR-SEC-01 concern.
+                redacted_seq = [redact(v) for v in value]
+                new_value = tuple(redacted_seq) if isinstance(value, tuple) else redacted_seq
             else:
-                # Non-text attributes (int, bool, float, sequences of those)
+                # Non-text attributes (int, bool, float, non-string sequences)
                 # — nothing credential-shaped, leave alone.
                 continue
-            # ReadableSpan's `_attributes` is BoundedAttributes (or a plain
-            # dict under test fixtures); the SDK exposes `BoundedAttributes._dict`
-            # as the underlying mutable mapping. For Phase-1 we mutate via a
-            # cast — opentelemetry-sdk 1.20+ keeps this contract stable; if
-            # the SDK refactors, we swap to a `_Span.set_attribute()` call
-            # path. The `index` ignore covers the typed-Mapping → dict
-            # assignment that mypy can't narrow.
-            attributes[key] = new_value  # type: ignore[index]
+            _set_span_attribute_in_place(span, key, new_value)
 
     def shutdown(self) -> None:
         """No buffered state; no-op."""
@@ -241,3 +277,44 @@ class RedactionProcessor(_OTelSpanProcessor):
     def force_flush(self, timeout_millis: int = 30000) -> bool:  # noqa: ARG002 — SpanProcessor protocol
         """No buffered state; always returns True."""
         return True
+
+
+def _set_span_attribute_in_place(span: ReadableSpan, key: str, value: Any) -> None:
+    """Mutate a ReadableSpan's attribute in-place, supporting both real OTel + mock fixtures.
+
+    Real OTel SDK: `span._attributes` is `BoundedAttributes` whose underlying
+    storage is `_dict` (per opentelemetry-sdk 1.20+ source). Test mocks
+    typically use a plain `dict` for both `.attributes` and `._attributes`.
+    This helper handles both shapes; if neither works, surfaces a UserWarning
+    so SDK refactors don't silently fail.
+    """
+    underlying = getattr(span, "_attributes", None)
+    # Real BoundedAttributes path.
+    if underlying is not None and hasattr(underlying, "_dict"):
+        underlying._dict[key] = value
+        return
+    # Test mock path: plain dict assignment.
+    if underlying is not None:
+        try:
+            underlying[key] = value
+            return
+        except TypeError:
+            pass
+    # Final fallback: try mutating the public `.attributes` (rare path).
+    attrs = getattr(span, "attributes", None)
+    if attrs is not None:
+        try:
+            attrs[key] = value
+            return
+        except TypeError:
+            pass
+    # Read-only view we can't penetrate; surface a warning so SDK refactors
+    # don't silently leak credentials.
+    import warnings as _warnings
+
+    _warnings.warn(
+        f"RedactionProcessor: unable to mutate span attribute {key!r} "
+        "(OTel SDK contract may have changed; credentials may leak)",
+        UserWarning,
+        stacklevel=2,
+    )

@@ -21,6 +21,7 @@ def test_toolcalltrace_construction_and_fields() -> None:
         latency_ms=12.5,
         source="adapter",
         gen_ai_tool_call_id="call-abc",
+        sequence_index=0,
     )
     assert tct.name == "bash"
     assert tct.args == {"command": "ls"}
@@ -40,6 +41,7 @@ def test_toolcalltrace_is_frozen() -> None:
         latency_ms=0.0,
         source="hosted_mcp",
         gen_ai_tool_call_id="x",
+        sequence_index=0,
     )
     with pytest.raises(FrozenInstanceError):
         tct.name = "modified"  # type: ignore[misc]
@@ -54,6 +56,7 @@ def test_toolcalltrace_asdict_round_trip() -> None:
         latency_ms=42.0,
         source="adapter",
         gen_ai_tool_call_id="call-xyz",
+        sequence_index=5,
     )
     d = asdict(tct)
     assert d["name"] == "grep"
@@ -131,3 +134,74 @@ def test_runmanifest_is_frozen() -> None:
     )
     with pytest.raises(FrozenInstanceError):
         rm.library_version = "999"  # type: ignore[misc]
+
+
+# ---- Story 1b.2 code-review patches: new test coverage ---------------- #
+
+
+def test_toolcalltrace_sequence_index_field_h_r6() -> None:
+    """H_R6 fix: sequence_index field per PRD FR35 + FR45(d) conformance."""
+    tct = ToolCallTrace(
+        name="bash",
+        args={"cmd": "ls"},
+        result="ok",
+        error=None,
+        latency_ms=1.0,
+        source="adapter",
+        gen_ai_tool_call_id="x",
+        sequence_index=42,
+    )
+    assert tct.sequence_index == 42
+
+
+def test_toolcalltrace_args_defensive_freeze_m_r6() -> None:
+    """M_R6: caller mutations to the source dict must NOT leak through frozen=True."""
+    source = {"command": "ls"}
+    tct = ToolCallTrace(
+        name="bash",
+        args=source,
+        result=None,
+        error=None,
+        latency_ms=0.0,
+        source="adapter",
+        gen_ai_tool_call_id="x",
+        sequence_index=0,
+    )
+    source["command"] = "MUTATED"
+    assert dict(tct.args) == {"command": "ls"}, "args leaked through Mapping view"
+
+
+def test_runmanifest_tier_breakdown_defensive_freeze_m_r6() -> None:
+    """M_R6: caller mutations to the source dict must NOT leak through frozen=True."""
+    from datetime import UTC
+    from datetime import datetime as _dt
+
+    source: dict[int, int] = {1: 5, 2: 2}
+    started = _dt(2026, 5, 18, tzinfo=UTC)
+    rm = RunManifest(
+        library_version="0.0.1",
+        test_id="t",
+        suite_id="s",
+        redaction_policy_hash="h",
+        started_at=started,
+        ended_at=started,
+        agenteval_tier_breakdown=source,
+    )
+    source[1] = 999
+    assert dict(rm.agenteval_tier_breakdown) == {1: 5, 2: 2}, "tier_breakdown leaked"
+
+
+def test_usage_rejects_negative_input_tokens_m_r11() -> None:
+    """M_R11: non-negative validation per docstring contract."""
+    with pytest.raises(ValueError, match="input_tokens.*non-negative"):
+        Usage(input_tokens=-1, output_tokens=0)
+
+
+def test_usage_rejects_negative_output_tokens_m_r11() -> None:
+    with pytest.raises(ValueError, match="output_tokens.*non-negative"):
+        Usage(input_tokens=0, output_tokens=-5)
+
+
+def test_usage_rejects_negative_cached_tokens_m_r11() -> None:
+    with pytest.raises(ValueError, match="cached_input_tokens.*non-negative"):
+        Usage(input_tokens=0, output_tokens=0, cached_input_tokens=-1)

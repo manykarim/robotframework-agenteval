@@ -93,6 +93,18 @@ def _check_mcp_coverage(
             emission (FR49) + exit-code mapping (FR50).
     """
     coverage = run.metadata.mcp_coverage
+    # M_R1 fix (Story 1b.2 code review): validate against ratified 3-state set
+    # per ADR-016 §Decision L24-28. Unknown values (typo, future enum addition,
+    # adapter bug) raise IncompleteTraceError so "loud refusal beats silent
+    # half-truth" applies even outside the external_mixed case.
+    ratified_coverage_values = ("hosted_in_process", "subprocess_with_observer", "external_mixed")
+    if coverage not in ratified_coverage_values:
+        raise IncompleteTraceError(
+            f"Run reports unknown mcp_coverage={coverage!r}; ratified values "
+            f"per ADR-016 §Decision L24-28 are {ratified_coverage_values}. "
+            "Fix the adapter to emit a ratified value (see "
+            "docs/contracts/mcp-coverage-detection.md)."
+        )
     if coverage == "external_mixed" and not allow_external_mcp_blind:
         raise IncompleteTraceError(
             "Run reports mcp_coverage='external_mixed' (uninstrumented MCP usage "

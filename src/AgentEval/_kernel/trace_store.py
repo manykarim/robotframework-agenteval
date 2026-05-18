@@ -50,6 +50,9 @@ References:
 
 from __future__ import annotations
 
+import json
+import warnings
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -57,10 +60,9 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 if TYPE_CHECKING:
     from opentelemetry.sdk.trace import ReadableSpan
 
-from datetime import UTC
-
 from AgentEval._kernel.context import current_context
 from AgentEval._kernel.redaction import redaction_policy_hash
+from AgentEval.errors import DegradedTraceWarning
 from AgentEval.types import RunManifest, ToolCallTrace, Usage
 
 __all__ = [
@@ -73,6 +75,7 @@ __all__ = [
     "_configure_tracer_provider",
     "_get_exporter",
     "_set_exporter",
+    "_reset_exporter",
 ]
 
 
@@ -100,6 +103,17 @@ def _set_exporter(exporter: InMemorySpanExporter) -> None:
     _exporter = exporter
 
 
+def _reset_exporter() -> None:
+    """Test-only helper: reset the module singleton to the lazy-init `None` state.
+
+    Added by Story 1b.2 code-review L_R10 fix so test fixtures don't reach
+    into the private `_exporter` module attribute directly. The next
+    `_get_exporter()` call will re-initialize.
+    """
+    global _exporter
+    _exporter = None
+
+
 def _configure_tracer_provider() -> None:
     """Phase-1 helper that signals the TracerProvider is ready to record spans.
 
@@ -124,13 +138,47 @@ def _resolve_test_id(test_id: str | None) -> str | None:
     return ctx.test_id if ctx is not None else None
 
 
+def _span_test_id(span: ReadableSpan) -> str | None:
+    """Read `agenteval.test_id` from `span.resource.attributes` with span-attribute fallback.
+
+    H_R2 fix (Story 1b.2 code review): architecture L652 says the TracerProvider
+    is configured with `agenteval.test_id` as a RESOURCE attribute (not a
+    per-span attribute). Story 5.1's Listener will emit spans whose `resource`
+    carries the test_id; the pre-fix code only checked `span.attributes`
+    and would have silently returned empty for every production span.
+
+    Phase-1 transition: read from `span.resource.attributes` first; fall back
+    to `span.attributes` (test fixtures + ad-hoc producers may still emit
+    span-level attribute until Story 5.1 wires the canonical path).
+    """
+    resource = getattr(span, "resource", None)
+    if resource is not None:
+        resource_attrs = getattr(resource, "attributes", None)
+        if resource_attrs and "agenteval.test_id" in resource_attrs:
+            value = resource_attrs["agenteval.test_id"]
+            return str(value) if value is not None else None
+    span_attrs = span.attributes
+    if span_attrs and "agenteval.test_id" in span_attrs:
+        value = span_attrs["agenteval.test_id"]
+        return str(value) if value is not None else None
+    return None
+
+
 def _spans_for_test(test_id: str) -> list[ReadableSpan]:
-    """Internal helper: filter exporter spans by `agenteval.test_id` attribute, chronological."""
+    """Internal helper: filter exporter spans by `agenteval.test_id`, chronological.
+
+    H_R2 reads `agenteval.test_id` via `_span_test_id` (resource-attribute-first).
+    L_R5 places spans with missing/None start_time at the end of the result
+    rather than at position 0.
+    """
     exporter = _get_exporter()
     all_spans = exporter.get_finished_spans()
-    matching = [s for s in all_spans if s.attributes and s.attributes.get("agenteval.test_id") == test_id]
+    matching = [s for s in all_spans if _span_test_id(s) == test_id]
     # OTel `start_time` is nanoseconds since epoch (int); sort ascending.
-    matching.sort(key=lambda s: s.start_time or 0)
+    # L_R5: spans with start_time=None get sentinel-max so they sort to the end
+    # rather than misrepresenting as chronological position 0.
+    sentinel_max = float("inf")
+    matching.sort(key=lambda s: s.start_time if s.start_time is not None else sentinel_max)
     return list(matching)
 
 
@@ -176,16 +224,42 @@ def get_tool_calls(
     """
     spans = get_run_spans(test_id)
     results: list[ToolCallTrace] = []
+    sequence_index = 0
     for s in spans:
         if s.name != "execute_tool":
             continue
         attrs = s.attributes or {}
-        span_source = attrs.get("agenteval.tool.source")
+        raw_source = attrs.get("agenteval.tool.source")
+
+        # H_R4 fix (Story 1b.2 code review): missing source defaults to
+        # "adapter" + emits DegradedTraceWarning. Per Many's pick option (a).
+        # Previous behavior silently dropped the span — data loss.
+        if raw_source in (None, ""):
+            warnings.warn(
+                f"execute_tool span missing 'agenteval.tool.source' attribute "
+                f"(test_id={_span_test_id(s)!r}, gen_ai.tool.name="
+                f"{attrs.get('gen_ai.tool.name')!r}); defaulting to 'adapter'. "
+                "Fix the trace-emission producer to populate source explicitly.",
+                DegradedTraceWarning,
+                stacklevel=2,
+            )
+            span_source = "adapter"
+        elif raw_source in ("adapter", "hosted_mcp"):
+            span_source = str(raw_source)
+        else:
+            # Genuinely unknown source value (typo, future enum addition).
+            # Warn + skip — the span is malformed beyond our default-recovery scope.
+            warnings.warn(
+                f"execute_tool span has unknown agenteval.tool.source={raw_source!r}; "
+                "skipping. Valid values: 'adapter', 'hosted_mcp'.",
+                DegradedTraceWarning,
+                stacklevel=2,
+            )
+            continue
+
         if source is not None and span_source != source:
             continue
-        if span_source not in ("adapter", "hosted_mcp"):
-            # Defensive: skip malformed spans that don't carry a valid source.
-            continue
+
         results.append(
             ToolCallTrace(
                 name=str(attrs.get("gen_ai.tool.name", "")),
@@ -193,22 +267,43 @@ def get_tool_calls(
                 result=attrs.get("agenteval.tool.result"),
                 error=_attr_to_optional_str(attrs.get("agenteval.tool.error")),
                 latency_ms=_attr_as_float(attrs.get("agenteval.tool.duration_ms"), default=0.0),
-                source=span_source,  # type: ignore[arg-type]  # narrowed by L186 guard above
+                source=span_source,  # type: ignore[arg-type]  # narrowed by the if/elif above
                 gen_ai_tool_call_id=str(attrs.get("gen_ai.tool.call.id", "")),
+                # H_R6 fix (Story 1b.2 code review): sequence_index per PRD FR35
+                # + FR45(d) conformance ("sequence_index monotonic per agent run").
+                # Derived from chronological span ordering at projection time.
+                sequence_index=sequence_index,
             )
         )
+        sequence_index += 1
     return results
 
 
 def _attr_to_mapping(value: object) -> dict[str, object]:
-    """Coerce an OTel attribute value (str | sequence | dict | None) to a Mapping for ToolCallTrace."""
+    """Coerce an OTel attribute value to `Mapping[str, Any]` for ToolCallTrace.
+
+    H_R5 fix (Story 1b.2 code review): OTel SDK doesn't accept dict attribute
+    values; production `agenteval.tool.args` is always a JSON-encoded string.
+    The pre-fix `{"_raw": value}` wrapper meant `tool_call.args["command"]`
+    KeyError'd in every real run. Per Many's pick option (a), this helper
+    now `json.loads()` strings with try/except fallback to the `_raw` shape
+    so type-honest consumers still get a Mapping.
+    """
     if value is None:
         return {}
     if isinstance(value, dict):
         return dict(value)
-    # OTel typically serializes complex args to a JSON-encoded string; tests may
-    # populate either form. Defer JSON parsing to consumers — return a 1-key
-    # wrapper so the type contract holds.
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (json.JSONDecodeError, ValueError):
+            return {"_raw": value}
+        if isinstance(parsed, dict):
+            return parsed
+        # Parsed JSON that isn't a dict (a list, int, str, etc.) — wrap in _raw
+        # so the Mapping[str, Any] contract holds.
+        return {"_raw": parsed}
+    # Non-string non-dict (sequence, etc.) — wrap in _raw.
     return {"_raw": value}
 
 
@@ -219,11 +314,32 @@ def _attr_to_optional_str(value: object) -> str | None:
 
 
 def _attr_as_int(value: object, *, default: int = 0) -> int:
-    """Coerce an OTel attribute value (typed union) to int. Used for `gen_ai.usage.*`."""
+    """Coerce an OTel attribute value (typed union) to int. Used for `gen_ai.usage.*`.
+
+    H_R10 fix (Story 1b.2 code review): reject `bool` before the int/float
+    branch — Python's `isinstance(True, int) is True` would otherwise silently
+    coerce a buggy boolean attribute into 1 token.
+
+    L_R6: float values are rejected (returns default + warning) rather than
+    silently truncated. Token counts are integer by spec; receiving a float
+    is a contract violation worth surfacing.
+    """
     if value is None:
         return default
-    if isinstance(value, (int, float)):
-        return int(value)
+    # H_R10: bool guard BEFORE int/float (bool ⊂ int in Python).
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        # L_R6: floats indicate a contract violation; warn + use default.
+        warnings.warn(
+            f"_attr_as_int: received float value {value!r}; token counts are "
+            "integer by contract. Fix the trace producer; returning default.",
+            DegradedTraceWarning,
+            stacklevel=2,
+        )
+        return default
     if isinstance(value, str):
         try:
             return int(value)
@@ -267,14 +383,25 @@ def get_usage(test_id: str | None = None) -> Usage:
 
 
 def get_latency(test_id: str | None = None) -> float:
-    """Return total span-duration latency in seconds across the test's spans."""
+    """Return wall-clock latency in seconds across the test's spans.
+
+    H_R3 fix (Story 1b.2 code review): the pre-fix path summed every span's
+    duration, which double-counts nested children (a parent + N children →
+    ~2× the real elapsed time). The correct semantic is wall-clock latency:
+    `(max(end_time) - min(start_time))` across all the test's spans.
+
+    Returns 0.0 for empty runs (no spans for the test_id).
+    """
     spans = get_run_spans(test_id)
-    total_ns = 0
+    starts: list[int] = []
+    ends: list[int] = []
     for s in spans:
-        if s.start_time is None or s.end_time is None:
-            continue
-        total_ns += s.end_time - s.start_time
-    return total_ns / 1_000_000_000.0
+        if s.start_time is not None and s.end_time is not None:
+            starts.append(s.start_time)
+            ends.append(s.end_time)
+    if not starts:
+        return 0.0
+    return (max(ends) - min(starts)) / 1_000_000_000.0
 
 
 def get_run_manifest(test_id: str | None = None) -> RunManifest:
@@ -285,11 +412,18 @@ def get_run_manifest(test_id: str | None = None) -> RunManifest:
         - `test_id` / `suite_id` ← `current_context()` if not provided directly
         - `redaction_policy_hash` ← `redaction.redaction_policy_hash()`
         - `started_at` / `ended_at` ← min/max span timestamps (datetime UTC)
-        - `agenteval_tier_breakdown` ← count of spans per `_agenteval_tier`
-          attribute value
-    """
-    from datetime import datetime
+        - `agenteval_tier_breakdown` ← count of spans per `agenteval.tier`
+          attribute value (M_R5 fix: was `_agenteval_tier` which is the
+          Python decorator's private attr name from Story 1b.1; spans should
+          carry the OTel-semconv-style `agenteval.tier` attribute)
 
+    M_R13 fix: when no `current_context()` is bound AND no explicit test_id
+    is provided, the function raises `ValueError` (consistent with
+    `get_run_spans`'s strictness). If `test_id` is explicit but no context is
+    bound, `suite_id` defaults to "" — same convention as before, but the
+    docstring now documents it.
+    """
+    # L_R7 fix: import hoisted to module top.
     from AgentEval import __version__ as library_version
 
     resolved = _resolve_test_id(test_id)
@@ -317,8 +451,14 @@ def get_run_manifest(test_id: str | None = None) -> RunManifest:
     tier_breakdown: dict[int, int] = {}
     for s in spans:
         attrs = s.attributes or {}
-        tier = attrs.get("_agenteval_tier")
-        if isinstance(tier, int):
+        # M_R5 fix: count `agenteval.tier` (the OTel-semconv-style span attribute
+        # ratified by the architecture amendment 2026-05-18). Fall back to the
+        # Story-1b.1-era `_agenteval_tier` decorator attribute during the
+        # Phase-1 transition. Tests cover both.
+        tier = attrs.get("agenteval.tier")
+        if tier is None:
+            tier = attrs.get("_agenteval_tier")
+        if isinstance(tier, int) and not isinstance(tier, bool):
             tier_breakdown[tier] = tier_breakdown.get(tier, 0) + 1
 
     return RunManifest(
@@ -348,10 +488,18 @@ def clear_spans(test_id: str) -> int:
     """
     exporter = _get_exporter()
     # `_finished_spans` is the internal buffer; documented as private but
-    # stable across opentelemetry-sdk 1.20+ minor versions. Phase-1 carry-over:
-    # if a future SDK refactor removes it, swap to `clear()` + re-add the
-    # surviving spans (more expensive but contract-public).
-    finished = exporter._finished_spans
-    before = len(finished)
-    finished[:] = [s for s in finished if not (s.attributes and s.attributes.get("agenteval.test_id") == test_id)]
-    return before - len(finished)
+    # stable across opentelemetry-sdk 1.20+ minor versions (pinned to
+    # >=1.20,<2.0 in pyproject.toml). Phase-1 carry-over: if a future SDK
+    # refactor removes it, swap to `clear()` + re-add the surviving spans
+    # (more expensive but contract-public).
+    #
+    # H_R8 fix (Story 1b.2 code review): acquire `exporter._lock` before
+    # mutation — `BatchSpanProcessor.export()` (the Phase-1 chain order per
+    # architecture L679) concurrently `.extend()`s the same list from its
+    # worker thread. Slice-assign is not atomic; without the lock we race.
+    with exporter._lock:
+        finished = exporter._finished_spans
+        before = len(finished)
+        finished[:] = [s for s in finished if _span_test_id(s) != test_id]
+        after = len(finished)
+    return before - after

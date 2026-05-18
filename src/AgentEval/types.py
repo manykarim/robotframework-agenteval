@@ -68,14 +68,29 @@ __all__ = [
 class ToolCallTrace:
     """Projection of an `execute_tool` OTel span into a typed record.
 
-    Per FR35 + architecture L975-985 OTel GenAI semconv mapping:
+    Per FR35 + architecture L975-985 OTel GenAI semconv mapping (with the
+    `agenteval.tool.*` namespacing extensions ratified by architecture amendment
+    2026-05-18 per Story 1b.2 code-review H_R11):
         - `name` ← `gen_ai.tool.name`
         - `gen_ai_tool_call_id` ← `gen_ai.tool.call.id`
-        - `args` ← `agenteval.tool.args` (post-redaction)
-        - `result` ← `agenteval.tool.result` (post-redaction; may be None on error)
+        - `args` ← `agenteval.tool.args` (post-redaction; JSON-parsed at projection
+          time per Story 1b.2 code-review H_R5)
+        - `result` ← `agenteval.tool.result` (post-redaction; None on error)
         - `error` ← `agenteval.tool.error` (None on success)
         - `latency_ms` ← `agenteval.tool.duration_ms`
-        - `source` ← `agenteval.tool.source` ("adapter" | "hosted_mcp")
+        - `source` ← `agenteval.tool.source` ("adapter" | "hosted_mcp"; missing
+          source defaults to "adapter" with DegradedTraceWarning per Story 1b.2
+          code-review H_R4)
+        - `sequence_index` ← derived from chronological span ordering at
+          projection time per PRD FR35 + FR45(d) conformance assertion
+          ("sequence_index monotonic per agent run"). Added by Story 1b.2
+          code-review H_R6 fix; was deleted by the pre-create-story drift check's
+          first pass.
+
+    Defensive immutability (Story 1b.2 code-review M_R6 fix): `__post_init__`
+    wraps `args` in `MappingProxyType` so caller mutations to the source dict
+    after construction don't leak through. Frozen=True only protects against
+    attribute rebinding, NOT against mutating the contents of mapping fields.
 
     Frozen + immutable; serialize via `dataclasses.asdict()` for jsonl backend.
     """
@@ -87,6 +102,19 @@ class ToolCallTrace:
     latency_ms: float
     source: Literal["adapter", "hosted_mcp"]
     gen_ai_tool_call_id: str
+    sequence_index: int
+
+    def __post_init__(self) -> None:
+        # M_R6: defensively copy args so caller mutations to the source dict
+        # after construction don't leak through. NOTE: we use `dict()` not
+        # `MappingProxyType` because `dataclasses.asdict()` invokes
+        # `copy.deepcopy` on field values, and `MappingProxyType` isn't
+        # deepcopy-safe — using MappingProxyType breaks the jsonl-backend
+        # serialization path. The defensive copy still blocks
+        # source-mutation-leakage (the M_R6 hazard); the weaker direct
+        # `tct.args["k"] = v` mutation is allowed (matches Python's
+        # `frozen=True` semantics for mutable type fields).
+        object.__setattr__(self, "args", dict(self.args))
 
 
 @dataclass(frozen=True)
@@ -99,12 +127,26 @@ class Usage:
         - `cached_input_tokens` ← `gen_ai.usage.cached_input_tokens` (default 0
           for providers that don't emit it)
 
-    All values are non-negative integers. Frozen + immutable.
+    All values MUST be non-negative integers (validated in `__post_init__` per
+    Story 1b.2 code-review M_R11 fix). Negative values raise `ValueError` —
+    they typically indicate an adapter bug (e.g., "unknown" sentinel encoded
+    as -1) that should fail loud rather than silently propagate into cost
+    computations.
     """
 
     input_tokens: int
     output_tokens: int
     cached_input_tokens: int = 0
+
+    def __post_init__(self) -> None:
+        # M_R11: non-negative validation per docstring contract.
+        for name in ("input_tokens", "output_tokens", "cached_input_tokens"):
+            value = getattr(self, name)
+            if value < 0:
+                raise ValueError(
+                    f"Usage.{name} must be non-negative; got {value!r} "
+                    f"(adapter likely emitted a sentinel value — fix the adapter)"
+                )
 
 
 @dataclass(frozen=True)
@@ -134,3 +176,12 @@ class RunManifest:
     started_at: datetime
     ended_at: datetime
     agenteval_tier_breakdown: Mapping[int, int] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # M_R6: defensively copy agenteval_tier_breakdown so caller mutations
+        # to the source dict don't leak (same rationale as ToolCallTrace.args).
+        object.__setattr__(
+            self,
+            "agenteval_tier_breakdown",
+            dict(self.agenteval_tier_breakdown),
+        )
