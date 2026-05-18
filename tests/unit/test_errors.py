@@ -92,3 +92,76 @@ def test_degraded_trace_warning_emits_via_warnings_warn() -> None:
         warnings.warn("test", DegradedTraceWarning, stacklevel=2)
     assert len(caught) == 1
     assert issubclass(caught[0].category, DegradedTraceWarning)
+
+
+# ============================================================ #
+# Story 1b.3 — 2 new sub-bases + 3 new leaves                 #
+# ============================================================ #
+
+
+def test_agenteval_budget_error_is_sub_base() -> None:
+    from AgentEval.errors import AgentEvalBudgetError
+
+    assert issubclass(AgentEvalBudgetError, AgentEvalError)
+    assert AgentEvalBudgetError.error_code == ""
+
+
+def test_agenteval_compat_error_is_sub_base() -> None:
+    from AgentEval.errors import AgentEvalCompatError
+
+    assert issubclass(AgentEvalCompatError, AgentEvalError)
+    assert AgentEvalCompatError.error_code == ""
+
+
+def test_cost_exceeded_error_hierarchy_and_code() -> None:
+    from AgentEval.errors import AgentEvalBudgetError, CostExceededError
+
+    assert issubclass(CostExceededError, AgentEvalBudgetError)
+    assert issubclass(CostExceededError, AgentEvalError)
+    assert CostExceededError.error_code == "COST_EXCEEDED"
+    e = CostExceededError("budget gone")
+    assert str(e) == "COST_EXCEEDED: budget gone"  # H_R7 __str__ formatter
+
+
+def test_runtime_budget_exceeded_error_hierarchy_and_code() -> None:
+    from AgentEval.errors import AgentEvalBudgetError, RuntimeBudgetExceededError
+
+    assert issubclass(RuntimeBudgetExceededError, AgentEvalBudgetError)
+    assert RuntimeBudgetExceededError.error_code == "RUNTIME_BUDGET_EXCEEDED"
+    e = RuntimeBudgetExceededError("60s elapsed")
+    assert str(e) == "RUNTIME_BUDGET_EXCEEDED: 60s elapsed"
+
+
+def test_adapter_discovery_error_hierarchy_and_code() -> None:
+    from AgentEval.errors import AdapterDiscoveryError, AgentEvalCompatError
+
+    assert issubclass(AdapterDiscoveryError, AgentEvalCompatError)
+    assert issubclass(AdapterDiscoveryError, AgentEvalError)
+    assert AdapterDiscoveryError.error_code == "ADAPTER_DISCOVERY_ERROR"
+
+
+def test_all_new_leaves_inherit_via_correct_sub_base() -> None:
+    """Per ADR-014: leaves go through sub-bases, never direct AgentEvalError."""
+    from AgentEval.errors import (
+        AdapterDiscoveryError,
+        AgentEvalBudgetError,
+        AgentEvalCompatError,
+        CostExceededError,
+        RuntimeBudgetExceededError,
+    )
+
+    assert CostExceededError.__mro__[1] is AgentEvalBudgetError
+    assert RuntimeBudgetExceededError.__mro__[1] is AgentEvalBudgetError
+    assert AdapterDiscoveryError.__mro__[1] is AgentEvalCompatError
+
+
+def test_catching_agenteval_error_catches_all_new_leaves() -> None:
+    """Consumers can `try/except AgentEvalError` to catch any agenteval error."""
+    from AgentEval.errors import AdapterDiscoveryError, CostExceededError, RuntimeBudgetExceededError
+
+    with pytest.raises(AgentEvalError):
+        raise CostExceededError("x")
+    with pytest.raises(AgentEvalError):
+        raise RuntimeBudgetExceededError("x")
+    with pytest.raises(AgentEvalError):
+        raise AdapterDiscoveryError("x")

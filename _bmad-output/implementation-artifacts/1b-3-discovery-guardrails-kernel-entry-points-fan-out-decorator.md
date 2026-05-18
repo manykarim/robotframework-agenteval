@@ -1,6 +1,6 @@
 # Story 1b.3: Discovery + Guardrails Kernel — Entry-Points + Fan-Out Decorator
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -79,44 +79,44 @@ So that **custom adapters register cleanly via PyPA entry-points (FR17a) or prog
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Extend `src/AgentEval/errors.py` with 2 new sub-bases + 3 new leaves (AC: 1b.3.7)**
-  - [ ] `AgentEvalBudgetError(AgentEvalError)` sub-base — no override; inherits `__str__` formatter from Story 1b.2's base.
-  - [ ] `AgentEvalCompatError(AgentEvalError)` sub-base — same pattern.
-  - [ ] `CostExceededError(AgentEvalBudgetError)` leaf — `error_code: ClassVar[str] = "COST_EXCEEDED"`.
-  - [ ] `RuntimeBudgetExceededError(AgentEvalBudgetError)` leaf — `error_code: ClassVar[str] = "RUNTIME_BUDGET_EXCEEDED"`.
-  - [ ] `AdapterDiscoveryError(AgentEvalCompatError)` leaf — `error_code: ClassVar[str] = "ADAPTER_DISCOVERY_ERROR"`.
-  - [ ] Update `__all__` export list.
-  - [ ] Update module docstring "Story 1b.3 ships these leaves" note + retire the 6 remaining future-story placeholders mention to be just the 6 still-unimplemented ones (PollingDisallowedError, UnsupportedMCPVersion, UnsupportedBinaryVersion, TierViolationError, ValidateOperatorDisallowed, AdapterVersionDriftWarning).
+- [x] **Task 1: Extend `src/AgentEval/errors.py` with 2 new sub-bases + 3 new leaves (AC: 1b.3.7)**
+  - [x] `AgentEvalBudgetError(AgentEvalError)` sub-base — no override; inherits `__str__` formatter from Story 1b.2's base.
+  - [x] `AgentEvalCompatError(AgentEvalError)` sub-base — same pattern.
+  - [x] `CostExceededError(AgentEvalBudgetError)` leaf — `error_code: ClassVar[str] = "COST_EXCEEDED"`.
+  - [x] `RuntimeBudgetExceededError(AgentEvalBudgetError)` leaf — `error_code: ClassVar[str] = "RUNTIME_BUDGET_EXCEEDED"`.
+  - [x] `AdapterDiscoveryError(AgentEvalCompatError)` leaf — `error_code: ClassVar[str] = "ADAPTER_DISCOVERY_ERROR"`.
+  - [x] Update `__all__` export list.
+  - [x] Update module docstring "Story 1b.3 ships these leaves" note + retire the 6 remaining future-story placeholders mention to be just the 6 still-unimplemented ones (PollingDisallowedError, UnsupportedMCPVersion, UnsupportedBinaryVersion, TierViolationError, ValidateOperatorDisallowed, AdapterVersionDriftWarning).
 
-- [ ] **Task 2: Author `src/AgentEval/_kernel/discovery.py` (AC: 1b.3.1, 1b.3.2, 1b.3.8)**
-  - [ ] Apache 2.0 license header.
-  - [ ] Module docstring citing ADR-013 (was ADR-A2) at `docs/adr/ADR-013-entry-points-discovery-infrastructure.md` (NOT `-discovery.md`; architecture L1426 was corrected pre-authoring) + FR17a/b/c + Phase-1 forward-ref pattern for `CodingAgentAdapter`.
-  - [ ] `TYPE_CHECKING` forward-ref import for `CodingAgentAdapter` from `AgentEval.types`.
-  - [ ] Module-level `_registered_adapters: dict[str, type] = {}` for programmatic-composition path.
-  - [ ] `_discover_entry_point_group(group_name: str) -> dict[str, type]` private helper:
+- [x] **Task 2: Author `src/AgentEval/_kernel/discovery.py` (AC: 1b.3.1, 1b.3.2, 1b.3.8)**
+  - [x] Apache 2.0 license header.
+  - [x] Module docstring citing ADR-013 (was ADR-A2) at `docs/adr/ADR-013-entry-points-discovery-infrastructure.md` (NOT `-discovery.md`; architecture L1426 was corrected pre-authoring) + FR17a/b/c + Phase-1 forward-ref pattern for `CodingAgentAdapter`.
+  - [x] `TYPE_CHECKING` forward-ref import for `CodingAgentAdapter` from `AgentEval.types`.
+  - [x] Module-level `_registered_adapters: dict[str, type] = {}` for programmatic-composition path.
+  - [x] `_discover_entry_point_group(group_name: str) -> dict[str, type]` private helper:
     - Uses `importlib.metadata.entry_points(group=group_name)`.
     - Iterates entries; for each, tries `entry.load()` in a try/except.
     - On `ModuleNotFoundError` / `ImportError` / `AttributeError`: emits a `logging.WARNING` log via the module's logger + raises `AdapterDiscoveryError` with the installed-vs-required-extras diagnostic (ADR-013 L42 format).
     - Returns dict mapping entry name → loaded class.
-  - [ ] `discover_adapters() -> dict[str, type["CodingAgentAdapter"]]`:
+  - [x] `discover_adapters() -> dict[str, type["CodingAgentAdapter"]]`:
     - Calls `_discover_entry_point_group("agenteval.coding_agents")` (primary).
     - Calls `_discover_entry_point_group("robotframework_agenteval.adapters")` (legacy backward-compat).
     - Merges: primary wins on name collision, emits `UserWarning` via `warnings.warn` when collision detected.
     - Returns merged dict.
-  - [ ] `discover_providers() -> dict[str, type]` — single-group dispatch.
-  - [ ] `discover_sandboxes() -> dict[str, type]` — single-group dispatch.
-  - [ ] `register_adapter(name: str, cls: type["CodingAgentAdapter"]) -> None` — overwrites + emits `UserWarning` on same-name re-registration.
-  - [ ] `get_adapter(name: str) -> type["CodingAgentAdapter"]` — precedence: `_registered_adapters` > `discover_adapters()` cached result. Cache discovery via `functools.lru_cache(maxsize=1)` to avoid repeated entry-point traversal; document the cache + provide `_clear_discovery_cache()` test-only helper.
-  - [ ] Verify with `uv run mypy src/AgentEval/_kernel/discovery.py`.
+  - [x] `discover_providers() -> dict[str, type]` — single-group dispatch.
+  - [x] `discover_sandboxes() -> dict[str, type]` — single-group dispatch.
+  - [x] `register_adapter(name: str, cls: type["CodingAgentAdapter"]) -> None` — overwrites + emits `UserWarning` on same-name re-registration.
+  - [x] `get_adapter(name: str) -> type["CodingAgentAdapter"]` — precedence: `_registered_adapters` > `discover_adapters()` cached result. Cache discovery via `functools.lru_cache(maxsize=1)` to avoid repeated entry-point traversal; document the cache + provide `_clear_discovery_cache()` test-only helper.
+  - [x] Verify with `uv run mypy src/AgentEval/_kernel/discovery.py`.
 
-- [ ] **Task 3: Author `src/AgentEval/_kernel/guardrails.py` (AC: 1b.3.3, 1b.3.4, 1b.3.5, 1b.3.6)**
-  - [ ] Apache 2.0 license header.
-  - [ ] Module docstring citing ADR-015 (was ADR-A5) at `docs/adr/ADR-015-cost-runtime-guardrail-decorator.md` (ratified filename per Story 1b.1 M4 fix) + FR11 + FR11b + Story 1b.2's errors.py CostExceededError / RuntimeBudgetExceededError + 3-layer enforcement description.
-  - [ ] Imports: `contextvars`, `threading`, `time`, `functools`, `warnings`, `logging`; `CostExceededError`, `RuntimeBudgetExceededError` from `AgentEval.errors`; `_run_async` integration (not direct import — the decorator works via ContextVar that `_run_async` already propagates per Story 1b.1).
-  - [ ] Module-level `_cancel_event_var: ContextVar[threading.Event | None] = ContextVar("agenteval_cancel_event", default=None)`.
-  - [ ] Module-level `_current_cost_usd_for_run() -> float` STUB returning 0.0 (Phase-1; Story 4.1 wires real LiteLLM cost tracker). Documented in module docstring.
-  - [ ] `current_cancel_event() -> threading.Event | None` accessor — returns the ContextVar value (None outside a decorated frame).
-  - [ ] `@guarded_fanout(estimator: Callable[[dict], tuple[float, float]] | None = None, *, meter_interval_seconds: float = 5.0)` decorator factory:
+- [x] **Task 3: Author `src/AgentEval/_kernel/guardrails.py` (AC: 1b.3.3, 1b.3.4, 1b.3.5, 1b.3.6)**
+  - [x] Apache 2.0 license header.
+  - [x] Module docstring citing ADR-015 (was ADR-A5) at `docs/adr/ADR-015-cost-runtime-guardrail-decorator.md` (ratified filename per Story 1b.1 M4 fix) + FR11 + FR11b + Story 1b.2's errors.py CostExceededError / RuntimeBudgetExceededError + 3-layer enforcement description.
+  - [x] Imports: `contextvars`, `threading`, `time`, `functools`, `warnings`, `logging`; `CostExceededError`, `RuntimeBudgetExceededError` from `AgentEval.errors`; `_run_async` integration (not direct import — the decorator works via ContextVar that `_run_async` already propagates per Story 1b.1).
+  - [x] Module-level `_cancel_event_var: ContextVar[threading.Event | None] = ContextVar("agenteval_cancel_event", default=None)`.
+  - [x] Module-level `_current_cost_usd_for_run() -> float` STUB returning 0.0 (Phase-1; Story 4.1 wires real LiteLLM cost tracker). Documented in module docstring.
+  - [x] `current_cancel_event() -> threading.Event | None` accessor — returns the ContextVar value (None outside a decorated frame).
+  - [x] `@guarded_fanout(estimator: Callable[[dict], tuple[float, float]] | None = None, *, meter_interval_seconds: float = 5.0)` decorator factory:
     - Returns a decorator that wraps the keyword function.
     - Inside the wrapper:
       - Read budget from the AgentEval instance (`self._max_cost_usd`, `self._max_runtime_seconds` per Story 1a.6 / Story 1b.1 wiring). Also accept the `_budget` kwarg-only test-override.
@@ -127,47 +127,47 @@ So that **custom adapters register cleanly via PyPA entry-points (FR17a) or prog
       - After the keyword returns (or yields), re-check `_BreachState` and raise `CostExceededError` / `RuntimeBudgetExceededError` if a breach was recorded (so the caller sees the typed error even though the keyword body itself didn't raise).
     - Document the `meter_interval_seconds` kwarg with sensible-default rationale (5s = ADR-015 reference; configurable for unit tests + low-budget runs).
 
-- [ ] **Task 4: Author unit tests under `tests/unit/kernel/` + extend `tests/unit/test_errors.py` (AC: 1b.3.9)**
-  - [ ] `tests/unit/kernel/test_discovery.py` (~12+ tests covering the 3 group accessors + register/get + AdapterDiscoveryError + broken-entry-point + partial-install detection):
+- [x] **Task 4: Author unit tests under `tests/unit/kernel/` + extend `tests/unit/test_errors.py` (AC: 1b.3.9)**
+  - [x] `tests/unit/kernel/test_discovery.py` (~12+ tests covering the 3 group accessors + register/get + AdapterDiscoveryError + broken-entry-point + partial-install detection):
     - Use `monkeypatch.setattr(importlib.metadata, "entry_points", fake_func)` to stub the entry-point discovery surface.
     - Fake entry-points return small `SimpleNamespace`-shaped stand-ins for the `CodingAgentAdapter` Protocol (Story 1b.4 forward-ref).
     - At least one test for the collision-warning between `agenteval.coding_agents` and `robotframework_agenteval.adapters`.
     - At least one test for `_clear_discovery_cache()` test-helper.
-  - [ ] `tests/unit/kernel/test_guardrails.py` (~14+ tests covering 3 layers + cancellation + estimator=None + ContextVar propagation + error message format):
+  - [x] `tests/unit/kernel/test_guardrails.py` (~14+ tests covering 3 layers + cancellation + estimator=None + ContextVar propagation + error message format):
     - Use a tiny `_FakeAgent` class with `_max_cost_usd` + `_max_runtime_seconds` attributes (mimics the AgentEval instance contract; full `AgentEval` not needed).
     - For Layer 2 / Layer 3 tests: use very small `meter_interval_seconds` (e.g., 0.01s) so the poller fires multiple times in a sub-second test.
     - Monkey-patch `_current_cost_usd_for_run` to return increasing values for Layer 2 breach tests.
     - At least one test verifies `_run_async` integration: spawn a coroutine via `_run_async`, observe `current_cancel_event()` returns the propagated event.
     - At least one test verifies `estimator=None` skips Layer 1 (only Layers 2/3 fire).
     - At least one test verifies error message contains cumulative-cost-at-breach number.
-  - [ ] `tests/unit/test_errors.py` extensions:
+  - [x] `tests/unit/test_errors.py` extensions:
     - 2 tests for new sub-bases (each inherits AgentEvalError, has empty `error_code`).
     - 3 tests for new leaves (each inherits the correct sub-base, has correct `error_code` string, inherits the H_R7 `__str__` formatter from base).
     - 1 test for full hierarchy: `isinstance(CostExceededError("x"), AgentEvalError) is True`.
 
-- [ ] **Task 5: All-gates pass (AC: 1b.3.10)**
-  - [ ] `uv run ruff check src/ tests/` — clean.
-  - [ ] `uv run ruff format --check src/ tests/` — clean.
-  - [ ] `uv run mypy src/` — clean (30 source files: previous 28 + new discovery.py + guardrails.py).
-  - [ ] `uv run python scripts/check-license-headers.py` — PASS (30/30).
-  - [ ] `uv run pytest tests/unit -q --ignore=tests/unit/conventions` — all kernel + errors + types tests pass (~195+).
-  - [ ] `uv run pytest tests/acceptance/tier1 -q` — Story 1a.6's 6 FR42 tests still PASS (regression).
-  - [ ] `uv run robot tests/acceptance/smoke` — RF smoke test still PASS (regression).
+- [x] **Task 5: All-gates pass (AC: 1b.3.10)**
+  - [x] `uv run ruff check src/ tests/` — clean.
+  - [x] `uv run ruff format --check src/ tests/` — clean.
+  - [x] `uv run mypy src/` — clean (30 source files: previous 28 + new discovery.py + guardrails.py).
+  - [x] `uv run python scripts/check-license-headers.py` — PASS (30/30).
+  - [x] `uv run pytest tests/unit -q --ignore=tests/unit/conventions` — all kernel + errors + types tests pass (~195+).
+  - [x] `uv run pytest tests/acceptance/tier1 -q` — Story 1a.6's 6 FR42 tests still PASS (regression).
+  - [x] `uv run robot tests/acceptance/smoke` — RF smoke test still PASS (regression).
 
-- [ ] **Task 6: Update `docs/contracts/stability-surface.md` Phase-1 registry (AC: 1b.3.7 — extends Story 1b.2's kernel surface entry)**
-  - [ ] Add `_kernel.discovery.{discover_adapters, discover_providers, discover_sandboxes, register_adapter, get_adapter}` as `provisional` to the Kernel public surface section.
-  - [ ] Add `_kernel.guardrails.{guarded_fanout, current_cancel_event}` as `provisional`.
-  - [ ] Update the Top-level errors + types surface section: add `AgentEvalBudgetError`, `AgentEvalCompatError` sub-bases + `CostExceededError`, `RuntimeBudgetExceededError`, `AdapterDiscoveryError` leaves with `stable` label per the established pattern.
+- [x] **Task 6: Update `docs/contracts/stability-surface.md` Phase-1 registry (AC: 1b.3.7 — extends Story 1b.2's kernel surface entry)**
+  - [x] Add `_kernel.discovery.{discover_adapters, discover_providers, discover_sandboxes, register_adapter, get_adapter}` as `provisional` to the Kernel public surface section.
+  - [x] Add `_kernel.guardrails.{guarded_fanout, current_cancel_event}` as `provisional`.
+  - [x] Update the Top-level errors + types surface section: add `AgentEvalBudgetError`, `AgentEvalCompatError` sub-bases + `CostExceededError`, `RuntimeBudgetExceededError`, `AdapterDiscoveryError` leaves with `stable` label per the established pattern.
 
-- [ ] **Task 7: Update `docs/contracts/error-class-hierarchy.md` IMPLEMENTED markers (AC: 1b.3.7)**
-  - [ ] Mark `CostExceededError` (L73) as IMPLEMENTED — Story 1b.3 (`src/AgentEval/errors.py`); raise site at `src/AgentEval/_kernel/guardrails.@guarded_fanout` Layer 1 + Layer 2.
-  - [ ] Mark `RuntimeBudgetExceededError` (L74) as IMPLEMENTED — Story 1b.3; raise site at `_kernel/guardrails.@guarded_fanout` Layer 1 + Layer 3.
-  - [ ] Mark `AdapterDiscoveryError` (L82) as IMPLEMENTED — Story 1b.3 (`src/AgentEval/errors.py`); raise site at `src/AgentEval/_kernel/discovery.{_discover_entry_point_group, get_adapter}`.
+- [x] **Task 7: Update `docs/contracts/error-class-hierarchy.md` IMPLEMENTED markers (AC: 1b.3.7)**
+  - [x] Mark `CostExceededError` (L73) as IMPLEMENTED — Story 1b.3 (`src/AgentEval/errors.py`); raise site at `src/AgentEval/_kernel/guardrails.@guarded_fanout` Layer 1 + Layer 2.
+  - [x] Mark `RuntimeBudgetExceededError` (L74) as IMPLEMENTED — Story 1b.3; raise site at `_kernel/guardrails.@guarded_fanout` Layer 1 + Layer 3.
+  - [x] Mark `AdapterDiscoveryError` (L82) as IMPLEMENTED — Story 1b.3 (`src/AgentEval/errors.py`); raise site at `src/AgentEval/_kernel/discovery.{_discover_entry_point_group, get_adapter}`.
 
-- [ ] **Task 8: Apply project norms (AC: 1b.3.11)**
-  - [ ] Code-review will use `/bmad-code-review (Using current Claude + Codex CLI subagent)` per `feedback_review_methodology_norms`.
-  - [ ] Cross-LLM reviewer prompt MUST direct re-derivation of cited facts per `feedback_citation_drift_first_class`.
-  - [ ] Honest framing: Phase-1 limitations documented (Layer 2 cost-meter stub returns 0.0 until Story 4.1; cooperative-cancellation hook ships but full provider-client cancellation integration is Story 4.1; `CodingAgentAdapter` TYPE_CHECKING forward-ref until Story 1b.4).
+- [x] **Task 8: Apply project norms (AC: 1b.3.11)**
+  - [x] Code-review will use `/bmad-code-review (Using current Claude + Codex CLI subagent)` per `feedback_review_methodology_norms`.
+  - [x] Cross-LLM reviewer prompt MUST direct re-derivation of cited facts per `feedback_citation_drift_first_class`.
+  - [x] Honest framing: Phase-1 limitations documented (Layer 2 cost-meter stub returns 0.0 until Story 4.1; cooperative-cancellation hook ships but full provider-client cancellation integration is Story 4.1; `CodingAgentAdapter` TYPE_CHECKING forward-ref until Story 1b.4).
 
 ## Dev Notes
 
@@ -271,42 +271,54 @@ Verification: `test_guardrails.py` includes an integration test that spawns a co
 
 ### Context Reference
 
-<!-- To be filled by dev-story workflow -->
+- Story spec (this file).
+- Architecture L358-380 / L494 / L648 / L1196-1209 / L1426 / L1519-1521.
+- ADR-013 (`docs/adr/ADR-013-entry-points-discovery-infrastructure.md`) — 6 tables + L42 partial-install diagnostic.
+- ADR-014 (`docs/adr/ADR-014-error-class-hierarchy.md`) — 4-sub-base scheme; Story 1b.3 adds 2 of the 4 sub-bases (Budget + Compat).
+- ADR-015 (`docs/adr/ADR-015-cost-runtime-guardrail-decorator.md`) — `@guarded_fanout(estimator=callable)` §Decision L18 + 3-layer enforcement L25-29.
+- `docs/contracts/error-class-hierarchy.md` L73 / L74 / L82 — CostExceededError + RuntimeBudgetExceededError + AdapterDiscoveryError.
+- Story 1b.1 `_kernel/run_async.py` — `_run_async` ContextVar propagation via `contextvars.copy_context()` (H6 fix).
+- Story 1b.2 `src/AgentEval/errors.py` — base + H_R7 `__str__` formatter; Story 1b.3 extends pure-additively.
+- Story 1a.6 `src/AgentEval/__init__.py` — `_max_cost_usd` + `_max_runtime_seconds` attrs read by the decorator wrapper.
 
 ### Agent Model Used
 
-<!-- To be filled by dev-story workflow -->
+Claude Opus 4.7 (1M context) — `claude-opus-4-7[1m]`.
 
 ### Debug Log References
 
-<!-- To be filled by dev-story workflow -->
+None (all-gates clean on first full pass; one ruff auto-fix applied to `tests/unit/kernel/test_discovery.py` import grouping after initial implementation, one ruff format reformat to the same file).
 
 ### Completion Notes List
 
-<!-- To be filled by dev-story workflow -->
+- Task 1 — `src/AgentEval/errors.py`: added `AgentEvalBudgetError` + `AgentEvalCompatError` sub-bases, `CostExceededError` (`error_code="COST_EXCEEDED"`), `RuntimeBudgetExceededError` (`error_code="RUNTIME_BUDGET_EXCEEDED"`), `AdapterDiscoveryError` (`error_code="ADAPTER_DISCOVERY_ERROR"`). Extended `__all__` + retired the 3 just-implemented leaves from the module docstring's future-leaves list.
+- Task 2 — `src/AgentEval/_kernel/discovery.py` (~250L): 3 typed group accessors (`discover_adapters` / `discover_providers` / `discover_sandboxes`) all backed by `@functools.lru_cache(maxsize=1)` private helpers; generic `_discover_entry_point_group` honors ADR-013 L42 diagnostic. `register_adapter` / `get_adapter` precedence (programmatic > primary > legacy) per ADR-013 L18. `CodingAgentAdapter` TYPE_CHECKING forward-ref per D6 ratification.
+- Task 3 — `src/AgentEval/_kernel/guardrails.py` (~250L): `@guarded_fanout(estimator=callable, *, meter_interval_seconds=5.0)` decorator factory with 3-layer enforcement per ADR-015 L25-29. Layer 3 fires at EXACTLY the configured budget (NOT 1.1× — the 1.1× wording in the pre-edit story spec was unratified per ADR-015 §Decision L29). Cancellation event bound via `_cancel_event_var` ContextVar; Story 1b.1's `_run_async` `copy_context` propagation tested.
+- Task 4 — Unit tests: `tests/unit/kernel/test_discovery.py` (15 tests) + `tests/unit/kernel/test_guardrails.py` (14 tests) + 7 extensions to `tests/unit/test_errors.py`. Coverage: 3 group accessors + register/get + AdapterDiscoveryError partial-install + AttributeError-on-load + Layer 1 cost/runtime/None-budget/estimator-None/exact-budget + Layer 2 mid-run cost monkey-patch + Layer 3 wall-clock at exact budget + `current_cancel_event()` accessor + `_run_async` ContextVar propagation + Layer 2 breach sets cancel event + `_budget` test override + `meter_interval_seconds` honored.
+- Task 5 — All-gates: `uv run ruff check src/ tests/` clean; `uv run ruff format src/ tests/` clean (44 files unchanged after 1 auto-format); `uv run mypy src/` clean (30 source files); license headers PASS (30/30); `uv run pytest tests/unit --ignore=tests/unit/conventions -q` 199 passed; `uv run pytest tests/acceptance/tier1 -q` 6 passed (Story 1a.6 FR42 regression); `uv run robot tests/acceptance/smoke` PASS.
+- Task 6 — `docs/contracts/stability-surface.md`: extended "Top-level errors + types surface" section with `AgentEvalBudgetError` + `AgentEvalCompatError` sub-bases (`stable`) + 3 new leaves (`stable`); added new "Kernel discovery + guardrails surface (Story 1b.3 — Phase-1 registry)" section registering the 5 discovery accessors + 2 guardrails accessors (`provisional`) + the 1 cost-source stub (`experimental`).
+- Task 7 — `docs/contracts/error-class-hierarchy.md`: marked `CostExceededError` (L73), `RuntimeBudgetExceededError` (L74), `AdapterDiscoveryError` (L82) as IMPLEMENTED — Story 1b.3 with raise-site citations.
+- Task 8 — Project norms: code-review will use `/bmad-code-review (Using current Claude + Codex CLI subagent)`; cross-LLM reviewer prompt will be directed to re-derive cited facts per `feedback_citation_drift_first_class`; Phase-1 limitations explicitly documented in module docstring + this completion note (Layer 2 stub returns 0.0 until Story 4.1; cooperative-cancellation hook ships but full provider-client integration is Story 4.1; `CodingAgentAdapter` TYPE_CHECKING forward-ref until Story 1b.4).
 
 ## File List
 
-<!-- To be filled by dev-story workflow -->
-
-Expected files (2 created + 3 updated + 2 new test files):
-
 **New source files (2):**
-- `src/AgentEval/_kernel/discovery.py` (~200L) — 3 typed group accessors + register_adapter + get_adapter + AdapterDiscoveryError raise sites + lru_cache discovery cache
-- `src/AgentEval/_kernel/guardrails.py` (~250L) — `@guarded_fanout(estimator=callable)` decorator + 3-layer enforcement + ContextVar-bound cancellation event + current_cancel_event accessor + `_current_cost_usd_for_run` Phase-1 stub
+- `src/AgentEval/_kernel/discovery.py` (251L) — 3 typed group accessors + generic helper + register_adapter / get_adapter + lru_cache + AdapterDiscoveryError raise sites
+- `src/AgentEval/_kernel/guardrails.py` (252L) — `@guarded_fanout(estimator=callable)` + 3-layer enforcement + ContextVar cancel hook + `current_cancel_event` accessor + `_current_cost_usd_for_run` stub
 
 **New test files (2):**
-- `tests/unit/kernel/test_discovery.py` (~250L) — 12+ tests covering 3 group accessors + register/get + AdapterDiscoveryError + broken-entry-point + partial-install + collision warning + lru_cache
-- `tests/unit/kernel/test_guardrails.py` (~280L) — 14+ tests covering 3 layers + cancellation + estimator=None + ContextVar propagation + error message format + meter_interval_seconds
+- `tests/unit/kernel/test_discovery.py` (~250L, 15 tests)
+- `tests/unit/kernel/test_guardrails.py` (~290L, 14 tests)
 
-**Updated files (3):**
-- `src/AgentEval/errors.py` — pure extension: 2 new sub-bases + 3 new leaves
-- `tests/unit/test_errors.py` — extended: 6+ new tests covering new sub-bases + leaves + hierarchy
-- `docs/contracts/stability-surface.md` — register new public surface entries for discovery + guardrails + extended errors
-- `docs/contracts/error-class-hierarchy.md` — mark 3 leaves as IMPLEMENTED (Story 1b.3)
+**Modified files (4):**
+- `src/AgentEval/errors.py` — pure extension: 2 new sub-bases + 3 new leaves; `__all__` + module docstring updated
+- `tests/unit/test_errors.py` — 7 new tests (2 sub-bases + 3 leaves + 1 hierarchy + 1 base-catches-all)
+- `docs/contracts/stability-surface.md` — extended Top-level errors section + new Kernel discovery + guardrails section
+- `docs/contracts/error-class-hierarchy.md` — 3 leaves marked IMPLEMENTED (L73 / L74 / L82)
 
 ## Change Log
 
 | Date       | Version | Description                                                                  | Author |
 | ---------- | ------- | ---------------------------------------------------------------------------- | ------ |
 | 2026-05-19 | 0.1.0   | Initial story creation (ready-for-dev). Pre-create-story drift check (7th consecutive use of `feedback_spec_vs_ratified_doc_precheck`) caught 8 drifts in Story 1b.3 spec: (D1 HIGH) entry-point groups → 6 tables per ADR-013 L47; (D2 HIGH) `@guarded_fanout` signature `cost_kwarg/runtime_kwarg` → `estimator=callable` per ADR-015 §Decision L18; (D3 HIGH) 2-layer → 3-layer enforcement per ADR-015 §Decision L25-29; (D4 MED) `UnknownAdapterError` → `AdapterDiscoveryError` per contract L82; (D5 MED) errors.py adds 2 sub-bases + 3 leaves; (D6 MED) `CodingAgentAdapter` TYPE_CHECKING forward-ref; (D7 MED) `KeywordTierMissingError` deferred to Story 1b.6 per Many's pick; (D8 LOW) ADR-013 filename drift in architecture L1426 → fixed pre-authoring. All 8 resolved by honoring ratified sources; epics.md L933-941 (Story 1b.3) + architecture.md L1426 updated pre-authoring per "fix-the-losing-source-NOW" pattern. NEW NORM from Epic 1a retro (`feedback_citation_drift_first_class`) embedded in AC-1b.3.11. Phase-1 limitations explicitly documented (Layer 2 cost-meter stub until Story 4.1; cooperative-cancellation hook ships but provider-client integration is Story 4.1; CodingAgentAdapter TYPE_CHECKING forward-ref). | Bob |
+| 2026-05-19 | 0.2.0   | Dev-story implementation pass complete; status → review. Tasks 1-8 done. `src/AgentEval/errors.py` extended with `AgentEvalBudgetError` + `AgentEvalCompatError` sub-bases + `CostExceededError` + `RuntimeBudgetExceededError` + `AdapterDiscoveryError` leaves. New modules `src/AgentEval/_kernel/discovery.py` (~250L; 3 typed group accessors + lru_cache + register/get + AdapterDiscoveryError diagnostic per ADR-013 L42) + `src/AgentEval/_kernel/guardrails.py` (~250L; `@guarded_fanout(estimator=callable)` with 3-layer enforcement per ADR-015 §Decision L25-29; Layer 3 fires at EXACTLY the budget — NOT 1.1×). New tests `tests/unit/kernel/test_discovery.py` (15 tests) + `tests/unit/kernel/test_guardrails.py` (14 tests); 7 new tests in `tests/unit/test_errors.py`. All-gates clean: ruff check + ruff format clean; mypy clean (30 source files); license headers PASS (30/30); pytest tests/unit 199 passed; pytest tests/acceptance/tier1 6 passed (Story 1a.6 FR42 regression); robot tests/acceptance/smoke PASS. `docs/contracts/stability-surface.md` extended with new kernel + errors surface entries. `docs/contracts/error-class-hierarchy.md` L73 / L74 / L82 marked IMPLEMENTED. Phase-1 limitations preserved verbatim from story spec. | Amelia |

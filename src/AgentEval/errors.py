@@ -27,15 +27,29 @@ Story 1b.2 ships the MINIMAL subset of the catalog needed by
   `_check_mcp_coverage` gate per FR37 + ADR-016 L44 when a run reports
   `mcp_coverage == "external_mixed"` without `allow_external_mcp_blind=True`.
 
-The other 8 leaves from `docs/contracts/error-class-hierarchy.md` (Story 1a.4
-ratified catalog) are added to this module as subsequent stories need them:
+Story 1b.3 EXTENDS this module with 2 new sub-bases + 3 new leaves (pure
+addition, no refactor of Story 1b.2's classes):
 
-- `PollingDisallowedError` — Story 1b.5 / Epic 6 (tier ACL)
-- `CostExceededError`, `RuntimeBudgetExceededError` — Story 1b.3 (`@guarded_fanout`)
+- `AgentEvalBudgetError(AgentEvalError)` — sub-base for cost/runtime budget
+  breaches.
+- `AgentEvalCompatError(AgentEvalError)` — sub-base for environment/version
+  /compat issues.
+- `CostExceededError(AgentEvalBudgetError)` — raised by
+  `_kernel/guardrails.@guarded_fanout` Layer 1 + Layer 2.
+- `RuntimeBudgetExceededError(AgentEvalBudgetError)` — raised by Layer 1 + Layer 3.
+- `AdapterDiscoveryError(AgentEvalCompatError)` — raised by
+  `_kernel/discovery.{_discover_entry_point_group, get_adapter}` on partial-install
+  + lookup-miss.
+
+The remaining 6 leaves from `docs/contracts/error-class-hierarchy.md` (Story
+1a.4 ratified catalog) are added to this module as subsequent stories need them:
+
+- `PollingDisallowedError` — Story 1b.6 (Determinism Contract + convention enforcer)
 - `UnsupportedMCPVersionError` — Epic 3 Story 3.1 (MCP transport)
-- `UnsupportedBinaryVersionError` — Story 1b.4 (`_assert_binary_version` helper)
+- `UnsupportedBinaryVersionError` — Story 1b.4 / Epic 4 (CLI adapter version pin enforcement)
 - `TierViolationError` — Story 1b.6 (convention enforcer)
 - `ValidateOperatorDisallowed` — Epic 6 Story 6.2 (assertion gate enforcement)
+- `AdapterVersionDriftWarning` — Epic 11 Story 11.3 (warning, not error)
 - `SandboxRequiredError` — currently lives at `src/AgentEval/security/policy.py`
   per Story 1a.1's pre-`errors.py` baseline; does NOT yet inherit from
   `AgentEvalError`. Re-homing is a Phase-1.5 hygiene carry-over tracked in
@@ -68,7 +82,12 @@ from typing import ClassVar
 __all__ = [
     "AgentEvalError",
     "AgentEvalIntegrityError",
+    "AgentEvalBudgetError",
+    "AgentEvalCompatError",
     "IncompleteTraceError",
+    "CostExceededError",
+    "RuntimeBudgetExceededError",
+    "AdapterDiscoveryError",
     "DegradedTraceWarning",
 ]
 
@@ -135,6 +154,92 @@ class IncompleteTraceError(AgentEvalIntegrityError):
     """
 
     error_code: ClassVar[str] = "INCOMPLETE_TRACE"
+
+
+# --------------------------------------------------------------------------- #
+# Budget sub-base + leaves (Story 1b.3 — ADR-015 + contract L73/L74)          #
+# --------------------------------------------------------------------------- #
+
+
+class AgentEvalBudgetError(AgentEvalError):
+    """Sub-base for errors signaling that a Tier-3 fan-out keyword breached a budget.
+
+    Per ADR-014's 4-sub-base scheme. Budget errors typically signal:
+        - Cost budget breach (`CostExceededError`) — total USD spent during the
+          fan-out run exceeded the configured `max_cost_usd`.
+        - Runtime budget breach (`RuntimeBudgetExceededError`) — wall-clock
+          elapsed exceeded the configured `max_runtime_seconds`.
+
+    Both raised by `_kernel/guardrails.@guarded_fanout` per ADR-015 §Decision.
+    """
+
+
+class CostExceededError(AgentEvalBudgetError):
+    """Raised when a Tier-3 fan-out keyword exceeded the configured cost budget.
+
+    Per ADR-015 §Decision L25-29 + docs/contracts/error-class-hierarchy.md L73:
+    raised by `@guarded_fanout` at Layer 1 (pre-flight estimation > budget) OR
+    Layer 2 (mid-run cumulative cost meter > budget). Error message includes
+    the cumulative cost-at-breach so callers can size the budget for next run.
+
+    `error_code = "COST_EXCEEDED"`; exit code 66 (sysexits-extended; pinned by
+    epics.md Story 8a.1 L1660).
+    """
+
+    error_code: ClassVar[str] = "COST_EXCEEDED"
+
+
+class RuntimeBudgetExceededError(AgentEvalBudgetError):
+    """Raised when a Tier-3 fan-out keyword exceeded the configured runtime budget.
+
+    Per ADR-015 §Decision L25-29 + docs/contracts/error-class-hierarchy.md L74:
+    raised by `@guarded_fanout` at Layer 1 (pre-flight runtime estimate > budget)
+    OR Layer 3 (mid-run wall-clock elapsed > budget). Raised at EXACTLY the
+    configured budget, not at 1.1×.
+
+    `error_code = "RUNTIME_BUDGET_EXCEEDED"`; exit code 75 (EX_TEMPFAIL).
+    """
+
+    error_code: ClassVar[str] = "RUNTIME_BUDGET_EXCEEDED"
+
+
+# --------------------------------------------------------------------------- #
+# Compat sub-base + leaves (Story 1b.3 — ADR-013 + contract L82)              #
+# --------------------------------------------------------------------------- #
+
+
+class AgentEvalCompatError(AgentEvalError):
+    """Sub-base for errors signaling environment / version / compat issues.
+
+    Per ADR-014's 4-sub-base scheme. Compat errors typically signal:
+        - `UnsupportedMCPVersionError` (Epic 3 Story 3.1; not yet implemented)
+        - `UnsupportedBinaryVersionError` (Epic 4 / Epic 11; not yet implemented)
+        - `AdapterDiscoveryError` (Story 1b.3) — entry-points discovery failure
+        - `AdapterVersionDriftWarning` (Epic 11 Story 11.3; warning, not error)
+    """
+
+
+class AdapterDiscoveryError(AgentEvalCompatError):
+    """Raised by `_kernel/discovery.py` on entry-points discovery failures.
+
+    Two raise sites per Story 1b.3:
+        1. **Partial-install detection** (ADR-013 L42): an entry-point in
+           `agenteval.coding_agents` (or another agenteval.* group) points at
+           a module that can't be imported (e.g., the adapter package's extras
+           weren't installed). Error message includes the
+           `installed-vs-required-extras` diagnostic hint.
+        2. **Lookup miss** in `get_adapter(name)`: no adapter registered under
+           the given name across the programmatic + primary + legacy lookup
+           precedence. Error message lists the known adapter names.
+
+    `UnknownAdapterError` (used in the pre-edit story spec) is NOT in the
+    ratified catalog; this single leaf covers both cases per the Story 1b.3
+    create-story drift-check decision (D4).
+
+    `error_code = "ADAPTER_DISCOVERY_ERROR"`; exit code 78 (EX_CONFIG).
+    """
+
+    error_code: ClassVar[str] = "ADAPTER_DISCOVERY_ERROR"
 
 
 # --------------------------------------------------------------------------- #

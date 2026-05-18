@@ -70,8 +70,8 @@ Exit codes are **sysexits.h-aligned per-leaf** (ratified 2026-05-18 per Story 1a
 
 | Leaf | `error_code` | Exit code | One-line description | Owning epic |
 | --- | --- | --- | --- | --- |
-| `CostExceededError` | `COST_EXCEEDED` | `66` (sysexits-extended; pinned by epics.md L1660) | Tier-3 fan-out keyword exceeded the configured `AGENTEVAL_MAX_COST_USD` budget (per ADR-015 `@guarded_fanout`). | Epic 4 (provider cost tracking) + Epic 6 (`@guarded_fanout` decorator) |
-| `RuntimeBudgetExceededError` | `RUNTIME_BUDGET_EXCEEDED` | `75` (EX_TEMPFAIL) | Tier-3 fan-out keyword exceeded the configured `AGENTEVAL_MAX_RUNTIME_SECONDS` budget. | Epic 6 |
+| `CostExceededError` | `COST_EXCEEDED` | `66` (sysexits-extended; pinned by epics.md L1660) | Tier-3 fan-out keyword exceeded the configured `AGENTEVAL_MAX_COST_USD` budget (per ADR-015 `@guarded_fanout`). | **IMPLEMENTED — Story 1b.3 (`src/AgentEval/errors.py` leaf + `src/AgentEval/_kernel/guardrails.py` raise site). Story 4.1 wires the real LiteLLM cost source; Epic 6 keyword wiring extends adoption.** |
+| `RuntimeBudgetExceededError` | `RUNTIME_BUDGET_EXCEEDED` | `75` (EX_TEMPFAIL) | Tier-3 fan-out keyword exceeded the configured `AGENTEVAL_MAX_RUNTIME_SECONDS` budget. | **IMPLEMENTED — Story 1b.3 (`src/AgentEval/errors.py` leaf + `src/AgentEval/_kernel/guardrails.py` raise site).** Epic 6 keyword wiring extends adoption. |
 
 #### AgentEvalCompatError family
 
@@ -79,7 +79,7 @@ Exit codes are **sysexits.h-aligned per-leaf** (ratified 2026-05-18 per Story 1a
 | --- | --- | --- | --- | --- |
 | `UnsupportedMCPVersionError` | `UNSUPPORTED_MCP_VERSION` | `68` (sysexits-extended; pinned by epics.md L1660) | Negotiated MCP spec version is outside the supported `mcp>=1.0,<2.0` range (per ADR-008). | **Epic 3 Story 3.1** (MCP server lifecycle keywords incl. spec-version gate per FR46 / AC-MCP-OBSERVE-02) |
 | `UnsupportedBinaryVersionError` | `UNSUPPORTED_BINARY_VERSION` | `78` (EX_CONFIG) | CLI adapter detected a binary version outside the adapter's pinned range (e.g., `copilot` outside `>=1.0.9,<2.0` per ADR-010). | Epic 4 + Epic 11 (per-adapter pin enforcement) |
-| `AdapterDiscoveryError` | `ADAPTER_DISCOVERY_ERROR` | `78` (EX_CONFIG) | Entry-points discovery encountered a partially-installed adapter package (per ADR-013). | Epic 1b Story 1b.3 |
+| `AdapterDiscoveryError` | `ADAPTER_DISCOVERY_ERROR` | `78` (EX_CONFIG) | Entry-points discovery encountered a partially-installed adapter package (per ADR-013). | **IMPLEMENTED — Story 1b.3 (`src/AgentEval/errors.py` leaf + `src/AgentEval/_kernel/discovery._discover_entry_point_group` raise site + `get_adapter` miss path).** |
 | `AdapterVersionDriftWarning` | `ADAPTER_VERSION_DRIFT` | `0` (warning, not failure — emitted via RF Listener log, no exit-fail) | Adapter shipped against an older MCP SDK; observer's `request_handlers` dict-wrap pattern may no longer match (per ADR-004 Consequences). | Epic 11 Story 11.3 |
 
 #### AgentEvalIntegrityError family

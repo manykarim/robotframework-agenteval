@@ -74,10 +74,26 @@ Per `src/AgentEval/__init__.py` (Story 1a.6 ratification):
 
 Per architecture L853 (top-level shared types) + L1184 (top-level errors module):
 
-- `AgentEval.errors.AgentEvalError` base — `stable` label. The 4-sub-base scheme (`AgentEvalSafetyError`, `AgentEvalBudgetError`, `AgentEvalCompatError`, `AgentEvalIntegrityError`) is `stable` per ADR-014; consumers can `try / except AgentEvalError` to catch all agenteval errors. Story 1b.2 ships only `AgentEvalIntegrityError`; the other 3 sub-bases land as future stories need them.
+- `AgentEval.errors.AgentEvalError` base — `stable` label. The 4-sub-base scheme (`AgentEvalSafetyError`, `AgentEvalBudgetError`, `AgentEvalCompatError`, `AgentEvalIntegrityError`) is `stable` per ADR-014; consumers can `try / except AgentEvalError` to catch all agenteval errors. Story 1b.2 shipped `AgentEvalIntegrityError`; Story 1b.3 ships `AgentEvalBudgetError` + `AgentEvalCompatError`; `AgentEvalSafetyError` lands as future stories need it.
 - `AgentEval.errors.AgentEvalIntegrityError` sub-base — `stable` label.
+- `AgentEval.errors.AgentEvalBudgetError` sub-base (Story 1b.3) — `stable` label.
+- `AgentEval.errors.AgentEvalCompatError` sub-base (Story 1b.3) — `stable` label.
 - `AgentEval.errors.IncompleteTraceError` leaf — `stable` label. `error_code = "INCOMPLETE_TRACE"` is `stable` per ADR-014.
+- `AgentEval.errors.CostExceededError` leaf (Story 1b.3) — `stable` label. `error_code = "COST_EXCEEDED"` is `stable` per ADR-014 / FR50 exit-code 4.
+- `AgentEval.errors.RuntimeBudgetExceededError` leaf (Story 1b.3) — `stable` label. `error_code = "RUNTIME_BUDGET_EXCEEDED"` is `stable` per ADR-014 / FR50 exit-code 4.
+- `AgentEval.errors.AdapterDiscoveryError` leaf (Story 1b.3) — `stable` label. `error_code = "ADAPTER_DISCOVERY_ERROR"` is `stable` per ADR-014 / FR50 exit-code 5.
 - `AgentEval.types.{ToolCallTrace, Usage, RunManifest}` dataclasses — `provisional` label. Phase-1 stdlib `@dataclass(frozen=True)` (deviation from architecture's "Pydantic dataclasses" wording — documented in `types.py` docstring + Phase-1.5 carry-over). Field set is `provisional` (field additions are minor bumps; field renames are major bumps).
+
+### Kernel discovery + guardrails surface (Story 1b.3 — Phase-1 registry)
+
+Per ADR-013 (entry-points discovery) + ADR-015 (cost-runtime guardrail decorator):
+
+- `_kernel.discovery.{discover_adapters, discover_providers, discover_sandboxes}` — `provisional` label. The 3 typed group accessors per ADR-013 L47. Return-type contract `dict[str, type[...]]` is `stable`; per-key adapter-class shape (`CodingAgentAdapter` Protocol) is `provisional` until Story 1b.4 ratifies the Protocol.
+- `_kernel.discovery.{register_adapter, get_adapter}` — `provisional` label. FR17b composition path. Lookup precedence (programmatic > primary entry-points > legacy entry-points) is `stable`; the `legacy` group name (`robotframework_agenteval.adapters`) is `stable` per ADR-013 L18 backward-compat guarantee.
+- `_kernel.discovery._clear_discovery_cache` — `experimental` label. Test-only helper; consumers MUST NOT depend on it.
+- `_kernel.guardrails.guarded_fanout(estimator, *, meter_interval_seconds)` decorator — `provisional` label. 3-layer enforcement per ADR-015 §Decision L25-29 is `stable`; the `estimator` callable signature `(kwargs: dict) -> (cost_est, runtime_est)` is `provisional` (Phase-2 may add provider context).
+- `_kernel.guardrails.current_cancel_event()` — `provisional` label. Cooperative-cancellation accessor returning `threading.Event | None`. The ContextVar-propagation contract (via Story 1b.1's `_run_async` copy_context) is `stable`; the Event Phase-2 may be replaced with a richer cancellation token.
+- `_kernel.guardrails._current_cost_usd_for_run` — `experimental` label. Phase-1 stub returning 0.0; Story 4.1 (Generic LiteLLM adapter) wires the real cost source. Consumers MUST NOT call directly.
 
 ### Sandbox Protocol Surface
 
