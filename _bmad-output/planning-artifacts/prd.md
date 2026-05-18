@@ -548,9 +548,12 @@ userProvidedContext:
     id: "AC-MCP-OBSERVE-01"
     text: |
       Every AgentRunResult from a keyword using mcp_servers= MUST populate
-      metadata.mcp_coverage: Literal["complete", "library_only",
-      "external_mixed", "no_mcp"]. Metric keywords (Get Tool Call Count, Get
-      Tool Hit Rate, etc.) raise IncompleteTraceError on "external_mixed"
+      metadata.mcp_coverage: Literal["hosted_in_process",
+      "subprocess_with_observer", "external_mixed"]. (3-value enum per
+      ratified ADR-016 D1 trust-floor + D4 adapter contract, 2026-05-17.
+      Original draft was 4 values; superseded by ADR-016 spike findings.)
+      Metric keywords (Get Tool Call Count, Get Tool Hit Rate, etc.) raise
+      IncompleteTraceError on "external_mixed"
       unless user explicitly opts in via allow_external_mcp_blind=True.
       Adapter implementations MUST detect "external MCP in play" — for CC CLI:
       parse ~/.claude.json + project .mcp.json before run. For Copilot CLI:
@@ -919,7 +922,7 @@ The library's *internal* quality bars — what makes downstream user success eve
 - **Polling-ban enforcement:** `PollingDisallowedError` raised on Tier-2/Tier-3 keywords receiving `polling=` argument. Library-level test suite asserts the gate exists per keyword tier.
 - **`AC-CONFORMANCE-01`:** Conformance suite (`tests/conformance/`) includes **fidelity oracles** — golden-trace fixtures recorded from deterministic mock agent runs. Each adapter under test must produce output matching the golden fixture's structure AND values, with documented allowable variations (e.g., `latency_ms > 0` rather than exact). Adapters emitting all-zero latency or hallucinated sequence_index fail the suite. Ships Phase 1 as contract publication (so community adapter authors have a runnable target from Day 1) — see ADR-008.
 - **`AC-CONFORMANCE-02`:** `AgentRunResult.metadata.completeness: Literal["complete", "truncated", "partial"]` field is **required**. Conformance suite injects truncation (e.g., kills mock subprocess mid-stream) and asserts the adapter reports `truncated`. Silently-incomplete traces are a worse failure mode than loud truncation — see ADR-009.
-- **`AC-MCP-OBSERVE-01`:** `AgentRunResult.metadata.mcp_coverage: Literal["complete", "library_only", "external_mixed", "no_mcp"]` indicator required on every result from keywords using `mcp_servers=`. Metric keywords (`Get Tool Call Count`, `Get Tool Hit Rate`, etc.) raise `IncompleteTraceError` on `external_mixed` unless user opts in via `allow_external_mcp_blind=True`. Loud refusal beats silent half-truth — see ADR-010.
+- **`AC-MCP-OBSERVE-01`:** `AgentRunResult.metadata.mcp_coverage: Literal["hosted_in_process", "subprocess_with_observer", "external_mixed"]` indicator required on every result from keywords using `mcp_servers=` (3-value enum per ratified ADR-016, was 4-value in PRD draft; ratified 2026-05-17 via Story 0.3). Metric keywords (`Get Tool Call Count`, `Get Tool Hit Rate`, etc.) raise `IncompleteTraceError` on `external_mixed` unless user opts in via `allow_external_mcp_blind=True`. Loud refusal beats silent half-truth — see ADR-007/ADR-016.
 - **`AC-MCP-OBSERVE-02`:** MCP observer validates negotiated MCP spec version at session start. Raises `UnsupportedMCPVersionError` if outside tested range (`mcp>=1.0,<2.0`). Conformance suite injects a future-spec mock server to verify the gate fires. Same loud-refusal principle as MCP-OBSERVE-01 — see ADR-011.
 - **`AC-MCP-OBSERVE-03`:** MCP observer scopes traces per-RF-test by reading Listener v3 `test_id` from RF context. Each test gets a unique library-hosted MCP server instance by default; `mcp_per_test=False` opts out with documented cross-test pollution trade-off. Conformance suite verifies isolation under `pabot` parallel execution — see ADR-012.
 
@@ -1361,7 +1364,7 @@ class AgentRunMetadata:
     model: str
     seed: Optional[int]
     completeness: Literal["complete", "truncated", "partial"]   # REQUIRED — AC-CONFORMANCE-02
-    mcp_coverage: Literal["complete", "library_only", "external_mixed", "no_mcp"]  # REQUIRED — AC-MCP-OBSERVE-01
+    mcp_coverage: Literal["hosted_in_process", "subprocess_with_observer", "external_mixed"]  # REQUIRED — AC-MCP-OBSERVE-01; 3-value enum per ratified ADR-016 (was 4-value in PRD draft; ratified 2026-05-17)
     library_version: str
 ```
 
@@ -1548,7 +1551,7 @@ Each FR states the testable, observable capability the library must provide. For
 - **FR34b (visual contract):** The evidence-block visual contract specifies: monospace fenced section with header `┌─ EVIDENCE ─┐ <keyword> <PASS|FAIL> ─┐`, three sub-sections (`Compared:`, `Observed:`, `Raw:`), and uniform truncation (`...` after 1000 chars per field with link to full artifact). Verifiable via the conformance suite's evidence-block-format snapshot fixtures.
 - **FR35:** Library performs server-side observation of `tools/call` invocations on every MCP server it spawns (regardless of which agent invoked them), populating each `ToolCallTrace.source` field with `"hosted_mcp"`; adapter-side trace extractions populate `source="adapter"`. Verifiable via `Get Tool Call Sources <run>` returning the `set[str]` of sources present.
 - **FR36a (`completeness` field):** Every `AgentRunResult.metadata.completeness` field is REQUIRED and adapter MUST emit `"truncated"` when the agent exits non-zero mid-stream or its event parser fails to reach a terminal event. Verifiable via `Run Keyword With Mock Agent killed_at=mid_stream Send Prompt ...` + assertion that the resulting `AgentRunResult.metadata.completeness == "truncated"`.
-- **FR36b (`mcp_coverage` field):** Every `AgentRunResult.metadata.mcp_coverage` field from a keyword using `mcp_servers=` is REQUIRED and is one of `"complete"`, `"library_only"`, `"external_mixed"`, `"no_mcp"`. Verifiable via `Run Keyword With External MCP Server Send Prompt ...` + assertion that the resulting `mcp_coverage == "external_mixed"`.
+- **FR36b (`mcp_coverage` field):** Every `AgentRunResult.metadata.mcp_coverage` field from a keyword using `mcp_servers=` is REQUIRED and is one of `"hosted_in_process"`, `"subprocess_with_observer"`, `"external_mixed"` (3-value enum per ratified ADR-016 D1 trust-floor + D4 adapter contract, 2026-05-17; PRD draft used 4-value enum — superseded). Verifiable via `Run Keyword With External MCP Server Send Prompt ...` + assertion that the resulting `mcp_coverage == "external_mixed"`.
 - **FR37:** Library raises `IncompleteTraceError("metric keyword <name> called on AgentRunResult with mcp_coverage=external_mixed; opt in via allow_external_mcp_blind=True or ensure all MCP traffic flows through library-hosted servers")` when metric keywords are called against an `AgentRunResult.metadata.mcp_coverage == "external_mixed"` without `allow_external_mcp_blind=True`. Verifiable via the same fixture as FR36b + `Run Keyword And Expect Error IncompleteTraceError*`.
 - **FR38a (trace-side redaction):** Library redacts known credentials (LiteLLM-standard env names + custom patterns registered via `config.add_redaction_pattern(<regex>)`) from all trace artifacts before serialization to any backend (memory snapshot, JSONL file, OTLP export). Verifiable via the conformance suite's redaction fixture (env names beyond `OPENAI_API_KEY` to verify unknown-shape redaction).
 - **FR38b (config-source redaction):** Same `config.redact_env()` mechanism applies to env-var snapshots in `Get Effective Config` output (FR41) so env-dump operations never leak secrets.
@@ -1559,7 +1562,7 @@ Each FR states the testable, observable capability the library must provide. For
 
 - **FR41:** Library resolves configuration via the precedence chain (highest wins): library `__init__` args → environment variables → `.env` file at project root → defaults. User can call `Get Effective Config` and receive `dict[str, ConfigValue]` where each `ConfigValue` has `value` + `source: Literal["init_arg", "env", "dotenv", "default"]`. Verifiable via test that sets a value at each source level + asserts `Get Effective Config[key].source == expected`.
 - **FR42:** Defaults: `provider="litellm"`, `telemetry=True`, `trace_backend="memory"`, `allow_validate_operator=False`, `default_temperature=0.0`, `mcp_per_test=True`, `allow_external_mcp_blind=False`, `max_cost_usd=5.00`. Verifiable via `Get Effective Config` on a freshly-initialized library with no overrides.
-- **FR43:** Library exposes `__init__(allow_validate_operator=True)` to enable the AssertionEngine `validate` operator (which uses `eval()`); default `False`. Verifiable via `Run Keyword And Expect Error ValidateOperatorDisabledError* <getter> validate <expr>` when `allow_validate_operator=False`.
+- **FR43:** Library exposes `__init__(allow_validate_operator=True)` to enable the AssertionEngine `validate` operator (which uses `eval()`); default `False`. Verifiable via `Run Keyword And Expect Error ValidateOperatorDisallowed* <getter> validate <expr>` when `allow_validate_operator=False`. (Class name ratified `ValidateOperatorDisallowed` per ADR-014 2026-05-17; PRD draft used `ValidateOperatorDisabledError` — superseded.)
 - **FR44:** Library exposes `__init__(telemetry=False)` to disable the OTel listener; when disabled, `Get Trace Backend Names` returns `[]` and no network egress occurs to OTLP endpoints (Phase 2). Verifiable via `Assert No Egress To` fixture in conformance suite when `telemetry=False`.
 
 ### 8. Conformance & Compatibility Contracts (Phase 1)
@@ -1572,7 +1575,7 @@ Each FR states the testable, observable capability the library must provide. For
 ### 9. Reporting, CI Integration & First-Run Experience
 
 - **FR49 (JUnit XML):** Library emits JUnit-compatible XML report alongside `output.xml` via `--listener agenteval.reporting.junit_listener:JUnitListener` (opt-in) for CI systems consuming JUnit XML. Schema conforms to the de facto JUnit XML spec; one `<testsuite>` per RF suite; one `<testcase>` per RF test.
-- **FR50 (non-zero exit codes):** RF execution exits with code 1 when any assertion keyword fails, code 2 when `CostExceededError` or `IncompleteTraceError` is raised, code 3 when `UnsupportedMCPVersionError` / `UnsupportedBinaryVersionError` / `PollingDisallowedError` is raised. Verifiable via subprocess invocation + exit-code assertion in conformance suite.
+- **FR50 (non-zero exit codes):** RF execution exits with sysexits.h-style per-leaf codes (ratified 2026-05-18 per Story 1a.4 code-review HIGH-6; PRD draft used family codes 1/2/3 — superseded). Phase-1 pinned: `1` = generic assertion failure; `65` = `PollingDisallowedError`; `66` = `CostExceededError`; `67` = `IncompleteTraceError`; `68` = `UnsupportedMCPVersionError`. Remaining `AgentEvalError` leaves get sysexits.h-aligned codes assigned by Epic 8a Story 8a.1 (canonical table at `docs/contracts/error-class-hierarchy.md`). Verifiable via subprocess invocation + exit-code assertion in conformance suite.
 - **FR51 (trace ID in report):** Every test's RF report line includes a `trace_id=<uuid>` attribute linking to the trace artifact at `${OUTPUT_DIR}/agenteval/trace__<suite>__<test>.jsonl`. Verifiable via parsing `output.xml` and asserting every `<test>` element has a `trace_id` attribute.
 - **FR52 (`agenteval init`):** User can run `agenteval init [--template basic|skill|mcp|scenario]` in an empty directory and receive a working `.robot` test, an `agenteval.yaml` scenario file, a `.env.example` template, and a one-line `README.md` pointing to the recipe gallery. Default template (`basic`) targets a bundled echo MCP server and runs without API keys.
 - **FR53 (`agenteval new-adapter`):** Covered by FR18 above; cross-referenced here as part of the first-run / scaffolding experience.

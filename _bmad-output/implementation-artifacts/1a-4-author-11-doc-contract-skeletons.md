@@ -1,6 +1,6 @@
 # Story 1a.4: Author 11 Doc-Contract Skeletons
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -327,3 +327,89 @@ Expected files (12 created + 2 updated):
 | ---------- | ------- | ---------------------------------------------------------------------------- | ------ |
 | 2026-05-18 | 0.1.0   | Initial story creation (ready-for-dev). Pre-create-story drift check applied per `feedback_spec_vs_ratified_doc_precheck` (4th consecutive use). Caught 4-way count mismatch (title:9/body:10/AC:11/final:9) + 4 non-architecture contracts + 2 PRD-named dropped + slug drift. Many ratified: honor architecture's 9 + 2 empirical adds = 11; epics.md + architecture.md L1419 updated pre-authoring; story key renamed 1a-4-author-9 → 1a-4-author-11; canonical list locked. | Bob |
 | 2026-05-18 | 0.2.0   | Dev-story complete. All 11 contract skeletons authored at docs/contracts/ following the 4-section MADR template (Purpose/Scope/Contract/Change Policy). 10 are stubs with status banners; `error-class-hierarchy.md` has SUBSTANTIVE content per AC-1a.4.2 (FR59 format + 11-leaf ADR-014 table). `determinism-contract.md` has `### Tier Model` subsection; `stability-surface.md` has `### Sandbox Protocol Surface` subsection. `docs/contracts/README.md` index authored. Machine-verified: 12 .md files (11 contracts + README); all 12 pass docs-build.yml's per-file section assertion (README via code-block-literal-text loophole — functionally correct); all cross-references resolve. Status: review. | Amelia |
+| 2026-05-18 | 0.3.0   | Code-review patches applied. Cross-LLM adversarial review (Claude + Codex CLI) caught 10 findings — 6 HIGH + 3 MED + 1 LOW. Claude solo PASSED all 7 dev gates but found 0; Codex caught all 10 (4th time same-family blind spot pattern). 4 cross-document drifts ratified by Many: HIGH-1 listener path → `AgentEval.telemetry.listener` + `xunit_file(path)` hook + Regular Listener model; HIGH-2 mcp_coverage 3-value enum wins (ADR-016 ratified, PRD 4-value superseded); HIGH-4 ValidateOperatorDisallowed canonical (PRD + epics updated); HIGH-6 sysexits-style per-leaf exit codes (65/66/67/68 + 70/75/77/78). 6 contract-internal: HIGH-3 (per-leaf exit-code column added to error-class-hierarchy); HIGH-8 (stability-surface scope narrowed — registry filled incrementally by Story 1a.6+); MED-5 (owning-epic table corrected: UnsupportedMCPVersionError → Story 3.1; PollingDisallowedError → Epic 6); MED-7 (FR59 example flag replaced); MED-9 (evidence-block cross-refs repointed); LOW-10 (FR60 → FR34a/b citation). Files updated: docs/contracts/{error-class-hierarchy, evidence-block-format, listener-integration, junit-xml-enrichment, stability-surface}.md + PRD FR36b/FR43/FR50/AC-MCP-OBSERVE-01 + epics.md Story 6.3. Status: done. | Amelia |
+
+## Senior Developer Review (AI)
+
+**Reviewers:** Claude Opus 4.7 + Codex CLI 0.117.0 (gpt-5.4) — adversarial cross-LLM-family pair per Epic 0 retro Norm #1
+**Review date:** 2026-05-18
+**Outcome:** **APPROVED post-patch** (Changes Requested at Round 1 → Approved after 10 patches landed)
+**Methodology:** Independent Claude re-verification of all 7 dev-story gates (all PASS); Codex CLI adversarial pass on 1087 lines of contract content + cross-references against PRD + epics + ratified ADRs via GitHub MCP; Claude spot-verified all 10 Codex findings locally before triage.
+
+### Findings
+
+Claude solo's gates: 100% PASSED. Codex caught **10 substantive findings**. 4th consecutive cross-LLM review where Claude solo would have shipped real defects.
+
+**HIGH (6 — all patched):**
+
+- **HIGH-1 (listener path):** Three different listener class paths cited across PRD + epics + contracts (`AgentEval.telemetry.Listener` vs `AgentEval.telemetry.listener` vs `agenteval.telemetry.Listener`) + two hook names (`xunit_file(path)` vs `output_xml`). Many ratified: `AgentEval.telemetry.listener` (module path; RF auto-resolves to `Listener` class) + `xunit_file(path)` hook + Regular Listener model (Library Listener empirically disqualified 2026-05-17). Updated `listener-integration.md` + `junit-xml-enrichment.md` to match PRD + epics; PRD + epics already internally consistent.
+
+- **HIGH-2 (mcp_coverage 3 vs 4):** PRD used 4-value enum `[complete, library_only, external_mixed, no_mcp]`; ratified ADR-016 uses 3-value enum `[hosted_in_process, subprocess_with_observer, external_mixed]`. Many ratified ADR-016 (ratified docs > PRD per project norm). PRD L551/L922/L1367/L1554 updated to 3-value enum.
+
+- **HIGH-3 (Integrity exit codes per-leaf):** Contract said "2 or 3 (per-leaf override)" — not actionable. Patched by adding per-leaf `Exit code` column to error-class-hierarchy.md's per-leaf inventory (subsumes HIGH-6 ratification).
+
+- **HIGH-4 (ValidateOperator name):** 3 different names: `ValidateOperatorDisallowed` (ADR-014 ratified), `ValidateOperatorDisabledError` (PRD), `ValidateOperatorDisallowedError` (epics.md). Many ratified ADR-014 name (`ValidateOperatorDisallowed`, no `Error` suffix). PRD FR43 + epics.md L1490 updated.
+
+- **HIGH-6 (FR50 family vs sysexits):** PRD used family codes 1/2/3; epics.md Story 8a.1 L1660 used sysexits 65-68 per-leaf. Many ratified sysexits per-leaf. Per-leaf table in error-class-hierarchy.md: 4 pinned by epics (65 PollingDisallowed, 66 CostExceeded, 67 IncompleteTrace, 68 UnsupportedMCPVersion); 7 others assigned sysexits.h-aligned codes (77 EX_NOPERM for safety; 78 EX_CONFIG for config errors; 75 EX_TEMPFAIL for runtime; 70 EX_SOFTWARE for tier violation; 0 for warning). PRD FR50 updated.
+
+- **HIGH-8 (stability-surface scope):** Contract claimed to label every public element but registry only had 4 sandbox elements. Patched by narrowing Purpose + Scope + Contract sections to explicitly state the registry fills INCREMENTALLY across stories (Story 1a.6 lands initial; each epic-owning story registers its public elements as they ship). Honest Phase-1 stub posture preserved.
+
+**MED (3 — all patched):**
+
+- **MED-5 (owning-epic table corrections):** 2 leaves had wrong owning-epic assignments per Codex's audit against epics.md. Fixed: `UnsupportedMCPVersionError` → Epic 3 Story 3.1 (was Epic 5 Story 5.2); `PollingDisallowedError` → Epic 6 (was "Epic 1b + Phase-2"). Other rows audited + remain accurate.
+
+- **MED-7 (FR59 example flag):** Example invented `allow_unsafe_code_execution=True` — not defined in ADR-018. Replaced with the actual ADR-018 mechanism (register a backend via `agenteval.sandboxes` entry-point).
+
+- **MED-9 (evidence-block cross-ref):** Contract pointed to `listener-integration.md` for adapter population; that's the wrong contract. Repointed to: `otel-trace-visual.md` (for span-attribute mapping per Epic 5.3) + `listener-integration.md` (hook surface only).
+
+**LOW (1 — patched):**
+
+- **LOW-10 (FR60 → FR34a/b):** evidence-block-format.md cited FR60 (which is actually `AdapterVersionDriftWarning`). Replaced with FR34a (format) + FR34b (visual contract).
+
+### Round-2 Verification Evidence
+
+Post-patch machine-verification (all PASS):
+- All 12 .md files in docs/contracts/ still pass docs-build.yml's per-file 4-section assertion
+- All cross-references resolve (no broken Markdown links)
+- ValidateOperator name standardized: zero matches for `ValidateOperatorDisabledError`/`ValidateOperatorDisallowedError` in non-ratification-trail text
+- mcp_coverage 4-value enum gone from PRD: zero remaining occurrences
+
+### Action Items
+
+- [x] HIGH-1: listener path canonicalized — `listener-integration.md` + `junit-xml-enrichment.md` updated
+- [x] HIGH-2: mcp_coverage 3-value enum — PRD L551/L922/L1367/L1554 updated
+- [x] HIGH-3: per-leaf exit-code column added to error-class-hierarchy.md (subsumed by HIGH-6)
+- [x] HIGH-4: ValidateOperator name canonicalized — PRD FR43 + epics.md L1490 updated
+- [x] HIGH-6: sysexits per-leaf — error-class-hierarchy.md per-leaf table + FR49/FR50 mapping + PRD FR50 updated
+- [x] HIGH-8: stability-surface scope narrowed to incremental registry
+- [x] MED-5: owning-epic table corrected (2 leaves)
+- [x] MED-7: FR59 example flag replaced
+- [x] MED-9: evidence-block cross-ref repointed
+- [x] LOW-10: FR60 → FR34a/b citation fix
+
+### Project Norms Validated
+
+- **Norm #1 (cross-LLM adversarial review)**: 4th consecutive load-bearing demonstration. Claude solo found 0; Codex caught 10.
+- **Norm #2 (machine-verified numeric claims)**: all numeric claims pre-commit (sysexits code values, leaf counts, file counts) machine-verified before commit.
+- **Pre-create-story spec-vs-ratified-doc check (Norm #4)**: caught the largest single-story drift to date (4-way count mismatch); this story's review surface includes the inverse — drifts BETWEEN documents that pre-create-story couldn't reach (PRD ↔ epics ↔ contracts).
+- **CI log forensics (Many's rule)**: docs-build.yml's first real-content run inspected internally; 12× `##[notice]All 4 NFR-MAINT-04 sections present` confirmed per-file assertion fires correctly. Post-patch CI re-run will confirm no regressions.
+
+### Phase-1 Deferred Items (project debt registry)
+
+None from this review. All 10 findings patched.
+
+### Files Modified This Round
+
+**Contracts (5 modified):**
+- `docs/contracts/error-class-hierarchy.md` (HIGH-3, HIGH-6, MED-5, MED-7)
+- `docs/contracts/evidence-block-format.md` (MED-9, LOW-10)
+- `docs/contracts/listener-integration.md` (HIGH-1)
+- `docs/contracts/junit-xml-enrichment.md` (HIGH-1, HIGH-6 cross-ref)
+- `docs/contracts/stability-surface.md` (HIGH-8)
+
+**Source documents (PRD + epics — "fix the losing source" pattern):**
+- `_bmad-output/planning-artifacts/prd.md` (L551, L925, L1367, L1554 for HIGH-2; L1562 for HIGH-4; L1578 for HIGH-6)
+- `_bmad-output/planning-artifacts/epics.md` (L1490 for HIGH-4)
+
+**Findings doc:**
+- `_bmad-output/implementation-artifacts/1a-4-code-review-findings-2026-05-18.md` (new)

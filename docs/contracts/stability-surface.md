@@ -7,16 +7,16 @@
 
 ## Purpose
 
-Governs the **per-API-element stability labels** for every public surface in agenteval. Each public element (keyword, Protocol, error class, scenario YAML schema field, adapter file path, entry-point group) carries exactly one of three labels: `stable`, `provisional`, or `experimental`. Release notes link here so consumers know what is safe to depend on across versions.
+Defines agenteval's **per-API-element stability label scheme** (`stable` / `provisional` / `experimental`) + the rules for promoting/demoting elements between labels. The **registry** of currently-labeled elements is filled **incrementally**: Story 1a.6 lands the initial Phase-1 labels; each subsequent epic-owning story registers its public elements as they ship. Phase-1 baseline contains only the sandbox-related elements (see `### Sandbox Protocol Surface` subsection); other public elements are added to the registry by the owning stories. Release notes link here so consumers know what is safe to depend on across versions.
 
 ## Scope
 
 ### In-scope
 
 - The 3 stability labels + their semantics (consumer-facing guarantee per label).
-- The enumeration of all currently-public elements + their labels.
 - Label-change policy (when is a `provisional` element promoted to `stable`? when must a `stable` element be deprecated?).
-- The `SandboxBackend` Protocol surface (see `### Sandbox Protocol Surface` subsection).
+- The Phase-1-baseline registry entries (currently: the sandbox surface — `### Sandbox Protocol Surface` subsection). Story 1a.6 + each epic-owning story registers additional elements as they ship.
+- The procedure for adding a new public element to the registry (per-story checklist in Maintenance section).
 
 ### Out-of-scope
 
@@ -33,7 +33,7 @@ Governs the **per-API-element stability labels** for every public surface in age
 - `provisional` — likely to stabilize but may break across minor versions. Document the next breaking change in CHANGELOG.
 - `experimental` — explicitly unstable. May break or be removed any minor release. Use with `pin >=X.Y.Z,<X.Y.(Z+1)`.
 
-**Per-element registry:** *Phase-1 skeleton; Story 1a.6 + each epic-owning story registers its public elements here.*
+**Per-element registry:** Filled INCREMENTALLY. Phase-1 baseline below contains only the sandbox surface (see `### Sandbox Protocol Surface` subsection). Story 1a.6 registers the AgentEval library entry-point + initial keyword surface labels. Subsequent epic-owning stories MUST register their public elements (keywords, Protocols, error-class names, entry-point group names) at the time of shipping. The registry is intentionally NOT complete at Story 1a.4 commit time; FR64/NFR-MAINT-05 enforcement begins with Story 1a.6 + the docs-build CI check that warns on unlabeled elements (per Story 1a.6 deliverable).
 
 ### Sandbox Protocol Surface
 

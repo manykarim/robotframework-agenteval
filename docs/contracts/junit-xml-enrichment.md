@@ -1,9 +1,9 @@
 # JUnit XML Enrichment
 
-**Status:** Phase-1 skeleton — content to be filled by Epic 8a Story 8a.1 (Enrich RF xUnit output via Listener v3 + structured exit codes).
+**Status:** Phase-1 skeleton — content to be filled by Epic 8a Story 8a.1 (Enrich RF `--xunit` output via Regular Listener v3 `xunit_file(path)` hook + sysexits-style structured exit codes).
 **Owning epic:** Epic 8a Story 8a.1
 **Related ADRs:** ADR-014 (Error-Class Hierarchy — `error_code` class attribute drives `<failure type="...">`)
-**Related FRs:** FR49 (JUnit XML emission), FR50 (Exit-code mapping)
+**Related FRs:** FR49 (JUnit XML emission), FR50 (Exit-code mapping — ratified 2026-05-18 as sysexits-style per-leaf, superseding the PRD-draft family codes 1/2/3)
 
 ## Purpose
 
@@ -13,10 +13,10 @@ Governs the **enrichment of RF's standard JUnit-XML output** (`xunit.xml`) with 
 
 ### In-scope
 
-- The fields enriched on each `<testcase>` element (`error_code`, `evidence_id`, `tier`).
-- The `output_xml` hook used to apply enrichments (per `listener-integration.md`'s RF Listener v3 hook list).
-- The mapping from `AgentEvalError` subclass → `<failure type="...">` attribute value.
-- The structured exit-code mapping per FR50 (Safety:3 / Budget:2 / Compat:3 / Integrity:2-or-3-per-leaf).
+- The fields enriched on each `<testcase>` element (`error_code`, `evidence_id`, `tier`, plus `<properties>` for cost/tokens/latency/coverage/completeness/trace_id/adapter/model per Story 8a.1 spec).
+- The `xunit_file(path)` hook (Regular Listener v3 only — Library Listeners' `close()` fires before RF writes the xunit file; empirically disqualified 2026-05-17) used to apply enrichments (per `listener-integration.md`'s RF Listener v3 hook list).
+- The mapping from `AgentEvalError` subclass → `<failure type="...">` attribute value (drives by `error_code` class attribute per ADR-014).
+- The sysexits.h-style structured exit-code mapping per FR50 (ratified 2026-05-18): per-leaf codes anchored in the `docs/contracts/error-class-hierarchy.md` authoritative table.
 - Backwards-compat with standard JUnit XML schema (i.e., enrichments are additive; non-agenteval consumers see standard xUnit + ignore the additions).
 
 ### Out-of-scope
@@ -33,7 +33,7 @@ The contract will at minimum include:
 
 - A table of standard xUnit fields + agenteval enrichments (which attributes are added; which child elements are added; semantics of each).
 - The `AgentEvalError → <failure type=...>` mapping table (1:1 with ADR-014's `error_code` attributes — `SANDBOX_REQUIRED`, `COST_EXCEEDED`, `INCOMPLETE_TRACE`, etc.).
-- The FR50 exit-code lookup table (4 sub-base families → 4 exit-code ranges).
+- The FR50 sysexits-style per-leaf exit-code table (cross-referenced from `error-class-hierarchy.md` — `65` for `PollingDisallowedError`, `66` for `CostExceededError`, `67` for `IncompleteTraceError`, `68` for `UnsupportedMCPVersionError`; other leaves get sysexits.h-aligned codes assigned by Story 8a.1).
 - An example before/after `<testcase>` element showing the enrichments.
 - Compatibility statement: enrichments are valid per standard xUnit schema; non-agenteval consumers MUST NOT break when consuming enriched output.
 

@@ -3,7 +3,7 @@
 **Status:** Phase-1 skeleton — content to be filled by Epic 5 (Trace Observability + Honesty Fields stories).
 **Owning epic:** Epic 5 — Trace Observability Kernel
 **Related ADRs:** ADR-004 (Hosted-MCP Universal Trace Observation), ADR-007 (mcp_coverage + IncompleteTraceError)
-**Related FRs:** FR60 (Evidence block emission), PRD §Editorial Moat
+**Related FRs:** FR34a (evidence-block format), FR34b (evidence-block visual contract), PRD §Editorial Moat
 
 ## Purpose
 
@@ -21,7 +21,8 @@ Governs the structure + content of the **Evidence Block** that agenteval emits w
 ### Out-of-scope
 
 - How the block is *rendered* in any specific report format (HTML, JUnit XML, OTel span attributes) — those live in their own contracts (`junit-xml-enrichment.md`, `otel-trace-visual.md`).
-- How adapters *populate* the block — see `listener-integration.md` and the per-adapter contracts in Epic 4.
+- How adapters *capture* the underlying tool-call traces — see `listener-integration.md` (Listener v3 hook surface) + ADR-004 (hosted-MCP observation pattern).
+- Span-attribute mapping that drives Epic 5.3 evidence-block production — see [`otel-trace-visual.md`](otel-trace-visual.md).
 
 ## Contract
 
@@ -44,4 +45,6 @@ This contract evolves per [`stability-surface.md`](stability-surface.md) labels.
 
 - ADR-004: hosted-MCP universal trace observation
 - ADR-007: mcp_coverage + IncompleteTraceError
-- PRD §Editorial Moat + FR60
+- PRD §Editorial Moat + FR34a (format) + FR34b (visual contract)
+- [`otel-trace-visual.md`](otel-trace-visual.md): span-attribute mapping that drives evidence-block production (Epic 5.3)
+- [`listener-integration.md`](listener-integration.md): Listener v3 hook surface that captures the underlying traces

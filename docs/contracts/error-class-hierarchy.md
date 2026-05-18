@@ -44,47 +44,51 @@ class AgentEvalError(Exception):
 
 ### 4 sub-bases + 11 leaves (per ADR-014; authoritative count from the leaf table, not the prose)
 
-| Sub-base | Leaves | FR50 exit code |
-| --- | --- | --- |
-| `AgentEvalSafetyError(AgentEvalError)` | `SandboxRequiredError`, `ValidateOperatorDisallowed` | 3 |
-| `AgentEvalBudgetError(AgentEvalError)` | `CostExceededError`, `RuntimeBudgetExceededError` | 2 |
-| `AgentEvalCompatError(AgentEvalError)` | `UnsupportedMCPVersionError`, `UnsupportedBinaryVersionError`, `AdapterDiscoveryError`, `AdapterVersionDriftWarning` | 3 |
-| `AgentEvalIntegrityError(AgentEvalError)` | `PollingDisallowedError`, `IncompleteTraceError`, `TierViolationError` | 2 or 3 (per-leaf override) |
+FR50 exit codes use **sysexits.h-style per-leaf mapping** (ratified 2026-05-18 per Story 1a.4 code-review HIGH-6; PRD draft and earlier ADR-014 prose used family codes 1/2/3 — superseded). Per-leaf codes anchored in the per-leaf inventory below.
+
+| Sub-base | Leaves |
+| --- | --- |
+| `AgentEvalSafetyError(AgentEvalError)` | `SandboxRequiredError`, `ValidateOperatorDisallowed` |
+| `AgentEvalBudgetError(AgentEvalError)` | `CostExceededError`, `RuntimeBudgetExceededError` |
+| `AgentEvalCompatError(AgentEvalError)` | `UnsupportedMCPVersionError`, `UnsupportedBinaryVersionError`, `AdapterDiscoveryError`, `AdapterVersionDriftWarning` |
+| `AgentEvalIntegrityError(AgentEvalError)` | `PollingDisallowedError`, `IncompleteTraceError`, `TierViolationError` |
 
 **Total: 11 leaves** (Safety: 2 + Budget: 2 + Compat: 4 + Integrity: 3). Adding additional leaves requires ADR amendment per ADR-014 §Decision.
 
-### Per-leaf inventory (error_code + one-line description + owning epic)
+### Per-leaf inventory (error_code + exit_code + one-line description + owning epic)
+
+Exit codes are **sysexits.h-aligned per-leaf** (ratified 2026-05-18 per Story 1a.4 code-review HIGH-6 + epics.md Story 8a.1 L1660; PRD draft used family codes 1/2/3 — superseded). Four leaves are pinned by epics.md Story 8a.1 (`65`/`66`/`67`/`68`); the remaining seven get sysexits.h-aligned codes ratified here by Story 1a.4.
 
 #### AgentEvalSafetyError family
 
-| Leaf | `error_code` | One-line description | Owning epic |
-| --- | --- | --- | --- |
-| `SandboxRequiredError` | `SANDBOX_REQUIRED` | Code-execution scenario requested without a configured non-null sandbox backend. | ADR-018 / Story 1a.1 stub (Story 1a.6 wires defaults); Epic 6 enforces |
-| `ValidateOperatorDisallowed` | `VALIDATE_OPERATOR_DISALLOWED` | `validate` assertion operator used without explicit `allow_validate_operator=True` opt-in (FR43). | Story 1a.6 wires the default; Epic 6 enforces |
+| Leaf | `error_code` | Exit code | One-line description | Owning epic |
+| --- | --- | --- | --- | --- |
+| `SandboxRequiredError` | `SANDBOX_REQUIRED` | `77` (EX_NOPERM) | Code-execution scenario requested without a configured non-null sandbox backend. | ADR-018 / Story 1a.1 stub; Story 1a.6 wires default; Epic 6 enforces |
+| `ValidateOperatorDisallowed` | `VALIDATE_OPERATOR_DISALLOWED` | `77` (EX_NOPERM) | `validate` assertion operator used without explicit `allow_validate_operator=True` opt-in (FR43). | Story 1a.6 wires the default; Epic 6 Story 6.3 enforces |
 
 #### AgentEvalBudgetError family
 
-| Leaf | `error_code` | One-line description | Owning epic |
-| --- | --- | --- | --- |
-| `CostExceededError` | `COST_EXCEEDED` | Tier-3 fan-out keyword exceeded the configured `AGENTEVAL_MAX_COST_USD` budget (per ADR-015 `@guarded_fanout`). | Epic 4 (provider cost tracking) + Epic 6 (`@guarded_fanout` decorator) |
-| `RuntimeBudgetExceededError` | `RUNTIME_BUDGET_EXCEEDED` | Tier-3 fan-out keyword exceeded the configured `AGENTEVAL_MAX_RUNTIME_SECONDS` budget. | Epic 6 |
+| Leaf | `error_code` | Exit code | One-line description | Owning epic |
+| --- | --- | --- | --- | --- |
+| `CostExceededError` | `COST_EXCEEDED` | `66` (sysexits-extended; pinned by epics.md L1660) | Tier-3 fan-out keyword exceeded the configured `AGENTEVAL_MAX_COST_USD` budget (per ADR-015 `@guarded_fanout`). | Epic 4 (provider cost tracking) + Epic 6 (`@guarded_fanout` decorator) |
+| `RuntimeBudgetExceededError` | `RUNTIME_BUDGET_EXCEEDED` | `75` (EX_TEMPFAIL) | Tier-3 fan-out keyword exceeded the configured `AGENTEVAL_MAX_RUNTIME_SECONDS` budget. | Epic 6 |
 
 #### AgentEvalCompatError family
 
-| Leaf | `error_code` | One-line description | Owning epic |
-| --- | --- | --- | --- |
-| `UnsupportedMCPVersionError` | `UNSUPPORTED_MCP_VERSION` | Negotiated MCP spec version is outside the supported `mcp>=1.0,<2.0` range (per ADR-008). | Epic 5 Story 5.2 |
-| `UnsupportedBinaryVersionError` | `UNSUPPORTED_BINARY_VERSION` | CLI adapter detected a binary version outside the adapter's pinned range (e.g., `copilot` outside `>=1.0.9,<2.0` per ADR-010). | Epic 4 (per-adapter pin enforcement) |
-| `AdapterDiscoveryError` | `ADAPTER_DISCOVERY_ERROR` | Entry-points discovery encountered a partially-installed adapter package (per ADR-013). | Epic 1b Story 1b.3 |
-| `AdapterVersionDriftWarning` | `ADAPTER_VERSION_DRIFT` | Adapter shipped against an older MCP SDK; observer's `request_handlers` dict-wrap pattern may no longer match (per ADR-004 Consequences). | Epic 11 Story 11.3 |
+| Leaf | `error_code` | Exit code | One-line description | Owning epic |
+| --- | --- | --- | --- | --- |
+| `UnsupportedMCPVersionError` | `UNSUPPORTED_MCP_VERSION` | `68` (sysexits-extended; pinned by epics.md L1660) | Negotiated MCP spec version is outside the supported `mcp>=1.0,<2.0` range (per ADR-008). | **Epic 3 Story 3.1** (MCP server lifecycle keywords incl. spec-version gate per FR46 / AC-MCP-OBSERVE-02) |
+| `UnsupportedBinaryVersionError` | `UNSUPPORTED_BINARY_VERSION` | `78` (EX_CONFIG) | CLI adapter detected a binary version outside the adapter's pinned range (e.g., `copilot` outside `>=1.0.9,<2.0` per ADR-010). | Epic 4 + Epic 11 (per-adapter pin enforcement) |
+| `AdapterDiscoveryError` | `ADAPTER_DISCOVERY_ERROR` | `78` (EX_CONFIG) | Entry-points discovery encountered a partially-installed adapter package (per ADR-013). | Epic 1b Story 1b.3 |
+| `AdapterVersionDriftWarning` | `ADAPTER_VERSION_DRIFT` | `0` (warning, not failure — emitted via RF Listener log, no exit-fail) | Adapter shipped against an older MCP SDK; observer's `request_handlers` dict-wrap pattern may no longer match (per ADR-004 Consequences). | Epic 11 Story 11.3 |
 
 #### AgentEvalIntegrityError family
 
-| Leaf | `error_code` | One-line description | Owning epic |
-| --- | --- | --- | --- |
-| `PollingDisallowedError` | `POLLING_DISALLOWED` | Tier-2/3 keyword called with a retry-style polling pattern; banned per `determinism-contract.md`. | Epic 1b (AssertionEngine wiring) + Phase-2 full ADR-022 adoption |
-| `IncompleteTraceError` | `INCOMPLETE_TRACE` | Metric keyword called on an `AgentRunResult` with `mcp_coverage="external_mixed"` without `allow_external_mcp_blind=True` opt-out (per ADR-007 + ADR-016). | Epic 5 Story 5.2 |
-| `TierViolationError` | `TIER_VIOLATION` | A Tier-N keyword embedded a forbidden Tier-M call (Tier-1 may not call Tier-2/3; Tier-2 may not embed Tier-3 fan-out per `determinism-contract.md`). | Epic 6 (tier model enforcement) |
+| Leaf | `error_code` | Exit code | One-line description | Owning epic |
+| --- | --- | --- | --- | --- |
+| `PollingDisallowedError` | `POLLING_DISALLOWED` | `65` (EX_DATAERR; pinned by epics.md L1660) | Tier-2/3 keyword called with a retry-style polling pattern; banned per `determinism-contract.md`. | **Epic 6** (FR28 enforcement at `_assertions/adapter.py`; Phase-2 full ADR-022 AssertionEngine adoption) |
+| `IncompleteTraceError` | `INCOMPLETE_TRACE` | `67` (sysexits-extended; pinned by epics.md L1660) | Metric keyword called on an `AgentRunResult` with `mcp_coverage="external_mixed"` without `allow_external_mcp_blind=True` opt-out (per ADR-007 + ADR-016). | Epic 5 Story 5.2 |
+| `TierViolationError` | `TIER_VIOLATION` | `70` (EX_SOFTWARE) | A Tier-N keyword embedded a forbidden Tier-M call (Tier-1 may not call Tier-2/3; Tier-2 may not embed Tier-3 fan-out per `determinism-contract.md`). | Epic 6 (FR30b enforcement) |
 
 ### FR59 error-format requirement (Tier-1 setup-failure errors)
 
@@ -105,7 +109,7 @@ SANDBOX_REQUIRED: Tier-3 code-execution scenario requires a sandbox backend.
   File: tests/scenarios/code_execution.robot
   Line: 42
   Field: scenario.requires_sandbox
-  Fix: Configure a sandbox backend via `agenteval.sandboxes` entry-point OR set `allow_unsafe_code_execution=True` (not recommended).
+  Fix: Register a sandbox backend via the `agenteval.sandboxes` entry-point group (per ADR-018 + ADR-013). Phase 1 ships only the `NullSandbox` default (always refuses); real backends register via separate consumer-installed packages.
 ```
 
 Tier-2 + Tier-3 errors (runtime, not setup-failure) are NOT subject to FR59 — they format per their domain (cost/runtime/MCP-coverage contexts).
@@ -113,7 +117,7 @@ Tier-2 + Tier-3 errors (runtime, not setup-failure) are NOT subject to FR59 — 
 ### FR49 + FR50 mapping (one-stop lookup)
 
 - **FR49 JUnit XML:** `<failure type="<error_code>">` attribute = the leaf's `error_code` class attribute. Renderers (GitHub Actions test-reporter, Jenkins JUnit plugin, Allure) surface this as the failure category.
-- **FR50 exit codes:** sub-base → exit code mapping per the table above. The `agenteval` CLI's exit-code translation layer reads `__class__.__mro__` to find the closest sub-base + emits the documented exit code. Multiple Tier-3 family leaves may override via per-leaf attribute (e.g., `TierViolationError.exit_code = 2` if a documented per-leaf override is needed).
+- **FR50 exit codes (sysexits.h-style per-leaf):** the per-leaf table above is the authoritative source. The `agenteval` CLI's exit-code translation layer reads the leaf's `exit_code` class attribute (set per ADR-014 on each leaf). 4 leaves are pinned by epics.md Story 8a.1 L1660 (`PollingDisallowedError` = 65, `CostExceededError` = 66, `IncompleteTraceError` = 67, `UnsupportedMCPVersionError` = 68); the other 7 use sysexits.h-aligned codes ratified by Story 1a.4 (77 EX_NOPERM for safety errors, 78 EX_CONFIG for config errors, 75 EX_TEMPFAIL for runtime budget, 70 EX_SOFTWARE for tier violation; `AdapterVersionDriftWarning` is a warning, exit 0). PRD draft FR50 used family codes 1/2/3 — superseded 2026-05-18.
 
 ## Change Policy
 

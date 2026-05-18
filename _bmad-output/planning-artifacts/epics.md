@@ -1487,7 +1487,7 @@ So that non-deterministic agent flows are characterized statistically + the tier
 **When** I run a Tier-1 keyword twice with identical inputs in a single test,
 **Then** the outputs are bit-identical (FR31a guarantee enforced — confirmed by a conformance fixture that runs each Tier-1 keyword twice and asserts equality).
 
-**And** validate-operator gate (FR43) enforcement: when `validate` is used WITH `allow_validate_operator=True` flag set via Library kwarg, the gate passes; without the flag, `ValidateOperatorDisallowedError` is raised with FR59 format.
+**And** validate-operator gate (FR43) enforcement: when `validate` is used WITH `allow_validate_operator=True` flag set via Library kwarg, the gate passes; without the flag, `ValidateOperatorDisallowed` is raised with FR59 format. (Class name ratified `ValidateOperatorDisallowed` per ADR-014 / Story 1a.4 code-review HIGH-4 2026-05-18; previous draft used `ValidateOperatorDisallowedError`.)
 
 ---
 
