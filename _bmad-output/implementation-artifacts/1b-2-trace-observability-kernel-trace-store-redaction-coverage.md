@@ -1,6 +1,6 @@
 # Story 1b.2: Trace + Observability Kernel — Trace Store + Redaction + Coverage
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -73,77 +73,77 @@ So that **Epic 5 can ship the hosted-MCP observer + OTel listener against a stab
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Author `src/AgentEval/errors.py` MINIMAL subset (AC: 1b.2.6)**
-  - [ ] Apache 2.0 license header.
-  - [ ] Module docstring citing ADR-014 (was ADR-A3) + architecture L376/L902-930 + Story 1a.4's `docs/contracts/error-class-hierarchy.md`.
-  - [ ] `AgentEvalError(Exception)` base class with `error_code: str = ""` ClassVar default + `__init__` that captures message + formats `error_code: <msg>` in `__str__`.
-  - [ ] `AgentEvalIntegrityError(AgentEvalError)` sub-base — no override; inherits everything from base. Documented as the trace/run-integrity-class sub-base.
-  - [ ] `IncompleteTraceError(AgentEvalIntegrityError)` leaf — `error_code: ClassVar[str] = "TRACE_INCOMPLETE"`.
-  - [ ] Module docstring includes the placeholder note about `SandboxRequiredError` currently living at `src/AgentEval/security/policy.py` (Story 1a.1 baseline) NOT inheriting from `AgentEvalError`; Phase-1 deferred-work item to re-home it.
-  - [ ] Verify with `uv run mypy src/AgentEval/errors.py`.
+- [x] **Task 1: Author `src/AgentEval/errors.py` MINIMAL subset (AC: 1b.2.6)**
+  - [x] Apache 2.0 license header.
+  - [x] Module docstring citing ADR-014 (was ADR-A3) + architecture L376/L902-930 + Story 1a.4's `docs/contracts/error-class-hierarchy.md`.
+  - [x] `AgentEvalError(Exception)` base class with `error_code: str = ""` ClassVar default + `__init__` that captures message + formats `error_code: <msg>` in `__str__`.
+  - [x] `AgentEvalIntegrityError(AgentEvalError)` sub-base — no override; inherits everything from base. Documented as the trace/run-integrity-class sub-base.
+  - [x] `IncompleteTraceError(AgentEvalIntegrityError)` leaf — `error_code: ClassVar[str] = "TRACE_INCOMPLETE"`.
+  - [x] Module docstring includes the placeholder note about `SandboxRequiredError` currently living at `src/AgentEval/security/policy.py` (Story 1a.1 baseline) NOT inheriting from `AgentEvalError`; Phase-1 deferred-work item to re-home it.
+  - [x] Verify with `uv run mypy src/AgentEval/errors.py`.
 
-- [ ] **Task 2: Author `src/AgentEval/types.py` 3 Phase-1 dataclasses (AC: 1b.2.3)**
-  - [ ] Apache 2.0 license header.
-  - [ ] Module docstring citing architecture L853 (shared types live here); FR35 + FR39; OTel GenAI semconv at architecture L975-985; Phase-1 stdlib `@dataclass(frozen=True)` deviation from architecture's "Pydantic dataclasses" wording (Phase-1 minimalism; migration is a Phase-1.5 carry-over if needed for Epic 5 OTLP).
-  - [ ] `ToolCallTrace` dataclass with the 7 fields per AC-1b.2.3. Mapping-typed `args` accepts `dict` at construction; immutable post-construction.
-  - [ ] `Usage` dataclass with the 3 fields per AC-1b.2.3.
-  - [ ] `RunManifest` dataclass with the 7 fields per AC-1b.2.3.
-  - [ ] All 3 are `frozen=True` per Phase-1 immutability convention.
+- [x] **Task 2: Author `src/AgentEval/types.py` 3 Phase-1 dataclasses (AC: 1b.2.3)**
+  - [x] Apache 2.0 license header.
+  - [x] Module docstring citing architecture L853 (shared types live here); FR35 + FR39; OTel GenAI semconv at architecture L975-985; Phase-1 stdlib `@dataclass(frozen=True)` deviation from architecture's "Pydantic dataclasses" wording (Phase-1 minimalism; migration is a Phase-1.5 carry-over if needed for Epic 5 OTLP).
+  - [x] `ToolCallTrace` dataclass with the 7 fields per AC-1b.2.3. Mapping-typed `args` accepts `dict` at construction; immutable post-construction.
+  - [x] `Usage` dataclass with the 3 fields per AC-1b.2.3.
+  - [x] `RunManifest` dataclass with the 7 fields per AC-1b.2.3.
+  - [x] All 3 are `frozen=True` per Phase-1 immutability convention.
 
-- [ ] **Task 3: Author `src/AgentEval/_kernel/redaction.py` primitives (AC: 1b.2.4)**
-  - [ ] Apache 2.0 license header.
-  - [ ] Module docstring citing NFR-SEC-01 / FR38a + architecture L679 + L1193.
-  - [ ] `DEFAULT_PATTERNS: list[re.Pattern]` (module-level, mutable) seeded with 6 patterns per AC-1b.2.4.
-  - [ ] `redact(text, patterns=None) -> str` — replace each pattern's matches with `[REDACTED]`.
-  - [ ] `redact_dict(d) -> dict` — recursive; `str` values get `redact()`; nested dict/list/tuple recursed; other types pass-through.
-  - [ ] `register_pattern(regex: str) -> None` — compile + append to `DEFAULT_PATTERNS`. Thread-safety caveat in module docstring.
-  - [ ] `redaction_policy_hash() -> str` — SHA-256 hex of `"|".join(p.pattern for p in DEFAULT_PATTERNS)`; stable across runs with the same pattern set.
+- [x] **Task 3: Author `src/AgentEval/_kernel/redaction.py` primitives (AC: 1b.2.4)**
+  - [x] Apache 2.0 license header.
+  - [x] Module docstring citing NFR-SEC-01 / FR38a + architecture L679 + L1193.
+  - [x] `DEFAULT_PATTERNS: list[re.Pattern]` (module-level, mutable) seeded with 6 patterns per AC-1b.2.4.
+  - [x] `redact(text, patterns=None) -> str` — replace each pattern's matches with `[REDACTED]`.
+  - [x] `redact_dict(d) -> dict` — recursive; `str` values get `redact()`; nested dict/list/tuple recursed; other types pass-through.
+  - [x] `register_pattern(regex: str) -> None` — compile + append to `DEFAULT_PATTERNS`. Thread-safety caveat in module docstring.
+  - [x] `redaction_policy_hash() -> str` — SHA-256 hex of `"|".join(p.pattern for p in DEFAULT_PATTERNS)`; stable across runs with the same pattern set.
 
-- [ ] **Task 4: Author `src/AgentEval/_kernel/redaction.py` `RedactionProcessor(SpanProcessor)` class (AC: 1b.2.5)**
-  - [ ] Import `opentelemetry.sdk.trace.SpanProcessor`.
-  - [ ] `RedactionProcessor(SpanProcessor)` with `on_start(span, parent_context)` no-op; `on_end(span)` scrubs the 5 documented attribute keys (per AC-1b.2.5) via `redact()` or `redact_dict()` based on attribute type.
-  - [ ] `shutdown()` + `force_flush(timeout_millis=30000)` no-ops returning True (per SpanProcessor protocol).
-  - [ ] Verify with mypy.
+- [x] **Task 4: Author `src/AgentEval/_kernel/redaction.py` `RedactionProcessor(SpanProcessor)` class (AC: 1b.2.5)**
+  - [x] Import `opentelemetry.sdk.trace.SpanProcessor`.
+  - [x] `RedactionProcessor(SpanProcessor)` with `on_start(span, parent_context)` no-op; `on_end(span)` scrubs the 5 documented attribute keys (per AC-1b.2.5) via `redact()` or `redact_dict()` based on attribute type.
+  - [x] `shutdown()` + `force_flush(timeout_millis=30000)` no-ops returning True (per SpanProcessor protocol).
+  - [x] Verify with mypy.
 
-- [ ] **Task 5: Author `src/AgentEval/_kernel/trace_store.py` lifecycle + projection accessors (AC: 1b.2.1, 1b.2.2, 1b.2.8)**
-  - [ ] Apache 2.0 license header.
-  - [ ] Module docstring citing architecture L600-682 Decision-2 + L968-990 OTel GenAI semconv + Story 1b.1's `_kernel/context.current_context()`.
-  - [ ] `_exporter: InMemorySpanExporter` module-level singleton (lazy-initialized to allow test override).
-  - [ ] `_configure_tracer_provider() -> None` helper that sets up the TracerProvider with the `agenteval.test_id` resource attribute pulled from `current_context()` at span-start time. Phase-1 implementation: rely on OTel SDK's `set_tracer_provider()`; Epic 5 Story 5.1 wires this into `AgentEval.__init__(telemetry=True)`.
-  - [ ] `get_run_spans(test_id: str | None = None) -> list[ReadableSpan]` — falls back to `current_context().test_id` when omitted; filters `_exporter.get_finished_spans()` by `span.attributes.get("agenteval.test_id") == test_id`; sorts by `span.start_time` ascending.
-  - [ ] `get_tool_calls(test_id, source=None) -> list[ToolCallTrace]` — filter spans by `span.name == "execute_tool"` + optionally `span.attributes.get("agenteval.tool.source") == source`; project into `ToolCallTrace` dataclasses.
-  - [ ] `get_usage(test_id) -> Usage` — filter spans by `span.name == "chat"`; sum `gen_ai.usage.{input_tokens, output_tokens, cached_input_tokens}` attributes.
-  - [ ] `get_latency(test_id) -> float` — sum `(span.end_time - span.start_time) / 1e9` for nanosecond→second conversion across all spans for the test.
-  - [ ] `get_run_manifest(test_id) -> RunManifest` — assemble from `library_version` (read `AgentEval.__version__`), test_id, suite_id (from current TestContext), redaction-policy hash (from `redaction.redaction_policy_hash()`), start/end times (from min/max span timestamps for the test), tier-breakdown (count spans per `agenteval.tier` attribute value).
-  - [ ] `clear_spans(test_id: str) -> int` — remove spans tagged with `test_id` from the exporter's internal buffer; return count removed. Phase-1 implementation: `InMemorySpanExporter.get_finished_spans()` returns a list — manipulate the underlying `_finished_spans` list (private but stable in opentelemetry-sdk 1.20+) OR re-create the exporter; pick the cleaner option + document.
+- [x] **Task 5: Author `src/AgentEval/_kernel/trace_store.py` lifecycle + projection accessors (AC: 1b.2.1, 1b.2.2, 1b.2.8)**
+  - [x] Apache 2.0 license header.
+  - [x] Module docstring citing architecture L600-682 Decision-2 + L968-990 OTel GenAI semconv + Story 1b.1's `_kernel/context.current_context()`.
+  - [x] `_exporter: InMemorySpanExporter` module-level singleton (lazy-initialized to allow test override).
+  - [x] `_configure_tracer_provider() -> None` helper that sets up the TracerProvider with the `agenteval.test_id` resource attribute pulled from `current_context()` at span-start time. Phase-1 implementation: rely on OTel SDK's `set_tracer_provider()`; Epic 5 Story 5.1 wires this into `AgentEval.__init__(telemetry=True)`.
+  - [x] `get_run_spans(test_id: str | None = None) -> list[ReadableSpan]` — falls back to `current_context().test_id` when omitted; filters `_exporter.get_finished_spans()` by `span.attributes.get("agenteval.test_id") == test_id`; sorts by `span.start_time` ascending.
+  - [x] `get_tool_calls(test_id, source=None) -> list[ToolCallTrace]` — filter spans by `span.name == "execute_tool"` + optionally `span.attributes.get("agenteval.tool.source") == source`; project into `ToolCallTrace` dataclasses.
+  - [x] `get_usage(test_id) -> Usage` — filter spans by `span.name == "chat"`; sum `gen_ai.usage.{input_tokens, output_tokens, cached_input_tokens}` attributes.
+  - [x] `get_latency(test_id) -> float` — sum `(span.end_time - span.start_time) / 1e9` for nanosecond→second conversion across all spans for the test.
+  - [x] `get_run_manifest(test_id) -> RunManifest` — assemble from `library_version` (read `AgentEval.__version__`), test_id, suite_id (from current TestContext), redaction-policy hash (from `redaction.redaction_policy_hash()`), start/end times (from min/max span timestamps for the test), tier-breakdown (count spans per `agenteval.tier` attribute value).
+  - [x] `clear_spans(test_id: str) -> int` — remove spans tagged with `test_id` from the exporter's internal buffer; return count removed. Phase-1 implementation: `InMemorySpanExporter.get_finished_spans()` returns a list — manipulate the underlying `_finished_spans` list (private but stable in opentelemetry-sdk 1.20+) OR re-create the exporter; pick the cleaner option + document.
 
-- [ ] **Task 6: Author `src/AgentEval/_kernel/coverage.py` enforcement gate (AC: 1b.2.7)**
-  - [ ] Apache 2.0 license header.
-  - [ ] Module docstring citing ADR-016 L44 + L17-28 + architecture L384 + L1058 + FR37; explicitly note kernel does NOT detect (adapters do) — kernel only enforces.
-  - [ ] `from __future__ import annotations` + `from typing import TYPE_CHECKING`; under `if TYPE_CHECKING:` import `AgentRunResult` from `AgentEval.types` (forward ref; Story 1b.4 lands the class).
-  - [ ] `_check_mcp_coverage(run: AgentRunResult, *, allow_external_mcp_blind: bool = False) -> None` — implements the 4 cases per AC-1b.2.7. Raises `IncompleteTraceError` from `AgentEval.errors` with the documented message.
-  - [ ] Document Phase-1 duck-typed runtime: function accesses `run.metadata.mcp_coverage` only; any object with that attribute shape works at runtime.
+- [x] **Task 6: Author `src/AgentEval/_kernel/coverage.py` enforcement gate (AC: 1b.2.7)**
+  - [x] Apache 2.0 license header.
+  - [x] Module docstring citing ADR-016 L44 + L17-28 + architecture L384 + L1058 + FR37; explicitly note kernel does NOT detect (adapters do) — kernel only enforces.
+  - [x] `from __future__ import annotations` + `from typing import TYPE_CHECKING`; under `if TYPE_CHECKING:` import `AgentRunResult` from `AgentEval.types` (forward ref; Story 1b.4 lands the class).
+  - [x] `_check_mcp_coverage(run: AgentRunResult, *, allow_external_mcp_blind: bool = False) -> None` — implements the 4 cases per AC-1b.2.7. Raises `IncompleteTraceError` from `AgentEval.errors` with the documented message.
+  - [x] Document Phase-1 duck-typed runtime: function accesses `run.metadata.mcp_coverage` only; any object with that attribute shape works at runtime.
 
-- [ ] **Task 7: Author unit tests under `tests/unit/kernel/` + `tests/unit/` (AC: 1b.2.9)**
-  - [ ] `tests/unit/kernel/test_trace_store.py` — 12+ tests covering the 5 accessors + per-test isolation + chronological ordering + `clear_spans` + `_configure_tracer_provider` + default-to-current_context behavior. Use OTel SDK's `InMemorySpanExporter` directly + synthesize `ReadableSpan` fixtures via `tracer.start_span(...).end()` pattern.
-  - [ ] `tests/unit/kernel/test_redaction.py` — 10+ tests covering the 6 default patterns + idempotency + recursion + `register_pattern` extension + `redaction_policy_hash` stability + `RedactionProcessor.on_end` mutation in-place.
-  - [ ] `tests/unit/kernel/test_coverage.py` — 8+ tests covering the 6 input combinations + trust-floor fixture + duck-typed input. Use a `types.SimpleNamespace`-shaped fake to stand in for `AgentRunResult` until Story 1b.4 lands the real type.
-  - [ ] `tests/unit/test_errors.py` — 5+ tests verifying the class hierarchy + `error_code` semantics.
-  - [ ] `tests/unit/test_types.py` — 6+ tests verifying construction + frozen immutability + `asdict()` round-trip for each of the 3 dataclasses.
+- [x] **Task 7: Author unit tests under `tests/unit/kernel/` + `tests/unit/` (AC: 1b.2.9)**
+  - [x] `tests/unit/kernel/test_trace_store.py` — 12+ tests covering the 5 accessors + per-test isolation + chronological ordering + `clear_spans` + `_configure_tracer_provider` + default-to-current_context behavior. Use OTel SDK's `InMemorySpanExporter` directly + synthesize `ReadableSpan` fixtures via `tracer.start_span(...).end()` pattern.
+  - [x] `tests/unit/kernel/test_redaction.py` — 10+ tests covering the 6 default patterns + idempotency + recursion + `register_pattern` extension + `redaction_policy_hash` stability + `RedactionProcessor.on_end` mutation in-place.
+  - [x] `tests/unit/kernel/test_coverage.py` — 8+ tests covering the 6 input combinations + trust-floor fixture + duck-typed input. Use a `types.SimpleNamespace`-shaped fake to stand in for `AgentRunResult` until Story 1b.4 lands the real type.
+  - [x] `tests/unit/test_errors.py` — 5+ tests verifying the class hierarchy + `error_code` semantics.
+  - [x] `tests/unit/test_types.py` — 6+ tests verifying construction + frozen immutability + `asdict()` round-trip for each of the 3 dataclasses.
 
-- [ ] **Task 8: All-gates pass (AC: 1b.2.10)**
-  - [ ] `uv run ruff check src/ tests/` — clean.
-  - [ ] `uv run ruff format --check src/ tests/` — clean.
-  - [ ] `uv run mypy src/` — clean (28+ source files: previous 23 + errors.py + types.py + trace_store.py + redaction.py + coverage.py).
-  - [ ] `uv run python scripts/check-license-headers.py` — PASS (28+ files).
-  - [ ] `uv run pytest tests/unit -q --ignore=tests/unit/conventions` — 108+ pass (67 from Story 1b.1 + 41+ new).
-  - [ ] `uv run pytest tests/acceptance/tier1 -q` — 6 FR42 tests still PASS (Story 1a.6 regression).
-  - [ ] `uv run robot tests/acceptance/smoke` — RF smoke test still PASS (Story 1a.6 regression).
+- [x] **Task 8: All-gates pass (AC: 1b.2.10)**
+  - [x] `uv run ruff check src/ tests/` — clean.
+  - [x] `uv run ruff format --check src/ tests/` — clean.
+  - [x] `uv run mypy src/` — clean (28+ source files: previous 23 + errors.py + types.py + trace_store.py + redaction.py + coverage.py).
+  - [x] `uv run python scripts/check-license-headers.py` — PASS (28+ files).
+  - [x] `uv run pytest tests/unit -q --ignore=tests/unit/conventions` — 108+ pass (67 from Story 1b.1 + 41+ new).
+  - [x] `uv run pytest tests/acceptance/tier1 -q` — 6 FR42 tests still PASS (Story 1a.6 regression).
+  - [x] `uv run robot tests/acceptance/smoke` — RF smoke test still PASS (Story 1a.6 regression).
 
-- [ ] **Task 9: Apply project norms (AC: 1b.2.11)**
-  - [ ] Code-review will use `/bmad-code-review (Using current Claude + Codex CLI subagent)` per `feedback_review_methodology_norms`.
-  - [ ] The cross-LLM-reviewer prompt MUST direct: *"For every citation, re-derive from the source"* (per `feedback_citation_drift_first_class`).
-  - [ ] Honest framing: Phase-1 limitations documented (stdlib dataclass vs Pydantic; forward-ref `AgentRunResult`; `SandboxRequiredError` not re-homed; `RedactionProcessor` ships but isn't wired until Story 5.1).
+- [x] **Task 9: Apply project norms (AC: 1b.2.11)**
+  - [x] Code-review will use `/bmad-code-review (Using current Claude + Codex CLI subagent)` per `feedback_review_methodology_norms`.
+  - [x] The cross-LLM-reviewer prompt MUST direct: *"For every citation, re-derive from the source"* (per `feedback_citation_drift_first_class`).
+  - [x] Honest framing: Phase-1 limitations documented (stdlib dataclass vs Pydantic; forward-ref `AgentRunResult`; `SandboxRequiredError` not re-homed; `RedactionProcessor` ships but isn't wired until Story 5.1).
 
 ## Dev Notes
 
@@ -271,23 +271,74 @@ Story 1b.1 already restructured `ci.yml` so `tests/unit` runs real assertions (t
 
 ### Context Reference
 
-<!-- To be filled by dev-story workflow -->
+- architecture L600-682 Decision-2 (LOAD-BEARING): trace store data model + 5 projection accessors
+- architecture L679 + L1193: `_kernel/redaction.py` RedactionProcessor SpanProcessor
+- architecture L384 + L1058: `_check_mcp_coverage` kernel-enforcement contract
+- architecture L853: top-level shared types module + "no direct span access by sub-libraries" rule
+- architecture L902-930: error_code ClassVar convention + base/sub-base/leaf structure
+- architecture L968-990: OTel GenAI semconv (`execute_tool` / `chat` span names; `gen_ai.*` + `agenteval.*` attribute namespacing)
+- ADR-014 (was ADR-A3): error class hierarchy
+- ADR-016 (was ADR-A6): mcp_coverage 3-state + trust-floor + kernel enforcement
+- docs/contracts/error-class-hierarchy.md (Story 1a.4 ratified): 11-leaf catalog
+- docs/contracts/mcp-coverage-detection.md (Story 1a.4 ratified): trust-floor decision tree
+- Story 1b.1 `_kernel/context.current_context()`: consumed by trace_store for test_id default
 
 ### Agent Model Used
 
-<!-- To be filled by dev-story workflow -->
+Claude Opus 4.7 (1M context).
 
 ### Debug Log References
 
-<!-- To be filled by dev-story workflow -->
+- `uv run pytest tests/unit --ignore=tests/unit/conventions -q` → **131 passed in 0.55s** (67 from Story 1b.1 + 64 new: 7 errors + 9 types + 24 redaction + 9 coverage + 15 trace_store)
+- `uv run pytest tests/acceptance/tier1 -q` → 6 passed (Story 1a.6 regression check)
+- `uv run robot tests/acceptance/smoke` → 1 passed (Story 1a.6 regression check)
+- `uv run ruff check src/ tests/` → All checks passed (after 22 auto-fixes for imports, line length, etc.)
+- `uv run ruff format` → all 41 files formatted
+- `uv run mypy src/` → 28 source files clean (up from 23 pre-Story-1b.2: +5 new — errors.py, types.py, trace_store.py, redaction.py, coverage.py)
+- `uv run python scripts/check-license-headers.py` → 28/28 PASS
 
 ### Completion Notes List
 
-<!-- To be filled by dev-story workflow -->
+- **AC-1b.2.1** 5 projection accessors implemented (`get_run_spans`, `get_tool_calls`, `get_usage`, `get_latency`, `get_run_manifest`) per architecture L664-669 + Decision-2. Default-to-`current_context()` behavior wired. Returns `list[ReadableSpan]` (not raw Span) per architecture L664.
+- **AC-1b.2.2** InMemorySpanExporter lifecycle: module-level singleton + `_get_exporter()` / `_set_exporter()` test override + `_configure_tracer_provider()` Phase-1 placeholder (Epic 5 Story 5.1 lands full TracerProvider config) + `clear_spans(test_id)` per-test cleanup hook returns count cleared.
+- **AC-1b.2.3** `src/AgentEval/types.py` co-created with 3 stdlib `@dataclass(frozen=True)` types: `ToolCallTrace` (7 fields per FR35 + OTel GenAI semconv), `Usage` (3 fields with `cached_input_tokens` defaulting to 0), `RunManifest` (7 fields per FR39). Phase-1 deviation from architecture's "Pydantic dataclasses" wording documented in module docstring.
+- **AC-1b.2.4** Primitive redaction: `DEFAULT_PATTERNS` (6 patterns: OpenAI/Anthropic key prefix, Bearer tokens, ANTHROPIC_API_KEY=, OPENAI_API_KEY=, Slack bot tokens, JWT shape), `redact(text, patterns)`, `redact_dict(d)` recursive, `register_pattern(regex)`, `redaction_policy_hash()` SHA-256 of pattern set.
+- **AC-1b.2.5** `RedactionProcessor(SpanProcessor)` class: `on_end(span)` mutates the 5 documented sensitive attribute keys (`gen_ai.request.messages`, `gen_ai.response.text`, `gen_ai.tool.args`, `agenteval.tool.args`, `agenteval.tool.result`) via `redact()` or `redact_dict()` based on value type. `on_start` no-op; `shutdown` no-op; `force_flush` returns True. Uses OTel's `opentelemetry.context.Context` (NOT `contextvars.Context`) for the `parent_context` parameter — mypy LSP error caught + fixed.
+- **AC-1b.2.6** `src/AgentEval/errors.py` co-created: `AgentEvalError(Exception)` base + `AgentEvalIntegrityError(AgentEvalError)` sub-base + `IncompleteTraceError(AgentEvalIntegrityError)` leaf with **`error_code = "INCOMPLETE_TRACE"`** per `docs/contracts/error-class-hierarchy.md` L90 (citation drift self-caught: initial dev-story implementation used `"TRACE_INCOMPLETE"`; corrected to match ratified contract — the new citation-drift norm catching real drift in real-time).
+- **AC-1b.2.7** `_check_mcp_coverage(run, *, allow_external_mcp_blind=False) -> None` implemented. 6-cell behavior matrix verified by tests. TYPE_CHECKING-guarded `AgentRunResult` import (Story 1b.4 lands the type); duck-typed runtime accepts `SimpleNamespace` + `@dataclass` fakes.
+- **AC-1b.2.8** trace_store projection accessors consume `current_context().test_id` from Story 1b.1's `_kernel/context.py` when explicit `test_id` is omitted. Verified by `test_get_run_spans_defaults_to_current_context`.
+- **AC-1b.2.9** 64 new unit tests total (7 errors + 9 types + 24 redaction + 9 coverage + 15 trace_store). Real OTel spans emitted in `test_trace_store.py` via tracer + SimpleSpanProcessor + InMemorySpanExporter fixtures.
+- **AC-1b.2.10** All gates clean: ruff + mypy + license-headers + 131 unit + 6 tier1 regression + 1 smoke regression.
+- **AC-1b.2.11** AC body sets the citation-drift directive for the code-review prompt. Already proven load-bearing within Story 1b.2 itself: caught the `TRACE_INCOMPLETE` → `INCOMPLETE_TRACE` drift between my initial implementation and Story 1a.4's ratified contract.
+
+**Phase-1 limitations explicitly documented:**
+- `types.py` uses stdlib `@dataclass(frozen=True)` instead of "Pydantic dataclasses" (architecture L853 wording); Phase-1.5 carry-over if Epic 5 OTLP serialization needs Pydantic validation.
+- `_check_mcp_coverage` accepts forward-referenced `AgentRunResult`; Story 1b.4 lands the real type.
+- `SandboxRequiredError` re-home into `errors.py` is a Phase-1.5 hygiene carry-over (currently at `src/AgentEval/security/policy.py` per Story 1a.1 pre-`errors.py` baseline). Documented in `errors.py` module docstring + `deferred-work.md`.
+- `_configure_tracer_provider()` is a Phase-1 placeholder; Epic 5 Story 5.1 lands the full TracerProvider config (resource attributes + RedactionProcessor + BatchSpanProcessor + exporter chain).
+- `_kernel/trace_store.clear_spans` uses `exporter._finished_spans` internal attribute (private but stable in opentelemetry-sdk 1.20+); fallback path documented.
+
+**Citation-drift catch (self-applied during dev-story):**
+Initial errors.py + coverage.py + tests used `error_code = "TRACE_INCOMPLETE"`. A grep of `docs/contracts/error-class-hierarchy.md` (Story 1a.4 ratified) showed the contract uses `INCOMPLETE_TRACE`. Per the new `feedback_citation_drift_first_class` norm + "fix-the-losing-source-NOW" pattern, I corrected the IMPLEMENTATION to match the contract (5 files updated: errors.py + coverage.py + 2 test files + stability-surface.md). This is exactly the kind of subtle drift the norm targets — caught during dev-story rather than waiting for code-review.
 
 ## File List
 
-<!-- To be filled by dev-story workflow -->
+**New files (10):**
+- `src/AgentEval/errors.py` (~75L) — AgentEvalError + AgentEvalIntegrityError + IncompleteTraceError(error_code="INCOMPLETE_TRACE")
+- `src/AgentEval/types.py` (~120L) — ToolCallTrace + Usage + RunManifest stdlib frozen dataclasses
+- `src/AgentEval/_kernel/trace_store.py` (~360L) — 5 projection accessors + clear_spans + _configure_tracer_provider + _get_exporter/_set_exporter + helpers (_attr_as_int/_attr_as_float/_attr_to_mapping/_attr_to_optional_str)
+- `src/AgentEval/_kernel/redaction.py` (~240L) — 6 DEFAULT_PATTERNS + redact + redact_dict + register_pattern + redaction_policy_hash + RedactionProcessor SpanProcessor
+- `src/AgentEval/_kernel/coverage.py` (~105L) — _check_mcp_coverage enforcement gate
+- `tests/unit/test_errors.py` (~60L) — 7 tests on class hierarchy + error_code
+- `tests/unit/test_types.py` (~120L) — 9 tests on construction + frozen + asdict round-trip
+- `tests/unit/kernel/test_trace_store.py` (~260L) — 15 tests on 5 projection accessors + clear_spans + _configure_tracer_provider
+- `tests/unit/kernel/test_redaction.py` (~220L) — 24 tests on 6 default patterns + redact_dict + register_pattern + RedactionProcessor
+- `tests/unit/kernel/test_coverage.py` (~90L) — 9 tests on 6-cell behavior matrix + trust-floor + duck-typed input
+
+**Updated files (3):**
+- `docs/contracts/stability-surface.md` — added Kernel public surface entries for trace_store/redaction/coverage + Top-level errors + types surface section
+- `docs/contracts/error-class-hierarchy.md` — marked IncompleteTraceError as IMPLEMENTED (Story 1b.2)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 1b-2 status: ready-for-dev → in-progress → review through this dev-story session
 
 Expected files (5 created + ~5 updated):
 
@@ -315,3 +366,4 @@ Expected files (5 created + ~5 updated):
 | Date       | Version | Description                                                                  | Author |
 | ---------- | ------- | ---------------------------------------------------------------------------- | ------ |
 | 2026-05-18 | 0.1.0   | Initial story creation (ready-for-dev). Pre-create-story drift check (6th consecutive use of `feedback_spec_vs_ratified_doc_precheck`) caught 8 drifts: 6 in Story 1b.2 spec (D1 trace_store API surface, D2 coverage function name+intent, D3 errors.py + IncompleteTraceError dependency, D5 RedactionProcessor missing, D6 Span→ReadableSpan, the spec-driven RunData type undefined → AgentRunResult) + 2 pre-emptive in Story 1b.4 spec (D7 `__agenteval_tier__` dunder→`_agenteval_tier`, D4 AgentRunResult location, D8 mcp_coverage 4-state→3-state). All 8 resolved by honoring ratified sources (ADR-016 + ADR-014 + architecture L600-682/L853/L902-930/L1184-1197 + Story 1b.1 actual implementation). epics.md L880-890 (Story 1b.2) + L924-930 (Story 1b.4 pre-emptive) updated pre-authoring. NEW NORM from Epic 1a retro (`feedback_citation_drift_first_class`) embedded in AC-1b.2.11 + Norm #1. Phase-1 limitations explicitly documented: stdlib @dataclass(frozen=True) vs architecture's "Pydantic dataclasses" (Phase-1.5 carry-over for migration); AgentRunResult TYPE_CHECKING forward-ref (Story 1b.4 lands the class); SandboxRequiredError re-home deferred; RedactionProcessor ships unwired (Epic 5 Story 5.1 wires). | Bob |
+| 2026-05-18 | 0.2.0   | Dev-story complete. All 11 ACs satisfied; all 9 tasks marked [x]. 5 new src files (~900L total): errors.py (~75L) + types.py (~120L) + _kernel/trace_store.py (~360L) + _kernel/redaction.py (~240L) + _kernel/coverage.py (~105L). 5 new test files (~750L total) with 64 new unit tests (7 errors + 9 types + 15 trace_store + 24 redaction + 9 coverage). stability-surface.md + error-class-hierarchy.md updated. **Citation-drift self-catch DURING dev-story**: initial implementation used `error_code="TRACE_INCOMPLETE"`; grep of `docs/contracts/error-class-hierarchy.md` L90 revealed contract uses `INCOMPLETE_TRACE`; "fix-the-losing-source-NOW" pattern applied — implementation corrected to match contract (5 files updated). Exactly the kind of subtle drift the new `feedback_citation_drift_first_class` norm targets — caught during dev-story rather than waiting for code-review. All gates clean: ruff + mypy (28 src files, +5 from 23) + license-headers (28/28) + pytest tests/unit (131 passed, +64 from 67) + pytest tier1 (6 passed regression) + robot smoke (1 passed regression). Phase-1 limitations explicitly documented (stdlib @dataclass vs Pydantic; AgentRunResult TYPE_CHECKING forward-ref; SandboxRequiredError re-home deferred; RedactionProcessor unwired until Story 5.1). Status: in-progress → review. | Amelia |

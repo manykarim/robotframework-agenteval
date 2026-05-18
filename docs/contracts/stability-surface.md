@@ -63,6 +63,21 @@ Per `src/AgentEval/__init__.py` (Story 1a.6 ratification):
 - `_kernel.context.resolve_config(kwarg_overrides, *, dotenv_path) -> dict` — `provisional` label. FR41 precedence resolver. Layer order is `stable`; per-key type coercion vocabulary (e.g., `_parse_bool` accepting true/false/1/0/yes/no/on/off) is `provisional`.
 - `_kernel.tier.{tier, get_keyword_tier, tier_badge}` — `provisional` label. Decorator + accessors; `_agenteval_tier` attribute name is `stable` (consumers can depend on it directly).
 - `_kernel.run_async._run_async[T](coro) -> T` — `provisional` label. The `architecture.md` §Async-to-Sync Bridge Convention is `stable`; the worker-thread fallback mechanism is `provisional` (Phase-2 may add cancellation/timeout knobs).
+- `_kernel.trace_store.{get_run_spans, get_tool_calls, get_usage, get_latency, get_run_manifest}` — `provisional` label (Story 1b.2 baseline). The 5 projection accessors per architecture L664-669 / Decision-2. The "no direct span access by sub-libraries" rule (architecture L853) is `stable`; sub-libraries MUST consume these accessors, NOT touch spans directly. Phase-2 may add OTLP-specific projection variants.
+- `_kernel.trace_store.clear_spans(test_id) -> int` — `provisional` label. Per-test cleanup hook called by the Listener (Epic 5 Story 5.1).
+- `_kernel.trace_store._configure_tracer_provider()` — `provisional` label. Phase-1 placeholder; Epic 5 Story 5.1 lands the full TracerProvider configuration (resource attributes + SpanProcessor chain).
+- `_kernel.redaction.{redact, redact_dict, register_pattern, redaction_policy_hash}` — `provisional` label. Primitive scrubbing surface; `DEFAULT_PATTERNS` set is `provisional` (additions/removals are minor-version bumps with CHANGELOG entry).
+- `_kernel.redaction.RedactionProcessor` (OTel `SpanProcessor`) — `provisional` label. Wires `redact()` into the OTel pipeline per architecture L679. `_SENSITIVE_ATTRIBUTE_KEYS` covered set is `provisional` (additions are minor-bump; consumers can subclass + override).
+- `_kernel.coverage._check_mcp_coverage(run, *, allow_external_mcp_blind) -> None` — `provisional` label. FR37 + ADR-016 L44 enforcement gate. Behavior matrix (3 mcp_coverage values × 2 allow_external_mcp_blind values = 6 cells) is `stable`; the raised `IncompleteTraceError` `error_code="INCOMPLETE_TRACE"` is `stable`.
+
+### Top-level errors + types surface (Story 1b.2 — Phase-1 registry)
+
+Per architecture L853 (top-level shared types) + L1184 (top-level errors module):
+
+- `AgentEval.errors.AgentEvalError` base — `stable` label. The 4-sub-base scheme (`AgentEvalSafetyError`, `AgentEvalBudgetError`, `AgentEvalCompatError`, `AgentEvalIntegrityError`) is `stable` per ADR-014; consumers can `try / except AgentEvalError` to catch all agenteval errors. Story 1b.2 ships only `AgentEvalIntegrityError`; the other 3 sub-bases land as future stories need them.
+- `AgentEval.errors.AgentEvalIntegrityError` sub-base — `stable` label.
+- `AgentEval.errors.IncompleteTraceError` leaf — `stable` label. `error_code = "INCOMPLETE_TRACE"` is `stable` per ADR-014.
+- `AgentEval.types.{ToolCallTrace, Usage, RunManifest}` dataclasses — `provisional` label. Phase-1 stdlib `@dataclass(frozen=True)` (deviation from architecture's "Pydantic dataclasses" wording — documented in `types.py` docstring + Phase-1.5 carry-over). Field set is `provisional` (field additions are minor bumps; field renames are major bumps).
 
 ### Sandbox Protocol Surface
 
