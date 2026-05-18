@@ -811,15 +811,26 @@ So that consumers get a coherent first-import experience and the stability + exi
 
 **Given** the `AgentEval` package at `src/AgentEval/__init__.py`,
 **When** the library is imported via `Library    AgentEval` in a `.robot` file with no kwargs,
-**Then** the defaults from PRD FR42 apply (documented in `docs/contracts/stability-surface.md`): `mcp_per_test="suite"`, `max_cost_usd=5.00`, `telemetry=True`, `allow_validate_operator=False`, `max_runtime_seconds=None` (no cap), plus a `trace_backend` default of `"memory"`.
+**Then** the 9 defaults from PRD FR42 + FR11b apply (documented in `docs/contracts/stability-surface.md` Phase-1 registry + `.env.example` env-var template):
+- `provider="litellm"` (FR42 — provider plugin selection per ADR-013)
+- `telemetry=True` (FR42 + FR44 — OTel listener on; opt-out via `telemetry=False`)
+- `trace_backend="memory"` (FR42 — in-memory trace store; `jsonl` Phase-1, `otlp` Phase-2)
+- `allow_validate_operator=False` (FR42 + FR43 — AssertionEngine `validate` operator gate; default-deny per `eval()` safety per NFR-SEC-02)
+- `default_temperature=0.0` (FR42 — deterministic provider calls)
+- `mcp_per_test=True` (FR42 + ADR-009 — per-test MCP server isolation; valid values: `True | "suite" | False` per architecture L314 3-mode design)
+- `allow_external_mcp_blind=False` (FR42 + ADR-016 — external-MCP coverage gate; default-deny; `IncompleteTraceError` on `mcp_coverage="external_mixed"`)
+- `max_cost_usd=5.00` (FR42 + ADR-015 — `@guarded_fanout` cost guardrail)
+- `max_runtime_seconds=None` (FR11b — Tier-3 fan-out wall-clock guardrail; default `None` = no cap; opt-in)
+
+(Default set ratified 2026-05-18 per Story 1a.6 pre-create-story drift correction; previous epics.md draft listed `mcp_per_test="suite"` and a 6-default subset — superseded by PRD FR42 + ADR-009 ratified 8-default canonical + FR11b 9th.)
 
 **And Given** the same library import,
 **When** the consumer passes `Library    AgentEval    allow_validate_operator=True    telemetry=False`,
 **Then** both kwargs are accepted without error and threaded through the library's `__init__` to internal state — gate enforcement (raising `PollingDisallowedError` when `validate` is used without the flag) lives in Epic 6, but the wiring + accessor (`Get Effective Config` shows the flag values) lives here.
 
-**And** `docs/contracts/stability-surface.md` skeleton exists documenting the labels (`stable`, `beta`, `experimental`, `deprecated`) per FR64; per-keyword labels are populated by the epics that ship the keywords.
+**And** `docs/contracts/stability-surface.md` skeleton exists documenting the labels (`stable`, `provisional`, `experimental`) per FR64; per-keyword labels are populated by the epics that ship the keywords. (Label set ratified 2026-05-18 per Story 1a.6 pre-create-story drift correction; previous draft used `stable/beta/experimental/deprecated` — superseded by PRD FR64 + Story 1a.4 ratified `docs/contracts/stability-surface.md` content.)
 
-**And** `docs/contracts/exit-criteria.md` stub exists per FR65 listing the 0.x→1.0 promotion criteria placeholder (filled in Epic 9 close): conformance coverage threshold, dogfood parity bar, ADR completeness, public API stability period — each currently `TBD` with rationale "filled in Phase 1 close per FR65".
+**And** `docs/contracts/exit-criteria-0x-to-1x.md` stub exists per FR65 listing the 0.x→1.0 promotion criteria placeholder (filled in Epic 9 close): conformance coverage threshold, dogfood parity bar, ADR completeness, public API stability period — each currently `TBD` with rationale "filled in Phase 1 close per FR65". (Slug ratified 2026-05-18; previous draft used `exit-criteria.md` — superseded by architecture L1423 + PRD FR65 + Story 1a.4 ratified slug.)
 
 ---
 

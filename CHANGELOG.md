@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Story 1a.6: `AgentEval` RF Library class wired with 9 PRD FR42 + FR11b defaults (last Epic 1a story):
+  - **`AgentEval` class** at `src/AgentEval/__init__.py` — keyword-only `__init__` with 9 parameters (`provider`, `telemetry`, `trace_backend`, `allow_validate_operator`, `default_temperature`, `mcp_per_test: bool | Literal["suite"]`, `allow_external_mcp_blind`, `max_cost_usd`, `max_runtime_seconds`). Type-annotated; Google-style docstring documenting each param + FR/ADR cross-references. `__all__ = ["AgentEval"]`.
+  - **`Get Effective Config` RF keyword** — returns the kwarg-resolved config as `dict[str, Any]`. Phase-1: kwarg-only resolution; env-var precedence (FR41) lands in Epic 1b `_kernel/context.py`.
+  - **`_get_rf_test_id()` helper** — Phase-1 stub that returns `None`; Epic 5 Story 5.1 wires the Listener v3 context read for per-test MCP scoping per ADR-009.
+  - **FR42 acceptance test** at `tests/acceptance/tier1/test_ac_fr42_library_defaults.py` — 6 tests covering defaults, kwarg overrides, `mcp_per_test` 3-mode (True/`"suite"`/False), `max_runtime_seconds` opt-in, keyword-only enforcement. **First non-collect-only Phase-1 test** — `ci.yml`'s exit-code-5 leniency continues for the other 3 test dirs.
+  - **`docs/contracts/stability-surface.md` Phase-1 registry populated** — new `### AgentEval Library Surface (Story 1a.6 Phase-1 registry)` subsection labels the class + 9 params + `Get Effective Config` keyword as `provisional`. Preserves the Story 1a.4 `### Sandbox Protocol Surface` subsection.
+  - **`docs/contracts/exit-criteria-0x-to-1x.md` Phase-1 stub populated** — substantive 4-criteria table (conformance coverage threshold, dogfood parity bar, ADR completeness, public API stability period) with `TBD` placeholders + rationale citing Epic 9 Story 9.3 as the owning story for final content.
+  - **`SECURITY.md` NFR-SEC-05 forward-ref retired** — `__init__(telemetry=False)` is now wired by Story 1a.6; banner updated from "forward-reference" to current-state language (full listener-disable enforcement still gated on Epic 5 Story 5.1).
+- Pre-create-story drift check (6th consecutive use) caught 5 drifts in Story 1a.6 spec vs ratified sources; all resolved by honoring PRD FR42 + ADR-009 + Story 1a.4 stability-surface.md + architecture L1423 + FR11b. `epics.md` Story 1a.6 AC + `.env.example` `AGENTEVAL_MCP_PER_TEST` corrected pre-authoring.
+
 - Story 1a.5: project hygiene baseline shipped (7 deliverable categories):
   - **CONTRIBUTING.md** at repo root — dev setup, testing, Conventional Commits, DCO sign-off (`git commit -s`), code-style + conformance-suite requirement cross-refs, security-issue routing.
   - **SECURITY.md** full content (replaces Story 1a.1 placeholder) — private reporting channels, SLA table (ack ≤7 days / embargo ≤90 days), 5 security guarantees (credential redaction NFR-SEC-01, no-eval NFR-SEC-02, TLS NFR-SEC-03, supply-chain trust boundary NFR-SEC-04, no-phone-home NFR-SEC-05), CodeQL + dependency-pin posture.

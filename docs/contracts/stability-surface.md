@@ -1,7 +1,7 @@
 # Stability Surface
 
-**Status:** Phase-1 skeleton — content to be filled by Story 1a.6 (initial labels) + Epic 6 (sandbox subsection content).
-**Owning epic:** Story 1a.6 (initial labels) + Epic 6 (sandbox surface)
+**Status:** accepted (Story 1a.6 initial registry; expanded incrementally by future epic stories).
+**Owning epic:** Story 1a.6 (initial registry) + Epic 6 (sandbox surface evolution)
 **Related ADRs:** ADR-018 (Sandbox Phase 1 Policy — `SandboxBackend` Protocol), ADR-013 (Entry-Points Discovery — registration mechanism), ADR-014 (Error-Class Hierarchy — error-class stability labels)
 **Related FRs:** FR64 (Stability Surface metadata), NFR-MAINT-05 (per-element stability labels)
 
@@ -25,15 +25,31 @@ Defines agenteval's **per-API-element stability label scheme** (`stable` / `prov
 
 ## Contract
 
-*Phase-1 skeleton — Story 1a.6 + Epic 6 fill in the formal specification.*
-
 **Stability labels:**
 
 - `stable` — semver-protected across major version. Breaking changes require major-version bump + deprecation cycle (≥1 minor before removal).
 - `provisional` — likely to stabilize but may break across minor versions. Document the next breaking change in CHANGELOG.
 - `experimental` — explicitly unstable. May break or be removed any minor release. Use with `pin >=X.Y.Z,<X.Y.(Z+1)`.
 
-**Per-element registry:** Filled INCREMENTALLY. Phase-1 baseline below contains only the sandbox surface (see `### Sandbox Protocol Surface` subsection). Story 1a.6 registers the AgentEval library entry-point + initial keyword surface labels. Subsequent epic-owning stories MUST register their public elements (keywords, Protocols, error-class names, entry-point group names) at the time of shipping. The registry is intentionally NOT complete at Story 1a.4 commit time; FR64/NFR-MAINT-05 enforcement begins with Story 1a.6 + the docs-build CI check that warns on unlabeled elements (per Story 1a.6 deliverable).
+**Per-element registry:** Filled INCREMENTALLY. Phase-1 baseline (Story 1a.6) registers the `AgentEval` library entry point + its 9 FR42/FR11b config params + the `Get Effective Config` keyword + the sandbox surface (Story 1a.4 baseline). Subsequent epic-owning stories MUST register their public elements (keywords, Protocols, error-class names, entry-point group names) at the time of shipping. FR64/NFR-MAINT-05 enforcement (the docs-build CI check that warns on unlabeled elements) lands in a future story; the registry's incremental fill begins here.
+
+### AgentEval Library Surface (Story 1a.6 Phase-1 registry)
+
+Per `src/AgentEval/__init__.py` (Story 1a.6 ratification):
+
+- `AgentEval` class at `src/AgentEval/__init__.py` — `provisional` label in Phase 1. Public RF Library entry point invoked via `Library    AgentEval    <kwargs>`. Signature may evolve as Epic 1b wires env-var precedence (FR41) + as sub-libraries land their config knobs; `provisional` label warns consumers that the kwarg set may grow.
+- `AgentEval.__init__` 9 keyword-only parameters — all `provisional` label in Phase 1 (parameter names + types stable; default values may tighten via ADR amendment as empirical data accumulates). Default values per PRD FR42 + FR11b + ratified ADRs:
+  - `provider: str = "litellm"` (FR42 + ADR-013)
+  - `telemetry: bool = True` (FR42 + FR44)
+  - `trace_backend: str = "memory"` (FR42 + FR33b)
+  - `allow_validate_operator: bool = False` (FR42 + FR43; NFR-SEC-02)
+  - `default_temperature: float = 0.0` (FR42)
+  - `mcp_per_test: bool | Literal["suite"] = True` (FR42 + ADR-009)
+  - `allow_external_mcp_blind: bool = False` (FR42 + ADR-016)
+  - `max_cost_usd: float = 5.00` (FR42 + ADR-015)
+  - `max_runtime_seconds: float | None = None` (FR11b + ADR-015)
+- `Get Effective Config` RF keyword (Python method `AgentEval.get_effective_config`) — `provisional` label in Phase 1. Returns a `dict[str, Any]` keyed by the 9 `__init__` parameter names. Phase-2 may evolve to a structured `EffectiveConfig` dataclass for stronger typing on the consumer side; `provisional` label warns consumers that the return-type may evolve from `dict[str, Any]` to a typed structure (the keys + value types per key will remain `stable`).
+- `AgentEval.__version__` module attribute — `stable` label. PyPI distribution + import metadata convention. Bump per semver per NFR-MAINT-03.
 
 ### Sandbox Protocol Surface
 

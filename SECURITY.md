@@ -88,11 +88,11 @@ The library **does NOT phone home**. Only the following network egress is possib
 - **LLM provider endpoints** (per user-configured providers — explicit setup required).
 - **OTLP endpoints** (Phase 2, opt-in via `[otlp]` extra + explicit endpoint configuration).
 
-The library `__init__(telemetry=False)` will eliminate all OTel listener egress.
+The library `__init__(telemetry=False)` eliminates all OTel listener egress.
 
-> **Phase-1 status:** **forward-reference.** The `__init__(telemetry=False)` Library kwarg is wired by Story 1a.6 (FR44). The `Assert No Egress To` conformance fixture lands in Epic 1b Story 1b.5. Phase-1 baseline (commit `90d6f5c`) ships only Story 1a.1's `src/AgentEval/cli.py` Phase-1 placeholder + 3 security stubs — no OTel listener, no network egress paths exist yet to disable.
+> **Phase-1 status:** the `__init__(telemetry=False)` Library kwarg is now **wired by Story 1a.6** (the `AgentEval` class at `src/AgentEval/__init__.py` accepts the kwarg + threads it into internal state, retrievable via the `Get Effective Config` keyword). Full listener-disable enforcement (preventing OTel egress paths) is still gated on Epic 5 Story 5.1 which lands the OTel listener itself; until Epic 5 ships, no listener exists to disable. The `Assert No Egress To` conformance fixture lands in Epic 1b Story 1b.5.
 
-The conformance suite will verify this via the `Assert No Egress To` fixture in default-configured + `telemetry=False` configurations once the relevant stories land.
+The conformance suite will verify this via the `Assert No Egress To` fixture in default-configured + `telemetry=False` configurations once Epic 1b Story 1b.5 + Epic 5 Story 5.1 both land.
 
 ## CodeQL Continuous Scanning
 

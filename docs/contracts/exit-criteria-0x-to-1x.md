@@ -1,7 +1,7 @@
 # Exit Criteria: 0.x → 1.x
 
-**Status:** Phase-1 skeleton — content to be filled by Epic 9 Story 9.3 (Phase 1 retrospective + FR65 exit criteria doc final content).
-**Owning epic:** Epic 9 — Dogfood Validation + Phase 1 Close
+**Status:** accepted (Story 1a.6 initial stub; concrete numeric bars filled by Epic 9 Story 9.3 at Phase 1 retrospective).
+**Owning epic:** Epic 9 Story 9.3 — Dogfood Validation + Phase 1 Close (final content); Story 1a.6 — initial stub
 **Related ADRs:** none directly; informed by all Phase-1 ADRs as the documented "Phase 1 complete" gate.
 **Related FRs:** FR65 (Exit Criteria — Phase-1 to Phase-2 transition gate)
 
@@ -26,18 +26,26 @@ Documents the **objective gates** that must be satisfied before agenteval is rel
 
 ## Contract
 
-*Phase-1 skeleton — Epic 9 Story 9.3 fills in the formal specification at Phase 1 retrospective.*
+**Phase-1 initial stub.** The 4 promotion criteria placeholders below are ratified by Story 1a.6 (2026-05-18). Concrete numeric bars (the `TBD` placeholders) are filled by Epic 9 Story 9.3 at Phase 1 retrospective.
 
-The exit criteria will at minimum include:
+### Promotion criteria (4 placeholders)
 
-- **Functional coverage:** all 56 Phase-1 FRs from PRD §Functional Requirements are wired + tested (per conformance suite + acceptance suite + unit suite).
-- **Adapter coverage:** ≥2 Tier-1 adapters fully implemented (Phase 1 target: Generic LiteLLM + Claude Code CLI). Each adapter passes the full conformance suite.
-- **Dogfood signal:** `rf-mcp` + `robotframework-agentskills` import agenteval + their conformance suites run against the agenteval wheel and produce per-AC reports. Per NFR-REL-05.
+| # | Criterion | Phase-1 placeholder text | Rationale |
+| --- | --- | --- | --- |
+| 1 | **Conformance coverage threshold** | `≥<N>% of public keywords pass conformance suite against ≥2 Tier-1 adapters` (`N` TBD) | Filled in Phase 1 close per FR65; agenteval's `1.0` promise is that public keywords work consistently across adapters. The numeric threshold is empirically anchored at Phase 1 retrospective when the actual conformance-suite hit-rate is measurable across the 2 Tier-1 adapters (Generic LiteLLM + Claude Code CLI per ADR-002 Tier-1 ceiling). |
+| 2 | **Dogfood parity bar** | `rf-mcp + robotframework-agentskills full-parity test suites green against agenteval wheel` (parity scope TBD) | Filled in Phase 1 close per FR65. Story 1a.2's `dogfood-integration.yml` is currently Phase-1 install-smoke (per Story 1a.2 HIGH-1 ratification); Story 9.1+9.2 land the full cross-repo integration. Exit criterion = Story 9.1+9.2 both green with `continue-on-error: true` removed. |
+| 3 | **ADR completeness** | `all 18 ratified ADRs have epic-implementation status confirmed (no forward-reference banners in shipped code/docs)` | Filled in Phase 1 close per FR65. Currently SECURITY.md still has 1 forward-ref banner (NFR-SEC-01: `config.redact_env()` + `config.add_redaction_pattern()` are Epic 5 Story 5.3 deliverables). After Epic 5 Story 5.3 + Epic 6 ships, every forward-ref banner across the corpus must be either retired (replaced with current-state language) OR explicitly carried to Phase 1.5. |
+| 4 | **Public API stability period** | `all "provisional" stability-surface entries promoted to "stable" OR demoted to "experimental"; zero "provisional" at 1.0 release` | Filled in Phase 1 close per FR65. `docs/contracts/stability-surface.md` currently labels `AgentEval` class + its 9 config params + `Get Effective Config` keyword as `provisional` (Story 1a.6 Phase-1 registry). 1.0 promotion requires either: (a) provisional → stable (with documented semver guarantees), or (b) provisional → experimental (with documented unstable-by-design status). No `provisional` entries at 1.0 release. |
+
+### Additional Phase-1-close documentation requirements (Epic 9 Story 9.3 will detail)
+
+The exit criteria document at Phase 1 close (Epic 9 Story 9.3) will additionally cover:
+
+- **Functional coverage:** which Phase-1 FRs from PRD §Functional Requirements are wired + tested (per conformance suite + acceptance suite + unit suite).
 - **Documentation coverage:** all 11 `docs/contracts/` files have populated content (not Phase-1 stubs); ≥8 Phase-1 recipes in `docs/recipes/`; libdoc rendered + asserted via `docs-build.yml`.
-- **Stability surface:** every public element has a stability label per FR64; no public elements unlabeled.
-- **Phase-1.5 carry-over registry:** macOS validation, SHA-pinning of CI actions, full dogfood integration tests (Story 1a.2's `continue-on-error: true` removed), Phase-1 CLI proxy at `src/AgentEval/conformance/`. Each carry-over documented with target story.
+- **Phase-1.5 carry-over registry:** macOS validation (D2.1 architect waiver), SHA-pinning of CI actions (Story 1a.2 LOW-3 deferred), full dogfood integration tests (Story 1a.2 + Stories 9.1/9.2), `src/AgentEval/conformance/` CLI proxy (Story 1a.4 HIGH-2 forward-reference), DCO check workflow (Story 1a.5 MED-3 deferred), PR template (Story 1a.5 LOW-8 deferred). Each carry-over documented with target story.
 
-Exact numeric bars + final criteria ratified at Epic 9 Story 9.3.
+The 4 criteria + the additional requirements are the **objective bar** for agenteval to claim 1.0. Per `feedback_honest_framing` working norm, numeric bars MUST be specified (no vibes — empirical thresholds anchored to Phase-1-retrospective data).
 
 ## Change Policy
 
