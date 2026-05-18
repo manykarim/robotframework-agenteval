@@ -34,7 +34,7 @@ The events.jsonl schema is tracked as a pinned external-spec target in `docs/con
 - Adapter ships with both code paths in Phase 2 (Tier-1 promotion target). Conformance fixture (per ADR-005) covers truncation recovery via the post-hoc path: the mock harness kills the subprocess mid-run; the adapter must produce the same `AgentRunResult` as the un-killed run via session-state fallback.
 - Pin `copilot>=1.0.9,<2.0` until schema-stability evidence accumulates across a major-version boundary.
 - The `run_uuid` capture is a hard dependency on Copilot CLI's startup-banner format. If the banner format changes (e.g., `run_uuid` moves to a different position), the adapter detects the failure (no `run_uuid` parsed) and degrades to "live-only" mode with a documented log warning.
-- Generic LiteLLM-backed adapter (ADR-013) doesn't apply this strategy — it's SDK-driven, not subprocess-driven; trace extraction is the in-process API response.
+- Generic LiteLLM-backed adapter (see [ADR-003](ADR-003-coding-agent-adapter-protocol-internal-class-split.md) §Decision — Generic LiteLLM-backed adapter inherits from `InProcessAdapter`) doesn't apply this strategy — it's SDK-driven, not subprocess-driven; trace extraction is the in-process API response. (Cross-reference corrected 2026-05-18 by Story 1a.5 per Story 1a.3 code-review MED-2 follow-up; was incorrectly citing ADR-013 which is Entry-Points Discovery.)
 
 ## Alternatives
 

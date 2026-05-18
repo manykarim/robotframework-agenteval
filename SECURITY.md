@@ -1,36 +1,114 @@
 # Security Policy
 
-Per NFR-SEC-04 + the references from [MAINTAINERS.md](./MAINTAINERS.md) and [SUPPORT.md](./SUPPORT.md), this document specifies how to report security issues in **robotframework-agenteval**.
+This document specifies how to **report security issues** in `robotframework-agenteval` + the **security guarantees** the library makes to its consumers. Per [NFR-SEC-01..05](_bmad-output/planning-artifacts/prd.md) + the references from [MAINTAINERS.md](./MAINTAINERS.md) and [SUPPORT.md](./SUPPORT.md).
 
-> **⚠️ PLACEHOLDER — full policy lands in Story 1a.5.** This minimal disclosure surface exists so that the dead links in MAINTAINERS.md / SUPPORT.md (created by Story 1a.1) have something to resolve to. Story 1a.5 (Project Hygiene — CONTRIBUTING + SECURITY + Issue Templates + License Headers) authors the authoritative version per the spec text quoted below.
+## Reporting a Security Issue
 
-## How to report a security issue
+**Do NOT use public GitHub Issues for security reports.**
 
-**Do NOT use public GitHub Issues for security reports.** Use one of:
+Use one of these private channels:
 
-- **GitHub private security advisories** for this repository — go to the repository's "Security" tab, click "Report a vulnerability". This is the preferred channel; it provides an embargo'd discussion thread.
-- **Direct email** to the maintainer (see [MAINTAINERS.md](./MAINTAINERS.md)).
+- **GitHub private security advisory** (preferred): go to the repository's "Security" tab → "Advisories" → "Report a vulnerability". This provides an embargo'd discussion thread visible only to the reporter + maintainers.
+- **Direct email** to the maintainer (see [MAINTAINERS.md](./MAINTAINERS.md) for the address).
 
-## What to include
+### What to include in your report
 
 A useful report includes:
 
-- agenteval version (output of `agenteval --version` once Epic 8b ships the CLI)
-- Robot Framework version + Python version + OS
-- Minimal `.robot` file or Python snippet that reproduces the issue
-- Expected secure behavior + observed behavior
-- Suspected severity (informational / low / medium / high / critical) — final triage is the maintainer's call
+- **agenteval version** (output of `agenteval --version` once Epic 8b ships the CLI; for Phase-1 pre-1.0 builds, the git commit hash + branch suffices)
+- **Robot Framework version** + **Python version** + **OS** (Linux distribution + kernel version)
+- **Minimal `.robot` file or Python snippet** that reproduces the issue
+- **Expected secure behavior** + **observed behavior**
+- **Suspected severity** (informational / low / medium / high / critical) — final triage is the maintainer's call
+- **CVSS vector** if you have one (optional; helps prioritization)
 
-## Triage SLA
+### What NOT to do
 
-- **Acknowledgement**: ≤7 days from report
-- **Embargo period**: ≤90 days by default (negotiable for cases needing coordinated disclosure or upstream fixes)
-- **Credit**: reporters who request it are credited in the CHANGELOG entry for the fix
+- Do NOT file a public GitHub Issue or PR that discloses the vulnerability before coordinated disclosure.
+- Do NOT include working exploit code in non-encrypted email channels.
+- Do NOT test the vulnerability against production systems you don't own — agenteval is a library; consumers run their own CI.
 
-## Forthcoming content (Story 1a.5 deliverable)
+## Disclosure SLA
 
-Per the Story 1a.5 spec in `_bmad-output/planning-artifacts/epics.md`:
+| Phase | Target | Notes |
+| --- | --- | --- |
+| **Acknowledgement** | ≤7 calendar days from initial report | Maintainer confirms receipt + assigns a tracking issue (in the embargo'd advisory thread). |
+| **Triage + initial assessment** | ≤14 calendar days | Severity + scope + remediation path documented in the advisory thread. |
+| **Embargo period (default)** | ≤90 calendar days from acknowledgement | Coordinated disclosure with reporter. Extensions negotiable for cases needing upstream MCP-spec or dependency fixes. |
+| **CVE assignment** (if applicable) | During or before public disclosure | Via GitHub's private advisory CVE flow. |
+| **CHANGELOG credit** | At fix-release time | Reporters who request credit are named in the `## Security` section of the release's CHANGELOG entry. Reporters who request anonymity are honored. |
 
-> SECURITY.md exists at the repo root specifying responsible disclosure policy: report channel (private GitHub security advisory), expected acknowledgement time (≤7 days), embargo period (≤90 days), credential-redaction guarantee (FR38a/b — traces never contain raw credentials in published reports).
+Solo + AI-agent-assisted maintainership ([MAINTAINERS.md](./MAINTAINERS.md)) means the SLA is best-effort. Orgs requiring contracted SLA or indemnification should pair with a paid-support arrangement or fork.
 
-The credential-redaction guarantee (FR38a/b) + the security disclosure process language Story 1a.5 ratifies will replace this placeholder.
+## Security Guarantees
+
+agenteval makes the following structural security guarantees to its consumers. Each is enforced via conformance suite tests + CI checks where machine-verifiable.
+
+### NFR-SEC-01: Credential Redaction (FR38a/b)
+
+The library **never persists user-provided credentials** (API keys, OAuth tokens, vendor credentials) to disk or trace artifacts in their original form. All credentials are routed through `config.redact_env()` and user-extensible patterns via `config.add_redaction_pattern()` before any serialization.
+
+**Implementation:**
+
+- The OTel trace exporter (Epic 5 Story 5.3) redacts known API-key patterns + user-supplied regexes from span attributes.
+- The Evidence Block format (per [`docs/contracts/evidence-block-format.md`](docs/contracts/evidence-block-format.md)) applies the same redaction to `traces[].request_body`, `traces[].response_body`, and any `metadata.*` fields containing credential-shaped substrings.
+- The conformance suite verifies unknown-shape redaction via FR38a/b oracles (Epic 1b Story 1b.5 deliverable).
+
+**Limits:** the library can only redact patterns it recognizes (built-in regex set) or that consumers register via `add_redaction_pattern()`. Custom credential formats not matching either path may slip through; consumers are responsible for registering their own patterns.
+
+### NFR-SEC-02: No `eval()` on User Input
+
+The library **never calls `eval()` on user-provided strings** except via the explicitly-opted-in AssertionEngine `validate` operator (`__init__(allow_validate_operator=True)`, default `False`, per FR43 + [ADR-014 `ValidateOperatorDisallowed`](docs/adr/ADR-014-error-class-hierarchy.md)).
+
+All other AssertionEngine matchers (`equals`, `contains`, `greater_than`, etc.) use safe comparison operators. CI test asserts no `eval()` calls exist on user-input paths in default-configured library.
+
+### NFR-SEC-03: TLS in Transit
+
+All LLM provider traffic uses **TLS in transit** (delegated to LiteLLM / provider SDKs). The library does NOT relax certificate validation or expose any HTTP-without-TLS opt-out for provider endpoints.
+
+MCP transports:
+
+- **Streamable HTTP** transport uses TLS.
+- **`stdio` and in-memory** transports are local-process-only by design (no network egress).
+
+### NFR-SEC-04: Supply-Chain Trust Boundary
+
+agenteval **never auto-downloads, installs, or auto-updates vendor CLI binaries** (`claude`, `codex`, `copilot`, `goose`, `pi`, `opencode`). The user explicitly installs binaries per FR47.
+
+**Trust boundary statement:** the library trusts vendor binaries on `$PATH` to the same level the user does. Compromised vendor binaries are out of scope for agenteval's threat model — consumers are responsible for the integrity of their tooling.
+
+> **Note on `robotframework-agentguard`:** per the project's [`feedback_agentguard_inspiration_not_dependency`](docs/adr/ADR-001-architectural-influences-catalog.md) working norm, agentguard is INSPIRATION ONLY — agenteval has no agentguard dependency, no agentguard CVE inheritance, and no obligation to track agentguard's security advisories. Reviewed patterns are catalogued in [`ADR-001`](docs/adr/ADR-001-architectural-influences-catalog.md) with explicit divergence rationale where agenteval's security posture differs.
+
+### NFR-SEC-05: No Phone-Home
+
+The library **does NOT phone home**. Only the following network egress is possible:
+
+- **LLM provider endpoints** (per user-configured providers — explicit setup required).
+- **OTLP endpoints** (Phase 2, opt-in via `[otlp]` extra + explicit endpoint configuration).
+
+The library `__init__(telemetry=False)` eliminates all OTel listener egress.
+
+The conformance suite verifies this via the `Assert No Egress To` fixture in default-configured + `telemetry=False` configurations.
+
+## CodeQL Continuous Scanning
+
+The repository runs **CodeQL static analysis** on every PR + push to `main` + a weekly full-repo scan, per [`.github/workflows/security-scan.yml`](.github/workflows/security-scan.yml). Findings appear in the GitHub Security tab. CodeQL queries use the `security-and-quality` query suite.
+
+Spike + skill code (`_bmad-output/spikes/**`, `.claude/skills/**`, `_bmad/**`) is excluded from CodeQL scanning via [`.github/codeql/codeql-config.yml`](.github/codeql/codeql-config.yml) — this is non-shippable code that doesn't affect consumers.
+
+## Dependency Updates + CVE Posture
+
+agenteval uses **exact pins** for security-critical dependencies (per [ADR-004 hosted-MCP observation](docs/adr/ADR-004-hosted-mcp-observation.md) Consequences):
+
+- `mcp==1.27.1`
+- `robotframework==7.4.2`
+- `robotframework-pabot==5.2.2`
+- `anyio==4.13.0`
+
+Other production dependencies use range pins with sane upper bounds. CVE disclosures affecting pinned deps trigger a patch-bump release; consumers SHOULD subscribe to GitHub releases for notification.
+
+## Acknowledgements
+
+Security reporters who request credit are listed here once a fix ships. Anonymous reports are honored.
+
+(No reports as of Phase 1.)

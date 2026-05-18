@@ -67,6 +67,12 @@ jobs:
       - name: Typecheck (mypy)
         run: uv run mypy src/
 
+      # Story 1a.5 deliverable — defense-in-depth: pre-commit hook
+      # (.pre-commit-config.yaml) catches local commits; this step catches
+      # `git commit --no-verify` bypass. Both gates active.
+      - name: License headers check (Apache 2.0)
+        run: uv run python scripts/check-license-headers.py
+
       # Phase-1 collect-only sweep across 4 test directories. Story 1a.1 baseline
       # produces empty tests/ dirs (only .gitkeep + __init__.py). pytest exits 5
       # ("no tests collected") on empty dirs, which we accept as Phase-1 success.

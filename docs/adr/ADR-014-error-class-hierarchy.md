@@ -29,7 +29,7 @@ agenteval publishes a unified error hierarchy at `src/AgentEval/errors.py`:
 
 - **Each leaf class sets its own `error_code` class attribute** (e.g., `class PollingDisallowedError(AgentEvalIntegrityError): error_code = "POLLING_DISALLOWED"`). The FR49 JUnit XML emitter reads `error_code` for the `<failure type="...">` attribute. The FR50 exit-code mapper reads it for the documented exit-code lookup.
 
-- **9 leaves explicitly named** above; additional leaves require an ADR amendment to keep the surface auditable.
+- **11 leaves explicitly named** above (2 Safety + 2 Budget + 4 Compat + 3 Integrity); additional leaves require an ADR amendment to keep the surface auditable. (Count corrected 2026-05-18 by Story 1a.5 per Story 1a.3 code-review LOW-1 follow-up; the leaf-inventory table is authoritative.)
 
 ## Consequences
 

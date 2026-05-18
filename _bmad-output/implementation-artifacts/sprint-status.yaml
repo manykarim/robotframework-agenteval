@@ -1,5 +1,5 @@
 # generated: 2026-05-17
-# last_updated: 2026-05-18 (Story 1a.4 DONE. Cross-LLM code-review (Claude + Codex CLI) caught 10 findings (6 H + 3 M + 1 L). Claude solo found 0 (4th consecutive same-family blind spot). All approved patches applied across 2 commits: 4 cross-document ratifications (HIGH-1 listener path AgentEval.telemetry.listener + xunit_file hook + Regular Listener; HIGH-2 mcp_coverage 3-value enum ratified by ADR-016 supersedes PRD 4-value; HIGH-4 ValidateOperatorDisallowed canonical; HIGH-6 sysexits per-leaf exit codes 65-68 + 70/75/77/78) + 6 contract-internal fixes. PRD + epics.md updated per "fix the losing source NOW" pattern. error-class-hierarchy.md per-leaf table now has sysexits exit_code column. stability-surface.md scope narrowed to incremental registry. Epic 1a 4/6 done.)
+# last_updated: 2026-05-18 (Story 1a.5 review. All 7 deliverable categories shipped + 2 Story 1a.3 debt items closed: CONTRIBUTING.md (147 lines) + SECURITY.md full content (replaces Story 1a.1 placeholder; 5 NFR-SEC guarantees + SLA table) + 3 ISSUE_TEMPLATE/*.md + Apache 2.0 license headers on 20/20 .py files (idempotent script verified) + .pre-commit-config.yaml + ci.yml license-header step + coding-conventions.md substantive content (Phase-1 skeleton replaced; 4 NFR-MAINT-04 sections preserved) + 6 GitHub labels active (good first issue + help wanted + documentation created/updated; bug + enhancement + question verified) + ADR-014 LOW-1 fixed (9→11 leaves prose) + ADR-010 MED-2 fixed (ADR-013→ADR-003 cross-ref). Ruff + mypy clean post-header-application. Epic 1a 4/6 done.)
 # project: robotframework-agenteval
 # project_key: NOKEY
 # tracking_system: file-system
@@ -53,7 +53,7 @@ development_status:
   1a-2-set-up-7-github-actions-ci-workflows: done
   1a-3-ratify-non-spike-adrs-author-adr-001-architectural-influences-catalog: done
   1a-4-author-11-doc-contract-skeletons: done  # Renamed 9→11 per 2026-05-18 Story 1a.4 ratification (architecture L1419 updated; epics.md L716 updated). Pre-create-story drift check (4th consecutive use of the norm) caught title:9 / body:10 / AC:11 / final:9 mismatch + 4 non-architecture contracts in AC + 2 PRD-named dropped.
-  1a-5-project-hygiene-contributing-security-issue-templates-license-headers: backlog
+  1a-5-project-hygiene-contributing-security-issue-templates-license-headers: review
   1a-6-wire-fr42-fr43-fr44-library-defaults-stability-exit-criteria-doc-stubs: backlog
   epic-1a-retrospective: optional
 

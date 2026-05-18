@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Story 1a.5: project hygiene baseline shipped (7 deliverable categories):
+  - **CONTRIBUTING.md** at repo root — dev setup, testing, Conventional Commits, DCO sign-off (`git commit -s`), code-style + conformance-suite requirement cross-refs, security-issue routing.
+  - **SECURITY.md** full content (replaces Story 1a.1 placeholder) — private reporting channels, SLA table (ack ≤7 days / embargo ≤90 days), 5 security guarantees (credential redaction NFR-SEC-01, no-eval NFR-SEC-02, TLS NFR-SEC-03, supply-chain trust boundary NFR-SEC-04, no-phone-home NFR-SEC-05), CodeQL + dependency-pin posture.
+  - **3 GitHub issue templates** at `.github/ISSUE_TEMPLATE/` (bug-report, feature-request, question) with frontmatter + structured prompts + cross-refs to SECURITY.md/SUPPORT.md.
+  - **Apache 2.0 license headers** prepended to all 20 `.py` files under `src/AgentEval/` via `scripts/apply-license-headers.py` (idempotent). Companion `scripts/check-license-headers.py` verifies header presence; runs via pre-commit hook AND CI step (defense-in-depth).
+  - **`.pre-commit-config.yaml`** at repo root — ruff (lint + format), mypy on src/, license-header check.
+  - **`.github/workflows/ci.yml`** updated — new `License headers check (Apache 2.0)` step inserted between mypy and pytest collect-only sweep.
+  - **`docs/contracts/coding-conventions.md`** filled with substantive content (replaces Story 1a.4 stub) — naming conventions table, type annotations + Literal/Protocol/PEP-695 idioms, Google docstring style with examples, FR59 error-message format pattern, comment policy (good/banned), `isort`-compatible import ordering example, test-naming conventions per category, license-header enforcement.
+  - **3 new GitHub labels** created via `gh label create --force`: `good first issue` (description: "Suitable for newcomers; low-context, well-scoped"), `help wanted` (description: "Maintainer would welcome external contribution"), `documentation` (description: "Docs-only change; no code impact"). 3 default labels (`bug`, `enhancement`, `question`) verified present.
+- Story 1a.5 closed 2 deferred Story 1a.3 review items:
+  - **LOW-1**: ADR-014 §Decision bullet "9 leaves explicitly named" → "11 leaves explicitly named" (the leaf-inventory table is authoritative at 11; prose had drifted to 9).
+  - **MED-2**: ADR-010 L37 cross-reference "(ADR-013)" → "(see ADR-003 §Decision — Generic LiteLLM-backed adapter inherits from `InProcessAdapter`)" (was incorrectly citing Entry-Points Discovery ADR; corrected to the actual base-class ADR).
+
 - Story 1a.4: 11 doc-contract skeletons at `docs/contracts/` per architecture.md L1419-1430 (9 NFR-MAINT-04/Step-4/Step-5 canonical + 2 empirical adds; agentguard-inheritance.md retired 2026-05-17):
   - **5 PRD-named (NFR-MAINT-04):** `evidence-block-format.md` (Epic 5 owns content), `determinism-contract.md` (Epic 1b owns; includes `### Tier Model` subsection), `stability-surface.md` (Story 1a.6 + Epic 6; includes `### Sandbox Protocol Surface` subsection), `exit-criteria-0x-to-1x.md` (Epic 9 Story 9.3 owns), `otel-trace-visual.md` (Phase 2 owns).
   - **4 architecture-introduced:** `error-class-hierarchy.md` (**substantive content authored 2026-05-18** per AC-1a.4.2: FR59 error-format spec + 11-leaf ADR-014 table with per-leaf `error_code` + epic ownership), `mcp-coverage-detection.md` (Epic 5 Story 5.2), `conformance-fixture-format.md` (Epic 1b Story 1b.5), `coding-conventions.md` (Story 1a.5).

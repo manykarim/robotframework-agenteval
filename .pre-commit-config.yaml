@@ -1,0 +1,33 @@
+# Pre-commit hooks for robotframework-agenteval (Story 1a.5 deliverable).
+#
+# Install via:
+#   uv run pre-commit install
+#
+# The hooks fire on every `git commit`. The same checks are also enforced
+# in CI (.github/workflows/ci.yml) — defense-in-depth: pre-commit catches
+# local; CI catches `--no-verify` bypass.
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+      - id: mypy
+        files: ^src/
+        additional_dependencies:
+          - robotframework==7.4.2
+
+  - repo: local
+    hooks:
+      - id: license-headers
+        name: Check Apache 2.0 license headers
+        entry: uv run python scripts/check-license-headers.py
+        language: system
+        files: ^src/AgentEval/.*\.py$
+        pass_filenames: false
