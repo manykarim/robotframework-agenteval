@@ -52,6 +52,10 @@ def build_server() -> FastMCP:
 
 
 if __name__ == "__main__":
-    # Subprocess entry point — used by stdio-transport integration
-    # tests via `MCP.Start Server command=python args=[-m, AgentEval.mcp.bundled.echo]`.
-    build_server().run()
+    # Subprocess entry point — used by stdio-transport integration tests
+    # via `MCP.Start Server command=<sys.executable> args=[-m, AgentEval.mcp.bundled.echo]`.
+    #
+    # Story 3.1 code-review Blind HIGH (2026-05-19): explicit
+    # `transport="stdio"` so future FastMCP default-transport changes
+    # don't silently break this entry point.
+    build_server().run(transport="stdio")

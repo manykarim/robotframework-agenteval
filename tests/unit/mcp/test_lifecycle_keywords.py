@@ -126,11 +126,16 @@ def test_connect_to_server_streamable_http_raises() -> None:
 
 
 def test_connect_to_server_stdio_returns_session() -> None:
+    """Story 3.1 code-review Blind HIGH fix 2026-05-19: use `sys.executable`
+    so the test doesn't depend on `uv` being on PATH (CI portability).
+    """
+    import sys
+
     handle = start_server(
         name="echo",
         transport="stdio",
-        command="uv",
-        args=["run", "python", "-m", "AgentEval.mcp.bundled.echo"],
+        command=sys.executable,
+        args=["-m", "AgentEval.mcp.bundled.echo"],
     )
     session = connect_to_server(handle)
     assert session.name == "echo"
@@ -241,23 +246,87 @@ def test_connect_raises_unsupported_mcp_version_on_injected_unsupported_protocol
 ) -> None:
     """Inject `SUPPORTED_PROTOCOL_VERSIONS = ["FAKE-VERSION-FOR-TEST"]`.
 
-    With the SDK's accepted-version list reduced to a string the
-    bundled echo server WON'T negotiate (`2025-11-25` etc. all fall
-    outside the fake-only set), `Connect To Server` must raise
-    `UnsupportedMCPVersionError` per AC-MCP-OBSERVE-02.
+    Story 3.1 code-review HIGH fix (Edge-cases + Codex 2-way 2026-05-19):
+    monkeypatch BOTH `mcp.shared.version.SUPPORTED_PROTOCOL_VERSIONS`
+    AND `mcp.client.session.SUPPORTED_PROTOCOL_VERSIONS` because
+    `mcp.client.session` snapshots the symbol at module-load time.
+    Pre-edit version patched only `mcp.shared.version` → SDK still
+    saw the original allowlist → test was fake-green on the SDK-first
+    reject path. With both patched, `ClientSession.initialize()`
+    raises `RuntimeError("Unsupported protocol version from the
+    server: ...")`. `lifecycle.connect_to_server` maps that to
+    typed `UnsupportedMCPVersionError` per AC-MCP-OBSERVE-02.
     """
+    import mcp.client.session as mcp_client_session_mod
     from mcp.shared import version as mcp_version_mod
 
-    import AgentEval.mcp.version_gate as version_gate_mod
-
     monkeypatch.setattr(mcp_version_mod, "SUPPORTED_PROTOCOL_VERSIONS", ["FAKE-VERSION-FOR-TEST"])
-
-    # Sanity: ensure the patched value is what `check_protocol_version`
-    # will see (it imports lazily inside the function).
-    _ = version_gate_mod  # keep import for lazy-import path
+    monkeypatch.setattr(mcp_client_session_mod, "SUPPORTED_PROTOCOL_VERSIONS", ["FAKE-VERSION-FOR-TEST"])
 
     handle = start_server(name="echo", transport="in_memory", server_factory=build_server)
     with pytest.raises(UnsupportedMCPVersionError) as exc_info:
         connect_to_server(handle)
     assert exc_info.value.error_code == "UNSUPPORTED_MCP_VERSION"
     assert exc_info.value.supported_range == "mcp>=1.0,<2.0"
+
+
+def test_connect_to_server_handle_with_no_command_raises_value_error() -> None:
+    """Story 3.1 code-review Blind HIGH fix 2026-05-19: direct `MCPServerHandle`
+    construction with `transport='stdio'` + missing command surfaces a clean
+    ValueError (NOT a bare assert that strips under python -O / PYTHONOPTIMIZE).
+    """
+    from AgentEval.mcp.lifecycle import MCPServerHandle
+
+    # Bypass `start_server`'s validation by direct construction.
+    handle = MCPServerHandle(name="echo", transport="stdio", command=None)
+    with pytest.raises(ValueError, match="stdio transport requires"):
+        connect_to_server(handle)
+
+
+def test_connect_to_server_handle_with_no_factory_raises_value_error() -> None:
+    """Story 3.1 code-review Blind HIGH fix 2026-05-19: same pattern for in_memory."""
+    from AgentEval.mcp.lifecycle import MCPServerHandle
+
+    handle = MCPServerHandle(name="echo", transport="in_memory", server_factory=None)
+    with pytest.raises(ValueError, match="in_memory transport requires"):
+        connect_to_server(handle)
+
+
+def test_start_server_env_empty_dict_preserved() -> None:
+    """Story 3.1 code-review HIGH fix 2026-05-19 (Blind + Edge-cases 2-way):
+    `env={}` MUST round-trip as `env={}` (NOT collapse to `None`). SDK
+    semantics differ: `env=None` → inherit parent; `env={}` → strip all.
+    """
+    handle = start_server(name="echo", transport="stdio", command="python", env={})
+    assert handle.env == {}  # not None
+    handle_none = start_server(name="echo", transport="stdio", command="python", env=None)
+    assert handle_none.env is None  # explicit None preserved
+
+
+def test_connect_to_server_stdio_handshake_abort_no_subprocess_leak(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Story 3.1 code-review HIGH fix 2026-05-19 (Edge-cases + Codex 2-way):
+    if `initialize()` raises mid-handshake, the spawned stdio subprocess
+    MUST be reaped. Pre-edit `open_stdio_session` lacked try/except so
+    the AsyncExitStack never closed → subprocess orphaned.
+    """
+    import sys
+
+    import mcp.client.session as mcp_client_session_mod
+    from mcp.shared import version as mcp_version_mod
+
+    # Inject an unsupported version to force initialize() to raise.
+    monkeypatch.setattr(mcp_version_mod, "SUPPORTED_PROTOCOL_VERSIONS", ["FAKE-VERSION-FOR-TEST"])
+    monkeypatch.setattr(mcp_client_session_mod, "SUPPORTED_PROTOCOL_VERSIONS", ["FAKE-VERSION-FOR-TEST"])
+
+    handle = start_server(
+        name="echo",
+        transport="stdio",
+        command=sys.executable,
+        args=["-m", "AgentEval.mcp.bundled.echo"],
+    )
+    with pytest.raises(UnsupportedMCPVersionError):
+        connect_to_server(handle)
+    # If we got here without hanging, the AsyncExitStack closed properly
+    # + reaped the subprocess. The test passes by NOT timing out.

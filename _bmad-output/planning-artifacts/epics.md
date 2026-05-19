@@ -1235,19 +1235,19 @@ So that I can lifecycle MCP servers in a `.robot` test using the cleanup strateg
 **Acceptance Criteria:**
 
 **Given** the per-test-cleanup spike output from Story 0.2 (Epic 0) and the `_kernel/context.py` from Story 1b.1,
-**When** I implement `src/AgentEval/mcp/library.py` keywords `MCP.Start Server`, `MCP.Connect`, `MCP.Stop Server` plus `src/AgentEval/mcp/transport.py` for the 3 transports plus `src/AgentEval/mcp/version_gate.py` for spec version negotiation,
-**Then** in a `.robot` test calling `MCP.Start Server    name=echo    transport=stdio    command=python    args=-m AgentEval.mcp.bundled.echo` followed by `MCP.Connect    name=echo` followed by tool inspection followed by `MCP.Stop Server    name=echo`, the server starts, connects with version negotiated successfully, supports tool calls, and stops cleanly with no orphan process (verified by OS-level PID inventory diff).
+**When** I implement `src/AgentEval/mcp/library.py` keywords `MCP.Start Server`, `MCP.Connect To Server`, `MCP.Stop Server` (Story 1c-1 review fix 2026-05-19 — Auditor MED #2: D-A drift fix amended L1232 only; L1238/L1246/L1250 now also amended to `Connect To Server` per PRD FR8 verbatim) plus `src/AgentEval/mcp/transport.py` for the 3 transports plus `src/AgentEval/mcp/version_gate.py` for spec version negotiation,
+**Then** in a `.robot` test calling `MCP.Start Server    name=echo    transport=stdio    command=python    args=-m AgentEval.mcp.bundled.echo` followed by `MCP.Connect To Server    name=echo` followed by tool inspection followed by `MCP.Stop Server    name=echo`, the server starts, connects with version negotiated successfully, supports tool calls, and stops cleanly with no orphan process (verified by OS-level PID inventory diff).
 
 **And Given** the same lifecycle calls under `pabot --processes 8` with `mcp_per_test=True` mode (default per ADR-009 — pre-edit `mcp_per_test="test"` was Story 3.1 pre-create-story drift D-D 2026-05-19; the 3 valid modes per Story 1a.6 baseline + ADR-009 are `True / False / "suite"`),
 **When** the test suite completes,
 **Then** no MCP server processes leak (per Story 0.2 spike findings); cleanup overhead matches the Story 0.2 measurement table within ±10%.
 
 **And Given** an MCP server advertising an unsupported MCP spec version (e.g., a forward-incompatible draft version not in the agenteval-pinned compat range from `version_gate.py`),
-**When** `MCP.Connect` runs against it,
+**When** `MCP.Connect To Server` runs against it,
 **Then** `UnsupportedMCPVersionError` is raised per FR46 with: (a) the server's advertised version, (b) the agenteval-supported version range, (c) a fix suggestion ("upgrade `mcp` dep, downgrade server, or use a compatible server build").
 
 **And Given** all 3 transports (stdio, streamable_http, in-memory),
-**When** I exercise each via `MCP.Start Server` + `MCP.Connect` in unit tests at `tests/unit/mcp/test_transport.py`,
+**When** I exercise each via `MCP.Start Server` + `MCP.Connect To Server` in unit tests at `tests/unit/mcp/test_transport.py`,
 **Then** each transport succeeds with its representative bundled echo server (in-memory uses the in-process echo server; stdio uses subprocess echo; streamable_http uses a local httpx-served echo).
 
 **And** the keywords carry `[Tier 1 — Deterministic]` libdoc badges (pre-edit "Tier 2 — LLM-Deterministic" was Story 3.1 pre-create-story drift D-B 2026-05-19; that badge does not exist in `_kernel/tier.py` — the 3 ratified badges are `[Tier 1 — Deterministic]`, `[Tier 2 — Stochastic Single-Shot]`, `[Tier 3 — Stochastic Fan-Out]`. MCP lifecycle keywords are Tier 1 because they're deterministic given same env + server binary; I/O latency variance is captured separately via NFR-PERF metrics, NOT via tier badge); conventions tests from Story 1b.6 all pass on the new keywords.

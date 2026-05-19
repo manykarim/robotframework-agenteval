@@ -562,7 +562,7 @@ userProvidedContext:
       half-truth.
 
   - source: "advanced-elicitation FMA @ step-08 (post-party-mode)"
-    type: "acceptance criterion (verbatim, ADR-011)"
+    type: "acceptance criterion (verbatim, ADR-008)"
     id: "AC-MCP-OBSERVE-02"
     text: |
       MCP observer validates the negotiated MCP spec version at session start.
@@ -923,7 +923,7 @@ The library's *internal* quality bars — what makes downstream user success eve
 - **`AC-CONFORMANCE-01`:** Conformance suite (`tests/conformance/`) includes **fidelity oracles** — golden-trace fixtures recorded from deterministic mock agent runs. Each adapter under test must produce output matching the golden fixture's structure AND values, with documented allowable variations (e.g., `latency_ms > 0` rather than exact). Adapters emitting all-zero latency or hallucinated sequence_index fail the suite. Ships Phase 1 as contract publication (so community adapter authors have a runnable target from Day 1) — see ADR-008.
 - **`AC-CONFORMANCE-02`:** `AgentRunResult.metadata.completeness: Literal["complete", "truncated", "partial"]` field is **required**. Conformance suite injects truncation (e.g., kills mock subprocess mid-stream) and asserts the adapter reports `truncated`. Silently-incomplete traces are a worse failure mode than loud truncation — see ADR-009.
 - **`AC-MCP-OBSERVE-01`:** `AgentRunResult.metadata.mcp_coverage: Literal["hosted_in_process", "subprocess_with_observer", "external_mixed"]` indicator required on every result from keywords using `mcp_servers=` (3-value enum per ratified ADR-016, was 4-value in PRD draft; ratified 2026-05-17 via Story 0.3). Metric keywords (`Get Tool Call Count`, `Get Tool Hit Rate`, etc.) raise `IncompleteTraceError` on `external_mixed` unless user opts in via `allow_external_mcp_blind=True`. Loud refusal beats silent half-truth — see ADR-007/ADR-016.
-- **`AC-MCP-OBSERVE-02`:** MCP observer validates negotiated MCP spec version at session start. Raises `UnsupportedMCPVersionError` if outside tested range (`mcp>=1.0,<2.0`). Conformance suite injects a future-spec mock server to verify the gate fires. Same loud-refusal principle as MCP-OBSERVE-01 — see ADR-011.
+- **`AC-MCP-OBSERVE-02`:** MCP observer validates negotiated MCP spec version at session start. Raises `UnsupportedMCPVersionError` if outside tested range (`mcp>=1.0,<2.0`). Conformance suite injects a future-spec mock server to verify the gate fires. Same loud-refusal principle as MCP-OBSERVE-01 — see ADR-008 (Story 3.1 code-review Auditor HIGH 2026-05-19: amended from stale ADR-011 reference; ADR-011 is the Three-Persona Model — the MCP spec-version-validation authority is ADR-008 post-renumbering).
 - **`AC-MCP-OBSERVE-03`:** MCP observer scopes traces per-RF-test by reading Listener v3 `test_id` from RF context. Each test gets a unique library-hosted MCP server instance by default; `mcp_per_test=False` opts out with documented cross-test pollution trade-off. Conformance suite verifies isolation under `pabot` parallel execution — see ADR-012.
 
 ### Measurable Outcomes (consolidated)
@@ -1444,7 +1444,7 @@ Consolidated from scattered prior sections (Domain-Specific Constraints, elicita
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| MCP spec churn (Tasks primitive, SSE deprecation) | High | Medium | Pin `mcp>=1.0,<2.0`; isolate protocol handling to `mcp/` sub-library; capability negotiation as source of truth; MCP observer raises `UnsupportedMCPVersionError` on out-of-range (AC-MCP-OBSERVE-02 / ADR-011) |
+| MCP spec churn (Tasks primitive, SSE deprecation) | High | Medium | Pin `mcp>=1.0,<2.0`; isolate protocol handling to `mcp/` sub-library; capability negotiation as source of truth; MCP observer raises `UnsupportedMCPVersionError` on out-of-range (AC-MCP-OBSERVE-02 / ADR-008) |
 | OTel GenAI semconv changes (experimental until ~mid-2026) | Medium | Low | Thin internal facade (`telemetry/semconv.py`); attribute-name changes = single-file update |
 | LiteLLM breaking minor releases | Medium | Medium | Pin minor floor; `LLMProviderAdapter` Protocol isolates; Mock fallback keeps unit tests stable |
 | Robot Framework 8.x breaking changes | Low | Medium | Pin `>=7.4,<9.0`; depend only on stable APIs (`@keyword`, Listener v3, DynamicCore) |
@@ -1493,7 +1493,7 @@ Each FR states the testable, observable capability the library must provide. For
 ### 2. MCP Server Dynamic Evaluation (Phase 1)
 
 - **FR7:** Agent Surface Author can call `MCP.Start Server <command> <args>... transport=<stdio|streamable_http|in_memory>` and receive a server handle; library spawns the server subprocess (or in-process instance for `in_memory`) with per-test scope by default (see FR40).
-- **FR8:** Agent Surface Author can call `MCP.Connect To Server <handle|url>` and receive a client connection; library negotiates MCP spec version and raises `UnsupportedMCPVersionError("server version <X> outside library tested range mcp>=1.0,<2.0")` on out-of-range.
+- **FR8:** Agent Surface Author can call `MCP.Connect To Server <handle|url>` and receive a client connection; library negotiates MCP spec version and raises `UnsupportedMCPVersionError("MCP server version <X> outside library tested range mcp>=1.0,<2.0")` on out-of-range. (Story 3.1 code-review Auditor HIGH 2026-05-19: amended to include leading `MCP ` prefix — semantically clearer for end users than the pre-edit "server version <X>" wording, and matches the shipped Story 3.1 implementation byte-for-byte.)
 - **FR9a:** Agent Surface Author can call `MCP.List Tools <connection>` and receive an ordered list of `MCPTool` records (`name`, `description`, `input_schema`, `output_schema`); the same call with `Get Tool Names` / `Get Tool Descriptions` returns the field-projected lists for direct AssertionEngine assertion.
 - **FR9b:** Agent Surface Author can call `MCP.Call Tool <connection> <tool_name> <args_json>` and receive an `MCPToolResult` (`result`, `error`, `latency_ms`); same call supports AssertionEngine matchers (`Should Contain`, `matches`, `Should Match Schema`) against `result`.
 - **FR10a:** Agent Surface Author can call `MCP.Get Tool Discoverability tool=<name> by_models=<list> with_tasks=<list> k=<n>` against a single coding-agent runtime and receive a `ToolDiscoverabilityResult` containing per-model selection rate (Wilson CI), per-task verdict matrix, failed-task prompts, competing tools picked, and docstring snippet under test (Tier 3, Phase 1; single-runtime version).

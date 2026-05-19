@@ -69,27 +69,56 @@ def test_version_gate_str_matches_fr8_verbatim() -> None:
     assert "outside library tested range" in str(exc)
 
 
-def test_full_lifecycle_raises_on_injected_unsupported_protocol(
+def test_full_lifecycle_raises_on_injected_unsupported_protocol_in_memory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """End-to-end conformance per AC-MCP-OBSERVE-02 verbatim.
+    """End-to-end conformance per AC-MCP-OBSERVE-02 — in_memory transport.
 
-    Per the AC: "Conformance suite injects a future-spec mock server
-    to verify the gate fires." Story 3.1 implementation uses the SDK's
-    `SUPPORTED_PROTOCOL_VERSIONS` monkeypatch to simulate the
-    out-of-range condition WITHOUT spawning a separate mock-server
-    fixture. Both approaches exercise the same `check_protocol_version`
-    raise site.
+    Story 3.1 code-review HIGH fix 2026-05-19 (Edge-cases + Codex 2-way):
+    monkeypatch BOTH `mcp.shared.version.SUPPORTED_PROTOCOL_VERSIONS`
+    AND `mcp.client.session.SUPPORTED_PROTOCOL_VERSIONS`. The pre-edit
+    patched only `mcp.shared.version` — fake-green because the SDK
+    snapshots the symbol at module-load time.
     """
+    import mcp.client.session as mcp_client_session_mod
     from mcp.shared import version as mcp_version_mod
 
-    # Simulate "library can only accept FAKE-VERSION-FOR-TEST". The
-    # bundled echo server negotiates whatever the SDK's LATEST is
-    # (currently `2025-11-25`), which won't match the injected
-    # allowlist — so the gate fires.
     monkeypatch.setattr(mcp_version_mod, "SUPPORTED_PROTOCOL_VERSIONS", ["FAKE-VERSION-FOR-TEST"])
+    monkeypatch.setattr(mcp_client_session_mod, "SUPPORTED_PROTOCOL_VERSIONS", ["FAKE-VERSION-FOR-TEST"])
 
     handle = start_server(name="echo", transport="in_memory", server_factory=build_server)
+    with pytest.raises(UnsupportedMCPVersionError) as exc_info:
+        connect_to_server(handle)
+    assert exc_info.value.error_code == "UNSUPPORTED_MCP_VERSION"
+    assert exc_info.value.supported_range == SUPPORTED_RANGE
+
+
+def test_full_lifecycle_raises_on_injected_unsupported_protocol_stdio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end conformance per AC-MCP-OBSERVE-02 — STDIO transport.
+
+    Story 3.1 code-review HIGH fix 2026-05-19 (Edge-cases + Codex 2-way):
+    the SDK-first reject path was previously untested on stdio
+    (AC-MCP-OBSERVE-02 was fake-green on the PRIMARY production transport).
+    This case exercises the typed-error mapping in
+    `lifecycle.connect_to_server`'s try/except for the SDK's bare
+    `RuntimeError("Unsupported protocol version from the server: ...")`.
+    """
+    import sys
+
+    import mcp.client.session as mcp_client_session_mod
+    from mcp.shared import version as mcp_version_mod
+
+    monkeypatch.setattr(mcp_version_mod, "SUPPORTED_PROTOCOL_VERSIONS", ["FAKE-VERSION-FOR-TEST"])
+    monkeypatch.setattr(mcp_client_session_mod, "SUPPORTED_PROTOCOL_VERSIONS", ["FAKE-VERSION-FOR-TEST"])
+
+    handle = start_server(
+        name="echo",
+        transport="stdio",
+        command=sys.executable,
+        args=["-m", "AgentEval.mcp.bundled.echo"],
+    )
     with pytest.raises(UnsupportedMCPVersionError) as exc_info:
         connect_to_server(handle)
     assert exc_info.value.error_code == "UNSUPPORTED_MCP_VERSION"

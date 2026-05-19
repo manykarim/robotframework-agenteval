@@ -54,10 +54,11 @@ Phase-1 scope (Story 3.1 carve-out):
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from AgentEval._kernel.run_async import _run_async
+from AgentEval.errors import UnsupportedMCPVersionError
 from AgentEval.mcp.transport import (
     Transport,
     open_in_memory_session,
@@ -99,8 +100,11 @@ class MCPServerHandle:
     env: dict[str, str] | None = None
     # in_memory-specific: a no-arg callable returning a FastMCP server.
     server_factory: Callable[[], Any] | None = None
-    # Internal metadata.
-    extra: dict[str, Any] = field(default_factory=dict)
+    # Story 3.1 code-review Codex LOW (2026-05-19): removed the
+    # `extra: dict[str, Any]` field — `frozen=True` doesn't seal dict
+    # mutation, so the field gave a false sense of immutability AND
+    # was unused. Sub-libraries that need per-handle metadata can
+    # introduce a typed extension dataclass when needed.
 
 
 @dataclass(frozen=True)
@@ -170,12 +174,17 @@ def start_server(
         raise ValueError(
             f"unsupported transport {transport!r}; must be one of 'stdio' | 'streamable_http' | 'in_memory' per PRD FR7"
         )
+    # Story 3.1 code-review HIGH (Blind + Edge-cases 2-way 2026-05-19):
+    # `env=dict(env) if env else None` collapses an empty dict `{}` to
+    # `None`. SDK semantics differ: `env=None` → inherit parent; `env={}`
+    # → strip all parent env. Use `is not None` so both shapes are
+    # round-trip-preserved.
     return MCPServerHandle(
         name=name,
         transport=transport,
         command=command,
         args=tuple(args or ()),
-        env=dict(env) if env else None,
+        env=dict(env) if env is not None else None,
         server_factory=server_factory,
     )
 
@@ -208,28 +217,73 @@ def connect_to_server(handle: MCPServerHandle) -> MCPSession:
             "round-trip support is deferred to Phase-1.5 OR Epic 3 Story 3.2"
         )
 
+    # Story 3.1 code-review HIGH (Blind 2026-05-19): replace bare
+    # `assert` (stripped under `python -O` / PYTHONOPTIMIZE) with
+    # typed `ValueError` so direct `MCPServerHandle` construction
+    # (bypassing `start_server`) still surfaces a clean failure.
+    if handle.transport == "stdio" and not handle.command:
+        raise ValueError("stdio transport requires `command` on the handle")
+    if handle.transport == "in_memory" and handle.server_factory is None:
+        raise ValueError("in_memory transport requires `server_factory` on the handle")
+
     async def _drive() -> MCPSession:
         if handle.transport == "stdio":
-            assert handle.command is not None  # ValueError raised in start_server otherwise
+            assert handle.command is not None  # for mypy; checked above
             ts = await open_stdio_session(
                 command=handle.command,
                 args=list(handle.args),
                 env=handle.env,
             )
-        else:  # in_memory
-            assert handle.server_factory is not None
+        elif handle.transport == "in_memory":
+            assert handle.server_factory is not None  # for mypy; checked above
             ts = await open_in_memory_session(handle.server_factory)
+        else:
+            # Defense-in-depth (Blind MED 2026-05-19): explicit else
+            # raises rather than falling through to in_memory. The
+            # caller-facing branch at the top of `connect_to_server`
+            # already rejected `streamable_http`; any other value is
+            # a programmatic error.
+            raise ValueError(f"unsupported transport on handle: {handle.transport!r}")
+
+        # Story 3.1 code-review HIGH (Edge-cases + Codex 2-way 2026-05-19):
+        # run `initialize()` UNDER agenteval control + map the SDK's
+        # bare `RuntimeError("Unsupported protocol version...")` to
+        # typed `UnsupportedMCPVersionError`. The pre-edit shape
+        # let the SDK error escape (AC-MCP-OBSERVE-02 was fake-green
+        # on stdio).
         try:
-            # Surface the negotiated version + run the gate.
-            negotiated = getattr(ts.init_result, "protocolVersion", None)
+            try:
+                init_result = await ts.session.initialize()
+            except RuntimeError as exc:
+                if "Unsupported protocol version" in str(exc):
+                    # SDK-first reject path: the SDK detected an
+                    # out-of-range version BEFORE returning the
+                    # `InitializeResult`. Extract the version string
+                    # from the SDK's message + raise our typed error.
+                    raw = str(exc)
+                    # SDK message format:
+                    # `Unsupported protocol version from the server: <version>`
+                    server_version = raw.split(":", 1)[-1].strip() if ":" in raw else None
+                    raise UnsupportedMCPVersionError(
+                        f"MCP server version {server_version} outside library tested range mcp>=1.0,<2.0",
+                        server_version=server_version,
+                        supported_range="mcp>=1.0,<2.0",
+                    ) from exc
+                raise
+            # Agenteval-late-gate: even if the SDK accepted the
+            # version, run our own check (defense-in-depth; catches
+            # cases where the SDK's allowlist drifts ahead of ours).
+            negotiated = getattr(init_result, "protocolVersion", None)
             check_protocol_version(negotiated)
-            server_info_raw = getattr(ts.init_result, "serverInfo", None)
+            server_info_raw = getattr(init_result, "serverInfo", None)
             if server_info_raw is None:
                 server_info_dict: dict[str, Any] = {}
             elif hasattr(server_info_raw, "model_dump"):
                 server_info_dict = server_info_raw.model_dump()
-            else:
+            elif isinstance(server_info_raw, dict):
                 server_info_dict = dict(server_info_raw)
+            else:
+                server_info_dict = {}
             return MCPSession(
                 name=handle.name,
                 transport=handle.transport,
