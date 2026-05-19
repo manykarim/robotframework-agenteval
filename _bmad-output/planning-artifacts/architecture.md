@@ -645,7 +645,7 @@ def get_keyword_tier(fn: Callable) -> Tier | None:
 **Cascading implications:**
 
 - `agenteval/_assertions/adapter.py` `assert_value()` reads tier via `get_keyword_tier()`; raises `PollingDisallowedError` if `tier >= 2` and `polling=` is passed (per ADR-A3 → AgentEvalIntegrityError sub-base). Mirrors agentguard `_assertions/adapter.py:101-105` exactly.
-- `agenteval/_kernel/discovery.py` validates that every `@keyword`-decorated method in registered sub-libraries has a `@tier()` annotation; raises `KeywordTierMissingError(AgentEvalIntegrityError)` at library import if any keyword is unannotated. Conformance suite asserts this gate exists.
+- **Tier-annotation enforcer location ratification (Story 1b.3 code-review amendment).** The pre-Story-1b.3 wording placed the `@tier()`-annotation validator at `agenteval/_kernel/discovery.py` raising `KeywordTierMissingError(AgentEvalIntegrityError)` at library import. Story 1b.3's create-story drift-check decision D7 + the code-review citation-drift re-derivation (Codex catch) both surfaced that this responsibility is better-scoped to Story 1b.6 (Determinism Contract + conventions module), where the rest of the convention-enforcer machinery lives. The amended location is `agenteval/_kernel/conventions.py` (Story 1b.6 scope); `discovery.py` (Story 1b.3) handles only entry-points discovery + adapter resolution. Conformance suite still asserts this gate exists — just at the Story-1b.6-amended location.
 - `agenteval.cli.libdoc_extras` (or similar) reads tier from `get_keyword_tier()` to render libdoc HTML tier badge per FR30a.
 - `Get Keyword Tier <keyword_name>` introspection keyword (FR30a) returns the tier via `get_keyword_tier()`.
 - `Get Keyword Tier` itself is Tier 1 (pure metadata read; deterministic).

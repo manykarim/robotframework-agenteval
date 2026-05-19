@@ -37,7 +37,7 @@ agenteval centralizes entry-points discovery at `src/AgentEval/_kernel/discovery
 
 Concrete behavior:
 
-- Single `discovery.py` module handles all 5 `agenteval.*` entry-point groups + the legacy adapter group + the `robot.listener` group + the direct-composition path.
+- Single `discovery.py` module handles all 4 `agenteval.*` entry-point groups (`coding_agents`, `providers`, `judges`, `sandboxes` — matching the L47 Consequences listing; the pre-Story-1b.3-code-review wording "all 5 `agenteval.*` entry-point groups" was an internal drift between L40 and L47 caught by the citation-drift cross-LLM re-derivation pass and amended here per the fix-the-losing-source norm) + the legacy adapter group + the `robot.listener` group + the direct-composition path.
 - Discovery happens lazily at first lookup, not at import. Lazy avoids paying entry-points-scan latency for users who don't trigger plugin discovery.
 - Partial-install failures raise `AdapterDiscoveryError(AgentEvalCompatError)` (per ADR-014) with an `installed-vs-required-extras` diagnostic hint — e.g., "Found `agenteval.coding_agents:claude_code_cli` registration but `claude-agent-sdk` is not installed; install `pip install agenteval[claude]` or remove the registration."
 - Duplicate-name collisions across packages produce a `DuplicateRegistrationError(AdapterDiscoveryError)` with both source package names; agenteval refuses to silently pick one.

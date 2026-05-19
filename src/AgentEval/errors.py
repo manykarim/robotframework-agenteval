@@ -27,7 +27,7 @@ Story 1b.2 ships the MINIMAL subset of the catalog needed by
   `_check_mcp_coverage` gate per FR37 + ADR-016 L44 when a run reports
   `mcp_coverage == "external_mixed"` without `allow_external_mcp_blind=True`.
 
-Story 1b.3 EXTENDS this module with 2 new sub-bases + 3 new leaves (pure
+Story 1b.3 EXTENDS this module with 2 new sub-bases + 4 new leaves (pure
 addition, no refactor of Story 1b.2's classes):
 
 - `AgentEvalBudgetError(AgentEvalError)` — sub-base for cost/runtime budget
@@ -39,7 +39,17 @@ addition, no refactor of Story 1b.2's classes):
 - `RuntimeBudgetExceededError(AgentEvalBudgetError)` — raised by Layer 1 + Layer 3.
 - `AdapterDiscoveryError(AgentEvalCompatError)` — raised by
   `_kernel/discovery.{_discover_entry_point_group, get_adapter}` on partial-install
-  + lookup-miss.
+  + lookup-miss. Exposes a `loaded_so_far: dict[str, type]` attribute so
+  callers can recover the successfully-loaded adapters from a partial-failure
+  scan (per ADR-013 L42 verbatim contract, restored after Story 1b.3 code
+  review caught the docstring vs implementation drift).
+- `DuplicateRegistrationError(AdapterDiscoveryError)` — raised by
+  `_kernel/discovery._cached_coding_agents` when the same adapter name is
+  declared across `agenteval.coding_agents` (primary) AND
+  `robotframework_agenteval.adapters` (legacy) — per ADR-013 L43's
+  "agenteval refuses to silently pick one" contract. Exposes the conflicting
+  source-package names via `sources: tuple[str, str]` (primary first, legacy
+  second).
 
 The remaining 6 leaves from `docs/contracts/error-class-hierarchy.md` (Story
 1a.4 ratified catalog) are added to this module as subsequent stories need them:
@@ -50,9 +60,13 @@ The remaining 6 leaves from `docs/contracts/error-class-hierarchy.md` (Story
 - `TierViolationError` — Story 1b.6 (convention enforcer)
 - `ValidateOperatorDisallowed` — Epic 6 Story 6.2 (assertion gate enforcement)
 - `AdapterVersionDriftWarning` — Epic 11 Story 11.3 (warning, not error)
+
+Special case (separate paragraph because the Phase-1 home differs):
+
 - `SandboxRequiredError` — currently lives at `src/AgentEval/security/policy.py`
   per Story 1a.1's pre-`errors.py` baseline; does NOT yet inherit from
-  `AgentEvalError`. Re-homing is a Phase-1.5 hygiene carry-over tracked in
+  `AgentEvalError`. Re-homing into this module under `AgentEvalSafetyError`
+  is a Phase-1.5 hygiene carry-over tracked in
   `_bmad-output/implementation-artifacts/deferred-work.md`.
 
 The 3-class structure in this story is extension-friendly: future stories
@@ -80,14 +94,19 @@ from __future__ import annotations
 from typing import ClassVar
 
 __all__ = [
+    # Base (1):
     "AgentEvalError",
+    # Sub-bases (3 of 4 ratified — Safety still pending):
     "AgentEvalIntegrityError",
     "AgentEvalBudgetError",
     "AgentEvalCompatError",
+    # Leaves (5 implemented; 6 future per module docstring):
     "IncompleteTraceError",
     "CostExceededError",
     "RuntimeBudgetExceededError",
     "AdapterDiscoveryError",
+    "DuplicateRegistrationError",
+    # Warnings (1):
     "DegradedTraceWarning",
 ]
 
@@ -194,8 +213,13 @@ class RuntimeBudgetExceededError(AgentEvalBudgetError):
 
     Per ADR-015 §Decision L25-29 + docs/contracts/error-class-hierarchy.md L74:
     raised by `@guarded_fanout` at Layer 1 (pre-flight runtime estimate > budget)
-    OR Layer 3 (mid-run wall-clock elapsed > budget). Raised at EXACTLY the
-    configured budget, not at 1.1×.
+    OR Layer 3 (mid-run wall-clock elapsed > budget). Layer 3 surfaces on the
+    NEXT polling tick after the budget is exceeded — the meter wakes every
+    `meter_interval_seconds` (default 5.0s; tunable per-decoration), so an
+    elapsed-time breach is observed at most `meter_interval_seconds` after the
+    actual budget threshold. The pre-Story-1b.3-review wording "raised at
+    EXACTLY the configured budget" was retracted at code review when the
+    polling-loop reality was traced through the implementation.
 
     `error_code = "RUNTIME_BUDGET_EXCEEDED"`; exit code 75 (EX_TEMPFAIL).
     """
@@ -223,23 +247,73 @@ class AdapterDiscoveryError(AgentEvalCompatError):
     """Raised by `_kernel/discovery.py` on entry-points discovery failures.
 
     Two raise sites per Story 1b.3:
-        1. **Partial-install detection** (ADR-013 L42): an entry-point in
-           `agenteval.coding_agents` (or another agenteval.* group) points at
-           a module that can't be imported (e.g., the adapter package's extras
-           weren't installed). Error message includes the
-           `installed-vs-required-extras` diagnostic hint.
+        1. **Partial-install detection** (ADR-013 L42): one or more entry-points
+           in `agenteval.coding_agents` (or another agenteval.* group) point at
+           modules that can't be imported (e.g., the adapter package's extras
+           weren't installed). The scan is RESILIENT — it continues past each
+           per-entry failure, collects successes into `loaded_so_far`, and
+           raises this aggregated error only after the entire group is scanned.
+           Error message includes the `installed-vs-required-extras` diagnostic
+           hint for each failing entry-point.
         2. **Lookup miss** in `get_adapter(name)`: no adapter registered under
            the given name across the programmatic + primary + legacy lookup
-           precedence. Error message lists the known adapter names.
+           precedence. Error message lists the known adapter names. (For this
+           case `loaded_so_far` is the empty dict.)
 
     `UnknownAdapterError` (used in the pre-edit story spec) is NOT in the
     ratified catalog; this single leaf covers both cases per the Story 1b.3
-    create-story drift-check decision (D4).
+    create-story drift-check decision (D4). Future stories may add a sub-leaf
+    if the unknown-name vs broken-import distinction becomes load-bearing for
+    callers (see Phase-1.5 `deferred-work.md` DF1).
 
     `error_code = "ADAPTER_DISCOVERY_ERROR"`; exit code 78 (EX_CONFIG).
+
+    `loaded_so_far` attribute (Story 1b.3 code-review fix): on partial-install
+    scans this holds the dict of successfully-loaded `{entry_name: cls}` so
+    callers can opt into "best-effort" behavior. On lookup-miss this is `{}`.
     """
 
     error_code: ClassVar[str] = "ADAPTER_DISCOVERY_ERROR"
+
+    def __init__(self, message: str, *, loaded_so_far: dict[str, type] | None = None) -> None:
+        super().__init__(message)
+        self.loaded_so_far: dict[str, type] = dict(loaded_so_far) if loaded_so_far else {}
+
+
+class DuplicateRegistrationError(AdapterDiscoveryError):
+    """Raised when the same adapter name is declared in BOTH primary + legacy groups.
+
+    Per ADR-013 L43 verbatim: "Duplicate-name collisions across packages
+    produce a `DuplicateRegistrationError(AdapterDiscoveryError)` with both
+    source package names; agenteval refuses to silently pick one."
+
+    Story 1b.3 code review caught the pre-edit implementation's drift from
+    this contract — the original code used `warnings.warn` + primary-wins,
+    which the ADR explicitly forbids. Cross-package collisions now raise this
+    typed error fail-closed so consumers cannot accidentally depend on a
+    non-deterministic resolution.
+
+    Intra-group collisions within ONE entry-point group (same name declared
+    twice in `agenteval.coding_agents`, for example) are a different
+    operational class — handled by the PyPA installer's metadata uniqueness
+    rules, not this exception. If the installer accepts such a duplicate
+    anyway, the `_cached_coding_agents` scan emits a UserWarning + lets the
+    last-wins (which is what stdlib `dict.update` semantics already do).
+
+    `sources` attribute: 2-tuple of `(primary_dist_name, legacy_dist_name)`
+    or `("primary", "legacy")` if dist names cannot be resolved from the
+    entry-point metadata. Inherits `loaded_so_far` from the parent.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        sources: tuple[str, str] = ("primary", "legacy"),
+        loaded_so_far: dict[str, type] | None = None,
+    ) -> None:
+        super().__init__(message, loaded_so_far=loaded_so_far)
+        self.sources: tuple[str, str] = sources
 
 
 # --------------------------------------------------------------------------- #

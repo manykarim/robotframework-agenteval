@@ -1,6 +1,6 @@
 # Story 1b.3: Discovery + Guardrails Kernel — Entry-Points + Fan-Out Decorator
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -169,6 +169,55 @@ So that **custom adapters register cleanly via PyPA entry-points (FR17a) or prog
   - [x] Cross-LLM reviewer prompt MUST direct re-derivation of cited facts per `feedback_citation_drift_first_class`.
   - [x] Honest framing: Phase-1 limitations documented (Layer 2 cost-meter stub returns 0.0 until Story 4.1; cooperative-cancellation hook ships but full provider-client cancellation integration is Story 4.1; `CodingAgentAdapter` TYPE_CHECKING forward-ref until Story 1b.4).
 
+### Review Findings (2026-05-19 cross-LLM adversarial — 4 reviewers: Blind Hunter + Edge Case Hunter + Acceptance Auditor + Codex CLI gpt-5.4)
+
+**Raw findings:** 32 Blind + 38 Edge + 12 Auditor + 12 Codex = **94 raw** → **31 unique** after dedup (7 decision-needed resolved into patches + 18 direct patches + 5 deferred + 1 verified-clean / ~25 dismissed as dedup-overlap or noise).
+
+**STAR catches (9th consecutive cross-LLM review with Codex finding what 3 Claude reviewers missed):**
+- (Codex) ADR-013 L43 `DuplicateRegistrationError(AdapterDiscoveryError)` typed-failure contract violated — impl uses `warnings.warn` + primary-wins; refuses to silently pick one was ratified.
+- (Codex) ADR-015 L42 cancellation semantics drift — ADR says `asyncio.CancelledError thrown by the meter`; impl uses `threading.Event` ContextVar.
+- (Codex) `errors.py` "remaining 6 leaves" lists 7 — subtle count drift the create-story check missed (SandboxRequiredError stayed in main bullet).
+- (Codex) stability-surface.md L86-89 SandboxRequiredError location contradicts errors.py docstring (`security/policy.py` Phase-1.5 carry-over).
+- (Auditor + Codex 2-way) stability-surface.md FR50 exit codes 4/5 vs ratified 66/75/78 — exact citation-drift-first-class norm target.
+
+**Decisions resolved (all 7 Recommended):**
+- [x] [Review][Decision→Patch] D1 Discovery resilience + cross-package DuplicateRegistrationError — Hybrid: fail-soft per-entry + `DuplicateRegistrationError(AdapterDiscoveryError)` for cross-package collisions + `loaded_so_far` attribute on AdapterDiscoveryError per ADR-013 L43 verbatim. **STAR fix.**
+- [x] [Review][Decision→Patch] D2 Layer 3 "EXACTLY the budget" reword — docs/tests/completion-notes reworded to "next polling tick after budget exceeded"; tests use numeric `breach.elapsed_at_breach` assertions instead of `"0.1s"` substring.
+- [x] [Review][Decision→Patch] D3 `_current_cost_usd_for_run()` per-run scoping — Phase-1 single-fanout-at-a-time constraint documented in module docstring + story Phase-1 limitations; per-run token interface deferred to Story 4.1.
+- [x] [Review][Decision→Patch] D4 Fix-the-losing-source citation-drift batch (5 sources): (4a) ADR-015 L42 amend to threading.Event ContextVar approach; (4b) architecture L648 amend to ratify Story 1b.6 deferment; (4c) stability-surface.md exit codes 4/5 → 66/75/78; (4d) errors.py 6/7 count fix; (4e) stability-surface.md SandboxRequiredError location → match errors.py truth; (4f) ADR-013 L40 "5 agenteval.* groups" → "4" to match L47.
+- [x] [Review][Decision→Patch] D5 Body raise + breach race — chain via `raise BudgetError(...) from body_exc`; preserves both signals.
+- [x] [Review][Decision→Patch] D6 `_budget` kwarg production backdoor — rename to sentinel `__agenteval_test_budget__`.
+- [x] [Review][Decision→Patch] D7 ADR-013 L40 internal drift — amend "5 agenteval.* groups" → "4 agenteval.* groups" (matches L47 Consequences). **Bundled into D4f.**
+
+**Direct patches (18 unchecked):**
+- [x] [Review][Patch] P1 daemon=False explicit on meter thread [src/AgentEval/_kernel/guardrails.py:222]
+- [x] [Review][Patch] P2 Meter thread cost-source exception wrap [src/AgentEval/_kernel/guardrails.py:198-220] — current code silently dies if `_current_cost_usd_for_run()` raises; Layer 2/3 enforcement stops invisibly.
+- [x] [Review][Patch] P3 lru_cache return MappingProxyType + negative-result memoization gap [src/AgentEval/_kernel/discovery.py:126-151]
+- [x] [Review][Patch] P4 estimator(kwargs) try/except wrap [src/AgentEval/_kernel/guardrails.py:177] — currently bare TypeError on unpack
+- [x] [Review][Patch] P5 estimator wrong-shape validation [src/AgentEval/_kernel/guardrails.py:177]
+- [x] [Review][Patch] P6 `_max_cost_usd` None handling [src/AgentEval/_kernel/guardrails.py:172,178,204] — TypeError on `cost_est > None`
+- [x] [Review][Patch] P7 `_registered_adapters` thread-lock [src/AgentEval/_kernel/discovery.py:79] — race between register_adapter write + get_adapter read
+- [x] [Review][Patch] P8 `_cancel_event_var.reset(token)` ordering — reset AFTER breach raise so handlers see the event [src/AgentEval/_kernel/guardrails.py:230]
+- [x] [Review][Patch] P9 cancel_event identity test (not just "not None") [tests/unit/kernel/test_guardrails.py:192-213]
+- [x] [Review][Patch] P10 Initial t=0 meter check before wait loop [src/AgentEval/_kernel/guardrails.py:200] — fast breaches before first poll go unenforced
+- [x] [Review][Patch] P11 Test L2 sync via explicit meter-started event (not `time.sleep` race) [tests/unit/kernel/test_guardrails.py:100-117]
+- [x] [Review][Patch] P12 register_adapter `isinstance(cls, type)` validation [src/AgentEval/_kernel/discovery.py:192-210]
+- [x] [Review][Patch] P13 get_adapter empty-string + non-str name validation [src/AgentEval/_kernel/discovery.py:213-237]
+- [x] [Review][Patch] P14 test_meter_interval_seconds use pytest monkeypatch (not raw module-attr swap) [tests/unit/kernel/test_guardrails.py:264-287]
+- [x] [Review][Patch] P15 Remove dead `_BreachState.threads_to_join` field [src/AgentEval/_kernel/guardrails.py:131]
+- [x] [Review][Patch] P16 stacklevel rationale comments (2 vs 3) [src/AgentEval/_kernel/discovery.py:138,207]
+- [x] [Review][Patch] P17 `__all__` grouping comments by tier [src/AgentEval/errors.py:78-95]
+- [x] [Review][Patch] P18 Add Layer 2 "increasing values" cumulative-meter test [tests/unit/kernel/test_guardrails.py — new test] — current L2 test uses constant 10.0; the cumulative-vs-snapshot distinction is unverified.
+
+**Deferred (5):**
+- [x] [Review][Defer] DF1 AdapterDiscoveryError taxonomy collision (unknown-name vs broken-import use same code) — deferred to future story; current code is functionally correct but typo lookups + partial-install share the same typed error.
+- [x] [Review][Defer] DF2 `CodingAgentAdapter` forward-ref breaks `typing.get_type_hints()` — deferred; Story 1b.4 lands the Protocol and resolves the runtime symbol.
+- [x] [Review][Defer] DF3 test_partial_install_detection ADR-013 substring assertion fragility — deferred; brittle but tolerable; would break only on ADR renumbering.
+- [x] [Review][Defer] DF4 FR17b `register_provider`/`register_sandbox` absent — deferred; by design (FR17b is adapter-specific per PRD); document in module docstring only.
+- [x] [Review][Defer] DF5 Layer 2 + Layer 3 simultaneous breach precedence (cost-wins by code order) — deferred to docstring-only note.
+
+**Dismissed (~25 dedup overlaps + noise):** Cross-reviewer dedup absorbed Blind F1≡Edge cache (→P3); Blind F11≡Edge M7 (→P5); Blind F12≡Edge M9 (→P7); Blind F18+F28≡D2 reword; Blind F19≡P9; Blind F22 (exit_code class attr) deferred to Phase-1.5 cleanup; Blind F23≡DF1; Blind F24 stacklevel verify deferred to P16; Blind F25≡DF3; Blind F26 duck-typed Protocol by design; Blind F27≡DF4; Blind F29≡P11; Blind F30≡P17; Blind F31 legacy merge coverage covered by D1's new tests; Blind F32≡D6; Edge varied dedupes; Auditor F2≡D2+P9; Auditor F3≡P1; Auditor F6≡P15; Auditor F7 ContextVar bound post-Layer-1 by design (acceptable); Auditor F8≡P14; Auditor F9 L2 increasing-values → P18; Codex various dedupes with above. Cross-LLM dedup pattern continues.
+
 ## Dev Notes
 
 ### Project context — Story 1b.3's place in Epic 1b
@@ -321,4 +370,5 @@ None (all-gates clean on first full pass; one ruff auto-fix applied to `tests/un
 | Date       | Version | Description                                                                  | Author |
 | ---------- | ------- | ---------------------------------------------------------------------------- | ------ |
 | 2026-05-19 | 0.1.0   | Initial story creation (ready-for-dev). Pre-create-story drift check (7th consecutive use of `feedback_spec_vs_ratified_doc_precheck`) caught 8 drifts in Story 1b.3 spec: (D1 HIGH) entry-point groups → 6 tables per ADR-013 L47; (D2 HIGH) `@guarded_fanout` signature `cost_kwarg/runtime_kwarg` → `estimator=callable` per ADR-015 §Decision L18; (D3 HIGH) 2-layer → 3-layer enforcement per ADR-015 §Decision L25-29; (D4 MED) `UnknownAdapterError` → `AdapterDiscoveryError` per contract L82; (D5 MED) errors.py adds 2 sub-bases + 3 leaves; (D6 MED) `CodingAgentAdapter` TYPE_CHECKING forward-ref; (D7 MED) `KeywordTierMissingError` deferred to Story 1b.6 per Many's pick; (D8 LOW) ADR-013 filename drift in architecture L1426 → fixed pre-authoring. All 8 resolved by honoring ratified sources; epics.md L933-941 (Story 1b.3) + architecture.md L1426 updated pre-authoring per "fix-the-losing-source-NOW" pattern. NEW NORM from Epic 1a retro (`feedback_citation_drift_first_class`) embedded in AC-1b.3.11. Phase-1 limitations explicitly documented (Layer 2 cost-meter stub until Story 4.1; cooperative-cancellation hook ships but provider-client integration is Story 4.1; CodingAgentAdapter TYPE_CHECKING forward-ref). | Bob |
+| 2026-05-19 | 0.3.0   | Cross-LLM code-review patches applied; status → done. 4 reviewers (Blind Hunter + Edge Case Hunter + Acceptance Auditor + Codex CLI gpt-5.4): 94 raw findings → 31 unique after dedup → 7 decision-needed (all Recommended) + 18 direct patches applied + 5 deferred + ~25 dismissed. **9th consecutive cross-LLM STAR catch**: Codex caught ADR-013 L43 verbatim `DuplicateRegistrationError(AdapterDiscoveryError)` typed-failure contract violated (impl used `warnings.warn` + primary-wins which ADR forbids); ADR-015 L42 cancellation semantics drift (asyncio.CancelledError vs threading.Event); errors.py "remaining 6 leaves" lists 7; stability-surface.md SandboxRequiredError location contradiction; FR50 exit codes 4/5 vs ratified 66/75/78. Fix-the-losing-source applied to 5 ratified sources (ADR-013 L40+L43, ADR-015 L42, architecture L648, stability-surface.md exit codes + SandboxRequiredError location, errors.py 6/7 count). New code: `DuplicateRegistrationError(AdapterDiscoveryError)` leaf + `loaded_so_far`/`sources` attrs (~50 lines errors.py); discovery.py resilient per-entry scanning + cross-package fail-closed dup detection + RLock + MappingProxyType caches + non-class validation + name validation (~70 lines refactor); guardrails.py initial t=0 check + cost-source exception fail-closed + estimator try/except + None-budget handling + body-raise breach chain + sentinel-private `__agenteval_test_budget__` rename + Layer 3 "next polling tick" reword (~110 lines refactor). 21 new tests covering DuplicateRegistrationError + loaded_so_far + partial-install resilience + RLock + isinstance validation + lru_cache negative-result + MappingProxyType + estimator validation + cost-source fail-closed + body-raise chain + initial t=0 + cumulative crossover + sentinel kwarg. All-gates clean: ruff/format/mypy clean (30 source files); license headers 30/30; **220 unit passed** (199 prior + 21 review-patch tests); 6 tier1 acceptance + RF smoke regression PASS. | Amelia |
 | 2026-05-19 | 0.2.0   | Dev-story implementation pass complete; status → review. Tasks 1-8 done. `src/AgentEval/errors.py` extended with `AgentEvalBudgetError` + `AgentEvalCompatError` sub-bases + `CostExceededError` + `RuntimeBudgetExceededError` + `AdapterDiscoveryError` leaves. New modules `src/AgentEval/_kernel/discovery.py` (~250L; 3 typed group accessors + lru_cache + register/get + AdapterDiscoveryError diagnostic per ADR-013 L42) + `src/AgentEval/_kernel/guardrails.py` (~250L; `@guarded_fanout(estimator=callable)` with 3-layer enforcement per ADR-015 §Decision L25-29; Layer 3 fires at EXACTLY the budget — NOT 1.1×). New tests `tests/unit/kernel/test_discovery.py` (15 tests) + `tests/unit/kernel/test_guardrails.py` (14 tests); 7 new tests in `tests/unit/test_errors.py`. All-gates clean: ruff check + ruff format clean; mypy clean (30 source files); license headers PASS (30/30); pytest tests/unit 199 passed; pytest tests/acceptance/tier1 6 passed (Story 1a.6 FR42 regression); robot tests/acceptance/smoke PASS. `docs/contracts/stability-surface.md` extended with new kernel + errors surface entries. `docs/contracts/error-class-hierarchy.md` L73 / L74 / L82 marked IMPLEMENTED. Phase-1 limitations preserved verbatim from story spec. | Amelia |

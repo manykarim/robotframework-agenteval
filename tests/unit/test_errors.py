@@ -165,3 +165,46 @@ def test_catching_agenteval_error_catches_all_new_leaves() -> None:
         raise RuntimeBudgetExceededError("x")
     with pytest.raises(AgentEvalError):
         raise AdapterDiscoveryError("x")
+
+
+# ============================================================ #
+# Story 1b.3 code-review patch — DuplicateRegistrationError    #
+# ============================================================ #
+
+
+def test_duplicate_registration_error_is_subclass_of_adapter_discovery_error() -> None:
+    """Per ADR-013 L43 verbatim: `DuplicateRegistrationError(AdapterDiscoveryError)`."""
+    from AgentEval.errors import AdapterDiscoveryError, DuplicateRegistrationError
+
+    assert issubclass(DuplicateRegistrationError, AdapterDiscoveryError)
+    assert DuplicateRegistrationError.error_code == "ADAPTER_DISCOVERY_ERROR"
+
+
+def test_duplicate_registration_error_sources_attribute() -> None:
+    """ADR-013 L43: 'with both source package names'."""
+    from AgentEval.errors import DuplicateRegistrationError
+
+    e = DuplicateRegistrationError(
+        "shared adapter in 2 packages",
+        sources=("agenteval.coding_agents", "robotframework_agenteval.adapters"),
+    )
+    assert e.sources == ("agenteval.coding_agents", "robotframework_agenteval.adapters")
+
+
+def test_adapter_discovery_error_loaded_so_far_default_empty_dict() -> None:
+    """Bare AdapterDiscoveryError (no loaded_so_far kwarg) defaults to {}."""
+    from AgentEval.errors import AdapterDiscoveryError
+
+    e = AdapterDiscoveryError("simple lookup miss")
+    assert e.loaded_so_far == {}
+
+
+def test_adapter_discovery_error_loaded_so_far_holds_successful_entries() -> None:
+    """ADR-013 L42: successful entries surfaced via `loaded_so_far`."""
+    from AgentEval.errors import AdapterDiscoveryError
+
+    class GoodAdapter:
+        pass
+
+    e = AdapterDiscoveryError("1 entry failed; 1 succeeded", loaded_so_far={"good": GoodAdapter})
+    assert e.loaded_so_far == {"good": GoodAdapter}

@@ -79,9 +79,10 @@ Per architecture L853 (top-level shared types) + L1184 (top-level errors module)
 - `AgentEval.errors.AgentEvalBudgetError` sub-base (Story 1b.3) — `stable` label.
 - `AgentEval.errors.AgentEvalCompatError` sub-base (Story 1b.3) — `stable` label.
 - `AgentEval.errors.IncompleteTraceError` leaf — `stable` label. `error_code = "INCOMPLETE_TRACE"` is `stable` per ADR-014.
-- `AgentEval.errors.CostExceededError` leaf (Story 1b.3) — `stable` label. `error_code = "COST_EXCEEDED"` is `stable` per ADR-014 / FR50 exit-code 4.
-- `AgentEval.errors.RuntimeBudgetExceededError` leaf (Story 1b.3) — `stable` label. `error_code = "RUNTIME_BUDGET_EXCEEDED"` is `stable` per ADR-014 / FR50 exit-code 4.
-- `AgentEval.errors.AdapterDiscoveryError` leaf (Story 1b.3) — `stable` label. `error_code = "ADAPTER_DISCOVERY_ERROR"` is `stable` per ADR-014 / FR50 exit-code 5.
+- `AgentEval.errors.CostExceededError` leaf (Story 1b.3) — `stable` label. `error_code = "COST_EXCEEDED"` is `stable` per ADR-014; FR50 exit code 66 (sysexits-extended; pinned by epics.md Story 8a.1 L1660 + contract L73).
+- `AgentEval.errors.RuntimeBudgetExceededError` leaf (Story 1b.3) — `stable` label. `error_code = "RUNTIME_BUDGET_EXCEEDED"` is `stable` per ADR-014; FR50 exit code 75 (EX_TEMPFAIL; contract L74).
+- `AgentEval.errors.AdapterDiscoveryError` leaf (Story 1b.3) — `stable` label. `error_code = "ADAPTER_DISCOVERY_ERROR"` is `stable` per ADR-014; FR50 exit code 78 (EX_CONFIG; contract L82). Exposes a `loaded_so_far: dict[str, type]` attribute per ADR-013 L42 verbatim — `stable`.
+- `AgentEval.errors.DuplicateRegistrationError` leaf (Story 1b.3 code-review patch per Codex STAR catch) — `stable` label. Subclass of `AdapterDiscoveryError` per ADR-013 L43 verbatim. Same `error_code` as the parent; same FR50 exit code 78. Exposes `sources: tuple[str, str]` (primary, legacy dist names) — `stable`.
 - `AgentEval.types.{ToolCallTrace, Usage, RunManifest}` dataclasses — `provisional` label. Phase-1 stdlib `@dataclass(frozen=True)` (deviation from architecture's "Pydantic dataclasses" wording — documented in `types.py` docstring + Phase-1.5 carry-over). Field set is `provisional` (field additions are minor bumps; field renames are major bumps).
 
 ### Kernel discovery + guardrails surface (Story 1b.3 — Phase-1 registry)
@@ -102,7 +103,7 @@ Per ADR-018 (`adopt` from agentguard ADR-013 with significant divergence — see
 - `SandboxBackend(Protocol)` at `src/AgentEval/security/protocols.py` — `provisional` label in Phase 1. Methods: `execute(code, language, timeout) -> SandboxResult`. Signature may evolve in Phase 2 as real backends ship; `provisional` label warns consumers.
 - `NullSandbox` default backend at `src/AgentEval/security/null_sandbox.py` — `stable` label. Refuses every `execute()` call by raising `SandboxRequiredError`. Backwards-compat guarantee: a `NullSandbox()` instance always raises; never silently executes.
 - `agenteval.sandboxes` entry-points group — `stable` label. The discovery mechanism for backends is fixed; the Protocol surface backends MUST implement is `provisional`.
-- `SandboxRequiredError(AgentEvalSafetyError)` at `src/AgentEval/errors.py` — `stable` label. `error_code = "SANDBOX_REQUIRED"`; FR50 exit code 3.
+- `SandboxRequiredError` — `stable` label. `error_code = "SANDBOX_REQUIRED"`; FR50 exit code 77 (EX_NOPERM; contract L66). **Phase-1 home: `src/AgentEval/security/policy.py`** per Story 1a.1's pre-`errors.py` baseline; the class does NOT yet inherit from `AgentEvalSafetyError` (re-homing into `src/AgentEval/errors.py` under `AgentEvalSafetyError` is a Phase-1.5 hygiene carry-over tracked in `_bmad-output/implementation-artifacts/deferred-work.md`). The Story 1b.3 code-review caught a contract-self-disagreement where this row previously claimed the `errors.py` home was already in effect — corrected per the citation-drift fix-the-losing-source norm.
 
 Phase-3 sandbox backend implementations (Docker, ephemeral worktree, gVisor optionally) live in separate packages and manage their own stability.
 

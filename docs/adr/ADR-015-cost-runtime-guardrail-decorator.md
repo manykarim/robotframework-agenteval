@@ -39,7 +39,7 @@ The `estimator` callable signature is documented for community adapter authors w
 - Conformance suite (ADR-017) validates the decorator against a deterministic mock provider with known cost/runtime characteristics: estimator + meter + breach detection all tested.
 - Cross-cutting concern #8 from the architecture's Project Context Analysis — selectively-applied shared pattern, NOT kernel-level mandatory.
 - Default budgets are configured via env vars (`AGENTEVAL_MAX_COST_USD` defaults to 5.0; `AGENTEVAL_MAX_RUNTIME_SECONDS` defaults to None = unlimited) and can be overridden per-keyword via decorator argument.
-- Cooperative cancellation hint: provider implementations should honor `asyncio.CancelledError` thrown by the meter; non-cooperative providers will run to natural completion of the current call before the budget error surfaces.
+- Cooperative cancellation hint: on budget breach, the meter sets a `threading.Event` exposed via the `_cancel_event_var` ContextVar (accessible from inside fan-out keyword bodies via `current_cancel_event()`). This works for both sync-frame and `_run_async`-fallback worker-thread frames thanks to Story 1b.1's `contextvars.copy_context()` propagation. Provider implementations that target asyncio Tasks (Story 4.1's LiteLLM streaming integration) layer `asyncio.CancelledError`-emitting cancellation on top of this Event; non-cooperative providers run to natural completion of the current call before the budget error surfaces. The pre-Story-1b.3-code-review wording mentioned only `asyncio.CancelledError thrown by the meter` — Codex's cross-LLM citation re-derivation caught that the shipped Phase-1 mechanism is the threading.Event ContextVar; amended here per the fix-the-losing-source norm.
 
 ## Alternatives
 

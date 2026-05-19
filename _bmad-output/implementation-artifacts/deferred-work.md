@@ -87,4 +87,14 @@ The 20 items below are real defects in the Story 0.1 spike's scratch Python code
 
 ---
 
+## Deferred from: code review of story-1b.3-discovery-guardrails-kernel-entry-points-fan-out-decorator (2026-05-19)
+
+- **DF1 AdapterDiscoveryError taxonomy collision (unknown-name vs broken-import use same `error_code`)** — Codex caught: a typo lookup ("`claude-codd`") and a partially-installed adapter raise the same typed error; consumers cannot distinguish without string-matching. Introduce `UnknownAdapterError(AdapterDiscoveryError)` sub-leaf in a follow-up story OR pass `reason: Literal["unknown_name", "broken_import"]` on the existing error.
+- **DF2 `CodingAgentAdapter` forward-ref breaks `typing.get_type_hints()`** — Blind Hunter caught: `TYPE_CHECKING`-only import means `get_type_hints(discover_adapters)` raises `NameError` at runtime. Story 1b.4 lands the Protocol and resolves; no action needed before then. If tooling that calls `get_type_hints` (sphinx, pydantic) bites earlier, add a runtime `CodingAgentAdapter = Any` shim.
+- **DF3 `test_partial_install_detection_raises_with_diagnostic` ADR-013 substring assertion fragility** — Blind Hunter caught: `assert "ADR-013" in str(exc_info.value)` would break only on ADR renumbering; brittle but tolerable. Future test-hardening story can switch to structural assertion against the exception's diagnostic-hint attribute.
+- **DF4 FR17b `register_provider` / `register_sandbox` absence** — Blind Hunter caught: only adapters have a programmatic-registration path; providers + sandboxes are entry-points-only. Documented as by-design (PRD FR17b is adapter-specific). Add module docstring note in Story 1b.5 or earlier follow-up so future contributors don't ask.
+- **DF5 Layer 2 + Layer 3 simultaneous breach precedence (cost-wins by code order)** — Edge Case Hunter caught: when both meters detect a breach on the same poll, the cost-check fires first and returns; runtime breach is silently dropped. Acceptable precedence (cost is typically the harder budget); add a docstring note clarifying the deterministic cost-wins-on-tie semantics.
+
+---
+
 *Update this file as new deferred items emerge from future reviews.*
