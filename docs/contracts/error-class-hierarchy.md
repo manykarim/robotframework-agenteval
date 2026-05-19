@@ -86,9 +86,9 @@ Exit codes are **sysexits.h-aligned per-leaf** (ratified 2026-05-18 per Story 1a
 
 | Leaf | `error_code` | Exit code | One-line description | Owning epic |
 | --- | --- | --- | --- | --- |
-| `PollingDisallowedError` | `POLLING_DISALLOWED` | `65` (EX_DATAERR; pinned by epics.md L1660) | Tier-2/3 keyword called with a retry-style polling pattern; banned per `determinism-contract.md`. | **Epic 6** (FR28 enforcement at `_assertions/adapter.py`; Phase-2 full ADR-022 AssertionEngine adoption) |
+| `PollingDisallowedError` | `POLLING_DISALLOWED` | `65` (EX_DATAERR; pinned by epics.md L1660) | Tier-2/3 keyword called with a retry-style polling pattern; banned per `determinism-contract.md`. | **Class declaration IMPLEMENTED in Story 1b.6** (`src/AgentEval/errors.py` leaf alongside the `determinism-contract.md` FR63 publication); raise site lands in **Epic 6** (FR28 enforcement at `_assertions/adapter.py`; Phase-2 full ADR-022 AssertionEngine adoption). |
 | `IncompleteTraceError` | `INCOMPLETE_TRACE` | `67` (sysexits-extended; pinned by epics.md L1660) | Metric keyword called on an `AgentRunResult` with `mcp_coverage="external_mixed"` without `allow_external_mcp_blind=True` opt-out (per ADR-007 + ADR-016). | **IMPLEMENTED — Story 1b.2 (`src/AgentEval/errors.py`); raise site at `src/AgentEval/_kernel/coverage._check_mcp_coverage`. Owning Epic 5 Story 5.2 wires it through the Metric.* keyword paths.** |
-| `TierViolationError` | `TIER_VIOLATION` | `70` (EX_SOFTWARE) | A Tier-N keyword embedded a forbidden Tier-M call (Tier-1 may not call Tier-2/3; Tier-2 may not embed Tier-3 fan-out per `determinism-contract.md`). | Epic 6 (FR30b enforcement) |
+| `TierViolationError` | `TIER_VIOLATION` | `70` (EX_SOFTWARE) | A Tier-N keyword embedded a forbidden Tier-M call (Tier-1 may not call Tier-2/3; Tier-2 may not embed Tier-3 fan-out per `determinism-contract.md`). | **Class declaration IMPLEMENTED in Story 1b.6** (`src/AgentEval/errors.py` leaf alongside `determinism-contract.md` Tier Model ACL gates); raise site lands in **Epic 6** (FR30b enforcement). |
 
 ### FR59 error-format requirement (Tier-1 setup-failure errors)
 

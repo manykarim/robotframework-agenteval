@@ -9,6 +9,12 @@
 
 Governs the **determinism guarantees** agenteval offers (and explicitly does NOT offer) for evaluation runs. Specifically: which keywords are deterministic by construction, which are stochastic and how their non-determinism is bounded (`Stat.Run N Times`, `Stat.Pass At K`), which keyword families forbid retry-style polling (`PollingDisallowedError`), and which Tier of model is allowed at each ACL gate (`TierViolationError`).
 
+## Summary
+
+The following single-paragraph summary is **byte-identical** to PRD L1211 per FR63's verifiability clause (the doc-build CI step that asserts the byte-identity is deferred to a Phase-1.5 hygiene story per the Phase-1 limitations section below; the verbatim text MUST stay in lockstep with the PRD source in the meantime):
+
+> The library promises bit-identical reproducibility for Tier-1, statistical interpretability for Tier-2/Tier-3 via Pass@k + reproducibility footers, no automatic retry/flake hiding, and explicit refusal (`PollingDisallowedError`) of polling on non-deterministic keywords. The library does not promise cross-version or cross-provider reproducibility, bit-equality on Tier-2/3, or magical flake elimination. Honest statistical reporting beats false-confidence determinism in every keyword decision.
+
 ## Scope
 
 ### In-scope
@@ -45,9 +51,9 @@ Library does NOT promise:
 - Cross-model-version reproducibility (e.g., results from `claude-3-5-sonnet-20241022` are NOT comparable to `claude-3-5-sonnet-20250101`).
 - Cross-provider equivalence (e.g., results from `litellm` are NOT comparable to direct `anthropic` SDK).
 
-Library DOES guarantee that non-deterministic results are **characterizable via statistical primitives** at higher tiers:
-- `Stat.Run N Times <keyword> n=K seed=S` (Epic 6 Story 6.x) — runs a Tier-2 keyword K times, returns a sequence of `AgentRunResult` records.
-- `Stat.Get Pass At K <runs> threshold=T` (Epic 6) — computes pass@K per HumanEval methodology; returns `(passed: int, total: int, rate: float)`.
+Library DOES guarantee that non-deterministic results are **characterizable via statistical primitives** at higher tiers (per PRD FR26 L1534 + FR27 L1535):
+- `Stat.Run N Times <keyword> n=K seed=S` (Epic 6 Story 6.x; PRD FR26) — runs a Tier-2 keyword K times, returns `list[KeywordRun]` (the ratified return type per FR26; the pre-edit "sequence of AgentRunResult records" wording in this contract was a Story 1b.6 code-review Codex STAR catch — `KeywordRun` is the FR26 type, NOT `AgentRunResult`).
+- `Stat.Get Pass At K <runs> threshold=T` (Epic 6 Story 6.x; PRD FR27) — computes pass@K per HumanEval methodology; returns `float ∈ [0, 1]` (the ratified return type per FR27; the pre-edit "(passed, total, rate) tuple" wording was a Story 1b.6 code-review Codex STAR catch).
 
 The Determinism Contract document is published with each library release per FR63; consumers verify the file's required sections exist via the doc-build CI step (Phase-2 carry-over from Story 1a.x doc-build infra).
 
@@ -85,16 +91,6 @@ When filing a bug report against an agenteval evaluation result, capture the fol
 ### `validate`-operator disabled by default (PRD FR43)
 
 The `validate` operator is disabled by default (raises `ValidateOperatorDisallowed`; opt-in via `AgentEval(allow_validate_operator=True)` per FR43 + Story 1a.6 wiring). Rationale: `validate` invokes user-supplied callables, which can execute arbitrary Python — a sandbox / safety risk for shared CI environments. Opt-in is explicit per-instance (NOT environment-level), so a misuse cannot accidentally leak across CI jobs.
-
-agenteval keywords belong to one of three tiers (formalized 2026-05-18 per ADR-011 + this contract):
-
-- **Tier-1 (static inspection):** zero LLM calls per invocation. Examples: `Skill.Get Activation Decision` (parses skill YAML), `MCP.List Tools` (reads schema). Deterministic by construction.
-- **Tier-2 (single LLM call):** one provider call per invocation. Examples: `Run Scenario` (one agent run), `Trajectory.Compare`. Non-determinism bounded by provider temperature + seed where supported.
-- **Tier-3 (fan-out + statistical):** N provider calls per invocation, statistical aggregation. Examples: `Stat.Run N Times`, `Stat.Pass At K`, `MCP.Get Tool Discoverability`. Cost + runtime guardrails per ADR-015 `@guarded_fanout` decorator.
-
-ACL gates per-tier: Tier-1 may not call Tier-2/3 internally; Tier-2 may not embed Tier-3 fan-outs; Tier-3 may compose any tier. Violations raise `TierViolationError` per ADR-014.
-
-Phase-1 enforcement: subject to ADR-022 catalog row (`adapt`) + AssertionEngine adoption ADR (Phase 2). Phase-1 enforces via direct raise from `_kernel/`; Phase-2 adoption of `robotframework-assertion-engine` formalizes the contract surface.
 
 ## Change Policy
 

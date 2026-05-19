@@ -63,9 +63,7 @@ addition, no refactor of Story 1b.2's classes):
 The remaining 6 leaves from `docs/contracts/error-class-hierarchy.md` (Story
 1a.4 ratified catalog) are added to this module as subsequent stories need them:
 
-- `PollingDisallowedError` — Story 1b.6 (Determinism Contract + convention enforcer)
 - `UnsupportedMCPVersionError` — Epic 3 Story 3.1 (MCP transport)
-- `TierViolationError` — Story 1b.6 (convention enforcer)
 - `ValidateOperatorDisallowed` — Epic 6 Story 6.2 (assertion gate enforcement)
 - `AdapterVersionDriftWarning` — Epic 11 Story 11.3 (warning, not error)
 
@@ -108,8 +106,10 @@ __all__ = [
     "AgentEvalIntegrityError",
     "AgentEvalBudgetError",
     "AgentEvalCompatError",
-    # Leaves (6 implemented; 5 future per module docstring):
+    # Leaves (8 implemented; 3 future per module docstring):
     "IncompleteTraceError",
+    "PollingDisallowedError",
+    "TierViolationError",
     "CostExceededError",
     "RuntimeBudgetExceededError",
     "AdapterDiscoveryError",
@@ -182,6 +182,45 @@ class IncompleteTraceError(AgentEvalIntegrityError):
     """
 
     error_code: ClassVar[str] = "INCOMPLETE_TRACE"
+
+
+class PollingDisallowedError(AgentEvalIntegrityError):
+    """Raised when a Tier-2/3 keyword receives a `polling=` argument.
+
+    Per PRD FR28 L1536 + ADR-022 catalog row (AssertionEngine adoption —
+    polling-ban negative-consequence clause) + `docs/contracts/error-class-hierarchy.md`
+    L89: polling masks non-determinism by retrying-until-pass, defeating
+    the statistical-interpretability requirement of FR31b. Tier-1 keywords
+    MAY accept `polling=`; Tier-2/3 MUST NOT.
+
+    Phase-1 (Story 1b.6): class declaration ships in `errors.py`. The
+    raise site lands when `_assertions/adapter.py` is implemented in Epic
+    6 (Tier-3 fan-out + statistical keywords). Per the
+    `determinism-contract.md` §(c) contract, this class is FORWARD-REFERENCED
+    by the contract document; the contract publishes Day 1 + the raise
+    site compounds in Epic 6.
+
+    `error_code = "POLLING_DISALLOWED"`; exit code 65 (EX_DATAERR; pinned
+    by epics.md Story 8a.1 L1660).
+    """
+
+    error_code: ClassVar[str] = "POLLING_DISALLOWED"
+
+
+class TierViolationError(AgentEvalIntegrityError):
+    """Raised when a Tier-N keyword embeds a forbidden Tier-M call.
+
+    Per `docs/contracts/error-class-hierarchy.md` L91 + Story 1b.6
+    `determinism-contract.md` Tier Model ACL gates: Tier-1 keywords may
+    NOT call Tier-2/3 keywords internally; Tier-2 keywords may NOT embed
+    Tier-3 fan-outs. Phase-1 (Story 1b.6): class declaration ships in
+    `errors.py`. The raise site lands when convention enforcement reaches
+    runtime in Epic 6 (alongside `PollingDisallowedError`).
+
+    `error_code = "TIER_VIOLATION"`; exit code 70 (EX_SOFTWARE).
+    """
+
+    error_code: ClassVar[str] = "TIER_VIOLATION"
 
 
 # --------------------------------------------------------------------------- #

@@ -10,30 +10,38 @@ classes must place them under one of the 4 sub-bases (`AgentEvalIntegrityError`,
 from __future__ import annotations
 
 import AgentEval.errors as errors_mod
-from AgentEval.errors import AgentEvalError, DegradedTraceWarning
+from AgentEval.errors import AgentEvalError
 
 
 def test_every_errors_all_export_inherits_from_agenteval_error() -> None:
-    """`__all__` exports MUST inherit from `AgentEvalError`, except known warnings."""
-    # Per architecture L997: DegradedTraceWarning is a UserWarning, NOT an
-    # AgentEvalError; it's a Python `warnings.warn`-emitting class for
-    # recoverable-but-incomplete traces (Story 1b.2 H_R4 fix).
-    warning_exceptions = {"DegradedTraceWarning"}
+    """`__all__` exports MUST inherit from `AgentEvalError`, except `Warning` subclasses.
 
+    Story 1b.6 code-review Codex MED + Edge fix: dynamically detect Warning
+    subclasses instead of hardcoding `{"DegradedTraceWarning"}` — per
+    `docs/contracts/error-class-hierarchy.md` L83 `AdapterVersionDriftWarning`
+    is the already-ratified second warning class that future stories will
+    export, and other future warnings (e.g., recovery-warning patterns from
+    Epic 5) should not require a hardcoded allowlist update.
+    """
     violations: list[str] = []
     for name in errors_mod.__all__:
-        if name in warning_exceptions:
-            # Known-non-Error: verify it is in fact a Warning subclass.
-            cls = getattr(errors_mod, name)
-            assert issubclass(cls, Warning), f"Known-non-Error {name!r} expected to be a Warning subclass; got {cls!r}"
+        cls = getattr(errors_mod, name, None)
+        if cls is None:
+            violations.append(f"{name!r} in __all__ but not defined on the module")
             continue
-        cls = getattr(errors_mod, name)
-        if not (isinstance(cls, type) and issubclass(cls, AgentEvalError)):
+        if not isinstance(cls, type):
+            violations.append(f"{name!r} in __all__ is not a class: {cls!r}")
+            continue
+        # Dynamic Warning-detection: Warning subclasses are exempt from the
+        # AgentEvalError requirement (per architecture L997 DegradedTraceWarning
+        # precedent; extends to AdapterVersionDriftWarning per contract L83).
+        if issubclass(cls, Warning):
+            continue
+        if not issubclass(cls, AgentEvalError):
             violations.append(name)
     assert not violations, (
         f"Errors module __all__ entries that do NOT inherit AgentEvalError "
-        f"(per ADR-014 4-sub-base scheme): {violations!r}. "
-        f"Excludes known warning class: {warning_exceptions!r}."
+        f"(per ADR-014 4-sub-base scheme; Warning subclasses are exempt): {violations!r}."
     )
 
 
@@ -54,7 +62,11 @@ def test_no_leaf_inherits_directly_from_base() -> None:
             continue
         if name in sub_base_names:
             continue
-        if name == DegradedTraceWarning.__name__:
+        cls_probe = getattr(errors_mod, name, None)
+        if cls_probe is not None and isinstance(cls_probe, type) and issubclass(cls_probe, Warning):
+            # Dynamic Warning-detection per Codex MED fix; future Warning
+            # subclasses (e.g., AdapterVersionDriftWarning per contract L83)
+            # are exempt without hardcoded allowlist updates.
             continue
         cls = getattr(errors_mod, name)
         if not (isinstance(cls, type) and issubclass(cls, AgentEvalError)):
