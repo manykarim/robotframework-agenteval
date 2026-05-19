@@ -1,6 +1,6 @@
 # Story 3.2: MCP Tool Inspection Keywords — List Tools + Call Tool
 
-Status: review
+Status: done
 
 ## Story
 
@@ -137,7 +137,62 @@ Plus `tests/unit/mcp/test_robot_integration.robot` extended with ~2 new RF cases
 - [x] **Task 5: Author `tests/unit/mcp/test_tool_inspection.py`** (39 tests; superset of the ~20 target).
 - [x] **Task 6: Extend `tests/unit/mcp/test_robot_integration.robot`** with 2 new RF cases.
 - [x] **Task 7: All-gates pass** — ruff clean / mypy clean (44 src files) / 609 unit+conformance + 9 skipped / 6 tier1 / 18 RF integration / license headers PASS.
-- [ ] **Task 8: Apply project norms — 4-reviewer cross-LLM code review.**
+- [x] **Task 8: Apply project norms — 4-reviewer cross-LLM code review.** Codex CLI bwrap-sandbox process gap surfaced (DF-3.2-S7); Codex slot filled by behavioral probes per `feedback_codex_probe_fitness`. 4 reviewers + behavioral probes returned 2 HIGH (Blind), 2 HIGH (Edge-cases), 5 HIGH (Auditor citation-drift), 2 HIGH (Codex/probe), 3-way MED + multiple LOWs. N-way triage applied per `feedback_n_way_agreement_weight`: 3-way HIGH on transport-loss classification gaps (Blind MED + Edge-cases HIGH-2 + Codex HIGH-1 + Codex HIGH-2) drove the `_is_connection_lost_exception` widening; 2-way HIGH on empty-content `error_message` contract; Auditor's 5-citation-drift catches all amended.
+
+## Senior Developer Review (AI)
+
+4 reviewers + behavioral probes 2026-05-19. Patches applied:
+
+**Production fixes (3-way HIGH + 2-way HIGH):**
+
+- `_is_connection_lost_exception` widened: handles `BaseExceptionGroup` (recursive), `mcp.shared.exceptions.McpError("Connection closed"/"Connection lost"/"Stream closed")` for stdio subprocess crash, anyio + stdlib leaf signatures (5 total). `_representative_cause` helper surfaces inner transport exception via `__cause__` when group-wrapped. Initialize-handshake transport-failures now mapped (the `try/except` wrapper extended to cover `_initialize_with_typed_error_mapping` too).
+- `_map_call_result` empty-content fallback: `is_error=True` with `content=[]` now yields structured `error_message="tool returned an error response with no content"`. Non-text-block case names the actual block type in the fallback ("non-text content block of type `image`").
+
+**Verified 1-way HIGHs:**
+
+- `list_tools` cursor-loop pagination (SDK signature `list_tools(cursor=None, *, params=None)` returning paginated `ListToolsResult.nextCursor`). Pre-edit code returned only first page.
+- `test_call_tool_arguments_are_copied_not_referenced` rewritten with `monkeypatch + captured["seen"]` verifying the SDK saw a different dict object AND the pre-mutation value.
+
+**Auditor citation-drift fixes (5/5):**
+
+- PRD FR9a amended: `Get Tool Names` / `Get Tool Descriptions` deferred to Phase-1.5 (DF-3.2-S1).
+- PRD FR9b amended: `(result, error, latency_ms)` → 5-field shape matching implementation; documents tool-level-error vs infrastructure-error distinction explicitly.
+- `epics.md` L1294 + L1467 amended: `MCP.Connect` → `MCP.Connect To Server` (D-A drift had 2 escapees).
+- `src/AgentEval/errors.py:L706` docstring amended: removed miscitation of `epics.md L1660` (which is Story 6.5's closing line, not Story 8a.1 exit-code mapping); now correctly points at `error-class-hierarchy.md` L84 with Story 8a.1 L1811 hygiene noted in DF-3.2-S3.
+- `error-class-hierarchy.md` L133 amended: "16 leaves" → "17 leaves" matching L56 running total. Pre-existing "11 leaves" drifts (L5 / L18 / L45 / ADR-014 L32) tracked in DF-3.2-S4.
+
+**3-way MED:**
+
+- `MCPTool` + `MCPToolResult` docstrings document shallow-frozen footgun explicitly. Phase-1 still ships shallow `dict(...)` copies on construction; consumers caching cross-call must deep-copy.
+
+**Behavioral test coverage added (13 new tests, 52 total):**
+
+- Pagination (3 tests: multi-page, single-page, missing-tools-attr).
+- ExceptionGroup unwrap (1 test with `BaseExceptionGroup([ClosedResourceError])`).
+- Mid-initialize transport-failure mapping (2 tests: `list_tools` + `call_tool`).
+- `McpError("Connection closed")` → MCPConnectionLostError (1 test).
+- Generic `McpError` propagates raw (1 test, pins design intent).
+- 3 additional connection-lost signatures (`EndOfStream`, `ConnectionError`, `BrokenPipeError`) parametrized (1 test, 3 params).
+- Empty-content `is_error=True` fallback (1 test).
+- Non-text content `is_error=True` fallback (1 test).
+
+**Deferred to Phase-1.5 (DF-3.2-S1 through DF-3.2-S7):**
+
+- PRD FR9a sub-keywords (Get Tool Names / Get Tool Descriptions).
+- ADR-014 leaf-table amendment for 17-leaf state.
+- Story 8a.1 epics.md L1811 exit-code mapping completion (add 69 + future codes).
+- error-class-hierarchy.md "11 leaves" pre-existing drifts.
+- `MCPConnectionLostError.correlation_id` attr (Codex LOW-3 + Blind MED-3) — Epic 5 trace forensics.
+- SDK "Unsupported protocol version" message-format pinning (Edge-cases LOW-1).
+- Cross-LLM-family review degraded to single-family this round (Codex CLI bwrap sandbox blocked file reads); investigate Codex config / sibling LLM CLI alternate.
+
+**Honest framing:**
+
+- The 3-way HIGH on transport-loss classification was load-bearing: pre-edit code would have leaked raw anyio/McpError exceptions on the canonical stdio-subprocess-crash production case — exactly the scenario `MCPConnectionLostError` was designed for. Codex probe 7 (REAL FastMCP server with `os._exit(1)` mid-handler) caught it via behavioral evidence; type-system reasoning would not have surfaced it. This is the 18th consecutive cross-LLM STAR catch streak — and the empirical justification for `feedback_codex_probe_fitness`.
+
+### Action Items
+
+All HIGH + 3-way MED findings closed via in-line patches. Phase-1.5 carry-overs documented in `_bmad-output/implementation-artifacts/deferred-work.md` (DF-3.2-S1 through DF-3.2-S7). Edge-cases LOW-2 + Codex LOW-2 + Codex LOW-4 also closed (defensive `getattr(page, "tools", None)`, top-level `import anyio`). LOW-1 (Windows clock resolution) accepted as-is (Linux primary; CI runs Linux).
 
 ## Dev Agent Record
 

@@ -130,7 +130,7 @@ Tier-2 + Tier-3 errors (runtime, not setup-failure) are NOT subject to FR59 — 
 This contract evolves per [`stability-surface.md`](stability-surface.md) labels.
 
 - The **`AgentEvalError` base class + the 4 sub-bases** are `stable` from Phase-1 onward. Renaming or restructuring requires major-version bump per NFR-MAINT-03.
-- The **16 leaves' names + `error_code` values** are `stable`. Adding new leaves is minor-version-bump safe (consumers' `try/except AgentEvalError` still catches the new leaf via inheritance). Renaming a leaf or changing its `error_code` is a major-version-bump change (breaks consumers' specific catches).
+- The **17 leaves' names + `error_code` values** are `stable` (Story 3.2 code-review Auditor HIGH-5 fix 2026-05-19: count incremented from 16 to match L56 running total; pre-existing "11 leaves" drifts at L5 / L18 / L45 and ADR-014 L32 acknowledged at L150 known-debt note remain pending Phase-1.5 batch amendment). Adding new leaves is minor-version-bump safe (consumers' `try/except AgentEvalError` still catches the new leaf via inheritance). Renaming a leaf or changing its `error_code` is a major-version-bump change (breaks consumers' specific catches).
 - The **FR59 error-format string** is `provisional` in Phase 1 (Story 1a.1 stub provided; concrete content evolves as the implementing epics author per-error messages). Format-string changes that preserve the 4 required pieces (`File`, `Line`, `Field`, `Fix`) are minor-version-bump safe.
 - The **FR50 exit-code mapping** is `stable` from Phase-1 onward — changes require ADR amendment + a documented migration path for CI consumers depending on specific exit codes.
 

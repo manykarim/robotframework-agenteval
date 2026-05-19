@@ -704,9 +704,16 @@ class MCPConnectionLostError(AgentEvalCompatError):
     in their workspace.
 
     `error_code = "MCP_CONNECTION_LOST"`; exit code 69 (sysexits-
-    extended; pinned by epics.md Story 8a.1 L1660; sibling to
-    `UnsupportedMCPVersionError` exit code 68 — both Compat-family
-    runtime errors).
+    extended; ratified Story 3.2 pre-authoring catalog amendment per
+    `docs/contracts/error-class-hierarchy.md` L84; NOT yet listed in
+    `_bmad-output/planning-artifacts/epics.md` Story 8a.1 L1811 exit-
+    code mapping which currently enumerates only 65/66/67/68 — Story
+    3.2 code-review Auditor HIGH-4 fix 2026-05-19 corrected the
+    pre-edit "pinned by epics.md Story 8a.1 L1660" miscitation;
+    Story 8a.1 + ADR-014 amendments are Phase-1.5 hygiene per
+    `docs/contracts/error-class-hierarchy.md` L150 known-debt note;
+    sibling to `UnsupportedMCPVersionError` exit code 68 — both
+    Compat-family runtime errors).
     """
 
     error_code: ClassVar[str] = "MCP_CONNECTION_LOST"

@@ -155,15 +155,39 @@ def test_call_tool_arguments_default_to_empty_dict(in_memory_handle: MCPServerHa
     assert result.error_message is not None
 
 
-def test_call_tool_arguments_are_copied_not_referenced(in_memory_handle: MCPServerHandle) -> None:
-    """Mutating the source args dict after call must not affect a future call."""
-    args = {"text": "first"}
-    call_tool(in_memory_handle, "echo_back", args)
-    args["text"] = "MUTATED"
-    # The internal copy preserved the first value; a follow-up call sees fresh args.
-    result2 = call_tool(in_memory_handle, "echo_back", {"text": "second"})
-    text_blocks = [b for b in result2.content if b.get("type") == "text"]
-    assert any("second" in (b.get("text") or "") for b in text_blocks)
+def test_call_tool_arguments_are_copied_not_referenced(
+    monkeypatch: pytest.MonkeyPatch, in_memory_handle: MCPServerHandle
+) -> None:
+    """Mutating the source args dict after `call_tool` returns must NOT mutate the dict the SDK saw.
+
+    Story 3.2 code-review Blind HIGH-2 fix 2026-05-19: the pre-edit
+    test was fake-green — it called `call_tool` twice with two
+    different literal dicts and verified the second one's content
+    arrived. That assertion passes regardless of whether `call_tool`
+    does `args = dict(arguments)` or `args = arguments`. Removing
+    the defensive copy at `lifecycle.py:497` would leave the
+    pre-edit test green. Now we monkeypatch the SDK to capture the
+    dict object reference + verify it's a different object than the
+    caller's source dict.
+    """
+    from types import SimpleNamespace
+
+    from mcp import ClientSession
+
+    captured: dict[str, Any] = {}
+
+    async def _capture(self: Any, name: str, arguments: dict[str, Any]) -> Any:
+        captured["seen"] = arguments
+        return SimpleNamespace(content=[], isError=False)
+
+    monkeypatch.setattr(ClientSession, "call_tool", _capture)
+    src = {"text": "orig"}
+    call_tool(in_memory_handle, "echo_back", src)
+    src["text"] = "MUTATED"
+    # Defensive copy: SDK saw a DIFFERENT object than `src` AND that
+    # object's `text` value is the pre-mutation `"orig"`.
+    assert captured["seen"] is not src
+    assert captured["seen"]["text"] == "orig"
 
 
 # --------------------------------------------------------------------------- #
@@ -266,7 +290,7 @@ def test_list_tools_maps_anyio_closed_resource_to_connection_lost(
     import anyio
     from mcp import ClientSession
 
-    async def _boom(self: Any) -> Any:
+    async def _boom(self: Any, cursor: str | None = None) -> Any:
         raise anyio.ClosedResourceError("simulated stream close")
 
     monkeypatch.setattr(ClientSession, "list_tools", _boom)
@@ -404,3 +428,266 @@ def test_story_3_2_keyword_is_not_async(method_name: str) -> None:
     import inspect
 
     assert not inspect.iscoroutinefunction(getattr(MCPLibrary, method_name))
+
+
+# --------------------------------------------------------------------------- #
+# Story 3.2 code-review patches 2026-05-19 — additional behavioral tests
+# --------------------------------------------------------------------------- #
+
+
+def test_list_tools_follows_next_cursor_pagination(
+    monkeypatch: pytest.MonkeyPatch, in_memory_handle: MCPServerHandle
+) -> None:
+    """Story 3.2 code-review Blind HIGH-1 fix 2026-05-19: `list_tools`
+    must follow `nextCursor` to retrieve the full tool list. SDK
+    signature: `list_tools(self, cursor: str | None = None, ...)`
+    returns `ListToolsResult` with `nextCursor: Cursor | None`. The
+    pre-edit code ignored the cursor + dropped pages.
+    """
+    from types import SimpleNamespace
+
+    from mcp import ClientSession
+
+    call_count = {"n": 0}
+    pages = [
+        SimpleNamespace(
+            tools=[SimpleNamespace(name="t1", description="d1", inputSchema={}, outputSchema=None)],
+            nextCursor="cursor-2",
+        ),
+        SimpleNamespace(
+            tools=[SimpleNamespace(name="t2", description="d2", inputSchema={}, outputSchema=None)],
+            nextCursor="cursor-3",
+        ),
+        SimpleNamespace(
+            tools=[SimpleNamespace(name="t3", description="d3", inputSchema={}, outputSchema=None)],
+            nextCursor=None,
+        ),
+    ]
+    received_cursors: list[str | None] = []
+
+    async def _paged(self: Any, cursor: str | None = None) -> Any:
+        received_cursors.append(cursor)
+        page = pages[call_count["n"]]
+        call_count["n"] += 1
+        return page
+
+    monkeypatch.setattr(ClientSession, "list_tools", _paged)
+    tools = list_tools(in_memory_handle)
+    assert [t.name for t in tools] == ["t1", "t2", "t3"]
+    assert received_cursors == [None, "cursor-2", "cursor-3"]
+
+
+def test_list_tools_stops_when_next_cursor_is_empty(
+    monkeypatch: pytest.MonkeyPatch, in_memory_handle: MCPServerHandle
+) -> None:
+    """Single-page case still works (no infinite loop on empty cursor)."""
+    from types import SimpleNamespace
+
+    from mcp import ClientSession
+
+    async def _single(self: Any, cursor: str | None = None) -> Any:
+        return SimpleNamespace(
+            tools=[SimpleNamespace(name="solo", description="", inputSchema={}, outputSchema=None)],
+            nextCursor=None,
+        )
+
+    monkeypatch.setattr(ClientSession, "list_tools", _single)
+    tools = list_tools(in_memory_handle)
+    assert len(tools) == 1
+    assert tools[0].name == "solo"
+
+
+def test_list_tools_handles_result_with_missing_tools_attr(
+    monkeypatch: pytest.MonkeyPatch, in_memory_handle: MCPServerHandle
+) -> None:
+    """Story 3.2 code-review Codex LOW-2 fix 2026-05-19: defensive
+    `getattr(page, 'tools', None) or []` on missing-attr case.
+    """
+    from types import SimpleNamespace
+
+    from mcp import ClientSession
+
+    async def _no_tools_attr(self: Any, cursor: str | None = None) -> Any:
+        return SimpleNamespace(nextCursor=None)  # NO `tools` attr at all
+
+    monkeypatch.setattr(ClientSession, "list_tools", _no_tools_attr)
+    tools = list_tools(in_memory_handle)
+    assert tools == []
+
+
+@pytest.mark.parametrize(
+    "exc_factory",
+    [
+        pytest.param(
+            lambda: __import__("anyio").EndOfStream(),
+            id="anyio.EndOfStream",
+        ),
+        pytest.param(
+            lambda: ConnectionError("network gone"),
+            id="ConnectionError",
+        ),
+        pytest.param(
+            lambda: BrokenPipeError("pipe died"),
+            id="BrokenPipeError",
+        ),
+    ],
+)
+def test_call_tool_maps_extra_transport_signatures_to_connection_lost(
+    monkeypatch: pytest.MonkeyPatch,
+    in_memory_handle: MCPServerHandle,
+    exc_factory: Any,
+) -> None:
+    """Story 3.2 code-review Codex LOW-1 fix 2026-05-19: extend
+    coverage to the 3 documented signatures the pre-edit suite missed
+    (`anyio.EndOfStream`, `ConnectionError`, `BrokenPipeError`).
+    """
+    from mcp import ClientSession
+
+    async def _boom(self: Any, name: str, arguments: dict[str, Any]) -> Any:
+        raise exc_factory()
+
+    monkeypatch.setattr(ClientSession, "call_tool", _boom)
+    with pytest.raises(MCPConnectionLostError) as exc_info:
+        call_tool(in_memory_handle, "echo_back", {"text": "x"})
+    # __cause__ chain preserves the original exception for forensics.
+    assert isinstance(exc_info.value.__cause__, type(exc_factory()))
+
+
+def test_call_tool_maps_mcp_error_connection_closed_to_connection_lost(
+    monkeypatch: pytest.MonkeyPatch, in_memory_handle: MCPServerHandle
+) -> None:
+    """Story 3.2 code-review Codex HIGH-2 fix 2026-05-19 (REAL
+    PRODUCTION SCENARIO): stdio subprocess crashes mid-call surface
+    as `mcp.shared.exceptions.McpError("Connection closed")` from the
+    SDK's JSON-RPC layer — NOT as anyio/stdlib transport exceptions.
+    The pre-edit classifier missed this canonical failure mode.
+    """
+    from mcp import ClientSession
+    from mcp.shared.exceptions import McpError
+    from mcp.types import ErrorData
+
+    async def _boom(self: Any, name: str, arguments: dict[str, Any]) -> Any:
+        raise McpError(ErrorData(code=-32000, message="Connection closed"))
+
+    monkeypatch.setattr(ClientSession, "call_tool", _boom)
+    with pytest.raises(MCPConnectionLostError) as exc_info:
+        call_tool(in_memory_handle, "echo_back", {"text": "x"})
+    assert exc_info.value.last_operation == "call_tool"
+    assert isinstance(exc_info.value.__cause__, McpError)
+
+
+def test_call_tool_does_not_map_generic_mcp_error_to_connection_lost(
+    monkeypatch: pytest.MonkeyPatch, in_memory_handle: MCPServerHandle
+) -> None:
+    """Generic protocol-level McpError (e.g., -32601 Method not found)
+    is NOT a transport failure — must propagate raw, NOT be wrapped.
+    """
+    from mcp import ClientSession
+    from mcp.shared.exceptions import McpError
+    from mcp.types import ErrorData
+
+    async def _boom(self: Any, name: str, arguments: dict[str, Any]) -> Any:
+        raise McpError(ErrorData(code=-32601, message="Method not found"))
+
+    monkeypatch.setattr(ClientSession, "call_tool", _boom)
+    with pytest.raises(McpError, match="Method not found"):
+        call_tool(in_memory_handle, "echo_back", {"text": "x"})
+
+
+def test_call_tool_unwraps_exception_group_with_connection_lost_child(
+    monkeypatch: pytest.MonkeyPatch, in_memory_handle: MCPServerHandle
+) -> None:
+    """Story 3.2 code-review 2-way HIGH 2026-05-19 (Blind MED + Codex
+    HIGH Probe 6b): anyio task-group unwinds in Python 3.11+ wrap
+    transport-layer failures in `BaseExceptionGroup` when multiple
+    tasks fail simultaneously. The classifier must recurse so the
+    typed-error contract holds.
+    """
+    import anyio
+    from mcp import ClientSession
+
+    async def _boom(self: Any, name: str, arguments: dict[str, Any]) -> Any:
+        raise BaseExceptionGroup(
+            "transport failure",
+            [anyio.ClosedResourceError("inner stream closed")],
+        )
+
+    monkeypatch.setattr(ClientSession, "call_tool", _boom)
+    with pytest.raises(MCPConnectionLostError) as exc_info:
+        call_tool(in_memory_handle, "echo_back", {"text": "x"})
+    # `_representative_cause` preserves the inner anyio exception in
+    # `__cause__` rather than the synthetic group wrapper — operators
+    # tracing the failure see the real transport-layer cause.
+    assert isinstance(exc_info.value.__cause__, anyio.ClosedResourceError)
+
+
+def test_call_tool_initialize_handshake_transport_failure_maps_to_connection_lost(
+    monkeypatch: pytest.MonkeyPatch, in_memory_handle: MCPServerHandle
+) -> None:
+    """Story 3.2 code-review Edge-cases HIGH-2 fix 2026-05-19:
+    transport-layer failures DURING `initialize()` (subprocess died
+    mid-handshake) must also map to `MCPConnectionLostError`, not
+    leak raw anyio exceptions. The pre-edit `try/except` wrapper only
+    covered the `session.call_tool()` window, not the
+    `_initialize_with_typed_error_mapping` step.
+    """
+    import anyio
+    from mcp import ClientSession
+
+    async def _boom_init(self: Any) -> Any:
+        raise anyio.BrokenResourceError("init died mid-handshake")
+
+    monkeypatch.setattr(ClientSession, "initialize", _boom_init)
+    with pytest.raises(MCPConnectionLostError) as exc_info:
+        call_tool(in_memory_handle, "echo_back", {"text": "x"})
+    assert exc_info.value.last_operation == "call_tool"
+
+
+def test_list_tools_initialize_handshake_transport_failure_maps_to_connection_lost(
+    monkeypatch: pytest.MonkeyPatch, in_memory_handle: MCPServerHandle
+) -> None:
+    """Sibling test for `list_tools` — same pre-edit gap."""
+    import anyio
+    from mcp import ClientSession
+
+    async def _boom_init(self: Any) -> Any:
+        raise anyio.ClosedResourceError("init stream closed")
+
+    monkeypatch.setattr(ClientSession, "initialize", _boom_init)
+    with pytest.raises(MCPConnectionLostError) as exc_info:
+        list_tools(in_memory_handle)
+    assert exc_info.value.last_operation == "list_tools"
+
+
+def test_map_call_result_empty_content_with_is_error_yields_fallback_message() -> None:
+    """Story 3.2 code-review 2-way HIGH 2026-05-19 (Edge-cases HIGH-1 +
+    Codex MED-1 Probe 8b): `is_error=True` with `content=[]` must NOT
+    leave `error_message=None` — that violates the dataclass docstring
+    contract ("populated when is_error=True; None otherwise").
+    """
+    from types import SimpleNamespace
+
+    from AgentEval.mcp.lifecycle import _map_call_result
+
+    result = _map_call_result(
+        SimpleNamespace(isError=True, content=[]),
+        latency_ms=1.0,
+    )
+    assert result.is_error is True
+    assert result.error_message is not None
+    assert "no content" in result.error_message
+
+
+def test_map_call_result_non_text_content_block_with_is_error_yields_typed_fallback() -> None:
+    """Same fix, non-empty-but-non-text case: fallback message names the actual block type."""
+    from types import SimpleNamespace
+
+    from AgentEval.mcp.lifecycle import _map_call_result
+
+    result = _map_call_result(
+        SimpleNamespace(isError=True, content=[{"type": "image", "data": "..."}]),
+        latency_ms=1.0,
+    )
+    assert result.is_error is True
+    assert result.error_message is not None
+    assert "image" in result.error_message

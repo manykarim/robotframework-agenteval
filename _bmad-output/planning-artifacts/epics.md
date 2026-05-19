@@ -1291,7 +1291,7 @@ So that AC-DOGFOOD-01 progresses with concrete evidence the library survives a r
 **Acceptance Criteria:**
 
 **Given** the `rf-mcp` repository at `https://github.com/manykarim/rf-mcp` and its existing custom Python end-to-end tests covering MCP surface inspection (the subset of tests that exercises server config, tool schema, lifecycle, tool calls — NOT trace/metric assertions which come Epic 5 + Epic 6),
-**When** I author equivalent `.robot` suites in `rf-mcp`'s test directory using `robotframework-agenteval` Epic 2 + Epic 3 keywords (`MCP.Get Server Config`, `MCP.Get Tool Schema`, `MCP.Validate Tool Schema`, `MCP.Start Server`, `MCP.Connect`, `MCP.List Tools`, `MCP.Call Tool`, `MCP.Stop Server`),
+**When** I author equivalent `.robot` suites in `rf-mcp`'s test directory using `robotframework-agenteval` Epic 2 + Epic 3 keywords (`MCP.Get Server Config`, `MCP.Get Tool Schema`, `MCP.Validate Tool Schema`, `MCP.Start Server`, `MCP.Connect To Server` (Story 3.2 code-review Auditor HIGH-3 fix 2026-05-19: stale `MCP.Connect` amended per FR8 verbatim; D-A drift had 2 escapees at L1294 + L1467), `MCP.List Tools`, `MCP.Call Tool`, `MCP.Stop Server`),
 **Then** the `.robot` suites achieve **parity coverage** with the custom Python tests on the MCP surface subset — verified by side-by-side test-name mapping + assertion-by-assertion equivalence check (a `tests/dogfood/parity-checklist-rf-mcp-mcp-surface.md` document tracks each custom test's `.robot` equivalent).
 
 **And Given** the `dogfood-integration.yml` CI workflow scaffolded in Story 1a.2,
@@ -1464,7 +1464,7 @@ So that consumers get truthful evidence about what was observed vs assumed — n
 
 **Given** Story 0.1's hosted-MCP observer spike findings + the ratified ADR-004 (was ADR-007) from Story 0.3 (see `docs/adr/ADR-004-hosted-mcp-observation.md`),
 **When** I implement `src/AgentEval/mcp/observer.py` per the spike API surface,
-**Then** the observer attaches to any MCP server connected via `MCP.Connect` from Story 3.1 (the same observer pattern works for in-process + subprocess transports per the spike output); tool-call traces flow into the Story 5.1 trace store with `gen_ai.system="mcp"` + tool name + arguments + result + latency.
+**Then** the observer attaches to any MCP server connected via `MCP.Connect To Server` from Story 3.1 (Story 3.2 code-review Auditor HIGH-3 fix 2026-05-19: stale `MCP.Connect` amended per FR8 verbatim; the same observer pattern works for in-process + subprocess transports per the spike output); tool-call traces flow into the Story 5.1 trace store with `gen_ai.system="mcp"` + tool name + arguments + result + latency.
 
 **And Given** an agent run via the Generic adapter (Story 4.1) where the MCP server is hosted in-process,
 **When** `AgentRunResult` is produced,

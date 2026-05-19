@@ -59,6 +59,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+import anyio
+from mcp.shared.exceptions import McpError
+
 from AgentEval._kernel.run_async import _run_async
 from AgentEval.errors import MCPConnectionLostError, UnsupportedMCPVersionError
 from AgentEval.mcp.transport import (
@@ -138,8 +141,15 @@ class MCPTool:
     the MCP SDK's `mcp.types.Tool` per the MCP spec's `Tool` shape
     (`name`, `description`, `inputSchema`, optional `outputSchema`).
 
-    `frozen=True` for immutability; dict fields are shallow-copied at
-    construction per Story 1b.2 M_R6 pattern.
+    `frozen=True` blocks rebinding of the top-level fields (`tool.name =
+    "x"` raises). Per Story 1b.2 M_R6 shallow-copy pattern + Story 3.2
+    code-review 3-way MED (Blind + Edge-cases + Codex Probe 3 2026-05-19):
+    immutability is SHALLOW — `tool.input_schema["properties"] = {...}`
+    or list mutation of nested dicts still succeeds. The construction
+    path freshly copies dict shells (`_map_tool` does `dict(...)`),
+    so cross-instance corruption is bounded; consumers caching the
+    record across calls must deep-copy if they require structural
+    immutability.
     """
 
     name: str
@@ -165,14 +175,29 @@ class MCPToolResult:
           typed-ContentBlock variant is deferred to Phase-1.5.
         - `is_error`: mirrors the SDK's `CallToolResult.isError` field.
         - `error_message`: populated when `is_error=True` (extracted
-          from the first text-content block); `None` otherwise.
+          from the first text-content block when present; otherwise a
+          structured fallback diagnostic describing the empty/non-text
+          shape — Story 3.2 code-review HIGH 2026-05-19); `None`
+          otherwise.
         - `latency_ms`: wall-clock elapsed (monotonic) from
           `call_tool` request-send to response-receive, in
-          milliseconds.
+          milliseconds. Scope is the SDK round-trip ONLY — does NOT
+          include `_open_session` / `_initialize_with_typed_error_mapping`
+          handshake. Operators needing full-keyword latency must wrap
+          `MCP.Call Tool` themselves.
         - `correlation_id`: per-call uuid4 hex string. Phase-1
           PLACEHOLDER for the Epic 5 trace-id wiring; ships now so the
           API contract is stable + downstream code can already pass
           the field. Epic 5 binds this to the active trace context.
+
+    Immutability note (Story 3.2 code-review 3-way MED 2026-05-19;
+    same caveat as `MCPTool`): `frozen=True` is SHALLOW. Rebinding
+    `result.content = []` raises, but mutating individual content
+    blocks (`result.content[0]["text"] = ...`) silently succeeds.
+    Each call returns a per-call-fresh `content` list, so cross-call
+    contamination doesn't bite Phase-1 — but consumers caching the
+    record across boundaries must deep-copy if they require
+    structural immutability.
     """
 
     content: list[dict[str, Any]] = field(default_factory=list)
@@ -380,30 +405,75 @@ def connect_to_server(handle: MCPServerHandle) -> MCPSession:
     return _run_async(_drive())
 
 
+_MCP_ERROR_CONNECTION_LOST_MARKERS: tuple[str, ...] = (
+    "Connection closed",
+    "Connection lost",
+    "Stream closed",
+)
+
+
 def _is_connection_lost_exception(exc: BaseException) -> bool:
     """Heuristically classify `exc` as an MCP transport-layer connection loss.
 
-    Story 3.2 design: we map a narrow set of anyio + connection-loss
-    exception types to `MCPConnectionLostError`. We deliberately do
-    NOT swallow protocol-level `mcp.shared.exceptions.McpError`
-    (server-returned JSON-RPC errors) — those are legitimate protocol
-    failures, not transport loss. Tool-level errors arrive via
-    `CallToolResult.isError=True` and are surfaced as
-    `MCPToolResult(is_error=True, ...)` — also NOT this code path.
+    Story 3.2 design + Story 3.2 code-review HIGH widening (2026-05-19):
+    we map a curated set of transport-layer + SDK-wrapped signatures
+    to `MCPConnectionLostError`. We deliberately do NOT swallow
+    GENERIC protocol-level `mcp.shared.exceptions.McpError` (server-
+    returned JSON-RPC errors like `-32601 Method not found`) — those
+    are legitimate protocol failures, not transport loss. Tool-level
+    errors arrive via `CallToolResult.isError=True` and are surfaced
+    as `MCPToolResult(is_error=True, ...)` — NOT this code path.
 
-    Recognized signatures (Phase-1 best-effort; expand as real-world
-    failure modes surface):
+    Recognized signatures (post code-review widening):
         - `anyio.ClosedResourceError` — stream closed under us.
         - `anyio.BrokenResourceError` — peer reset / pipe broken.
         - `anyio.EndOfStream` — orderly close mid-call (unexpected).
         - `ConnectionError` (stdlib) — generic connection failure.
         - `BrokenPipeError` (stdlib) — child stdin/stdout pipe died.
+        - `mcp.shared.exceptions.McpError` whose message contains
+          `"Connection closed"`, `"Connection lost"`, or
+          `"Stream closed"` — Codex code-review HIGH 2026-05-19: the
+          MCP SDK wraps stdio subprocess crashes in `McpError` at
+          the JSON-RPC layer (verified behavioral probe — stdio
+          server `os._exit(1)` mid-handler surfaces as
+          `McpError("Connection closed")`). The generic don't-swallow
+          rule still holds for OTHER `McpError` variants.
+        - `BaseExceptionGroup` whose children match any of the above
+          — Blind code-review MED + Codex code-review HIGH (Probe
+          6b 2026-05-19): anyio task-group unwinds in Python 3.11+
+          can wrap transport-layer failures in an ExceptionGroup
+          when multiple tasks fail simultaneously. The classifier
+          recurses to maintain the typed-error contract.
     """
-    import anyio
-
     if isinstance(exc, (anyio.ClosedResourceError, anyio.BrokenResourceError, anyio.EndOfStream)):
         return True
-    return isinstance(exc, (ConnectionError, BrokenPipeError))
+    if isinstance(exc, (ConnectionError, BrokenPipeError)):
+        return True
+    if isinstance(exc, McpError):
+        # Only map the narrow connection-loss messages; leave other
+        # protocol-level McpErrors to propagate per the design intent.
+        error_data = getattr(exc, "error", None)
+        msg = getattr(error_data, "message", None) if error_data is not None else None
+        text = msg if msg is not None else str(exc)
+        return any(marker in text for marker in _MCP_ERROR_CONNECTION_LOST_MARKERS)
+    if isinstance(exc, BaseExceptionGroup):
+        return any(_is_connection_lost_exception(child) for child in exc.exceptions)
+    return False
+
+
+def _representative_cause(exc: BaseException) -> BaseException:
+    """Return a representative inner exception for `__cause__` preservation.
+
+    For an `ExceptionGroup`, returns the first connection-lost-classified
+    child so forensics see the actual transport-layer failure rather
+    than the synthetic group wrapper. For non-group exceptions, returns
+    `exc` unchanged.
+    """
+    if isinstance(exc, BaseExceptionGroup):
+        for child in exc.exceptions:
+            if _is_connection_lost_exception(child):
+                return _representative_cause(child)
+    return exc
 
 
 def list_tools(handle: MCPServerHandle) -> list[MCPTool]:
@@ -434,9 +504,26 @@ def list_tools(handle: MCPServerHandle) -> list[MCPTool]:
     async def _drive() -> list[MCPTool]:
         ts = await _open_session(handle)
         try:
-            await _initialize_with_typed_error_mapping(ts)
             try:
-                result = await ts.session.list_tools()
+                await _initialize_with_typed_error_mapping(ts)
+                # Story 3.2 code-review Blind HIGH-1 + SDK signature
+                # confirmation 2026-05-19: cursor-loop through paginated
+                # tool lists. Without this, servers exposing >50 tools
+                # (per MCP spec recommendation) silently return a
+                # truncated list — indistinguishable from "tool absent"
+                # to consumers. SDK signature is `list_tools(self,
+                # cursor: str | None = None, ...)` returning a
+                # `PaginatedResult` with `nextCursor: Cursor | None`.
+                collected: list[Any] = []
+                cursor: str | None = None
+                while True:
+                    page = await ts.session.list_tools(cursor=cursor)
+                    page_tools = getattr(page, "tools", None) or []
+                    collected.extend(page_tools)
+                    cursor = getattr(page, "nextCursor", None)
+                    if not cursor:
+                        break
+                return [_map_tool(t) for t in collected]
             except BaseException as exc:
                 if _is_connection_lost_exception(exc):
                     raise MCPConnectionLostError(
@@ -447,9 +534,8 @@ def list_tools(handle: MCPServerHandle) -> list[MCPTool]:
                             "Inspect the server's stderr / logs for the underlying failure; "
                             "re-run `MCP.Start Server` + `MCP.Connect To Server` to recover."
                         ),
-                    ) from exc
+                    ) from _representative_cause(exc)
                 raise
-            return [_map_tool(t) for t in (result.tools or [])]
         finally:
             await ts.stack.aclose()
 
@@ -498,9 +584,17 @@ def call_tool(
     async def _drive() -> MCPToolResult:
         ts = await _open_session(handle)
         try:
-            await _initialize_with_typed_error_mapping(ts)
-            t0 = time.monotonic()
             try:
+                # Story 3.2 code-review HIGH 2-way 2026-05-19 (Edge-cases +
+                # Codex via Probe 7): wrap `initialize()` in the same
+                # connection-lost classifier as `call_tool`. Stdio
+                # subprocess crashes DURING initialize surface as
+                # `McpError("Connection closed")` or anyio exceptions —
+                # without this widening, the keyword's documented
+                # `MCPConnectionLostError` contract leaked raw SDK
+                # exceptions on the canonical production failure mode.
+                await _initialize_with_typed_error_mapping(ts)
+                t0 = time.monotonic()
                 result = await ts.session.call_tool(tool_name, args)
             except BaseException as exc:
                 if _is_connection_lost_exception(exc):
@@ -512,7 +606,7 @@ def call_tool(
                             "Inspect the server's stderr / logs for the underlying failure; "
                             "re-run `MCP.Start Server` + `MCP.Connect To Server` to recover."
                         ),
-                    ) from exc
+                    ) from _representative_cause(exc)
                 raise
             elapsed_ms = (time.monotonic() - t0) * 1000.0
             return _map_call_result(result, latency_ms=elapsed_ms)
@@ -570,10 +664,22 @@ def _map_call_result(result: Any, *, latency_ms: float) -> MCPToolResult:
             if blk.get("type") == "text" and isinstance(blk.get("text"), str):
                 error_message = blk["text"]
                 break
-        if error_message is None and content:
-            # Fallback to a generic representation when no text block
-            # is present (e.g., image-only error response).
-            error_message = "tool returned an error response without a text content block"
+        if error_message is None:
+            # Story 3.2 code-review HIGH 2-way 2026-05-19 (Edge-cases +
+            # Codex Probe 8b): the previous `and content:` guard meant
+            # an `isError=True` result with an EMPTY content list left
+            # `error_message=None`, violating the dataclass docstring
+            # contract ("populated when is_error=True; None otherwise").
+            # Now `is_error=True` always yields a non-None message.
+            # Includes the first block's `type` when content is non-empty
+            # but non-text (e.g., audio/embedded-resource error responses)
+            # so the fallback diagnostic is more specific than the
+            # pre-edit "image-only error" wording.
+            if content:
+                first_type = content[0].get("type") if isinstance(content[0], dict) else None
+                error_message = f"tool returned an error response with non-text content block of type {first_type!r}"
+            else:
+                error_message = "tool returned an error response with no content"
     return MCPToolResult(
         content=content,
         is_error=is_error,
