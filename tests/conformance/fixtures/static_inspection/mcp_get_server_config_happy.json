@@ -1,0 +1,7 @@
+{
+  "fixture_id": "mcp-get-server-config-happy-valid",
+  "keyword_name": "MCP.Get Server Config",
+  "input_file_path": "tests/fixtures/mcp/mcp-valid.json",
+  "path_type": "happy",
+  "expected_result_shape": {"type": "dict", "contains_keys": ["echo", "remote"]}
+}

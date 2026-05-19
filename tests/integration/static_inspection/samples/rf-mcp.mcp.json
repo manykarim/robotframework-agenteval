@@ -1,0 +1,41 @@
+{
+  "mcpServers": {
+    "robotmcp": {
+      "command": "uv",
+      "args": ["run", "-m", "robotmcp.server"],
+      "env": {
+        "ROBOTMCP_INSTRUCTIONS": "default",
+        "ROBOTMCP_INSTRUCTIONS_TEMPLATE": "standard",
+        "ROBOTMCP_INSTRUCTION_MODE": "default",
+        "ROBOTMCP_DISABLE_LEARNING": "0",
+        "ROBOTMCP_ATTACH_HOST": "127.0.0.1",
+        "ROBOTMCP_ATTACH_PORT": "7317",
+        "ROBOTMCP_ATTACH_TOKEN": "change-me",
+        "ROBOTMCP_ATTACH_DEFAULT": "auto",
+        "ROBOTMCP_TOKENIZER": "auto",
+        "ROBOTMCP_OUTPUT_MODE": "auto",
+        "ROBOTMCP_MAX_INLINE_TOKENS": "300",
+        "ROBOTMCP_ARTIFACT_DIR": ".robotmcp_artifacts",
+        "ROBOTMCP_ARTIFACT_TTL": "3600",
+        "PYTHONPATH": "/home/many/workspace/robotframework-PlatynUI/packages/native/python"
+      },
+      "autoStart": true
+    },
+    "claude-flow": {
+      "command": "npx",
+      "args": [
+        "claude-flow@alpha",
+        "mcp",
+        "start"
+      ],
+      "env": {
+        "CLAUDE_FLOW_MODE": "v3",
+        "CLAUDE_FLOW_HOOKS_ENABLED": "true",
+        "CLAUDE_FLOW_TOPOLOGY": "hierarchical-mesh",
+        "CLAUDE_FLOW_MAX_AGENTS": "15",
+        "CLAUDE_FLOW_MEMORY_BACKEND": "hybrid"
+      },
+      "autoStart": false
+    }
+  }
+}

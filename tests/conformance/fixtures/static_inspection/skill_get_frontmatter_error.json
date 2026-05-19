@@ -1,0 +1,7 @@
+{
+  "fixture_id": "skill-get-frontmatter-error-malformed-yaml",
+  "keyword_name": "Skill.Get Frontmatter",
+  "input_file_path": "tests/fixtures/skills/example-malformed-yaml.md",
+  "path_type": "error",
+  "expected_error_code": "INVALID_SKILL_FRONTMATTER"
+}

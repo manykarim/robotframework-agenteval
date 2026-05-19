@@ -1,0 +1,7 @@
+{
+  "fixture_id": "skill-get-description-happy-valid",
+  "keyword_name": "Skill.Get Description",
+  "input_file_path": "tests/fixtures/skills/example-valid.md",
+  "path_type": "happy",
+  "expected_result_shape": {"type": "str"}
+}

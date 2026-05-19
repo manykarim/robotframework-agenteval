@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentEval Epic 2 static-inspection conformance fixture",
+  "description": "Schema for Epic 2 Tier-1 keyword conformance fixtures (Story 2.4). SEPARATE from `fixture-schema.json` which is adapter-focused. Each fixture exercises ONE Tier-1 keyword against ONE input file + asserts either a happy-path result-shape OR an error-path error_code. Loaded + parametrized by `tests/conformance/test_ac_static_inspection_fixtures.py`.",
+  "type": "object",
+  "required": ["fixture_id", "keyword_name", "input_file_path", "path_type"],
+  "additionalProperties": false,
+  "$defs": {
+    "KeywordName": {
+      "type": "string",
+      "enum": [
+        "Skill.Get Frontmatter",
+        "Skill.Get Description",
+        "Skill.Get Allowed Tools",
+        "Skill.Get Disable Model Invocation",
+        "Should Be Valid Frontmatter",
+        "Subagent.Get Frontmatter",
+        "Hook.Get Config",
+        "MCP.Get Server Config",
+        "MCP.Get Tool Schema",
+        "MCP.Validate Tool Schema"
+      ]
+    },
+    "ErrorCode": {
+      "type": "string",
+      "enum": [
+        "INVALID_SKILL_FRONTMATTER",
+        "INVALID_SUBAGENT_DEFINITION",
+        "INVALID_HOOK_CONFIG",
+        "INVALID_MCP_SERVER_CONFIG",
+        "INVALID_MCP_TOOL_SCHEMA"
+      ]
+    }
+  },
+  "properties": {
+    "fixture_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier (used in pytest parametrize id). Convention: <keyword-slug>-<happy|error>-<shortname>."
+    },
+    "keyword_name": {"$ref": "#/$defs/KeywordName"},
+    "input_file_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Path to the input file relative to the repo root. The keyword is invoked with this path as its primary argument."
+    },
+    "path_type": {
+      "type": "string",
+      "enum": ["happy", "error"]
+    },
+    "kwargs": {
+      "type": "object",
+      "description": "Optional additional kwargs passed to the keyword (e.g., `tool_name` + `server_name` for MCP.Get Tool Schema). Keys are kwarg names; values are JSON-serializable.",
+      "additionalProperties": true
+    },
+    "expected_result_shape": {
+      "type": "object",
+      "description": "Happy-path only. Schema-like description of the returned value. Recognized keys: `type` (`dict`/`list`/`str`/`bool`/`int`/`float`/`none`), `contains_keys` (list of keys that must be present in the returned dict), `equals` (exact value match for scalars).",
+      "additionalProperties": true
+    },
+    "expected_error_code": {"$ref": "#/$defs/ErrorCode"},
+    "expected_field_name_substring": {
+      "type": "string",
+      "description": "Error-path only. The raised error's `field_name` attribute must contain this substring (use for JSON Pointer assertions)."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional human-readable context for the fixture (e.g., 'reproduces issue #X')."
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"path_type": {"const": "happy"}}},
+      "then": {
+        "required": ["expected_result_shape"],
+        "not": {"required": ["expected_error_code"]}
+      }
+    },
+    {
+      "if": {"properties": {"path_type": {"const": "error"}}},
+      "then": {
+        "required": ["expected_error_code"],
+        "not": {"required": ["expected_result_shape"]}
+      }
+    }
+  ]
+}

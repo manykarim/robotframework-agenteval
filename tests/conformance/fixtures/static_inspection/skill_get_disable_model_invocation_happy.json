@@ -1,0 +1,7 @@
+{
+  "fixture_id": "skill-get-disable-model-invocation-happy-valid",
+  "keyword_name": "Skill.Get Disable Model Invocation",
+  "input_file_path": "tests/fixtures/skills/example-valid.md",
+  "path_type": "happy",
+  "expected_result_shape": {"type": "bool"}
+}

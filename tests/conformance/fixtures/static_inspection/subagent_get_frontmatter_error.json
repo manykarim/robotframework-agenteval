@@ -1,0 +1,7 @@
+{
+  "fixture_id": "subagent-get-frontmatter-error-missing-name",
+  "keyword_name": "Subagent.Get Frontmatter",
+  "input_file_path": "tests/fixtures/subagents/example-missing-fields.md",
+  "path_type": "error",
+  "expected_error_code": "INVALID_SUBAGENT_DEFINITION"
+}

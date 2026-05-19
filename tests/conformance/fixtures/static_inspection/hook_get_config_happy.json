@@ -1,0 +1,10 @@
+{
+  "fixture_id": "hook-get-config-happy-valid",
+  "keyword_name": "Hook.Get Config",
+  "input_file_path": "tests/fixtures/hooks/settings-valid.json",
+  "path_type": "happy",
+  "expected_result_shape": {
+    "type": "dict",
+    "contains_keys": ["hooks.PreToolUse", "hooks.PostToolUse", "hooks.Stop"]
+  }
+}

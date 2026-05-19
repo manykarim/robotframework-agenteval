@@ -1,0 +1,8 @@
+{
+  "fixture_id": "mcp-get-tool-schema-happy-search",
+  "keyword_name": "MCP.Get Tool Schema",
+  "input_file_path": "tests/fixtures/mcp/mcp-valid.json",
+  "path_type": "happy",
+  "kwargs": {"tool_name": "search"},
+  "expected_result_shape": {"type": "dict", "contains_keys": ["type", "properties"]}
+}

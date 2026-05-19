@@ -1,0 +1,10 @@
+{
+  "fixture_id": "skill-get-frontmatter-happy-valid",
+  "keyword_name": "Skill.Get Frontmatter",
+  "input_file_path": "tests/fixtures/skills/example-valid.md",
+  "path_type": "happy",
+  "expected_result_shape": {
+    "type": "dict",
+    "contains_keys": ["name", "description", "allowed-tools", "disable-model-invocation"]
+  }
+}

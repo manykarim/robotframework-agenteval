@@ -1,0 +1,7 @@
+{
+  "fixture_id": "subagent-get-frontmatter-happy-valid",
+  "keyword_name": "Subagent.Get Frontmatter",
+  "input_file_path": "tests/fixtures/subagents/example-valid.md",
+  "path_type": "happy",
+  "expected_result_shape": {"type": "dict", "contains_keys": ["name", "description"]}
+}

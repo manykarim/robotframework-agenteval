@@ -1,0 +1,8 @@
+{
+  "fixture_id": "should-be-valid-frontmatter-happy-valid-dict",
+  "keyword_name": "Should Be Valid Frontmatter",
+  "input_file_path": "tests/fixtures/skills/example-valid.md",
+  "path_type": "happy",
+  "expected_result_shape": {"type": "none"},
+  "notes": "Loaded via Skill.Get Frontmatter first, then passed to Should Be Valid Frontmatter."
+}

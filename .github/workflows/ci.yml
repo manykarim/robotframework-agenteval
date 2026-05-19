@@ -123,3 +123,15 @@ jobs:
       # WITH NAME MCP`. This step surfaces regressions in that pattern.
       - name: robot tests/unit/mcp (RF mcp integration)
         run: uv run robot --output NONE --report NONE --log NONE tests/unit/mcp/test_robot_integration.robot
+
+      # Story 2.4: integration tests against real-world / representative
+      # sample files. The Story 1b.5 conformance harness stays adapter-
+      # focused; static-inspection fixtures live in
+      # tests/conformance/fixtures/static_inspection/ and are exercised
+      # by tests/conformance/test_ac_static_inspection_fixtures.py
+      # (picked up by the existing `pytest tests/conformance -q` step).
+      # This step picks up the integration tests that exercise the
+      # keyword surface against the rf-mcp .mcp.json + synthetic Claude
+      # Code samples.
+      - name: pytest tests/integration/static_inspection (Story 2.4 real-world samples)
+        run: uv run pytest tests/integration/static_inspection -q

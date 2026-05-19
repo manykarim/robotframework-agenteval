@@ -1,0 +1,9 @@
+{
+  "fixture_id": "mcp-validate-tool-schema-error-broken",
+  "keyword_name": "MCP.Validate Tool Schema",
+  "input_file_path": "tests/fixtures/mcp/mcp-with-broken-tool.json",
+  "path_type": "error",
+  "kwargs": {"tool_name": "broken_tool"},
+  "expected_error_code": "INVALID_MCP_TOOL_SCHEMA",
+  "expected_field_name_substring": "tools/broken_tool"
+}

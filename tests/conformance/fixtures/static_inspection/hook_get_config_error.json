@@ -1,0 +1,8 @@
+{
+  "fixture_id": "hook-get-config-error-missing-command",
+  "keyword_name": "Hook.Get Config",
+  "input_file_path": "tests/fixtures/hooks/settings-missing-command.json",
+  "path_type": "error",
+  "expected_error_code": "INVALID_HOOK_CONFIG",
+  "expected_field_name_substring": "/hooks/PreToolUse/0/command"
+}

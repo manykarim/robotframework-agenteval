@@ -1,0 +1,8 @@
+{
+  "fixture_id": "mcp-get-server-config-error-missing-command",
+  "keyword_name": "MCP.Get Server Config",
+  "input_file_path": "tests/fixtures/mcp/mcp-missing-command.json",
+  "path_type": "error",
+  "expected_error_code": "INVALID_MCP_SERVER_CONFIG",
+  "expected_field_name_substring": "/mcpServers/broken/command"
+}

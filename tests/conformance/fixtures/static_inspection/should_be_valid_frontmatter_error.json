@@ -1,0 +1,8 @@
+{
+  "fixture_id": "should-be-valid-frontmatter-error-missing-name",
+  "keyword_name": "Should Be Valid Frontmatter",
+  "input_file_path": "tests/fixtures/skills/example-missing-fields.md",
+  "path_type": "error",
+  "expected_error_code": "INVALID_SKILL_FRONTMATTER",
+  "notes": "Loaded via parse_frontmatter; missing-fields fixture raises in the validator."
+}

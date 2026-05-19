@@ -1,0 +1,8 @@
+{
+  "fixture_id": "mcp-validate-tool-schema-happy-search",
+  "keyword_name": "MCP.Validate Tool Schema",
+  "input_file_path": "tests/fixtures/mcp/mcp-valid.json",
+  "path_type": "happy",
+  "kwargs": {"tool_name": "search"},
+  "expected_result_shape": {"type": "none"}
+}

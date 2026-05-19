@@ -19,10 +19,19 @@ from .loader import load_fixture
 from .types import ConformanceFixture
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+# Story 2.4: static-inspection fixtures use a SEPARATE schema (Epic 2
+# scope). Scope this Story-1b.5 adapter-fixture loader test to the
+# 2 adapter subdirs only; static-inspection fixtures live under
+# `fixtures/static_inspection/` and are exercised by
+# `test_ac_static_inspection_fixtures.py` against a different schema.
+_ADAPTER_FIXTURE_DIRS: tuple[str, ...] = ("generic", "claude_code_cli")
 
 
 def _all_fixture_paths() -> list[Path]:
-    return sorted(FIXTURES_DIR.rglob("*.json"))
+    paths: list[Path] = []
+    for adapter_dir in _ADAPTER_FIXTURE_DIRS:
+        paths.extend((FIXTURES_DIR / adapter_dir).rglob("*.json"))
+    return sorted(paths)
 
 
 @pytest.mark.parametrize("fixture_path", _all_fixture_paths(), ids=lambda p: f"{p.parent.name}/{p.name}")

@@ -1206,7 +1206,7 @@ So that AC-CONFORMANCE-01 is satisfied for Epic 2 and regressions are caught by 
 
 **Acceptance Criteria:**
 
-**Given** the 11 Tier-1 keywords from Stories 2.1-2.3 (`Skill.Get Frontmatter`, `Skill.Get Description`, `Skill.Get Allowed Tools`, `Skill.Get Disable Model Invocation`, `Should Be Valid Frontmatter`, `Subagent.Get Frontmatter`, `Hook.Get Config`, `MCP.Get Server Config`, `MCP.Get Tool Schema`, `MCP.Validate Tool Schema`),
+**Given** the 10 Tier-1 keywords from Stories 2.1-2.3 (`Skill.Get Frontmatter`, `Skill.Get Description`, `Skill.Get Allowed Tools`, `Skill.Get Disable Model Invocation`, `Should Be Valid Frontmatter`, `Subagent.Get Frontmatter`, `Hook.Get Config`, `MCP.Get Server Config`, `MCP.Get Tool Schema`, `MCP.Validate Tool Schema`) — pre-edit "11 Tier-1 keywords" was Story 2.4 pre-create-story drift check D-A 2026-05-19; the enumerated bullet list has 10 items,
 **When** I author conformance fixtures at `tests/conformance/fixtures/`,
 **Then** each keyword has at minimum one "happy path" fixture + one "error path" fixture, totaling 22+ fixtures for Epic 2 alone, all loading cleanly through the Story 1b.5 harness.
 
