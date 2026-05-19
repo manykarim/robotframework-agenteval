@@ -199,8 +199,27 @@ def test_all_samples_present() -> None:
 
 
 def test_dogfood_prep_epic_3_unblocked(mcp: MCPLibrary) -> None:
-    """Story 2.4 AC-2.4.7: rf-mcp's `.mcp.json` parses cleanly + the
-    keyword set is Epic-3 ready for Mei's MCP author dogfood flow.
+    """Story 2.4 AC-2.4.7: rf-mcp's `.mcp.json` parses cleanly + Epic-3 dogfood-ready.
+
+    Story 2.4 code-review Edge-cases MED-2 fix 2026-05-19: pre-edit
+    `len(servers) >= 1` was fake-green (trivially true for any non-empty
+    dict). Tightened to assert the specific Epic-3-relevant invariants:
+    BOTH known rf-mcp servers parse + each declares the required
+    `command` + (when present) typed `args` per FR5. This is what Epic-3
+    actually consumes from the static-inspection surface.
     """
     servers = mcp.get_server_config(RF_MCP_SAMPLE)
-    assert len(servers) >= 1, "rf-mcp sample must declare ≥1 server"
+    # Known rf-mcp upstream servers (verified pre-edit; if upstream renames
+    # or removes one, this test fails loudly + the verbatim-copy maintenance
+    # gap surfaces in PR review).
+    assert "robotmcp" in servers, f"rf-mcp dropped robotmcp; got: {sorted(servers.keys())!r}"
+    assert "claude-flow" in servers, f"rf-mcp dropped claude-flow; got: {sorted(servers.keys())!r}"
+    # FR5 entry shape: each server must have a non-empty `command` string;
+    # `args` (when declared) must be a list[str].
+    for srv_name, entry in servers.items():
+        assert isinstance(entry.get("command"), str) and entry["command"], (
+            f"rf-mcp server {srv_name!r} missing FR5-required `command` field"
+        )
+        if "args" in entry:
+            assert isinstance(entry["args"], list)
+            assert all(isinstance(arg, str) for arg in entry["args"])

@@ -1,0 +1,9 @@
+{
+  "fixture_id": "mcp-get-tool-schema-scoped-happy",
+  "keyword_name": "MCP.Get Tool Schema",
+  "input_file_path": "tests/fixtures/mcp/mcp-valid.json",
+  "path_type": "happy",
+  "kwargs": {"tool_name": "search", "server_name": "echo"},
+  "expected_result_shape": {"type": "dict", "contains_keys": ["type", "properties"]},
+  "notes": "Story 2.4 code-review Blind LOW-9 fix: exercises the server-scoped branch of `get_tool_schema` (pre-edit fixtures only exercised the cross-server-search branch)."
+}

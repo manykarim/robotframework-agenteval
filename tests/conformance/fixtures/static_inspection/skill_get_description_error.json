@@ -3,5 +3,6 @@
   "keyword_name": "Skill.Get Description",
   "input_file_path": "tests/fixtures/skills/example-missing-fields.md",
   "path_type": "error",
-  "expected_error_code": "INVALID_SKILL_FRONTMATTER"
+  "expected_error_code": "INVALID_SKILL_FRONTMATTER",
+  "expected_field_name_substring": "name"
 }

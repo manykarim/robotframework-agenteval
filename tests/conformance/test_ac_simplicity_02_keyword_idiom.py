@@ -195,3 +195,55 @@ def test_at_least_one_sub_library_present() -> None:
     assert {"SkillsLibrary", "SubagentsLibrary", "HooksLibrary", "MCPLibrary"} <= names, (
         f"expected SkillsLibrary + SubagentsLibrary + HooksLibrary + MCPLibrary; found {names!r}"
     )
+
+
+def test_core_ergonomic_should_keywords_have_paired_getters() -> None:
+    """AC-SIMPLICITY-02b: every CORE `Should *` keyword has a paired `Get *` keyword.
+
+    Story 2.4 code-review Auditor MED-1 fix 2026-05-19: pre-edit
+    SIMPLICITY-02 conformance test shipped only the (a) half of the
+    rule (no sub-library `Should *`); architecture L830 names BOTH
+    halves. The (b) half is core-keyword-paired-getter enforcement.
+    Phase-1 has no CORE ergonomic `Should *` keywords yet (the top-
+    level `AgentEval` library exposes only `Get Effective Config` +
+    composed `Hook.Get Config`); this test trivially passes today but
+    becomes load-bearing the moment Epic 4 lands `Tool Call Should
+    Have Occurred` + its paired `Get Tool Calls` getter per PRD AC-
+    SIMPLICITY-02b L339-350.
+    """
+    # Walk the top-level `AgentEval` class for core ergonomic keywords
+    # (excluding composed sub-library keywords which are checked by
+    # `test_no_unauthorized_sub_library_should_keywords`).
+    from AgentEval import AgentEval as AgentEvalLib
+
+    core_should_names: list[str] = []
+    core_get_names: list[str] = []
+    for attr_name in dir(AgentEvalLib):
+        if attr_name.startswith("_"):
+            continue
+        attr = getattr(AgentEvalLib, attr_name, None)
+        target = getattr(attr, "__func__", attr) if attr else attr
+        if target is None:
+            continue
+        rf_name = getattr(target, "robot_name", None)
+        if rf_name is None:
+            continue
+        if rf_name.startswith("Should "):
+            core_should_names.append(rf_name)
+        elif rf_name.startswith("Get "):
+            core_get_names.append(rf_name)
+
+    # For each `Should X` core keyword, assert there is a paired `Get X-fragment`.
+    # Convention per PRD L347: `Tool Call Should Have Occurred` pairs with
+    # `Get Tool Calls`. We don't enforce the exact rename rule (Phase-1
+    # has no examples to ground it); we enforce existence of ANY `Get *`
+    # core keyword for each `Should *` core keyword — Phase-2 stories
+    # adding the first pair will tighten this if the convention
+    # crystallizes.
+    if core_should_names:
+        assert core_get_names, (
+            f"core `Should *` keywords {core_should_names!r} but no paired `Get *` keyword "
+            f"exists on the top-level `AgentEval` library; violates PRD AC-SIMPLICITY-02b."
+        )
+    # Phase-1 trivially-passes when core_should_names is empty (the
+    # current state). Test surface is load-bearing for Epic 4+.

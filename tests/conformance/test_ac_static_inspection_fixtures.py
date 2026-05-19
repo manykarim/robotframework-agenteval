@@ -58,12 +58,31 @@ def _load_schema() -> dict[str, Any]:
 
 
 def _load_fixtures() -> list[dict[str, Any]]:
+    """Load + schema-validate + path-traversal-check each fixture.
+
+    Story 2.4 code-review Edge-cases MED-1 fix 2026-05-19: a malicious
+    fixture PR could declare `input_file_path = "../../../etc/passwd"`
+    and the harness would happily read that file (the parser then
+    surfaces fragments via error messages → information leak). Now
+    asserts every `input_file_path` resolves WITHIN `REPO_ROOT` before
+    accepting the fixture.
+    """
     schema = _load_schema()
     validator = jsonschema.Draft202012Validator(schema)
     fixtures: list[dict[str, Any]] = []
+    repo_root_resolved = REPO_ROOT.resolve()
     for path in sorted(FIXTURES_DIR.glob("*.json")):
         data = json.loads(path.read_text(encoding="utf-8"))
         validator.validate(data)
+        # Path-traversal guard: the fixture's input_file_path must
+        # resolve to a path WITHIN REPO_ROOT.
+        input_path_resolved = (REPO_ROOT / data["input_file_path"]).resolve()
+        if not input_path_resolved.is_relative_to(repo_root_resolved):
+            raise AssertionError(
+                f"Fixture {data['fixture_id']!r} has input_file_path "
+                f"{data['input_file_path']!r} that resolves outside REPO_ROOT "
+                f"({input_path_resolved!r}). Path-traversal not allowed."
+            )
         data["_fixture_path"] = str(path.relative_to(REPO_ROOT))
         fixtures.append(data)
     return fixtures
@@ -115,7 +134,14 @@ def _invoke_keyword(fixture: dict[str, Any]) -> Any:
 
 
 def _assert_result_shape(result: Any, shape: dict[str, Any]) -> None:
-    """Verify the keyword's return value matches `expected_result_shape`."""
+    """Verify the keyword's return value matches `expected_result_shape`.
+
+    Story 2.4 code-review Blind MED-3 fix 2026-05-19: extended with
+    `min_length` (for non-empty lists/strings) + `contains_values` (for
+    list-element membership) so future regressions returning an empty
+    list or list-of-wrong-values are caught. Schema is now strict-validated;
+    typos in shape keys are rejected before reaching this function.
+    """
     expected_type = shape.get("type")
     type_map = {
         "dict": dict,
@@ -147,6 +173,17 @@ def _assert_result_shape(result: Any, shape: dict[str, Any]) -> None:
     equals = shape.get("equals")
     if equals is not None:
         assert result == equals, f"expected {equals!r}, got {result!r}"
+
+    min_length = shape.get("min_length")
+    if min_length is not None:
+        assert hasattr(result, "__len__"), "min_length requires sized result"
+        assert len(result) >= min_length, f"expected length >= {min_length}, got {len(result)} (result: {result!r})"
+
+    contains_values = shape.get("contains_values")
+    if contains_values is not None:
+        assert isinstance(result, list), "contains_values requires list result"
+        for value in contains_values:
+            assert value in result, f"expected {value!r} in result list {result!r}"
 
 
 @pytest.mark.parametrize("fixture", _FIXTURES, ids=lambda f: f["fixture_id"])

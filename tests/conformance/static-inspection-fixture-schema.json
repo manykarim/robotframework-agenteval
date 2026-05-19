@@ -55,8 +55,21 @@
     },
     "expected_result_shape": {
       "type": "object",
-      "description": "Happy-path only. Schema-like description of the returned value. Recognized keys: `type` (`dict`/`list`/`str`/`bool`/`int`/`float`/`none`), `contains_keys` (list of keys that must be present in the returned dict), `equals` (exact value match for scalars).",
-      "additionalProperties": true
+      "description": "Happy-path only. Schema-like description of the returned value. Story 2.4 code-review HIGH-2 fix 2026-05-19 (Blind + Codex 2-way): pre-edit schema accepted any object so typos like `contains_key` (missing `s`) or `type: bogus` silently disabled assertions. Now strict-schema'd: `type` is enum-constrained, `contains_keys` is `array[str]`, `equals` is unconstrained scalar, `min_length` is an int for list/str sizing, `contains_values` is `array[any]` for list-element membership; no other keys permitted.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["dict", "list", "str", "bool", "int", "float", "none"]
+        },
+        "contains_keys": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "equals": {},
+        "min_length": {"type": "integer", "minimum": 0},
+        "contains_values": {"type": "array"}
+      }
     },
     "expected_error_code": {"$ref": "#/$defs/ErrorCode"},
     "expected_field_name_substring": {

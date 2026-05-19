@@ -1,0 +1,10 @@
+{
+  "fixture_id": "mcp-get-tool-schema-scoped-unknown-server",
+  "keyword_name": "MCP.Get Tool Schema",
+  "input_file_path": "tests/fixtures/mcp/mcp-valid.json",
+  "path_type": "error",
+  "kwargs": {"tool_name": "search", "server_name": "does-not-exist"},
+  "expected_error_code": "INVALID_MCP_TOOL_SCHEMA",
+  "expected_field_name_substring": "/mcpServers/does-not-exist",
+  "notes": "Story 2.4 code-review Blind LOW-9 fix: exercises scoped-but-server-unknown branch. JSON Pointer points at the named-server location (per Story 2.3 HIGH-1 fix concrete-pointer contract)."
+}

@@ -3,5 +3,9 @@
   "keyword_name": "Skill.Get Allowed Tools",
   "input_file_path": "tests/fixtures/skills/example-valid.md",
   "path_type": "happy",
-  "expected_result_shape": {"type": "list"}
+  "expected_result_shape": {
+    "type": "list",
+    "min_length": 1,
+    "contains_values": ["read_file"]
+  }
 }

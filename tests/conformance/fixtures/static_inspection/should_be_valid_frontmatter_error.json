@@ -4,5 +4,6 @@
   "input_file_path": "tests/fixtures/skills/example-missing-fields.md",
   "path_type": "error",
   "expected_error_code": "INVALID_SKILL_FRONTMATTER",
-  "notes": "Loaded via parse_frontmatter; missing-fields fixture raises in the validator."
+  "expected_field_name_substring": "name",
+  "notes": "Loaded via parse_frontmatter; missing-fields fixture raises in the validator. Validator-emitted field_name is `name` per `validate_frontmatter_structure`'s comma-joined missing-fields semantics — proves the error originates from the validator, not the parser, per Story 2.4 code-review Blind MED-1 fix 2026-05-19."
 }

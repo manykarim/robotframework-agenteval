@@ -124,14 +124,23 @@ jobs:
       - name: robot tests/unit/mcp (RF mcp integration)
         run: uv run robot --output NONE --report NONE --log NONE tests/unit/mcp/test_robot_integration.robot
 
+      # Story 2.4: conformance + integration tests against real-world /
+      # representative sample files.
+      #
+      # Story 2.4 code-review HIGH-1 fix (Blind + Auditor + Codex 3-way
+      # 2026-05-19): the pre-edit comment claimed
+      # `pytest tests/conformance -q` was "already an existing step" —
+      # it was NOT. Story 2.4's 22 static-inspection conformance cases +
+      # the un-skipped SIMPLICITY-02 introspection asserts were therefore
+      # UNGATED on PR. Added the explicit conformance step here so the
+      # Story 2.4 conformance suite runs in PR-gating CI. The
+      # release-only `conformance.yml` workflow keeps its separate role
+      # (adapter-conformance harness pinned per architecture L1174).
+      - name: pytest tests/conformance (Story 2.4 static-inspection fixtures + SIMPLICITY-02)
+        run: uv run pytest tests/conformance -q
+
       # Story 2.4: integration tests against real-world / representative
-      # sample files. The Story 1b.5 conformance harness stays adapter-
-      # focused; static-inspection fixtures live in
-      # tests/conformance/fixtures/static_inspection/ and are exercised
-      # by tests/conformance/test_ac_static_inspection_fixtures.py
-      # (picked up by the existing `pytest tests/conformance -q` step).
-      # This step picks up the integration tests that exercise the
-      # keyword surface against the rf-mcp .mcp.json + synthetic Claude
-      # Code samples.
+      # sample files. Picks up tests that exercise the keyword surface
+      # against the rf-mcp .mcp.json + synthetic Claude Code samples.
       - name: pytest tests/integration/static_inspection (Story 2.4 real-world samples)
         run: uv run pytest tests/integration/static_inspection -q
