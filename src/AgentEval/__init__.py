@@ -69,12 +69,30 @@ _logger = logging.getLogger("AgentEval.library")
 # top-level `AgentEval` import remains green even while later Epic
 # sub-libraries are not yet shipped. Story 2.1 ships entry 1 (skills);
 # future Epics extend this tuple.
-# Story 2.2 extension: Subagent + Hook sub-libraries registered alongside Skill.
-_SUB_LIBRARIES: tuple[tuple[str, str], ...] = (
-    ("AgentEval.skills.library", "SkillsLibrary"),
-    ("AgentEval.subagents.library", "SubagentsLibrary"),
-    ("AgentEval.hooks.library", "HooksLibrary"),
-)
+# Story 2.2 code-review fix (2026-05-19, 3-way HIGH from Edge-cases+Blind+Codex
+# implicit): `Get Frontmatter` collides between `SkillsLibrary` and
+# `SubagentsLibrary` under `DynamicCore` last-wins flattening, silently
+# shadowing Story 2.1's validation surface. Resolution per the PRD-documented
+# canonical user pattern (PRD FR1/FR3 both use `<prefix>.Get Frontmatter`
+# syntax → user pattern is `Library X WITH NAME prefix`, NOT flat
+# `Library AgentEval`): sub-libraries with parallel keyword names are
+# excluded from the top-level DynamicCore composition. Users access them
+# via the WITH-NAME pattern.
+#
+# Carve-out registry (extend per future story with explicit ratification):
+# - `SkillsLibrary` — EXCLUDED (collides with `SubagentsLibrary` on
+#   `Get Frontmatter`). User pattern: `Library AgentEval.skills.library.SkillsLibrary
+#   WITH NAME Skill`.
+# - `SubagentsLibrary` — EXCLUDED (same collision). User pattern:
+#   `Library AgentEval.subagents.library.SubagentsLibrary WITH NAME Subagent`.
+# - `HooksLibrary` — INCLUDED. `Get Config` is unique across all Phase-1
+#   sub-libraries; flattening into `Library AgentEval` is safe.
+#
+# A runtime collision-detector in `_build_components()` raises loudly if
+# future stories accidentally register two components with overlapping
+# `@keyword(name=...)` values — preventing the silent last-wins regression
+# from recurring.
+_SUB_LIBRARIES: tuple[tuple[str, str], ...] = (("AgentEval.hooks.library", "HooksLibrary"),)
 
 
 # Sentinel: distinguishes "user passed this kwarg" from "kwarg defaulted to
@@ -243,6 +261,18 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
         `__init__`). A constructor failure on a sub-library is a bug,
         not optionality — re-raise so `Library AgentEval` fails loudly
         instead of silently exposing a partial keyword namespace.
+
+        Story 2.2 code-review fix (Edge-cases+Blind HIGH): after the
+        components list is assembled, this method runs a collision
+        detector over the `robot_name` attribute on every
+        `@keyword`-decorated method. If two components register the
+        same RF keyword name (the Story 2.2 `SkillsLibrary`/`SubagentsLibrary`
+        `Get Frontmatter` collision was the canonical case), this
+        raises a `RuntimeError` AT IMPORT TIME so the bug is loud
+        instead of producing a last-wins silent regression. The
+        collision-prone sub-libraries are now excluded from
+        `_SUB_LIBRARIES` (see registry comments above); the detector
+        guards against future accidental re-introduction.
         """
         components: list[Any] = []
         for mod_name, cls_name in _SUB_LIBRARIES:
@@ -260,6 +290,31 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
             # Constructor errors propagate — they indicate bugs, not
             # optional sub-libraries. (Code-review B7 fix.)
             components.append(cls())
+
+        # Collision detector — raise loudly on duplicate keyword names
+        # across components (Story 2.2 code-review HIGH-1 fix).
+        keyword_owners: dict[str, type] = {}
+        for component in components:
+            for attr_name in dir(component):
+                if attr_name.startswith("_"):
+                    continue
+                try:
+                    attr = getattr(component, attr_name)
+                except Exception:
+                    continue
+                target = getattr(attr, "__func__", attr)
+                kw_name = getattr(target, "robot_name", None)
+                if kw_name is None:
+                    continue
+                if kw_name in keyword_owners:
+                    raise RuntimeError(
+                        f"DynamicCore composition collision: keyword {kw_name!r} declared "
+                        f"on both {keyword_owners[kw_name].__name__} and "
+                        f"{component.__class__.__name__}. Refusing to load with silent "
+                        f"last-wins behavior. Either rename one keyword OR exclude one "
+                        f"sub-library from `_SUB_LIBRARIES` and document the carve-out."
+                    )
+                keyword_owners[kw_name] = type(component)
         return components
 
     @keyword(name="Get Effective Config")

@@ -468,22 +468,34 @@ def test_rendered_str_first_line_matches_fr59_header(lib: SkillsLibrary) -> None
     assert len(lines) == 5, f"expected 5 lines; got {len(lines)}: {rendered!r}"
 
 
-def test_agenteval_loads_skills_library_via_dynamic_core() -> None:
-    """`Library AgentEval` must expose the `SkillsLibrary` keywords.
+def test_agenteval_does_not_expose_skills_library_via_dynamic_core() -> None:
+    """`SkillsLibrary` is EXCLUDED from top-level DynamicCore composition.
 
-    Code-review C4 fix: there was no committed test that exercised the
-    DynamicCore composition path; a typo in `_SUB_LIBRARIES` would have
-    silently dropped the Skill sub-library. Assert `_loaded_components`
-    contains `SkillsLibrary` AND that the parent's keyword registry
-    surfaces a Skill keyword.
+    Story 2.2 code-review HIGH-1 fix (Edge-cases + Blind): the
+    `SkillsLibrary.Get Frontmatter` keyword collided with
+    `SubagentsLibrary.Get Frontmatter` under DynamicCore's last-wins
+    flattening, silently shadowing Story 2.1's validation surface.
+    Resolution per the PRD-documented canonical user pattern (PRD FR1
+    uses `Skill.Get Frontmatter` syntax → user pattern is `Library X
+    WITH NAME prefix`): `SkillsLibrary` is excluded from `_SUB_LIBRARIES`.
+    Users access via `Library AgentEval.skills.library.SkillsLibrary
+    WITH NAME Skill` (which the Story 2.1 RF integration test exercises).
     """
     from AgentEval import AgentEval as AgentEvalLib
 
     library = AgentEvalLib()
-    assert "SkillsLibrary" in library._loaded_components
-    # DynamicCore exposes `get_keyword_names()` per pythonlibcore contract.
+    assert "SkillsLibrary" not in library._loaded_components
+    # Skill keywords are NOT in the top-level keyword registry; they're
+    # reachable only via the standalone-import path.
     keyword_names = library.get_keyword_names()
-    assert "Get Frontmatter" in keyword_names, f"DynamicCore missing Skill keyword; have: {keyword_names!r}"
+    assert "Get Frontmatter" not in keyword_names
+
+
+def test_skills_library_callable_standalone() -> None:
+    """Sanity check: importing `SkillsLibrary` standalone still works (no DynamicCore needed)."""
+    standalone = SkillsLibrary()
+    frontmatter = standalone.get_frontmatter(VALID_FIXTURE)
+    assert frontmatter["name"] == "example-valid-skill"
 
 
 def test_get_frontmatter_does_not_validate_required_fields(lib: SkillsLibrary) -> None:

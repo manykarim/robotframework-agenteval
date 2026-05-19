@@ -24,10 +24,17 @@ Story 2.2 design notes:
 - Mirrors `skills/_parser.py` shape (column-0 `---` delimiter via
   `.rstrip()`, `utf-8-sig` encoding to handle BOM, one-line YAML error
   summary via `exc.problem`).
-- PRD FR3 required fields: `name`, `description`. Optional: `tools`,
-  `model`. The required-fields contract is intentionally narrower than
-  the skill format (no tool-allowlist or model-invocation switch — the
-  sub-agent is itself an actor, not a tool surface).
+- PRD FR3 (amended Story 2.2 code-review 2026-05-19) required fields:
+  `name`, `description`. Optional: `tools`, `model`. The required-fields
+  contract is intentionally narrower than the skill format (no
+  tool-allowlist or model-invocation switch — the sub-agent is itself
+  an actor, not a tool surface).
+- Architecture-layout deviation (inherited from Story 2.1): architecture
+  L843-847 pins `_internal.py` as the canonical helper module name.
+  Story 2.2 inherits Story 2.1's `_parser.py` deviation (clarity > strict
+  convention for the Phase-1 parser modules); tracked in deferred-work
+  for Phase-1.5 cleanup. Auditor MED-2 fix 2026-05-19 added this note
+  so future grep-for-debt finds ALL Phase-1 deviations in one search.
 """
 
 from __future__ import annotations

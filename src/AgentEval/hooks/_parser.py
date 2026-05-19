@@ -33,6 +33,13 @@ that ship skill metadata alongside their command.
 (e.g., `/hooks/PreToolUse/0/command`) into the offending location for
 nested-JSON validation failures — parallel to FR6's JSON Pointer
 convention for `InvalidMCPToolSchemaError`.
+
+Architecture-layout deviation (inherited from Story 2.1): architecture
+L843-847 pins `_internal.py` as the canonical helper module name.
+Story 2.2 inherits Story 2.1's `_parser.py` deviation (clarity > strict
+convention for the Phase-1 parser modules); tracked in deferred-work
+for Phase-1.5 cleanup. Auditor MED-2 fix 2026-05-19 added this note
+so future grep-for-debt finds ALL Phase-1 deviations in one search.
 """
 
 from __future__ import annotations
@@ -86,15 +93,25 @@ def parse_hook_config(path: str | Path) -> dict[str, list[dict[str, Any]]]:
         A dict mapping `hooks.<event>` → list of hook entries.
         Each entry has `command` (str) + optional `args` (list[str])
         + `timeout` (int) + `matcher` (str). If a hook's `command`
-        contains an inline YAML frontmatter block, the parsed YAML
-        appears as an extra `inline_skill: dict` field on the entry.
+        contains an inline YAML frontmatter block (delimited by
+        column-0 `---` + closing `---`, with both `name` AND
+        `description` keys present per Story 2.2 code-review tightening
+        2026-05-19), the parsed YAML appears as an extra
+        `inline_skill: dict` field on the entry. Files without a
+        top-level `hooks` field are PERMISSIVELY accepted and return
+        `{}` (no events declared); the parser ratifies this as
+        Phase-1 behavior because PRD FR4 does not say the `hooks`
+        section is mandatory.
 
     Raises:
-        InvalidHookConfigError: On any structural failure — file not
-            found, malformed JSON, hooks key missing/non-mapping,
-            event arrays not lists, entries missing `command`, wrong
-            types for optional fields. `field_name` carries an RFC
-            6901 JSON Pointer into the offending location.
+        InvalidHookConfigError: On structural failure — file not
+            found, wrong extension, malformed JSON, top-level value
+            not an object, hooks-section value not a mapping (when
+            present), event arrays not lists, entries not objects,
+            entries missing `command`, wrong types for optional
+            fields. `field_name` carries an RFC 6901 JSON Pointer
+            into the offending location. (Absent `hooks` key is NOT
+            a failure — returns `{}`.)
     """
     file_path = Path(path)
     file_path_str = str(file_path)
@@ -173,7 +190,6 @@ def parse_hook_config(path: str | Path) -> dict[str, list[dict[str, Any]]]:
                     entry,
                     file_path_str=file_path_str,
                     entry_pointer=entry_pointer,
-                    strict=event_name in SUPPORTED_EVENTS,
                 )
             )
         result[f"hooks.{event_name}"] = validated_entries
@@ -186,15 +202,35 @@ def _validate_hook_entry(
     *,
     file_path_str: str,
     entry_pointer: str,
-    strict: bool,
 ) -> dict[str, Any]:
     """Validate a single hook entry; return the validated dict (with `inline_skill` if applicable).
 
-    When `strict` is False (events outside `SUPPORTED_EVENTS`), missing
-    `command` is still flagged because the field is required by the
-    Claude Code hook format itself. The `strict` flag is reserved for
-    Phase-2 stricter-validation modes.
+    Story 2.2 code-review C-LOW-1 fix 2026-05-19: dropped the
+    pre-edit `strict` parameter which was computed by the caller but
+    never read. All events receive identical validation today; the
+    pre-edit "Phase-2 stricter-validation modes" comment overstated
+    the implementation. Phase-2 may re-introduce a strictness gradient
+    with actual branching + tests; until then the parameter is gone.
+
+    Story 2.2 code-review Blind-MED-1 fix 2026-05-19: `inline_skill`
+    is a parser-reserved output key. If a source entry contains a
+    user-supplied `inline_skill` field, raise — preventing silent
+    overwrite OR silent acceptance (the pre-edit shape did either
+    depending on whether the `command` had inline YAML).
     """
+    if "inline_skill" in entry:
+        # `inline_skill` is a parser-reserved output key; user payloads
+        # MUST NOT collide. Code-review Blind-MED-1 fix.
+        raise InvalidHookConfigError(
+            "Hook entry uses reserved key `inline_skill` (parser-managed output field).",
+            file_path=file_path_str,
+            field_name=f"{entry_pointer}/inline_skill",
+            fix_suggestion=(
+                "Remove `inline_skill` from the source entry — it is reserved as the "
+                "parser's surface for extracted inline-frontmatter content."
+            ),
+        )
+
     if "command" not in entry:
         raise InvalidHookConfigError(
             "Hook entry missing required field `command`.",
@@ -255,16 +291,32 @@ def _validate_hook_entry(
     return validated
 
 
+_INLINE_SKILL_CANONICAL_KEYS: tuple[str, ...] = ("name", "description")
+
+
 def _extract_inline_skill_frontmatter(command: str) -> dict[str, Any] | None:
     """Detect + parse an inline YAML frontmatter block at the head of `command`.
 
-    Returns the parsed YAML dict if a complete `---\\n...\\n---` block
-    appears at the head of `command`; returns None otherwise.
+    Returns the parsed YAML dict if ALL of these hold:
+        1. The command's first line (column 0) is `---`.
+        2. A subsequent line (column 0) is also `---` (closing delimiter).
+        3. The block between them parses as a YAML mapping.
+        4. The mapping contains BOTH `name` and `description` keys
+           (the canonical skill-frontmatter shape per PRD FR1).
+
+    The 4th constraint (Story 2.2 code-review Edge-MED-1 fix 2026-05-19)
+    eliminates false-positives on shell heredocs that incidentally
+    start with `---\\n...\\n---\\n` (e.g., `cat <<EOF` emitting a
+    Pandoc front-block or Kubernetes manifest). The pre-edit shape
+    silently classified such commands as inline-skill hooks, surfacing
+    arbitrary YAML mappings as `inline_skill`. The tightened heuristic
+    requires the canonical skill shape.
 
     Malformed YAML inside an inline frontmatter is NOT raised — it's
     treated as "no inline skill" and silently ignored. The hook still
     parses; only static-inspection of the inline skill is unavailable.
-    Phase-2 may tighten this to raise a typed warning.
+    Phase-2 may tighten this to raise a typed warning per
+    `DegradedTraceWarning` precedent.
     """
     lines = command.splitlines()
     if len(lines) < 3 or lines[0].rstrip() != "---":
@@ -282,5 +334,10 @@ def _extract_inline_skill_frontmatter(command: str) -> dict[str, Any] | None:
     except yaml.YAMLError:
         return None
     if not isinstance(parsed, dict):
+        return None
+    # Canonical-shape gate: skill frontmatter MUST have both `name`
+    # and `description`. Other shapes (heredocs, Pandoc blocks, etc.)
+    # are not skills.
+    if not all(key in parsed for key in _INLINE_SKILL_CANONICAL_KEYS):
         return None
     return parsed

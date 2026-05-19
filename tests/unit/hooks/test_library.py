@@ -197,9 +197,13 @@ def test_matcher_not_string_raises(lib: HooksLibrary, tmp_path: Path) -> None:
 
 
 def test_inline_skill_frontmatter_extraction(lib: HooksLibrary, tmp_path: Path) -> None:
-    """A hook whose `command` contains a YAML frontmatter block surfaces it as `inline_skill`."""
+    """A hook whose `command` contains canonical skill YAML surfaces it as `inline_skill`.
+
+    Story 2.2 code-review Edge-MED-1 fix: canonical-shape gate requires
+    both `name` and `description` keys to mark inline content as skill.
+    """
     f = tmp_path / "inline.json"
-    inline_command = "---\nname: inline-skill\npurpose: pre-tool-audit\n---\necho running audit\n"
+    inline_command = "---\nname: inline-skill\ndescription: pre-tool-audit skill\n---\necho running audit\n"
     payload = {"hooks": {"PreToolUse": [{"command": inline_command}]}}
     import json as _json
 
@@ -208,6 +212,37 @@ def test_inline_skill_frontmatter_extraction(lib: HooksLibrary, tmp_path: Path) 
     entry = config["hooks.PreToolUse"][0]
     assert "inline_skill" in entry
     assert entry["inline_skill"]["name"] == "inline-skill"
+
+
+def test_inline_skill_heuristic_rejects_non_skill_yaml(lib: HooksLibrary, tmp_path: Path) -> None:
+    """A YAML mapping that lacks `name`+`description` is NOT classified as inline_skill.
+
+    Story 2.2 code-review Edge-MED-1 fix: shell heredocs with `---`
+    delimiters (Pandoc / Kubernetes manifests) used to false-positive.
+    """
+    f = tmp_path / "heredoc.json"
+    heredoc_command = "---\nfoo: bar\nbaz: 1\n---\necho not-a-skill\n"
+    import json as _json
+
+    f.write_text(_json.dumps({"hooks": {"PreToolUse": [{"command": heredoc_command}]}}))
+    config = lib.get_config(f)
+    entry = config["hooks.PreToolUse"][0]
+    assert "inline_skill" not in entry
+
+
+def test_reserved_inline_skill_key_rejected(lib: HooksLibrary, tmp_path: Path) -> None:
+    """User-supplied `inline_skill` field on hook entry is rejected.
+
+    Story 2.2 code-review Blind-MED-1 fix: prevents silent overwrite
+    of parser-reserved output keys.
+    """
+    f = tmp_path / "reserved.json"
+    import json as _json
+
+    f.write_text(_json.dumps({"hooks": {"PreToolUse": [{"command": "x", "inline_skill": {"injected": "yes"}}]}}))
+    with pytest.raises(InvalidHookConfigError) as exc_info:
+        lib.get_config(f)
+    assert exc_info.value.field_name == "/hooks/PreToolUse/0/inline_skill"
 
 
 def test_inline_skill_absent_when_command_has_no_frontmatter(

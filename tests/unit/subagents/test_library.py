@@ -182,15 +182,25 @@ def test_parse_subagent_frontmatter_module_level_matches_keyword() -> None:
     assert direct == via_keyword
 
 
-def test_dynamic_core_loads_subagents_library() -> None:
+def test_agenteval_does_not_expose_subagents_library_via_dynamic_core() -> None:
+    """`SubagentsLibrary` is EXCLUDED from top-level DynamicCore composition.
+
+    Story 2.2 code-review HIGH-1 fix: `Get Frontmatter` collides with
+    `SkillsLibrary`. Resolution: users access via `Library AgentEval.subagents.library.SubagentsLibrary
+    WITH NAME Subagent`. The collision-detector in `AgentEval._build_components`
+    enforces this exclusion at import time so future stories cannot
+    silently re-introduce the collision.
+    """
     from AgentEval import AgentEval as AgentEvalLib
 
     library = AgentEvalLib()
-    assert "SubagentsLibrary" in library._loaded_components
-    keyword_names = library.get_keyword_names()
-    # Skill + Subagent both contribute `Get Frontmatter`; the keyword is
-    # callable via the parent library at minimum.
-    assert "Get Frontmatter" in keyword_names
+    assert "SubagentsLibrary" not in library._loaded_components
+
+
+def test_subagents_library_callable_standalone() -> None:
+    standalone = SubagentsLibrary()
+    frontmatter = standalone.get_frontmatter(VALID_FIXTURE)
+    assert frontmatter["name"] == "example-valid-subagent"
 
 
 def test_non_string_name_raises_typed_error(lib: SubagentsLibrary, tmp_path: Path) -> None:

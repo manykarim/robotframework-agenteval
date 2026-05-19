@@ -1,6 +1,6 @@
 # Story 2.2: Subagent + Hook Static Inspection Keywords
 
-Status: review
+Status: done
 
 ## Story
 
