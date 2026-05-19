@@ -44,6 +44,7 @@ try/except/cleanup pattern.
 
 from __future__ import annotations
 
+import sys
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -98,9 +99,22 @@ async def open_stdio_session(
     spawn the server subprocess + wire stdin/stdout/stderr. The
     subprocess is reaped when `stack.aclose()` is called.
 
-    Per Story 0.1 review carry-over (`deferred-work.md` L34): `errlog`
-    is NOT passed `sys.stderr` because RF listener can replace stderr
-    with a non-fd capture buffer; the SDK default is used.
+    Per Story 0.1 review carry-over (`deferred-work.md` L34): the SDK's
+    `stdio_client(server, errlog=sys.stderr)` default crashes under
+    Robot Framework's runtime with `io.UnsupportedOperation: fileno`
+    because the RF listener replaces `sys.stderr` with a non-fd capture
+    buffer + the SDK calls `.fileno()` on the errlog handle when
+    spawning the subprocess.
+
+    Story 3.3 dogfood port (2026-05-19) DOGFOOD-FINDING-1: pass
+    `errlog=sys.__stderr__` (the un-wrapped real stderr Python stashes
+    at interpreter startup) explicitly. This survives RF's listener
+    replacement (which only touches `sys.stderr`, not `sys.__stderr__`)
+    + preserves the operator's ability to see the server subprocess's
+    stderr stream. Verified end-to-end against `uv run robot
+    tests/dogfood/rf-mcp/test_mcp_surface_parity.robot` — pre-fix the
+    suite failed 11/15 with `UnsupportedOperation: fileno`; post-fix
+    the stdio connection succeeds.
 
     Story 3.1 code-review (2026-05-19) load-bearing fix: the function
     body is wrapped in `try/except BaseException` so that if the
@@ -119,7 +133,12 @@ async def open_stdio_session(
     params = StdioServerParameters(command=command, args=args or [], env=env)
     stack = AsyncExitStack()
     try:
-        read_stream, write_stream = await stack.enter_async_context(stdio_client(params))
+        # Story 3.3 dogfood DOGFOOD-FINDING-1 fix: use `sys.__stderr__`
+        # so the SDK's `.fileno()` call survives RF's listener stderr
+        # replacement. Falls back to `sys.stderr` if `__stderr__` is
+        # None (uncommon — happens under pytest capture in some modes).
+        errlog = sys.__stderr__ if sys.__stderr__ is not None else sys.stderr
+        read_stream, write_stream = await stack.enter_async_context(stdio_client(params, errlog=errlog))
         session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
         return TransportSession(session=session, stack=stack, transport="stdio")
     except BaseException:
