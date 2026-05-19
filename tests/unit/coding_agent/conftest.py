@@ -1,0 +1,54 @@
+# Copyright 2026 Many Kasiriha
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Shared fixtures for `tests/unit/coding_agent/` (Story 4.2 + future adapters).
+
+Story 4.2 code-review Edge-cases MED-1 fix 2026-05-20: the
+`mock_claude_version` fixture was originally scoped to
+`test_claude_code_cli.py` autouse-locally. Any future cross-module
+test (e.g., one that imports + constructs `ClaudeCodeCLIAdapter`
+indirectly through entry-points discovery) without monkeypatching
+`subprocess.run` would shell out to the real `claude --version`,
+which in some CI environments yields `UnsupportedBinaryVersionError(
+detected=None)` and silently passes a "raises" assertion — a
+fake-green CI failure mode per `feedback_ci_log_forensics`.
+
+Hoisting the fixture to this `conftest.py` makes it apply across
+the entire coding_agent test directory tree. Any new adapter test
+file inherits the protection without opt-in.
+"""
+
+from __future__ import annotations
+
+import subprocess
+from typing import Any
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def mock_claude_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Monkeypatch `subprocess.run` so `_assert_binary_version("claude")` passes
+    without requiring the real `claude` binary in CI.
+
+    Scope: package-wide autouse across `tests/unit/coding_agent/`.
+    """
+    real_run = subprocess.run
+
+    def _fake_run(cmd: Any, **kwargs: Any) -> Any:
+        if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "claude" and cmd[1] == "--version":
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="2.1.144 (Claude Code)\n", stderr="")
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)

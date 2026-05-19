@@ -27,22 +27,12 @@ from AgentEval.coding_agent.claude_code_cli import ClaudeCodeCLIAdapter, ClaudeC
 from AgentEval.errors import UnsupportedBinaryVersionError
 from AgentEval.types import AgentRunResult
 
+# Story 4.2 code-review Edge-cases MED-1 fix 2026-05-20: the
+# `mock_claude_version` autouse fixture was hoisted to
+# `tests/unit/coding_agent/conftest.py` for cross-module protection.
+# This file no longer declares its own fixture.
+
 FIXTURE_DIR = Path(__file__).parent.parent.parent / "fixtures" / "claude_code_cli"
-
-
-@pytest.fixture(autouse=True)
-def mock_claude_version(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Monkeypatch `subprocess.run` so `_assert_binary_version("claude")` passes
-    without requiring the real `claude` binary in CI.
-    """
-    real_run = subprocess.run
-
-    def _fake_run(cmd: Any, **kwargs: Any) -> Any:
-        if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "claude" and cmd[1] == "--version":
-            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="2.1.144 (Claude Code)\n", stderr="")
-        return real_run(cmd, **kwargs)
-
-    monkeypatch.setattr(subprocess, "run", _fake_run)
 
 
 def _load_fixture(name: str) -> list[ClaudeCodeEvent]:
@@ -208,6 +198,14 @@ def test_finalize_tool_use_fixture_extracts_tool_calls() -> None:
     assert tc.name == "search"
     assert tc.args == {"query": "hello world"}
     assert tc.source == "adapter"
+    # Story 4.2 code-review Edge-cases M5 fix 2026-05-20: pin the
+    # Phase-1 DF-4.2-S2 placeholders so when Epic 5 hosted-MCP observer
+    # wires real OTel-span correlation + tool-result attribution, this
+    # test fails + reminds reviewers to drop the placeholders.
+    assert tc.result is None  # Phase-1 placeholder; Epic 5 correlates with tool_result events
+    assert tc.error is None  # Phase-1 placeholder
+    assert tc.latency_ms == 0.0  # Phase-1 placeholder; Epic 5 correlates real per-call latency
+    assert tc.gen_ai_tool_call_id == "toolu_test_1"  # captured from the tool_use block's id
 
 
 def test_finalize_truncated_fixture_yields_truncated_completeness() -> None:
@@ -222,8 +220,15 @@ def test_finalize_truncated_fixture_yields_truncated_completeness() -> None:
     assert result.cost_usd == 0.0
 
 
-def test_finalize_truncated_fixture_with_zero_exit_still_truncated() -> None:
-    """If exit_code is 0 BUT no terminal `result` event, still `truncated`."""
+def test_finalize_no_terminal_event_yields_truncated_even_with_zero_exit() -> None:
+    """If no terminal `result` event exists, completeness="truncated" even when exit_code==0.
+
+    Story 4.2 code-review Edge-cases M4 fix 2026-05-20: renamed for body-name
+    alignment per `feedback_test_name_assertion_match`. The PRIMARY cause is
+    missing terminal event; zero exit_code is the secondary surprise. Pre-edit
+    name `_truncated_fixture_with_zero_exit_still_truncated` over-emphasized
+    the exit_code aspect.
+    """
     adapter = ClaudeCodeCLIAdapter()
     events = _load_fixture("truncated.jsonl")
     result = adapter._finalize(events, exit_code=0)
@@ -359,3 +364,206 @@ def test_claude_code_cli_registered_in_coding_agents_entry_points() -> None:
     adapters = discover_adapters()
     assert "claude-code-cli" in adapters
     assert adapters["claude-code-cli"] is ClaudeCodeCLIAdapter
+
+
+# --------------------------------------------------------------------------- #
+# Story 4.2 code-review patches 2026-05-20 — additional behavioral tests
+# --------------------------------------------------------------------------- #
+
+
+def test_spawn_passes_prompt_as_positional_argv(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Story 4.2 code-review 3-way HIGH fix 2026-05-20 (Blind H1 + Edge-cases H1 +
+    Codex Probe 5): the prompt MUST appear as the positional argv argument
+    after the `--` end-of-options sentinel. Pre-fix `_spawn` opened
+    `stdin=subprocess.PIPE` but never wrote the prompt — adapter was
+    non-functional in production. This test captures the spawned cmd list
+    + verifies the prompt is the final argv element.
+    """
+    captured_cmd: list[list[str]] = []
+    real_popen = subprocess.Popen
+
+    def _fake_popen(cmd: Any, **kwargs: Any) -> Any:
+        captured_cmd.append(list(cmd))
+        # Return a real Popen against /bin/true so cleanup works.
+        return real_popen(["/bin/true"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
+    adapter = ClaudeCodeCLIAdapter()
+    proc = adapter._spawn("Hello, claude!")
+    try:
+        proc.wait(timeout=5)
+    finally:
+        if proc.stdout is not None:
+            proc.stdout.close()
+    assert len(captured_cmd) == 1
+    cmd = captured_cmd[0]
+    # Verify the prompt is the final argv element + `--` precedes it.
+    assert cmd[-1] == "Hello, claude!"
+    assert cmd[-2] == "--"
+    assert cmd[0] == "claude"
+    assert "--output-format=stream-json" in cmd
+    assert "--print" in cmd
+
+
+def test_spawn_uses_stderr_stdout_multiplex(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Story 4.2 code-review 2-way HIGH fix 2026-05-20 (Edge-cases H2 + Codex):
+    `_spawn` MUST use `stderr=subprocess.STDOUT` to avoid pipe-deadlock when
+    `--verbose` writes enough stderr to fill the ~64KB Linux pipe buffer.
+    Pre-fix used `stderr=subprocess.PIPE` which the base `run()` doesn't drain.
+    """
+    captured_kwargs: list[dict[str, Any]] = []
+    real_popen = subprocess.Popen
+
+    def _fake_popen(cmd: Any, **kwargs: Any) -> Any:
+        captured_kwargs.append(dict(kwargs))
+        return real_popen(["/bin/true"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
+    adapter = ClaudeCodeCLIAdapter()
+    proc = adapter._spawn("ignored")
+    try:
+        proc.wait(timeout=5)
+    finally:
+        if proc.stdout is not None:
+            proc.stdout.close()
+    assert captured_kwargs[0]["stderr"] is subprocess.STDOUT
+    # AND no `stdin=subprocess.PIPE` (we use positional argv, not stdin).
+    assert "stdin" not in captured_kwargs[0] or captured_kwargs[0].get("stdin") is None
+
+
+def test_run_end_to_end_against_faked_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Story 4.2 code-review Blind H2 fix 2026-05-20: pre-edit zero tests
+    exercised `adapter.run()` end-to-end — all 31 tests bypassed `_spawn` /
+    `run()` and drove `_parse_event` + `_finalize` directly. This integration
+    test fakes `Popen` to return a stdout pipe streaming the simple_prompt
+    fixture, then drives the full `run()` template. Verifies the prompt-
+    delivery + event-loop + finalize chain works end-to-end.
+    """
+    import io
+
+    fixture_lines = (FIXTURE_DIR / "simple_prompt.jsonl").read_text()
+
+    class _FakePopen:
+        def __init__(self, cmd: Any, **kwargs: Any) -> None:
+            self.cmd = cmd
+            self.stdout = io.StringIO(fixture_lines)
+            self.stderr = None
+            self.returncode = 0
+            self.pid = 99999
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+        def terminate(self) -> None:
+            pass
+
+    monkeypatch.setattr(subprocess, "Popen", _FakePopen)
+    adapter = ClaudeCodeCLIAdapter()
+    result = adapter.run("ignored — fixture replay")
+    assert isinstance(result, AgentRunResult)
+    assert result.response_text == "Hello, world!"
+    assert result.cost_usd == 0.001234
+    assert result.metadata.completeness == "complete"
+    assert result.metadata.mcp_coverage == "external_mixed"
+
+
+def test_finalize_handles_rate_limit_event_as_no_op() -> None:
+    """Story 4.2 code-review Edge-cases L1 fix 2026-05-20: real claude output
+    interleaves `rate_limit_event` between system + assistant + result. Pin
+    that the parser handles it cleanly + `_finalize` skips it without
+    affecting the AgentRunResult shape.
+    """
+    adapter = ClaudeCodeCLIAdapter()
+    events = [
+        ClaudeCodeEvent(event_type="system", raw={"type": "system", "subtype": "init"}),
+        ClaudeCodeEvent(
+            event_type="rate_limit_event",
+            raw={"type": "rate_limit_event", "rate_limit_info": {"status": "allowed"}},
+        ),
+        ClaudeCodeEvent(
+            event_type="assistant",
+            raw={
+                "message": {
+                    "content": [{"type": "text", "text": "ok"}],
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                }
+            },
+        ),
+        ClaudeCodeEvent(
+            event_type="result",
+            raw={
+                "type": "result",
+                "is_error": False,
+                "result": "ok",
+                "duration_ms": 100,
+                "total_cost_usd": 0.0001,
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        ),
+    ]
+    result = adapter._finalize(events, exit_code=0)
+    assert result.response_text == "ok"
+    assert result.metadata.completeness == "complete"
+    # rate_limit_event neither contributes to tool_calls nor breaks usage.
+    assert result.tool_calls == []
+
+
+def test_finalize_non_string_result_field_falls_back_cleanly() -> None:
+    """Story 4.2 code-review Edge-cases M2 fix 2026-05-20: if `terminal.result`
+    is a dict/list (forward-compat schema shape change), `_finalize` MUST
+    fall back to the last assistant's text_content rather than raise.
+    """
+    adapter = ClaudeCodeCLIAdapter()
+    events = [
+        ClaudeCodeEvent(
+            event_type="assistant",
+            raw={"message": {"content": [{"type": "text", "text": "fallback text"}]}},
+        ),
+        ClaudeCodeEvent(
+            event_type="result",
+            raw={
+                "type": "result",
+                "is_error": False,
+                "result": {"unexpected": "dict shape"},  # non-string
+                "duration_ms": 50,
+                "total_cost_usd": 0.0,
+                "usage": {"input_tokens": 0, "output_tokens": 0},
+            },
+        ),
+    ]
+    result = adapter._finalize(events, exit_code=0)
+    # Falls back to the assistant's text_content; no exception raised.
+    assert result.response_text == "fallback text"
+    assert result.metadata.completeness == "complete"
+
+
+def test_finalize_nonzero_exit_no_terminal_yields_diagnostic_marker() -> None:
+    """Story 4.2 code-review Codex MED-3 fix 2026-05-20: when subprocess exits
+    non-zero AND no terminal event AND no assistant text, surface a structured
+    diagnostic marker so consumers can distinguish "agent declined to respond"
+    (empty response_text) from "binary refused to run" (SUBPROCESS_NONZERO_EXIT).
+    Per `feedback_ci_log_forensics` + M_R11 fail-loud.
+    """
+    adapter = ClaudeCodeCLIAdapter()
+    # No events at all — subprocess emitted nothing before exiting non-zero.
+    result = adapter._finalize([], exit_code=1)
+    assert "SUBPROCESS_NONZERO_EXIT" in result.response_text
+    assert "exit_code=1" in result.response_text
+    assert result.metadata.completeness == "truncated"
+
+
+def test_finalize_nonzero_exit_with_assistant_text_does_not_overwrite() -> None:
+    """When the assistant DID emit partial text before non-zero exit, preserve
+    the partial text rather than overwriting with the SUBPROCESS_NONZERO_EXIT
+    diagnostic. Pin the fallback precedence.
+    """
+    adapter = ClaudeCodeCLIAdapter()
+    events = [
+        ClaudeCodeEvent(
+            event_type="assistant",
+            raw={"message": {"content": [{"type": "text", "text": "partial output"}]}},
+        ),
+    ]
+    result = adapter._finalize(events, exit_code=1)
+    assert result.response_text == "partial output"  # NOT overwritten
+    assert result.metadata.completeness == "truncated"

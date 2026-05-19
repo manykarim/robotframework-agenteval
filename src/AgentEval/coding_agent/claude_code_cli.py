@@ -50,17 +50,24 @@ hosted-MCP observer changes this when applicable.
 References:
     - PRD FR12, FR13b, FR17a, FR47
     - ADR-003 (SubprocessAdapter template-method)
-    - ADR-005 (≤2 adapters per vendor — `claude-code-cli` + future Epic 10 SDK adapter)
+    - ADR-002 (Tier-1 Adapter Ceiling Rule — "≤2 adapters per vendor + 1 generic
+      escape hatch"; `claude-code-cli` + future Epic 10 SDK adapter; Story 4.2
+      code-review Auditor HIGH-1 fix 2026-05-20: pre-edit cited ADR-005 which
+      is conformance-suite fidelity oracles)
     - ADR-010 (Copilot CLI version-pin precedent)
     - Story 1b.4 `coding_agent/base.py:SubprocessAdapter` + `_assert_binary_version`
-    - `docs/contracts/mcp-coverage-detection.md` (Claude Code external observation)
+    - ADR-016 §Detection contract (ratifies `external_mixed` default for Claude
+      Code; Story 4.2 code-review Auditor MED-2 fix 2026-05-20: pre-edit cited
+      `docs/contracts/mcp-coverage-detection.md` which is currently a Phase-1
+      skeleton deferring formal ratification to Epic 5 Story 5.2)
+    - `docs/contracts/mcp-coverage-detection.md` — Phase-1 skeleton + Epic 5
+      Story 5.2 publishable companion to ADR-016
 """
 
 from __future__ import annotations
 
 import json
 import subprocess
-import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -185,12 +192,39 @@ class ClaudeCodeCLIAdapter(SubprocessAdapter):
         return "claude-code-cli"
 
     def _spawn(self, prompt: str, **kwargs: Any) -> subprocess.Popen[str]:
-        """Launch `claude` with the prompt fed via stdin.
+        """Launch `claude` with the prompt as the positional argv argument.
+
+        Story 4.2 code-review 3-way HIGH (Blind H1 + Edge-cases H1 +
+        Codex Probe 5 2026-05-20): pre-edit opened `stdin=subprocess.PIPE`
+        with the comment "Feed the prompt via stdin per AC-4.2.1" — but
+        neither this method nor the base `run()` orchestration ever
+        wrote to or closed `proc.stdin`. End-to-end probe with real
+        claude 2.1.144: `adapter.run("Say hi")` returned in ~4s with
+        `response_text=""`, `usage=zeros`, `cost_usd=0.0`,
+        `completeness="truncated"`, exit_code dropped on the floor.
+        ON SYSTEMS WITHOUT claude's 3s no-stdin heuristic the
+        subprocess would have hung indefinitely (Edge-cases SIGALRM
+        reproduction with `cat` stand-in confirmed deadlock).
+
+        Fix: pass `prompt` as the positional CLI argument after `--`
+        (Codex option a; avoids stdin buffering + pipe-deadlock
+        pitfalls). Per `claude --help`: `claude [prompt]` accepts a
+        prompt argument that replaces stdin input.
+
+        Story 4.2 code-review 2-way HIGH (Edge-cases + Codex 2026-05-20):
+        stderr pipe deadlock. Pre-edit `stderr=subprocess.PIPE` +
+        `--verbose` flag could fill the ~64KB Linux pipe buffer; the
+        base `run()` only drains `proc.stdout`, so a stderr-full child
+        blocks on its stderr write → never finishes stdout → parent
+        wedges in the for-loop or on wait(). Fix: `stderr=subprocess.STDOUT`
+        multiplex stderr into stdout. The `_parse_event` already
+        returns None on non-JSON lines (test_parse_event_returns_none_on_non_json_line
+        verifies), so stderr diagnostics interleaved into stdout get
+        skipped cleanly without parsing them as events.
 
         Required Popen flags per Story 1b.4 base.py L240-244:
-        `stdout=PIPE`, `stderr=PIPE`, `text=True`, `start_new_session=True`
-        (process-group hygiene for cleanup-on-exception in the base's
-        `run()` orchestration).
+        `stdout=PIPE`, `stderr=STDOUT`, `text=True`, `start_new_session=True`
+        (process-group hygiene for cleanup-on-exception).
 
         Phase-1 carve-out: `tools` + `mcp_servers` kwargs are accepted
         per the base `run(prompt, tools, mcp_servers, **kwargs)`
@@ -198,7 +232,8 @@ class ClaudeCodeCLIAdapter(SubprocessAdapter):
         the operator providing `.mcp.json` discovery via the standard
         Claude Code cwd-search OR the `--mcp-config` flag (Story 4.2
         ships the surface; full `mcp_servers=` integration via temp
-        `.mcp.json` generation is Story 4.3 orchestration scope).
+        `.mcp.json` generation is Story 4.3 orchestration scope —
+        DF-4.2-S1).
         """
         # Phase-1: forward `tools` / `mcp_servers` as kwargs the base
         # passes in but don't act on them at this layer; Story 4.3
@@ -210,15 +245,18 @@ class ClaudeCodeCLIAdapter(SubprocessAdapter):
             "--output-format=stream-json",
             "--verbose",
             "--print",
+            "--",  # end-of-options sentinel so prompts starting with `-` aren't parsed as flags
+            prompt,
         ]
         return subprocess.Popen(
             cmd,
-            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            # Multiplex stderr into stdout per the 2-way HIGH fix;
+            # `_parse_event` returns None on non-JSON lines so verbose
+            # stderr chatter is silently skipped without deadlock risk.
+            stderr=subprocess.STDOUT,
             text=True,
             start_new_session=True,
-            # Feed the prompt via stdin per AC-4.2.1.
         )
 
     def _parse_event(self, line: str) -> ClaudeCodeEvent | None:
@@ -243,7 +281,11 @@ class ClaudeCodeCLIAdapter(SubprocessAdapter):
 
         # Response text: prefer the terminal `result.result` field if
         # present (canonical final output); else fall back to the last
-        # assistant event's joined text content.
+        # assistant event's joined text content; else surface a
+        # diagnostic stub when the subprocess exited non-zero with no
+        # terminal event (Story 4.2 code-review Codex MED-3 fix
+        # 2026-05-20 — pre-edit silently returned `response_text=""`
+        # which collided with "agent declined to respond" semantics).
         response_text = ""
         if terminal is not None:
             result_field = terminal.raw.get("result")
@@ -256,6 +298,16 @@ class ClaudeCodeCLIAdapter(SubprocessAdapter):
             )
             if last_assistant is not None:
                 response_text = last_assistant.text_content
+        if not response_text and exit_code != 0 and terminal is None:
+            # Phase-1 fail-loud diagnostic per Codex MED-3 + M_R11:
+            # exit_code != 0 + no terminal event means the subprocess
+            # exited abnormally (binary refused to run, OOM, signal,
+            # etc.). Surface a structured marker so consumers can
+            # distinguish "claude declined to respond" from "claude
+            # never produced output". Full stderr-tail capture is
+            # DF-4.2-S5 Phase-1.5 (requires base `run()` to expose
+            # stderr; currently multiplexed into stdout).
+            response_text = f"[SUBPROCESS_NONZERO_EXIT exit_code={exit_code}]"
 
         # Tool calls: synthesize ToolCallTrace records from every
         # `tool_use` content block across all assistant events. Phase-1
@@ -321,8 +373,3 @@ class ClaudeCodeCLIAdapter(SubprocessAdapter):
             latency_seconds=latency_seconds,
             trace_id=uuid.uuid4().hex,
         )
-
-    @staticmethod
-    def _utc_now() -> float:
-        """Inline helper for testability; module top imports `time` already."""
-        return time.monotonic()
