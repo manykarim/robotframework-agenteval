@@ -106,11 +106,13 @@ __all__ = [
     "AgentEvalIntegrityError",
     "AgentEvalBudgetError",
     "AgentEvalCompatError",
-    # Leaves (9 implemented; 3 future per module docstring):
+    # Leaves (11 implemented; 3 future per module docstring):
     "IncompleteTraceError",
     "PollingDisallowedError",
     "TierViolationError",
     "InvalidSkillFrontmatterError",
+    "InvalidSubagentDefinitionError",
+    "InvalidHookConfigError",
     "CostExceededError",
     "RuntimeBudgetExceededError",
     "AdapterDiscoveryError",
@@ -224,40 +226,24 @@ class TierViolationError(AgentEvalIntegrityError):
     error_code: ClassVar[str] = "TIER_VIOLATION"
 
 
-class InvalidSkillFrontmatterError(AgentEvalIntegrityError):
-    """Raised when a skill `.md` file's YAML frontmatter is malformed or incomplete.
+class _FR59Tier1SetupFailureError(AgentEvalIntegrityError):
+    """Private intermediate base for all Tier-1 setup-failure errors.
 
-    Per `docs/contracts/error-class-hierarchy.md` L92 (12th leaf, ratified
-    2026-05-19 pre-Story-2.1 catalog amendment): Tier-1 setup-failure
-    semantics. Raised by `src/AgentEval/skills/_parser.py` when:
-        - YAML between `---` delimiters fails `yaml.safe_load()`
-        - Required fields (`name`, `description`, `allowed-tools`,
-          `disable-model-invocation`) are missing
-        - Type contract violations (e.g., `allowed-tools` is not a list,
-          `disable-model-invocation` is not a bool)
-        - File extension is not `.md` or file does not exist
+    Story 2.2 refactor (2026-05-19): factored out from
+    `InvalidSkillFrontmatterError` so siblings `InvalidSubagentDefinitionError`
+    + `InvalidHookConfigError` (Story 2.2) — and future Tier-1 setup
+    failures — inherit the structured `(file_path, line_number,
+    field_name, fix_suggestion)` attrs + FR59 4-line `__str__` shape
+    without duplicating ~40 LoC each.
 
-    `__str__` format per FR59 (`docs/contracts/error-class-hierarchy.md`
-    L96-104) overrides the base H_R7 `error_code: <message>` shape with
-    the multi-line setup-failure format:
+    NOT in `__all__`: this is private machinery. Consumers catch the
+    public sub-base (`AgentEvalIntegrityError`) OR a specific leaf;
+    they should never name this intermediate class.
 
-        INVALID_SKILL_FRONTMATTER: <one-line summary>
-          File: <path>
-          Line: <line number or N/A>
-          Field: <field name or N/A>
-          Fix: <one-line remediation hint>
-
-    Structured attrs (`file_path`, `line_number`, `field_name`,
-    `fix_suggestion`) match the sibling `UnsupportedBinaryVersionError`
-    pattern (Story 1b.4 D7 ratification) so callers can react
-    programmatically without parsing the string.
-
-    `error_code = "INVALID_SKILL_FRONTMATTER"`; exit code 65 (EX_DATAERR;
-    same family as other Tier-1 setup-failure errors per epics.md
-    Story 8a.1 L1660).
+    Subclasses MUST override `error_code: ClassVar[str]` with their
+    domain-specific identifier. The `__str__` shape is per FR59 +
+    `docs/contracts/error-class-hierarchy.md` L96-104.
     """
-
-    error_code: ClassVar[str] = "INVALID_SKILL_FRONTMATTER"
 
     def __init__(
         self,
@@ -277,8 +263,8 @@ class InvalidSkillFrontmatterError(AgentEvalIntegrityError):
     def __str__(self) -> str:
         # FR59-exact multi-line setup-failure format per
         # `docs/contracts/error-class-hierarchy.md` L96-104; overrides
-        # the base H_R7 `error_code: <message>` shape because FR59 specifies
-        # the verbatim layout for Tier-1 setup-failure errors.
+        # the base H_R7 `error_code: <message>` shape because FR59
+        # specifies the verbatim layout for Tier-1 setup-failure errors.
         message = Exception.__str__(self)
         return (
             f"{self.error_code}: {message}\n"
@@ -287,6 +273,81 @@ class InvalidSkillFrontmatterError(AgentEvalIntegrityError):
             f"  Field: {self.field_name if self.field_name else 'N/A'}\n"
             f"  Fix: {self.fix_suggestion if self.fix_suggestion else 'N/A'}"
         )
+
+
+class InvalidSkillFrontmatterError(_FR59Tier1SetupFailureError):
+    """Raised when a skill `.md` file's YAML frontmatter is malformed or incomplete.
+
+    Per `docs/contracts/error-class-hierarchy.md` L92 (12th leaf, ratified
+    2026-05-19 pre-Story-2.1 catalog amendment): Tier-1 setup-failure
+    semantics. Raised by `src/AgentEval/skills/_parser.py` when:
+        - YAML between `---` delimiters fails `yaml.safe_load()`
+        - Required fields (`name`, `description`, `allowed-tools`,
+          `disable-model-invocation`) are missing
+        - Type contract violations (e.g., `allowed-tools` is not a list,
+          `disable-model-invocation` is not a bool)
+        - File extension is not `.md` or file does not exist
+
+    Inherits the FR59 4-line `__str__` shape + structured attrs
+    (`file_path` / `line_number` / `field_name` / `fix_suggestion`)
+    from `_FR59Tier1SetupFailureError`. Story 2.2 refactored the
+    shared logic out so siblings (`InvalidSubagentDefinitionError`,
+    `InvalidHookConfigError`) reuse it.
+
+    `error_code = "INVALID_SKILL_FRONTMATTER"`; exit code 65 (EX_DATAERR;
+    same family as other Tier-1 setup-failure errors per epics.md
+    Story 8a.1 L1660).
+    """
+
+    error_code: ClassVar[str] = "INVALID_SKILL_FRONTMATTER"
+
+
+class InvalidSubagentDefinitionError(_FR59Tier1SetupFailureError):
+    """Raised when a sub-agent `.md` file's YAML frontmatter is malformed or incomplete.
+
+    Per `docs/contracts/error-class-hierarchy.md` L93 (13th leaf, ratified
+    2026-05-19 pre-Story-2.2 catalog amendment): Tier-1 setup-failure
+    semantics. Raised by `src/AgentEval/subagents/_parser.py` when:
+        - YAML between `---` delimiters fails `yaml.safe_load()`
+        - Required fields (`name`, `description` per PRD FR3) are missing
+        - Type contract violations (e.g., `name` is not a string)
+        - File extension is not `.md` or file does not exist
+
+    Optional fields per PRD FR3: `tools` (list[str]; per-agent tool
+    allowlist), `model` (str; model-override identifier). The parser
+    does NOT validate optional-field types in Phase-1 — that's deferred
+    to Phase-2 schema-strict mode.
+
+    `error_code = "INVALID_SUBAGENT_DEFINITION"`; exit code 65 (EX_DATAERR).
+    """
+
+    error_code: ClassVar[str] = "INVALID_SUBAGENT_DEFINITION"
+
+
+class InvalidHookConfigError(_FR59Tier1SetupFailureError):
+    """Raised when a `settings.json` hook configuration is malformed or incomplete.
+
+    Per `docs/contracts/error-class-hierarchy.md` L94 (14th leaf, ratified
+    2026-05-19 pre-Story-2.2 catalog amendment): Tier-1 setup-failure
+    semantics. Raised by `src/AgentEval/hooks/_parser.py` when:
+        - JSON fails `json.load()` (malformed JSON)
+        - Required per-entry field `command` is missing
+        - Type contract violations on `args` (must be list[str]),
+          `timeout` (must be int), `matcher` (must be str)
+        - File extension is not `.json` or file does not exist
+
+    `field_name` JSON Pointer convention (Story 2.2 pre-authoring
+    drift-check D-D 2026-05-19): when a nested-JSON validation fails,
+    `field_name` carries an RFC 6901 JSON Pointer string into the
+    offending location, e.g., `/hooks/PreToolUse/0/command`. This
+    parallels FR6's `InvalidMCPToolSchemaError` JSON Pointer
+    convention so consumers have one idiom for both nested-JSON
+    Tier-1 setup-failure errors.
+
+    `error_code = "INVALID_HOOK_CONFIG"`; exit code 65 (EX_DATAERR).
+    """
+
+    error_code: ClassVar[str] = "INVALID_HOOK_CONFIG"
 
 
 # --------------------------------------------------------------------------- #

@@ -105,3 +105,14 @@ jobs:
       # import path is the load-bearing assertion.
       - name: robot tests/unit/skills (RF skills integration)
         run: uv run robot --output NONE --report NONE --log NONE tests/unit/skills/test_robot_integration.robot
+
+      # Story 2.2: RF integration tests for the `Subagent` + `Hook`
+      # sub-libraries. Same pattern as Story 2.1 — pytest doesn't
+      # discover .robot files. CI surfaces regressions in
+      # AgentEval.subagents.library.SubagentsLibrary + AgentEval.hooks.library.HooksLibrary
+      # wiring (DynamicCore composition + standalone-import paths).
+      - name: robot tests/unit/subagents (RF subagent integration)
+        run: uv run robot --output NONE --report NONE --log NONE tests/unit/subagents/test_robot_integration.robot
+
+      - name: robot tests/unit/hooks (RF hook integration)
+        run: uv run robot --output NONE --report NONE --log NONE tests/unit/hooks/test_robot_integration.robot

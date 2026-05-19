@@ -1166,7 +1166,7 @@ So that I can assert on sub-agent + hook configurations using the same Tier-1 de
 **When** I call `Hook.Get Config` against it,
 **Then** `InvalidHookConfigError` is raised with the FR59 error format and a JSON Pointer to the offending location.
 
-**And** all 4 keywords (`Subagent.Get Frontmatter`, `Hook.Get Config`, plus the 2 new error classes) ship with conventions-test compliance and tier-1 latency confirmed in unit tests (per-keyword P95 <50ms over 100 invocations).
+**And** all 4 keywords (`Subagent.Get Frontmatter`, `Hook.Get Config`, plus the 2 new error classes) ship with conventions-test compliance and tier-1 latency confirmed in unit tests (per-keyword **median** <50 ms over 11 samples per NFR-PERF-02 PRD L1608; the pre-edit "P95 <50ms over 100 invocations" wording was drift caught by Story 2.2 pre-create-story check D-A 2026-05-19 — NFR-PERF-02 specifies median, not P95).
 
 ---
 

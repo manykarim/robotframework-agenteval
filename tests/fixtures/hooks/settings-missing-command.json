@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "args": ["--quiet"],
+        "timeout": 5
+      }
+    ]
+  }
+}

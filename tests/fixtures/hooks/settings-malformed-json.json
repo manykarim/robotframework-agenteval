@@ -1,0 +1,8 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "command": "missing closing brace"
+      }
+    ]
+  }

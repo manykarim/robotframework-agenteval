@@ -69,7 +69,12 @@ _logger = logging.getLogger("AgentEval.library")
 # top-level `AgentEval` import remains green even while later Epic
 # sub-libraries are not yet shipped. Story 2.1 ships entry 1 (skills);
 # future Epics extend this tuple.
-_SUB_LIBRARIES: tuple[tuple[str, str], ...] = (("AgentEval.skills.library", "SkillsLibrary"),)
+# Story 2.2 extension: Subagent + Hook sub-libraries registered alongside Skill.
+_SUB_LIBRARIES: tuple[tuple[str, str], ...] = (
+    ("AgentEval.skills.library", "SkillsLibrary"),
+    ("AgentEval.subagents.library", "SubagentsLibrary"),
+    ("AgentEval.hooks.library", "HooksLibrary"),
+)
 
 
 # Sentinel: distinguishes "user passed this kwarg" from "kwarg defaulted to
