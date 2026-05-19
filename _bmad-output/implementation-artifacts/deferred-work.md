@@ -204,4 +204,16 @@ Added by Story 4.1 (Provider Layer + Generic Adapter — Epic 4 Story 1). 5 drif
 
 ---
 
+## Deferred from: story-4.2 claude-code-cli adapter (2026-05-20)
+
+Added by Story 4.2 (Claude Code CLI Adapter — Epic 4 Story 2). Pre-create-story drift check (19th use) caught 6 drifts; 5 fixed in epics.md pre-authoring, 1 (D-F `costUSD` → `total_cost_usd`) caught via behavioral probe at dev time.
+
+- **DF-4.2-S1 (mcp_servers temp .mcp.json generation deferred to Story 4.3 orchestration)** — `ClaudeCodeCLIAdapter._spawn()` accepts `mcp_servers` kwarg per the Story 1b.4 base `run()` contract but Phase-1 doesn't generate the temporary `.mcp.json` for the subprocess session — Story 4.3 orchestration keywords own that step (the `mcp_servers=` keyword argument lands at the `Send Prompt` / `Run Scenario` layer per epics.md L1383, which then forwards into the adapter's `_spawn`). Phase-1.5 alternative: lift the temp-file generation into the adapter base if multiple subprocess adapters (codex_cli, copilot_cli) need it. Effort M (subprocess-adapter base extension + temp-file lifecycle hooks).
+
+- **DF-4.2-S2 (tool_call OTel-span correlation in Claude Code adapter)** — `_finalize` synthesizes `ToolCallTrace` records from stream-json `tool_use` blocks with Phase-1 placeholders: `latency_ms=0.0`, `result=None`, `error=None`. Real per-call latency + tool-result attribution lands in Epic 5 hosted-MCP observer (correlates OTel spans from the subprocess MCP servers' agenteval-side observability with the adapter's stream-json events). Phase-1.5 alternative: post-hoc `tool_result` → `tool_use` matching from the stream-json events themselves (per the Claude Code event schema, `tool_result` events reference the originating `tool_use_id`). Effort S (event-matching logic; ~30 LoC). Cross-link: Story 3.2 `MCPConnectionLostError` for transport-layer failures during the same dispatch.
+
+- **DF-4.2-S3 (stream-json schema drift detection)** — PRD L1168 explicitly says "stream-json schema is CLI-tool-internal and could evolve without notice". Story 4.2 vendors 4 fixture files captured at Claude Code 2.1.144 + relies on the version-gate (`>=2.0.0,<3.0.0`) for schema stability within the Claude Code 2.x line. Phase-1.5 hygiene: add a `tests/conformance/test_claude_code_stream_schema.py` golden-trace conformance test that re-captures live `claude` output + diffs against the vendored fixtures (AC-CONFORMANCE-01 per PRD L1168). Detects upstream schema drift before it breaks the adapter silently. Effort S (one new conformance test + a sync-cadence comment in the fixtures).
+
+---
+
 *Update this file as new deferred items emerge from future reviews.*

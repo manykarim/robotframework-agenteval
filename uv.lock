@@ -1872,7 +1872,7 @@ requires-dist = [
     { name = "robotframework-pythonlibcore", specifier = ">=4.5" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6,<1.0" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dev", "claude-code"]
 
 [[package]]
 name = "robotframework-pabot"

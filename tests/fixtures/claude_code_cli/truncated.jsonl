@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","cwd":"/tmp/test","session_id":"test-session-3","tools":[],"mcp_servers":[],"model":"claude-sonnet-4-6","permissionMode":"default","apiKeySource":"none","claude_code_version":"2.1.144","uuid":"sys-uuid-3"}
+{"type":"assistant","message":{"model":"claude-sonnet-4-6","id":"msg_test_3","type":"message","role":"assistant","content":[{"type":"text","text":"Starting response..."}],"stop_reason":null,"usage":{"input_tokens":5,"output_tokens":3,"cache_read_input_tokens":0}},"session_id":"test-session-3","uuid":"asst-uuid-3"}

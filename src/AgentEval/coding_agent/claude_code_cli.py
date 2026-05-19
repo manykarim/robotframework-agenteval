@@ -1,0 +1,328 @@
+# Copyright 2026 Many Kasiriha
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""`ClaudeCodeCLIAdapter` — `SubprocessAdapter` for the `claude` CLI (Story 4.2 / PRD FR13b).
+
+Wraps the `claude` binary (Claude Code CLI) invoked with
+`--output-format=stream-json` + `--verbose` + `--print` to produce a
+normalized `AgentRunResult`. Implements the Story 1b.4 ratified 3-hook
+`SubprocessAdapter` template-method pattern (`_spawn`, `_parse_event`,
+`_finalize`) per ADR-003.
+
+## Phase-1 pinned binary range
+
+Per PRD FR47 + ADR-010 (Copilot CLI version-pinning precedent), Story
+4.2 pins the `claude` binary to `>=2.0.0,<3.0.0`. Range chosen at
+story-authoring time by inspecting the locally-installed Claude Code
+2.x line; out-of-range raises `UnsupportedBinaryVersionError` at
+adapter construction.
+
+## Stream-json schema
+
+Captured via behavioral probe at story-authoring time (2026-05-20).
+Key events:
+
+- `system` (subtype=`init`): session metadata + tools + model + mcp_servers.
+- `rate_limit_event`: rate-limit info (ignored Phase-1).
+- `assistant`: nested `message.content[]` with type=`text` or `tool_use`.
+- `user`: user messages (typically tool_result echoes).
+- `result` (subtype=`success` | error): terminal event with
+  `total_cost_usd`, `usage`, `duration_ms`, `result` (final text),
+  `terminal_reason`, `is_error`.
+
+Phase-1 mcp_coverage = `external_mixed` per
+`docs/contracts/mcp-coverage-detection.md` — the subprocess parses +
+executes its OWN MCP via `.mcp.json`; agenteval observes via
+stream-json post-hoc (NOT in-process span capture). Epic 5's
+hosted-MCP observer changes this when applicable.
+
+References:
+    - PRD FR12, FR13b, FR17a, FR47
+    - ADR-003 (SubprocessAdapter template-method)
+    - ADR-005 (≤2 adapters per vendor — `claude-code-cli` + future Epic 10 SDK adapter)
+    - ADR-010 (Copilot CLI version-pin precedent)
+    - Story 1b.4 `coding_agent/base.py:SubprocessAdapter` + `_assert_binary_version`
+    - `docs/contracts/mcp-coverage-detection.md` (Claude Code external observation)
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import time
+import uuid
+from dataclasses import dataclass, field
+from typing import Any
+
+from AgentEval.coding_agent.base import SubprocessAdapter
+from AgentEval.types import (
+    AgentRunMetadata,
+    AgentRunResult,
+    ToolCallTrace,
+    Usage,
+)
+
+__all__ = ["ClaudeCodeCLIAdapter", "ClaudeCodeEvent"]
+
+
+CLAUDE_BINARY = "claude"
+MIN_VERSION = "2.0.0"
+MAX_VERSION = "3.0.0"
+
+
+@dataclass(frozen=True)
+class ClaudeCodeEvent:
+    """One parsed event from `claude --output-format=stream-json` (Story 4.2).
+
+    Phase-1 captures the union of Claude Code CLI's stream-json event
+    types as a single dataclass with a discriminator + raw payload.
+    Convenience accessors handle the common nested paths without
+    requiring downstream code to do `event.raw["message"]["content"][0]["text"]`
+    dictionary descent at every call site.
+    """
+
+    event_type: str
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # M_R6 shallow-copy pattern: protect against caller mutating
+        # the raw dict after construction.
+        object.__setattr__(self, "raw", dict(self.raw))
+
+    @property
+    def text_content(self) -> str:
+        """Extract the joined text content from an `assistant` event's message.
+
+        Returns the empty string for non-assistant events OR assistant
+        events with no text blocks (e.g., pure tool_use events).
+        """
+        if self.event_type != "assistant":
+            return ""
+        message = self.raw.get("message") or {}
+        content_blocks = message.get("content") or []
+        return "".join(block.get("text", "") for block in content_blocks if block.get("type") == "text")
+
+    @property
+    def tool_use_blocks(self) -> list[dict[str, Any]]:
+        """List of tool_use content blocks from an `assistant` event.
+
+        Each block has `id`, `name`, `input` keys per the Claude Code
+        stream-json schema. Empty list for non-assistant events or
+        assistant events without tool_use.
+        """
+        if self.event_type != "assistant":
+            return []
+        message = self.raw.get("message") or {}
+        return [
+            block
+            for block in (message.get("content") or [])
+            if isinstance(block, dict) and block.get("type") == "tool_use"
+        ]
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.event_type == "result"
+
+    @property
+    def total_cost_usd(self) -> float | None:
+        """Total cost reported by terminal `result` event."""
+        if self.event_type != "result":
+            return None
+        cost = self.raw.get("total_cost_usd")
+        return float(cost) if cost is not None else None
+
+    @property
+    def is_error(self) -> bool:
+        """True when the terminal `result` event indicates an error."""
+        if self.event_type != "result":
+            return False
+        return bool(self.raw.get("is_error", False))
+
+    @property
+    def terminal_usage(self) -> Usage | None:
+        """Extract a `Usage` record from the terminal `result` event's usage field."""
+        if self.event_type != "result":
+            return None
+        usage_raw = self.raw.get("usage") or {}
+        return Usage(
+            input_tokens=int(usage_raw.get("input_tokens") or 0),
+            output_tokens=int(usage_raw.get("output_tokens") or 0),
+            cached_input_tokens=int(usage_raw.get("cache_read_input_tokens") or 0),
+        )
+
+    @property
+    def duration_seconds(self) -> float | None:
+        """Wall-clock duration reported by the terminal `result` event (ms → s)."""
+        if self.event_type != "result":
+            return None
+        duration_ms = self.raw.get("duration_ms")
+        return float(duration_ms) / 1000.0 if duration_ms is not None else None
+
+
+class ClaudeCodeCLIAdapter(SubprocessAdapter):
+    """`SubprocessAdapter` for the `claude` CLI (PRD FR13b)."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        # Story 1b.4 ratified helper validates the binary version at
+        # construction. Raises `UnsupportedBinaryVersionError` on out-
+        # of-range per FR47.
+        self._assert_binary_version(CLAUDE_BINARY, min=MIN_VERSION, max=MAX_VERSION)
+
+    @property
+    def name(self) -> str:
+        return "claude-code-cli"
+
+    def _spawn(self, prompt: str, **kwargs: Any) -> subprocess.Popen[str]:
+        """Launch `claude` with the prompt fed via stdin.
+
+        Required Popen flags per Story 1b.4 base.py L240-244:
+        `stdout=PIPE`, `stderr=PIPE`, `text=True`, `start_new_session=True`
+        (process-group hygiene for cleanup-on-exception in the base's
+        `run()` orchestration).
+
+        Phase-1 carve-out: `tools` + `mcp_servers` kwargs are accepted
+        per the base `run(prompt, tools, mcp_servers, **kwargs)`
+        signature but Phase-1 Claude Code CLI integration relies on
+        the operator providing `.mcp.json` discovery via the standard
+        Claude Code cwd-search OR the `--mcp-config` flag (Story 4.2
+        ships the surface; full `mcp_servers=` integration via temp
+        `.mcp.json` generation is Story 4.3 orchestration scope).
+        """
+        # Phase-1: forward `tools` / `mcp_servers` as kwargs the base
+        # passes in but don't act on them at this layer; Story 4.3
+        # adds the temp `.mcp.json` generation step before `_spawn`.
+        _ = kwargs
+
+        cmd = [
+            CLAUDE_BINARY,
+            "--output-format=stream-json",
+            "--verbose",
+            "--print",
+        ]
+        return subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+            # Feed the prompt via stdin per AC-4.2.1.
+        )
+
+    def _parse_event(self, line: str) -> ClaudeCodeEvent | None:
+        """Parse one stdout JSONL line into a `ClaudeCodeEvent`, or None to skip."""
+        stripped = line.strip()
+        if not stripped:
+            return None
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            # Non-JSON line (progress chatter, debug output). Skip per
+            # Story 1b.4 `_parse_event` contract — returning None skips.
+            return None
+        if not isinstance(parsed, dict):
+            return None
+        event_type = str(parsed.get("type") or "unknown")
+        return ClaudeCodeEvent(event_type=event_type, raw=parsed)
+
+    def _finalize(self, events: list[ClaudeCodeEvent], exit_code: int) -> AgentRunResult:
+        """Fold the event stream into an `AgentRunResult`."""
+        terminal = next((e for e in reversed(events) if e.is_terminal), None)
+
+        # Response text: prefer the terminal `result.result` field if
+        # present (canonical final output); else fall back to the last
+        # assistant event's joined text content.
+        response_text = ""
+        if terminal is not None:
+            result_field = terminal.raw.get("result")
+            if isinstance(result_field, str):
+                response_text = result_field
+        if not response_text:
+            last_assistant = next(
+                (e for e in reversed(events) if e.event_type == "assistant"),
+                None,
+            )
+            if last_assistant is not None:
+                response_text = last_assistant.text_content
+
+        # Tool calls: synthesize ToolCallTrace records from every
+        # `tool_use` content block across all assistant events. Phase-1
+        # carve-out (DF-4.2-S1): full OTel-span correlation + latency
+        # extraction lands in Epic 5 hosted-MCP observer; Story 4.2
+        # ships the stream-json mapping only.
+        tool_calls: list[ToolCallTrace] = []
+        seq = 0
+        for ev in events:
+            for block in ev.tool_use_blocks:
+                tool_calls.append(
+                    ToolCallTrace(
+                        name=str(block.get("name") or ""),
+                        args=dict(block.get("input") or {}),
+                        result=None,  # Phase-1: not yet correlated; Story 4.3 + Epic 5.
+                        error=None,
+                        latency_ms=0.0,  # Phase-1 placeholder; Epic 5 correlates per-call latency.
+                        source="adapter",
+                        gen_ai_tool_call_id=str(block.get("id") or ""),
+                        sequence_index=seq,
+                    )
+                )
+                seq += 1
+
+        # Usage: from terminal `result` event's usage; fallback to zeros
+        # if the run didn't reach a terminal event (truncated path).
+        usage = (
+            terminal.terminal_usage
+            if terminal is not None and terminal.terminal_usage is not None
+            else Usage(input_tokens=0, output_tokens=0)
+        )
+
+        # Cost: from terminal event's total_cost_usd; 0.0 fallback.
+        cost_usd = 0.0
+        if terminal is not None and terminal.total_cost_usd is not None:
+            cost_usd = terminal.total_cost_usd
+
+        # Latency: prefer the terminal duration_ms; fallback to a 0.0
+        # placeholder when the run was truncated.
+        latency_seconds = 0.0
+        if terminal is not None and terminal.duration_seconds is not None:
+            latency_seconds = terminal.duration_seconds
+
+        # Completeness: "complete" when terminal event present AND
+        # `is_error` is False AND `exit_code == 0`; else "truncated".
+        completeness: str = (
+            "complete" if terminal is not None and not terminal.is_error and exit_code == 0 else "truncated"
+        )
+
+        return AgentRunResult(
+            response_text=response_text,
+            tool_calls=tool_calls,
+            usage=usage,
+            metadata=AgentRunMetadata(
+                completeness=completeness,  # type: ignore[arg-type]
+                # Per `docs/contracts/mcp-coverage-detection.md` ratified
+                # Claude Code contract: external observation via
+                # stream-json parsing. Epic 5 hosted-MCP observer
+                # promotes to a stronger value when applicable.
+                mcp_coverage="external_mixed",
+            ),
+            cost_usd=cost_usd,
+            latency_seconds=latency_seconds,
+            trace_id=uuid.uuid4().hex,
+        )
+
+    @staticmethod
+    def _utc_now() -> float:
+        """Inline helper for testability; module top imports `time` already."""
+        return time.monotonic()

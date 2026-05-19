@@ -49,6 +49,11 @@ dev = [
   "robotframework-pabot==5.2.2",
   "pre-commit>=3.0,<5.0",  # Story 1a.5 hygiene; `uv run pre-commit install` per CONTRIBUTING.md
 ]
+# Story 4.2 (Epic 4) — Claude Code CLI adapter optional-extras group.
+# No Python deps; the `claude` binary must be on `$PATH` (npm install -g
+# @anthropic-ai/claude-code). The group exists per FR13b spec for
+# documentation + future-compat when CC-CLI-specific Python deps land.
+claude-code = []
 
 [project.urls]
 Homepage = "https://github.com/manykarim/robotframework-agenteval"
@@ -80,8 +85,9 @@ agenteval = "AgentEval.cli:main"
 # judges/sandboxes).
 [project.entry-points."agenteval.coding_agents"]
 # Story 4.1 (Epic 4) — Generic LiteLLM-backed CodingAgentAdapter.
-# Story 4.2 will add claude-code-cli.
+# Story 4.2 (Epic 4) — Claude Code CLI adapter (claude binary >=2.0.0,<3.0.0).
 generic = "AgentEval.coding_agent.generic:GenericAdapter"
+claude-code-cli = "AgentEval.coding_agent.claude_code_cli:ClaudeCodeCLIAdapter"
 
 [project.entry-points."agenteval.providers"]
 # Story 4.1 (Epic 4) — LLMProviderAdapter implementations.
