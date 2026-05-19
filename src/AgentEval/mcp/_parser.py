@@ -302,6 +302,14 @@ def get_tool_schema(
     servers = parse_mcp_servers(path)
     file_path_str = str(Path(path))
 
+    # Story 2.3 code-review HIGH-2 fix (Blind 2026-05-19): normalize
+    # empty-string `server_name` to None to avoid the
+    # `is not None` vs truthy-`if` predicate mismatch in the pre-edit
+    # shape (empty string passed `is not None` + populated the not-found
+    # branch with `/mcpServers/` — malformed pointer).
+    if server_name == "":
+        server_name = None
+
     if server_name is not None:
         if server_name not in servers:
             raise InvalidMCPToolSchemaError(
@@ -319,14 +327,24 @@ def get_tool_schema(
         if tool_name in tools:
             return dict(tools[tool_name])
 
+    # Story 2.3 code-review HIGH-1 fix (3-way: Blind+Edge-cases+Codex
+    # 2026-05-19): the pre-edit not-found pointer was
+    # `/mcpServers/*/tools/{tool_name}` when `server_name=None`. The `*`
+    # is NOT a valid RFC 6901 wildcard — RFC 6901 treats `*` as a
+    # LITERAL segment, so the pointer was undereferenceable. The
+    # search-scope context belongs in the human-readable message; the
+    # `field_name` JSON Pointer points at `/mcpServers` (the search
+    # root) when no server is scoped. Also routes through
+    # `_build_pointer` to honor RFC 6901 escaping on `tool_name`s
+    # containing `/` or `~`.
+    if server_name is not None:
+        not_found_pointer = _build_pointer("mcpServers", server_name, "tools", tool_name)
+    else:
+        not_found_pointer = _build_pointer("mcpServers")
     raise InvalidMCPToolSchemaError(
         f"MCP tool {tool_name!r} not declared in any server's `tools` extension.",
         file_path=file_path_str,
-        field_name=(
-            _build_pointer("mcpServers", server_name, "tools", tool_name)
-            if server_name
-            else f"/mcpServers/*/tools/{tool_name}"
-        ),
+        field_name=not_found_pointer,
         fix_suggestion=(
             f"Add `{tool_name}` to the server's `tools` mapping with a JSON Schema value, "
             f"or check the spelling. Phase-1 reads schemas from the declarative `tools` "
@@ -357,21 +375,47 @@ def validate_tool_schema(
             schema fails Draft 2020-12 meta-schema validation. The
             wrapped jsonschema exception is available via `__cause__`.
     """
-    schema = get_tool_schema(path, tool_name=tool_name, server_name=server_name)
+    # Normalize empty-string server_name to None (HIGH-2 fix; same as
+    # `get_tool_schema`).
+    if server_name == "":
+        server_name = None
+
+    # Look up the schema + capture which server actually matched so the
+    # error pointer can name it concretely (Story 2.3 code-review HIGH-1
+    # fix: pre-edit shape emitted `/mcpServers/*/tools/...` when
+    # `server_name=None`; `*` is NOT an RFC 6901 wildcard).
+    servers = parse_mcp_servers(path)
     file_path_str = str(Path(path))
+
+    matched_server: str | None = server_name
+    schema: dict[str, Any] | None = None
+    if server_name is not None:
+        # `get_tool_schema` will raise if server doesn't exist OR tool
+        # not declared on it; matched_server is already correct.
+        schema = get_tool_schema(path, tool_name=tool_name, server_name=server_name)
+    else:
+        for srv_name, entry in servers.items():
+            tools = entry.get("tools", {})
+            if tool_name in tools:
+                matched_server = srv_name
+                schema = dict(tools[tool_name])
+                break
+        if schema is None:
+            # No server declares this tool — delegate to `get_tool_schema`
+            # for the canonical not-found error (avoids divergence).
+            get_tool_schema(path, tool_name=tool_name, server_name=server_name)
+
+    assert schema is not None  # mypy: get_tool_schema raised if not found
 
     try:
         Draft202012Validator.check_schema(schema)
     except jsonschema.exceptions.SchemaError as exc:
-        # `exc.absolute_path` is a deque of segments into the schema; build
-        # an RFC 6901 pointer from `mcpServers/<server>/tools/<tool>/...`
-        # — when server_name is None we omit the server segment in the
-        # message but include the tool path.
+        # `exc.absolute_path` is a deque of segments into the schema;
+        # build an RFC 6901 pointer from `mcpServers/<matched_server>/tools/<tool>/...`.
+        # `matched_server` is concrete (no `*` wildcard) per HIGH-1 fix.
         base_segments: list[str | int] = ["mcpServers"]
-        if server_name is not None:
-            base_segments.append(server_name)
-        else:
-            base_segments.append("*")
+        assert matched_server is not None  # invariant: schema was found
+        base_segments.append(matched_server)
         base_segments.extend(["tools", tool_name])
         for seg in exc.absolute_path:
             base_segments.append(seg)

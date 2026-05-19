@@ -87,6 +87,12 @@ _logger = logging.getLogger("AgentEval.library")
 #   `Library AgentEval.subagents.library.SubagentsLibrary WITH NAME Subagent`.
 # - `HooksLibrary` — INCLUDED. `Get Config` is unique across all Phase-1
 #   sub-libraries; flattening into `Library AgentEval` is safe.
+# - `MCPLibrary` — EXCLUDED preemptively (Story 2.3 code-review Auditor
+#   MED-2 ratification 2026-05-19; norm-inheritance from Story 2.2 HIGH-1).
+#   `Get Server Config` / `Get Tool Schema` / `Validate Tool Schema` are
+#   unique across Phase-1 sub-libraries, but the precedent matters: future
+#   Tier-1 sub-libraries will inevitably introduce `Get *` collisions.
+#   User pattern: `Library AgentEval.mcp.library.MCPLibrary WITH NAME MCP`.
 #
 # A runtime collision-detector in `_build_components()` raises loudly if
 # future stories accidentally register two components with overlapping

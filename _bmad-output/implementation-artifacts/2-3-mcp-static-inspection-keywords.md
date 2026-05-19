@@ -1,6 +1,6 @@
 # Story 2.3: MCP Static Inspection Keywords
 
-Status: review
+Status: done
 
 ## Story
 
@@ -128,7 +128,7 @@ Plus `tests/unit/mcp/test_robot_integration.robot` (~3 RF tests) using `Library 
 
 - PRD FR5 (Get Server Config) + FR6 (Get Tool Schema + Validate Tool Schema) + FR7 (transport enum) + FR59 (Tier-1 setup-failure format) + NFR-PERF-02 (median ≤ 50 ms).
 - Architecture L832-849 — sub-library module layout (`library.py` + `_parser.py`-style helper).
-- Architecture L825+ Phase-1 carve-out registry — extended with: "Story 2.3 ratifies `.mcp.json:tools` declarative tool-schema extension as the Phase-1 source for `MCP.Get Tool Schema`; Phase-2 + Epic 3 retrieve schemas from running MCP servers per FR6."
+- The Phase-1 `.mcp.json:tools` declarative-extension carve-out is documented in 2 truthful places: the 16th-leaf catalog row at `docs/contracts/error-class-hierarchy.md` L96 + the parser/library module docstrings. The architecture L838 carve-out registry is `Should *`-keyword-scoped (Story 2.1's domain), NOT a generic Phase-1 data-source carve-out registry — Story 2.3 does NOT amend it. Auditor MED-1 ratification 2026-05-19.
 - Architecture L299/L354/L573 — DynamicCore composition; MCP sub-library NOT composed (Story 2.2 collision-prevention).
 - ADR-014 + error-class-hierarchy.md L54 + L93-95 — `InvalidMCPServerConfigError` (15th) + `InvalidMCPToolSchemaError` (16th) under `_FR59Tier1SetupFailureError`.
 - jsonschema Draft 2020-12 — `jsonschema>=4.0,<5.0` pin supports it.
@@ -202,3 +202,4 @@ $ uv run pytest tests/unit/conventions -q (STANDALONE) — 17 passed
 | ---------- | ------- | ----------- | ------ |
 | 2026-05-19 | 0.1.0   | Initial story creation (ready-for-dev). Pre-create-story drift check (13th use) caught 5 drifts: D-A epics.md P95 → median; D-B + D-C 2 new leaves (15th + 16th) added to catalog; D-D Phase-1 tool-schema source ratified as `.mcp.json:tools` extension; D-E transport enum strict per FR7. | Bob |
 | 2026-05-19 | 0.2.0   | Dev-story complete. `MCPLibrary` + `InvalidMCPServerConfigError` (15th leaf) + `InvalidMCPToolSchemaError` (16th leaf) shipped. 57 unit + 3 RF integration tests added; all gates green (ruff/format/mypy clean on 39 src files; 455 unit + 30 conformance + 11 skipped + 6 tier1 + 13 RF). Status: review. | Dev |
+| 2026-05-19 | 0.3.0   | Code-review patches applied. 4-reviewer pair (Blind+Edge-cases+Auditor+Codex 0.117.0): 15th consecutive cross-LLM STAR catch. 3-way HIGH (Blind+Edge-cases+Codex): `/mcpServers/*/tools/<tool>` wildcard pointer was RFC-6901-invalid (`*` is literal not wildcard) — replaced with `/mcpServers` search-root pointer when `server_name=None` + tracked the actual matched server for concrete pointers in scoped branches. Blind unique HIGH: `server_name=""` predicate inconsistency (`is not None` vs truthy `if`) — normalized empty string to None. 2-way MED (Edge-cases+Blind): `/proc` PID-diff with `< 10` tolerance was non-deterministic + too lax — replaced with `subprocess.Popen` monkeypatch assert-not-called. 2-way LOW (Codex+Edge-cases): first-match docstring promise was untested (no duplicate-tool fixture) — added temp-fixture test with 2 servers declaring same tool name. Codex MED + Auditor LOW: PRD FR5 dict-shape ambiguity ratified — amended FR5 to clarify `name` is the outer dict KEY. Auditor MED: architecture L838 carve-out registry claim retracted (carve-out is documented in 16th-leaf catalog row + parser docstring; L838 registry is `Should *`-scoped). Auditor MED: `_SUB_LIBRARIES` carve-out comment extended with MCPLibrary entry. 5 new code-review tests + 1 strengthened first-match test. All-gates green: ruff/format/mypy clean (39 src files); 494 unit (was 455) + 30 conformance + 11 skipped + 6 tier1 + 13 RF. Status: done. | Dev |

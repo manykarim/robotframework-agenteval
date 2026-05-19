@@ -88,24 +88,30 @@ def test_get_server_config_remote_omits_optional_fields(lib: MCPLibrary) -> None
     assert remote["transport"] == "streamable_http"
 
 
-def test_get_server_config_does_not_spawn_subprocess(lib: MCPLibrary) -> None:
+def test_get_server_config_does_not_spawn_subprocess(lib: MCPLibrary, monkeypatch: pytest.MonkeyPatch) -> None:
     """No-side-effect contract: `Get Server Config` is pure file-parsing.
 
-    Reads the local PID set, runs the keyword, reads again — no new
-    long-lived MCP server subprocess should appear. Sleep briefly to
-    let any accidental subprocess populate before re-reading.
+    Story 2.3 code-review Edge-cases+Blind 2-way MED fix (2026-05-19):
+    pre-edit shape used `os.listdir('/proc')` diff with `< 10` tolerance,
+    which was non-deterministic on busy CI runners AND too loose to catch
+    actual spawn bugs (5 Popens diff=5 would silently pass). Replaced
+    with `subprocess.Popen` monkeypatch + assert-not-called, which is
+    deterministic AND catches any spawn attempt.
     """
-    import os
+    import subprocess
 
-    children_before = set(os.listdir("/proc")) if os.path.exists("/proc") else set()
+    spawn_calls: list[tuple] = []
+
+    def fail_on_popen(*args: object, **kwargs: object) -> None:
+        spawn_calls.append((args, kwargs))
+        raise AssertionError(
+            f"`Get Server Config` is supposed to be a Tier-1 pure file-parsing keyword "
+            f"but spawned a subprocess via Popen({args!r}, {kwargs!r})"
+        )
+
+    monkeypatch.setattr(subprocess, "Popen", fail_on_popen)
     lib.get_server_config(VALID_FIXTURE)
-    children_after = set(os.listdir("/proc")) if os.path.exists("/proc") else set()
-    # Process-id churn is expected from the test framework itself; assert
-    # the absolute count remained sane (no spawn-storm). A real MCP server
-    # spawn would add a long-lived PID in `/proc`.
-    if children_before and children_after:
-        # Allow up to a handful of natural pid churn.
-        assert abs(len(children_after) - len(children_before)) < 10
+    assert spawn_calls == []
 
 
 # --------------------------------------------------------------------------- #
@@ -241,10 +247,17 @@ def test_get_tool_schema_scoped_to_server(lib: MCPLibrary) -> None:
 
 
 def test_get_tool_schema_unknown_tool_raises(lib: MCPLibrary) -> None:
+    """Unscoped not-found raises `InvalidMCPToolSchemaError` with the search-root pointer.
+
+    Story 2.3 HIGH-1 fix: field_name is `/mcpServers` (search root),
+    NOT the pre-edit `/mcpServers/*/tools/<name>` wildcard pseudo-pointer.
+    The tool name appears in the human-readable error message instead.
+    """
     with pytest.raises(InvalidMCPToolSchemaError) as exc_info:
         lib.get_tool_schema(VALID_FIXTURE, tool_name="does-not-exist")
     assert exc_info.value.error_code == "INVALID_MCP_TOOL_SCHEMA"
-    assert "does-not-exist" in (exc_info.value.field_name or "")
+    assert "does-not-exist" in str(exc_info.value)
+    assert exc_info.value.field_name == "/mcpServers"
 
 
 def test_get_tool_schema_unknown_server_raises(lib: MCPLibrary) -> None:
@@ -290,9 +303,16 @@ def test_validate_tool_schema_preserves_jsonschema_cause(lib: MCPLibrary) -> Non
 
 
 def test_validate_tool_schema_unknown_tool_raises(lib: MCPLibrary) -> None:
+    """Validate on unknown tool raises the canonical not-found error.
+
+    Story 2.3 HIGH-1 fix: field_name is the search-root pointer
+    `/mcpServers` (NOT a wildcard pseudo-pointer); the tool name
+    surfaces in the human-readable message.
+    """
     with pytest.raises(InvalidMCPToolSchemaError) as exc_info:
         lib.validate_tool_schema(VALID_FIXTURE, tool_name="nope")
-    assert "nope" in (exc_info.value.field_name or "")
+    assert "nope" in str(exc_info.value)
+    assert exc_info.value.field_name == "/mcpServers"
 
 
 # --------------------------------------------------------------------------- #
@@ -444,12 +464,73 @@ def test_dynamic_core_collision_detector_still_clean() -> None:
     assert library is not None
 
 
-def test_get_tool_schema_search_first_match_when_server_unscoped(lib: MCPLibrary) -> None:
-    """When `server_name=None`, the first server with the tool wins."""
-    # Both `echo` server entry declares `search` + `ping`. Without server_name
-    # scope, `search` resolves to echo.
-    schema = lib.get_tool_schema(VALID_FIXTURE, tool_name="ping")
+def test_get_tool_schema_search_first_match_when_server_unscoped(lib: MCPLibrary, tmp_path: Path) -> None:
+    """When `server_name=None`, the first-declared server with the tool wins.
+
+    Story 2.3 code-review fix (Codex+Edge-cases 2-way LOW 2026-05-19):
+    pre-edit test against `mcp-valid.json` exercised only `echo` (the
+    only server with a `tools` block); no duplicate-declaration
+    arbitration was tested. Replaced with a temp fixture declaring the
+    same tool name on TWO servers with DISTINGUISHABLE schemas so the
+    "first match wins" docstring is actually exercised.
+    """
+    f = tmp_path / "duplicate-tool.json"
+    payload = {
+        "mcpServers": {
+            "first": {
+                "command": "node-first",
+                "tools": {"search": {"type": "object", "description": "first-search"}},
+            },
+            "second": {
+                "command": "node-second",
+                "tools": {"search": {"type": "object", "description": "second-search"}},
+            },
+        }
+    }
+    f.write_text(json.dumps(payload))
+    schema = lib.get_tool_schema(f, tool_name="search")
+    assert schema["description"] == "first-search"  # `first` declared earlier
+
+
+def test_get_tool_schema_normalizes_empty_server_name(lib: MCPLibrary) -> None:
+    """`server_name=""` is treated as `None` (Story 2.3 HIGH-2 fix)."""
+    # The valid fixture's `echo` declares `search` + `ping`; either tool
+    # should resolve when `server_name=""` (which the parser normalizes
+    # to None for cross-server search).
+    schema = lib.get_tool_schema(VALID_FIXTURE, tool_name="search", server_name="")
     assert schema["type"] == "object"
+
+
+def test_get_tool_schema_unknown_tool_unscoped_returns_search_root_pointer(
+    lib: MCPLibrary,
+) -> None:
+    """Story 2.3 HIGH-1 fix: unscoped not-found `field_name` is `/mcpServers`, not `/mcpServers/*/...`.
+
+    Pre-edit shape emitted a wildcard `*` segment which RFC 6901 treats
+    as a literal segment (not a wildcard). Now the search-root pointer
+    points at the legitimate root + the human-readable message conveys
+    the search scope.
+    """
+    with pytest.raises(InvalidMCPToolSchemaError) as exc_info:
+        lib.get_tool_schema(VALID_FIXTURE, tool_name="does-not-exist")
+    assert exc_info.value.field_name == "/mcpServers"
+    assert "*" not in (exc_info.value.field_name or "")
+
+
+def test_get_tool_schema_handles_slash_in_tool_name(lib: MCPLibrary, tmp_path: Path) -> None:
+    """RFC 6901 escaping applies to `tool_name`s containing `/` or `~`.
+
+    Story 2.3 HIGH-1 fix routed the not-found pointer through
+    `_build_pointer`; verifies special chars are escaped.
+    """
+    f = tmp_path / "weird.json"
+    payload = {"mcpServers": {"echo": {"command": "node", "tools": {}}}}
+    f.write_text(json.dumps(payload))
+    with pytest.raises(InvalidMCPToolSchemaError) as exc_info:
+        lib.get_tool_schema(f, tool_name="with/slash", server_name="echo")
+    # When scoped, the pointer must include the escaped tool name.
+    pointer = exc_info.value.field_name or ""
+    assert "with~1slash" in pointer
 
 
 def test_get_server_config_handles_bom(lib: MCPLibrary, tmp_path: Path) -> None:
@@ -460,10 +541,17 @@ def test_get_server_config_handles_bom(lib: MCPLibrary, tmp_path: Path) -> None:
 
 
 def test_tools_with_string_pointer_includes_canonical_tool_path(lib: MCPLibrary) -> None:
-    """JSON Pointer points into the broken tool's sub-schema."""
+    """JSON Pointer points into the broken tool's sub-schema, with concrete server name.
+
+    Story 2.3 HIGH-1 fix: pointer now includes the actual matched
+    server name (`echo` in this fixture) instead of the pre-edit `*`
+    wildcard pseudo-segment.
+    """
     with pytest.raises(InvalidMCPToolSchemaError) as exc_info:
         lib.validate_tool_schema(BROKEN_TOOL_FIXTURE, tool_name="broken_tool")
-    assert "tools/broken_tool" in (exc_info.value.field_name or "")
+    pointer = exc_info.value.field_name or ""
+    assert pointer.startswith("/mcpServers/echo/tools/broken_tool")
+    assert "*" not in pointer
 
 
 def test_server_name_scoping_with_tool_present_works(lib: MCPLibrary) -> None:
