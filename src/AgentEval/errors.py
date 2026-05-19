@@ -106,7 +106,7 @@ __all__ = [
     "AgentEvalIntegrityError",
     "AgentEvalBudgetError",
     "AgentEvalCompatError",
-    # Leaves (13 implemented; 3 future per module docstring):
+    # Leaves (14 implemented; 2 future per module docstring):
     "IncompleteTraceError",
     "PollingDisallowedError",
     "TierViolationError",
@@ -120,6 +120,7 @@ __all__ = [
     "AdapterDiscoveryError",
     "DuplicateRegistrationError",
     "UnsupportedBinaryVersionError",
+    "UnsupportedMCPVersionError",
     # Warnings (1):
     "DegradedTraceWarning",
 ]
@@ -607,6 +608,61 @@ class UnsupportedBinaryVersionError(AgentEvalCompatError):
         # FR49 JUnit XML emission + FR50 exit-code mapping via direct
         # attribute access; the human-readable str(exc) matches PRD FR47
         # verbatim format.
+        return Exception.__str__(self)
+
+
+class UnsupportedMCPVersionError(AgentEvalCompatError):
+    """Raised when an MCP server's negotiated spec version is outside the supported range.
+
+    Per PRD FR8 + FR46 + AC-MCP-OBSERVE-02 +
+    `docs/contracts/error-class-hierarchy.md` L80 (4th Compat-family
+    leaf; first IMPLEMENTED Compat leaf with a real runtime raise site).
+    Raised by `src/AgentEval/mcp/version_gate.py` after the MCP SDK's
+    `ClientSession.initialize()` returns an `InitializeResult` whose
+    `protocolVersion` falls outside the agenteval-supported range
+    (`mcp>=1.0,<2.0` per NFR-COMPAT-04 + ADR-008).
+
+    Story 3.1 design notes (ratified Epic 2 retro Action #3 by Many
+    2026-05-19): this leaf inherits `AgentEvalCompatError` DIRECTLY,
+    NOT via the `_FR59Tier1SetupFailureError` private intermediate
+    (which is scoped to Tier-1 SETUP-failure parse errors with the
+    `File / Line / Field / Fix` 5-line layout). MCP spec-version
+    negotiation is a RUNTIME failure; the FR59 setup-failure shape
+    doesn't fit. Follows the `UnsupportedBinaryVersionError`
+    Story 1b.4 D6/D7 precedent: domain-specific `__str__` override;
+    structured attrs for programmatic consumers.
+
+    `__str__` format per PRD FR8 verbatim wording:
+        ``MCP server version <X> outside library tested range <range>``
+
+    Structured attrs:
+        - `server_version` — the version the server advertised (may be
+          `None` if the SDK didn't surface a version at all).
+        - `supported_range` — the agenteval-supported range string
+          (e.g., `"mcp>=1.0,<2.0"`).
+
+    `error_code = "UNSUPPORTED_MCP_VERSION"`; exit code 68 (sysexits-
+    extended; pinned by epics.md Story 8a.1 L1660).
+    """
+
+    error_code: ClassVar[str] = "UNSUPPORTED_MCP_VERSION"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        server_version: str | None = None,
+        supported_range: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.server_version: str | None = server_version
+        self.supported_range: str | None = supported_range
+
+    def __str__(self) -> str:
+        # FR8-exact str(exc): NO H_R7 prefix; matches PRD FR8 verbatim
+        # wording for the runtime negotiation failure. The `error_code`
+        # ClassVar remains available for FR49 JUnit XML emission + FR50
+        # exit-code mapping via direct attribute access.
         return Exception.__str__(self)
 
 

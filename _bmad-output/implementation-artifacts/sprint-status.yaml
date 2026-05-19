@@ -81,8 +81,8 @@ development_status:
   1c-1-phase-1-5-carry-overs-catalog: done  # 2-reviewer (Auditor + Codex) code-review applied 2026-05-19. 3 HIGH + 5 MED + 2 LOW findings all addressed. Story key renamed from `1-5-1-` → `1c-1-` for bmad-create-story parser compatibility.
   epic-1c-retrospective: optional
 
-  epic-3: backlog
-  3-1-mcp-server-lifecycle-keywords-start-connect-stop-spec-version-gate: backlog
+  epic-3: in-progress
+  3-1-mcp-server-lifecycle-keywords-start-connect-stop-spec-version-gate: review  # Dev-story complete 2026-05-19. Pre-create-story drift check (15th use) caught 5 drifts (D-A MCP.Connect → Connect To Server per FR8; D-B "Tier 2 LLM-Deterministic" badge non-existent → Tier 1; D-C UnsupportedMCPVersionError inherits AgentEvalCompatError directly per Epic 2 retro Action #3; D-D mcp_per_test="test" invalid → True/False/"suite"; D-E CI step verification). 3 new lifecycle keywords + UnsupportedMCPVersionError (14th leaf, first IMPLEMENTED Compat-family) + version_gate.py + transport.py + bundled echo server. AC-MCP-OBSERVE-02 conformance test un-skipped. All-gates green: ruff/format/mypy clean (44 src files); 501 unit + 64 conformance + 9 skipped (was 10) + 6 tier1 + 17 integration + 16 RF (was 13; +3 MCP lifecycle RF cases). Awaiting cross-LLM code review.
   3-2-mcp-tool-inspection-keywords-list-tools-call-tool: backlog
   3-3-interleaved-dogfood-port-rf-mcp-mcp-surface-tests: backlog
   epic-3-retrospective: optional

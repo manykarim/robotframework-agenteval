@@ -49,6 +49,7 @@ Phase-1 limitations:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,14 @@ from AgentEval.mcp._parser import (
     parse_mcp_servers,
     validate_tool_schema,
 )
+from AgentEval.mcp.lifecycle import (
+    MCPServerHandle,
+    MCPSession,
+    connect_to_server,
+    start_server,
+    stop_server,
+)
+from AgentEval.mcp.transport import Transport
 
 __all__ = ["MCPLibrary"]
 
@@ -163,3 +172,103 @@ class MCPLibrary:
                 is available via `__cause__`.
         """
         validate_tool_schema(config_path, tool_name=tool_name, server_name=server_name)
+
+    # --------------------------------------------------------------- #
+    # Story 3.1: MCP server lifecycle keywords (PRD FR7 + FR8 + FR46)
+    # --------------------------------------------------------------- #
+
+    @keyword(name="Start Server")
+    @tier(1)
+    def start_server(
+        self,
+        name: str,
+        transport: Transport,
+        command: str | None = None,
+        args: list[str] | None = None,
+        env: dict[str, str] | None = None,
+        server_factory: Callable[[], Any] | None = None,
+    ) -> MCPServerHandle:
+        """Build an MCP server handle per PRD FR7.
+
+        [Tier 1 — Deterministic] — pure handle construction. For
+        `stdio` + `in_memory` transports, this DOES NOT spawn or
+        instantiate the server yet (per Story 3.1 Phase-1 per-call-
+        session design); the actual server start happens during
+        `Connect To Server`. The `streamable_http` transport name is
+        accepted as a Phase-1 passthrough; full HTTP round-trip
+        support lands Phase-1.5 OR Epic 3 Story 3.2.
+
+        Args:
+            name: Caller-chosen server identifier (echoed in errors).
+            transport: One of `"stdio"` / `"streamable_http"` /
+                `"in_memory"` per PRD FR7 transport enum.
+            command: stdio only — executable path/name (e.g.,
+                `"python"`).
+            args: stdio only — command-line arguments.
+            env: stdio only — environment overlay.
+            server_factory: in_memory only — no-arg callable returning
+                a `FastMCP` server instance.
+
+        Returns:
+            `MCPServerHandle` describing the server target. Consume via
+            `Connect To Server`.
+
+        Raises:
+            ValueError: If transport-required parameters are missing.
+        """
+        return start_server(
+            name=name,
+            transport=transport,
+            command=command,
+            args=args,
+            env=env,
+            server_factory=server_factory,
+        )
+
+    @keyword(name="Connect To Server")
+    @tier(1)
+    def connect_to_server(self, handle: MCPServerHandle) -> MCPSession:
+        """Open + initialize an MCP `ClientSession`, gate-check the version (PRD FR8 + FR46).
+
+        [Tier 1 — Deterministic] — per Story 3.1 Phase-1 per-call-
+        session design, opens the session, runs `initialize()`,
+        captures the negotiated protocol version + server info, runs
+        the version gate (`UnsupportedMCPVersionError` on out-of-range
+        per AC-MCP-OBSERVE-02 + NFR-COMPAT-04 `mcp>=1.0,<2.0`), then
+        closes the underlying SDK session. The returned `MCPSession`
+        is metadata only — NOT a live SDK session.
+
+        Args:
+            handle: An `MCPServerHandle` from `Start Server`.
+
+        Returns:
+            `MCPSession` with negotiated `protocol_version` +
+            `server_info`.
+
+        Raises:
+            UnsupportedMCPVersionError: If the negotiated protocol
+                version is outside the agenteval-supported range
+                (`mcp>=1.0,<2.0`).
+            ValueError: If `handle.transport == "streamable_http"`
+                (Phase-1 passthrough; not yet implemented).
+        """
+        return connect_to_server(handle)
+
+    @keyword(name="Stop Server")
+    @tier(1)
+    def stop_server(self, handle: MCPServerHandle) -> None:
+        """Tear down any per-handle resources.
+
+        [Tier 1 — Deterministic] — Phase-1 no-op (each `Connect To
+        Server` self-cleans the SDK session). The keyword ships now so
+        `.robot` tests can adopt the canonical 3-step lifecycle
+        without breaking when Phase-1.5 introduces pooled sessions
+        that need explicit teardown.
+
+        Args:
+            handle: The `MCPServerHandle` from `Start Server`.
+
+        Returns:
+            None.
+        """
+        stop_server(handle)
