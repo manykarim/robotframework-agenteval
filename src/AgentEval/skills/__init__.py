@@ -14,7 +14,16 @@
 
 """AgentEval.skills sub-package.
 
-Skill sub-library: static inspection + activation decision per FR1-2/FR4.
+Skill sub-library: static-inspection keywords for skill `.md` files
+(PRD FR1 + Epic 2 Story 2.1). Re-exports `SkillsLibrary` for the
+top-level `AgentEval` `DynamicCore` composition + advanced consumers
+who import the sub-library directly (`Library AgentEval.skills.library
+WITH NAME Skill`).
 
-Modules land in Epic 2 + Epic 7.
+Phase-2 + Epic 7 add the FR4 model-API-key-gated activation decision
+(`Get Activation Decision`) on top of these Phase-1 static inspectors.
 """
+
+from AgentEval.skills.library import SkillsLibrary
+
+__all__ = ["SkillsLibrary"]

@@ -1122,7 +1122,7 @@ So that I can assert on skill `.md` file structure in a `.robot` test in millise
 
 **Given** a valid skill `.md` file at `tests/fixtures/skills/example-valid.md` with YAML frontmatter containing `name`, `description`, `allowed-tools`, `disable-model-invocation`,
 **When** I call `${frontmatter}=    Skill.Get Frontmatter    tests/fixtures/skills/example-valid.md` in a `.robot` test,
-**Then** the variable receives a dict with the parsed YAML structure and the call completes in <50ms (per NFR-PERF-01 Tier-1 latency target).
+**Then** the variable receives a dict with the parsed YAML structure and the call completes in <50ms (per NFR-PERF-02 Tier-1 latency target L1608; NFR-PERF-01 is the separate 5-minute time-to-first-test bar — pre-edit citation was drift caught by Story 2.1 pre-create-story check D2).
 
 **And Given** the same valid file,
 **When** I call `${desc}=    Skill.Get Description    tests/fixtures/skills/example-valid.md`,
@@ -1136,7 +1136,7 @@ So that I can assert on skill `.md` file structure in a `.robot` test in millise
 **When** I call `Should Be Valid Frontmatter    ${frontmatter_dict}` using the AssertionEngine operator,
 **Then** the assertion fails with a structured error listing each missing required field; passing the same operator a complete frontmatter dict succeeds without error.
 
-**And** the keyword library exports the 4 keywords via DynamicCore lazy-loading per ADR-006 (sub-library name "Skill" — short, clear, discoverable; e.g. `Skill.Get Description`); libdoc generation produces the `[Tier 1 — Deterministic]` badge on each keyword's docstring per Story 1b.6's conventions test.
+**And** the keyword library exports the 4 keywords via `DynamicCore` lazy-loading per architecture L299/L354/L573 + agentguard ADR-003 inheritance catalog row (the pre-edit "ADR-006" citation was drift caught by Story 2.1 pre-create-story check D1 — ADR-006 is `agent-run-result-completeness-field.md`, NOT the DynamicCore composition source). Sub-library name "Skill" — short, clear, discoverable; e.g. `Skill.Get Description`. libdoc generation produces the `[Tier 1 — Deterministic]` badge on each keyword's docstring per Story 1b.6's conventions test.
 
 **And** the `tests/unit/conventions/*` tests from Story 1b.6 all pass after this story lands (tier annotation present, error class hierarchy clean, docstring badge alignment correct, snake_case + verb-prefix keyword names).
 

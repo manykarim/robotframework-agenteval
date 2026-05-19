@@ -24,6 +24,9 @@ _SNAKE_CASE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 # Verb allowlist — extend in future stories per Story 1b.6 Phase-1 limitations.
 # Each verb is the first `_`-separated token of a snake_case keyword name.
+# Growth log:
+#   Story 2.1 (2026-05-19): added "should" for `Should Be Valid Frontmatter`
+#       (Phase-1 plain @keyword pending Phase-2 ADR-022 AssertionEngine adoption).
 _VERB_ALLOWLIST: frozenset[str] = frozenset(
     {
         "get",
@@ -46,6 +49,7 @@ _VERB_ALLOWLIST: frozenset[str] = frozenset(
         "write",
         "parse",
         "wait",
+        "should",
     }
 )
 

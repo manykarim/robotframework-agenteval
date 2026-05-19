@@ -95,3 +95,13 @@ jobs:
       # implementation, now removed.
       - name: pytest tests/unit (real tests)
         run: uv run pytest tests/unit -q
+
+      # Story 2.1: RF integration test for the `Skill` sub-library lives at
+      # tests/unit/skills/test_robot_integration.robot. pytest does not
+      # discover .robot files, so invoke `robot` explicitly so CI surfaces
+      # any regression in the DynamicCore-composed Skill keyword wiring.
+      # `--exclude` filter on directories without `.robot` files keeps the
+      # invocation focused; the AgentEval.skills.library.SkillsLibrary
+      # import path is the load-bearing assertion.
+      - name: robot tests/unit/skills (RF skills integration)
+        run: uv run robot --output NONE --report NONE --log NONE tests/unit/skills/test_robot_integration.robot

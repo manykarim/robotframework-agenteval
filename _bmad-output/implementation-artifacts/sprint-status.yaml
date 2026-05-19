@@ -66,8 +66,8 @@ development_status:
   1b-6-determinism-contract-doc-5-ci-enforcement-conventions-tests: done  # Code-review patches applied 2026-05-19. 4-reviewer pair (Blind + Edge + Auditor + Codex 0.117.0): 69 raw → ~25 unique → 6 HIGH + 5 MED + 10 cleanup patches + 6 deferred + ~10 dismissed. **12th consecutive cross-LLM STAR catch (Codex unique)**: Stat.Run N Times return type drift (list[KeywordRun] not list[AgentRunResult]); Stat.Get Pass At K return shape drift (float not tuple). **Auditor STAR**: PRD L1211 verbatim summary missing (FR63 violation); dead Tier Model duplicate; PollingDisallowedError + TierViolationError documented but not declared. Patches: PRD L1211 verbatim added; Tier Model dedup; 2 leaves added to errors.py; FR26/FR27 contract drift fixed; badge-text drift fixed in spec; _walk.py drops *Library heuristic + fully-qualified module names + classmethod unwrap + SRC_ROOT assertion; dynamic Warning detection; test_violation_detection.py NEW (10 tests; Blind#12 fake-green prevention). 6 deferred to Phase-1.5. All-gates clean: ruff/format/mypy/license (32 source files); 280 unit (263 prior + 17 conventions) + 30 conformance + 11 skipped + 6 tier1 + RF smoke. Epic 1b CLOSED.
   epic-1b-retrospective: optional
 
-  epic-2: backlog
-  2-1-skill-static-inspection-keywords: backlog
+  epic-2: in-progress
+  2-1-skill-static-inspection-keywords: review  # Dev-story complete 2026-05-19. All-gates green: ruff/format/mypy clean (33 src files); 324 unit + 30 conformance + 6 acceptance/tier1 pass; RF smoke + tests/unit/skills/test_robot_integration.robot pass. SkillsLibrary + InvalidSkillFrontmatterError (12th leaf) + DynamicCore composition shipped. Awaiting cross-LLM code review.
   2-2-subagent-hook-static-inspection-keywords: backlog
   2-3-mcp-static-inspection-keywords: backlog
   2-4-epic-2-conformance-fixtures-integration-tests-against-real-sample-files: backlog

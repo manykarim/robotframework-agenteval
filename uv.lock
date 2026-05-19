@@ -1841,6 +1841,7 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "pyyaml" },
     { name = "robotframework" },
+    { name = "robotframework-pythonlibcore" },
 ]
 
 [package.optional-dependencies]
@@ -1868,6 +1869,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0,<7.0" },
     { name = "robotframework", specifier = "==7.4.2" },
     { name = "robotframework-pabot", marker = "extra == 'dev'", specifier = "==5.2.2" },
+    { name = "robotframework-pythonlibcore", specifier = ">=4.5,<5.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6,<1.0" },
 ]
 provides-extras = ["dev"]
@@ -1882,6 +1884,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d6/16/285f1737483a93f7ab38456e97bd34d101a4a9713ba01050fecf51096bef/robotframework_pabot-5.2.2.tar.gz", hash = "sha256:497c3d72551c76eda21029df6a28c6b2ed227e63c4a8510e1c6a0690b9e2be91", size = 106974, upload-time = "2026-02-18T21:04:22.827Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f5/15/f5da87828441f53f5126dda3dd1fdf1fd73b8f5fdf490659b56dd2dc3a80/robotframework_pabot-5.2.2-py3-none-any.whl", hash = "sha256:e7b95d031e9f04b77312b04a1fd835b9791f022b3436b63b507a720bfec05bb4", size = 71801, upload-time = "2026-02-18T21:04:21.313Z" },
+]
+
+[[package]]
+name = "robotframework-pythonlibcore"
+version = "4.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/48/58/dd3fb5cfd3ff1659e778c5fba61c54451eb3c9c1bca5cea1c7925bf163d1/robotframework_pythonlibcore-4.6.0.tar.gz", hash = "sha256:c45acbdf781b35a5cbac8e1c019fedab87d99f34ff29a6c99b774fbd95313f27", size = 14196, upload-time = "2026-05-14T19:27:21.871Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dc/b5/188f79e1d6ba281880a6817156d2fa8b89a1e034f6be0390425f4fb2969b/robotframework_pythonlibcore-4.6.0-py3-none-any.whl", hash = "sha256:db8d707961a0b83a5497d9c02b8919805e47b73907d0a588c79593518dc133a7", size = 20330, upload-time = "2026-05-14T19:27:20.595Z" },
 ]
 
 [[package]]

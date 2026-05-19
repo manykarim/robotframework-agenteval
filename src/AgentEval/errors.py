@@ -106,10 +106,11 @@ __all__ = [
     "AgentEvalIntegrityError",
     "AgentEvalBudgetError",
     "AgentEvalCompatError",
-    # Leaves (8 implemented; 3 future per module docstring):
+    # Leaves (9 implemented; 3 future per module docstring):
     "IncompleteTraceError",
     "PollingDisallowedError",
     "TierViolationError",
+    "InvalidSkillFrontmatterError",
     "CostExceededError",
     "RuntimeBudgetExceededError",
     "AdapterDiscoveryError",
@@ -221,6 +222,71 @@ class TierViolationError(AgentEvalIntegrityError):
     """
 
     error_code: ClassVar[str] = "TIER_VIOLATION"
+
+
+class InvalidSkillFrontmatterError(AgentEvalIntegrityError):
+    """Raised when a skill `.md` file's YAML frontmatter is malformed or incomplete.
+
+    Per `docs/contracts/error-class-hierarchy.md` L92 (12th leaf, ratified
+    2026-05-19 pre-Story-2.1 catalog amendment): Tier-1 setup-failure
+    semantics. Raised by `src/AgentEval/skills/_parser.py` when:
+        - YAML between `---` delimiters fails `yaml.safe_load()`
+        - Required fields (`name`, `description`, `allowed-tools`,
+          `disable-model-invocation`) are missing
+        - Type contract violations (e.g., `allowed-tools` is not a list,
+          `disable-model-invocation` is not a bool)
+        - File extension is not `.md` or file does not exist
+
+    `__str__` format per FR59 (`docs/contracts/error-class-hierarchy.md`
+    L96-104) overrides the base H_R7 `error_code: <message>` shape with
+    the multi-line setup-failure format:
+
+        INVALID_SKILL_FRONTMATTER: <one-line summary>
+          File: <path>
+          Line: <line number or N/A>
+          Field: <field name or N/A>
+          Fix: <one-line remediation hint>
+
+    Structured attrs (`file_path`, `line_number`, `field_name`,
+    `fix_suggestion`) match the sibling `UnsupportedBinaryVersionError`
+    pattern (Story 1b.4 D7 ratification) so callers can react
+    programmatically without parsing the string.
+
+    `error_code = "INVALID_SKILL_FRONTMATTER"`; exit code 65 (EX_DATAERR;
+    same family as other Tier-1 setup-failure errors per epics.md
+    Story 8a.1 L1660).
+    """
+
+    error_code: ClassVar[str] = "INVALID_SKILL_FRONTMATTER"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        file_path: str | None = None,
+        line_number: int | None = None,
+        field_name: str | None = None,
+        fix_suggestion: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.file_path: str | None = file_path
+        self.line_number: int | None = line_number
+        self.field_name: str | None = field_name
+        self.fix_suggestion: str | None = fix_suggestion
+
+    def __str__(self) -> str:
+        # FR59-exact multi-line setup-failure format per
+        # `docs/contracts/error-class-hierarchy.md` L96-104; overrides
+        # the base H_R7 `error_code: <message>` shape because FR59 specifies
+        # the verbatim layout for Tier-1 setup-failure errors.
+        message = Exception.__str__(self)
+        return (
+            f"{self.error_code}: {message}\n"
+            f"  File: {self.file_path if self.file_path else 'N/A'}\n"
+            f"  Line: {self.line_number if self.line_number is not None else 'N/A'}\n"
+            f"  Field: {self.field_name if self.field_name else 'N/A'}\n"
+            f"  Fix: {self.fix_suggestion if self.fix_suggestion else 'N/A'}"
+        )
 
 
 # --------------------------------------------------------------------------- #

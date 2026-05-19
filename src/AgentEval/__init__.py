@@ -45,14 +45,31 @@ Usage from a Python script:
 
 from __future__ import annotations
 
+import importlib
+import logging
 from typing import Any, Literal
 
 from robot.api.deco import keyword
+from robotlibcore import DynamicCore
 
 from AgentEval._kernel.context import _resolve_scope, resolve_config
 
 __version__ = "0.0.1"
 __all__: list[str] = ["AgentEval"]
+
+_logger = logging.getLogger("AgentEval.library")
+
+# Sub-library registry per architecture L299/L354/L573 + agentguard ADR-003
+# inheritance catalog row (`docs/adr/ADR-001-architectural-influences-catalog.md`
+# row "agenteval_concept: DynamicCore composition"). Each entry is
+# `(module_path, class_name)`; the lazy-import loop in
+# `AgentEval._build_components` instantiates the class + appends to the
+# DynamicCore components list. Missing modules / classes are swallowed
+# silently (matches agentguard `library.py:82-93` pattern) so the
+# top-level `AgentEval` import remains green even while later Epic
+# sub-libraries are not yet shipped. Story 2.1 ships entry 1 (skills);
+# future Epics extend this tuple.
+_SUB_LIBRARIES: tuple[tuple[str, str], ...] = (("AgentEval.skills.library", "SkillsLibrary"),)
 
 
 # Sentinel: distinguishes "user passed this kwarg" from "kwarg defaulted to
@@ -81,7 +98,7 @@ class _UnsetType:
 _UNSET: Any = _UnsetType()
 
 
-class AgentEval:
+class AgentEval(DynamicCore):  # type: ignore[misc]
     """Robot Framework library for evaluating AI coding agents.
 
     Wires the 9 PRD FR42 + FR11b defaults into a single Library entry point
@@ -196,6 +213,47 @@ class AgentEval:
         # AC-1a.6.8: lazy RF Listener v3 context hook. Phase-1 stub returns None;
         # Epic 5 Story 5.1 wires the real `test_id` read for per-test MCP scoping.
         self._rf_test_id = self._get_rf_test_id()
+
+        # Story 2.1: DynamicCore composition per architecture L299/L354/L573 +
+        # agentguard ADR-003 inheritance catalog row. Sub-libraries are
+        # lazy-imported; missing modules are swallowed so future Epic
+        # sub-libraries don't break the top-level `Library AgentEval` import.
+        components = self._build_components()
+        self._loaded_components: list[str] = [c.__class__.__name__ for c in components]
+        DynamicCore.__init__(self, components)
+
+    def _build_components(self) -> list[Any]:
+        """Lazy-import sub-libraries declared in `_SUB_LIBRARIES`.
+
+        Per architecture L299/L354/L573 + agentguard `library.py:82-93`
+        pattern: each entry is `(module_path, class_name)`; failures to
+        import the module OR resolve the class are swallowed at DEBUG
+        log level so the top-level library imports green even when
+        later Epic sub-libraries are not yet shipped.
+        """
+        components: list[Any] = []
+        for mod_name, cls_name in _SUB_LIBRARIES:
+            try:
+                mod = importlib.import_module(mod_name)
+                cls = getattr(mod, cls_name)
+                components.append(cls())
+            except (ImportError, AttributeError) as exc:
+                _logger.debug(
+                    "AgentEval: sub-library %s.%s not loaded (%s)",
+                    mod_name,
+                    cls_name,
+                    exc,
+                )
+                continue
+            except Exception as exc:  # noqa: BLE001
+                _logger.warning(
+                    "AgentEval: sub-library %s.%s raised on init: %s",
+                    mod_name,
+                    cls_name,
+                    exc,
+                )
+                continue
+        return components
 
     @keyword(name="Get Effective Config")
     def get_effective_config(self) -> dict[str, Any]:
