@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Documents agenteval's **unified error hierarchy** as a publishable consumer-facing contract. Every error agenteval raises inherits from `AgentEvalError` (a common base with a structured `error_code: str` class attribute). 4 semantic sub-bases enable selective programmatic catch (`try/except AgentEvalBudgetError` to retry with smaller scope; `try/except AgentEvalIntegrityError` to fail fast). 11 leaves at 4 sub-bases. The contract is the single source contributors + consumers consult when (a) catching agenteval errors, (b) authoring the JUnit XML emitter, (c) implementing the `agenteval` CLI exit-code mapping per FR50.
+Documents agenteval's **unified error hierarchy** as a publishable consumer-facing contract. Every error agenteval raises inherits from `AgentEvalError` (a common base with a structured `error_code: str` class attribute). 4 semantic sub-bases enable selective programmatic catch (`try/except AgentEvalBudgetError` to retry with smaller scope; `try/except AgentEvalIntegrityError` to fail fast). 12 leaves at 4 sub-bases (incremented to 12 by Story 2.1 pre-authoring amendment). The contract is the single source contributors + consumers consult when (a) catching agenteval errors, (b) authoring the JUnit XML emitter, (c) implementing the `agenteval` CLI exit-code mapping per FR50.
 
 ## Scope
 
@@ -53,7 +53,7 @@ FR50 exit codes use **sysexits.h-style per-leaf mapping** (ratified 2026-05-18 p
 | `AgentEvalCompatError(AgentEvalError)` | `UnsupportedMCPVersionError`, `UnsupportedBinaryVersionError`, `AdapterDiscoveryError`, `AdapterVersionDriftWarning` |
 | `AgentEvalIntegrityError(AgentEvalError)` | `PollingDisallowedError`, `IncompleteTraceError`, `TierViolationError`, `InvalidSkillFrontmatterError` |
 
-**Total: 11 leaves** (Safety: 2 + Budget: 2 + Compat: 4 + Integrity: 3). Adding additional leaves requires ADR amendment per ADR-014 §Decision.
+**Total: 12 leaves** (Safety: 2 + Budget: 2 + Compat: 4 + Integrity: 4). Story 2.1 pre-authoring amendment (2026-05-19) added `InvalidSkillFrontmatterError` as the 4th Integrity leaf. Adding additional leaves requires ADR amendment per ADR-014 §Decision.
 
 ### Per-leaf inventory (error_code + exit_code + one-line description + owning epic)
 
@@ -118,7 +118,7 @@ Tier-2 + Tier-3 errors (runtime, not setup-failure) are NOT subject to FR59 — 
 ### FR49 + FR50 mapping (one-stop lookup)
 
 - **FR49 JUnit XML:** `<failure type="<error_code>">` attribute = the leaf's `error_code` class attribute. Renderers (GitHub Actions test-reporter, Jenkins JUnit plugin, Allure) surface this as the failure category.
-- **FR50 exit codes (sysexits.h-style per-leaf):** the per-leaf table above is the authoritative source. The `agenteval` CLI's exit-code translation layer reads the leaf's `exit_code` class attribute (set per ADR-014 on each leaf). 4 leaves are pinned by epics.md Story 8a.1 L1660 (`PollingDisallowedError` = 65, `CostExceededError` = 66, `IncompleteTraceError` = 67, `UnsupportedMCPVersionError` = 68); the other 7 use sysexits.h-aligned codes ratified by Story 1a.4 (77 EX_NOPERM for safety errors, 78 EX_CONFIG for config errors, 75 EX_TEMPFAIL for runtime budget, 70 EX_SOFTWARE for tier violation; `AdapterVersionDriftWarning` is a warning, exit 0). PRD draft FR50 used family codes 1/2/3 — superseded 2026-05-18.
+- **FR50 exit codes (sysexits.h-style per-leaf):** the per-leaf table above is the authoritative source. The `agenteval` CLI's exit-code translation layer (Phase-1.5; not yet implemented as of Story 2.1) will read each leaf's exit-code mapping from THIS contract table — NOT yet from a `exit_code: ClassVar[int]` attribute on the leaf classes. The pre-Story-2.1 wording "set per ADR-014 on each leaf" was aspirational; Story 1b.6's leaf classes (`PollingDisallowedError`, `TierViolationError`, `InvalidSkillFrontmatterError` introduced Story 2.1) + Story 1b.3's budget/compat leaves expose `error_code` only. Adding `exit_code: ClassVar[int]` to each leaf is tracked in `deferred-work.md` as a Phase-1.5 hygiene pass to coincide with the CLI's exit-code translation layer landing (Epic 8a Story 8a.1). Until then, the CLI implementation consults THIS table by `error_code` string lookup. 4 leaves are pinned by epics.md Story 8a.1 L1660 (`PollingDisallowedError` = 65, `CostExceededError` = 66, `IncompleteTraceError` = 67, `UnsupportedMCPVersionError` = 68); the other 8 use sysexits.h-aligned codes ratified by Story 1a.4 (77 EX_NOPERM for safety errors, 78 EX_CONFIG for config errors, 75 EX_TEMPFAIL for runtime budget, 70 EX_SOFTWARE for tier violation, 65 EX_DATAERR for `InvalidSkillFrontmatterError`; `AdapterVersionDriftWarning` is a warning, exit 0). PRD draft FR50 used family codes 1/2/3 — superseded 2026-05-18.
 
 ## Change Policy
 

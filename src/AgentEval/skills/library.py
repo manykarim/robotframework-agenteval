@@ -93,9 +93,15 @@ class SkillsLibrary:
             The parsed YAML frontmatter as a dict.
 
         Raises:
-            InvalidSkillFrontmatterError: On any structural failure
-                (missing file, broken YAML, missing delimiters). Format
-                per FR59 + `docs/contracts/error-class-hierarchy.md` L92.
+            InvalidSkillFrontmatterError: On YAML / file-level structural
+                failure (missing file, broken YAML, missing `---`
+                delimiters, frontmatter not a mapping). This keyword
+                does NOT enforce the required-fields contract — callers
+                that need that should use `Get Description` / `Get
+                Allowed Tools` / etc. (which validate) OR call `Should
+                Be Valid Frontmatter` on the returned dict. Error
+                format per `docs/contracts/error-class-hierarchy.md`
+                L96-104.
         """
         return parse_frontmatter(path)
 
@@ -118,9 +124,7 @@ class SkillsLibrary:
             InvalidSkillFrontmatterError: If the frontmatter is invalid
                 OR the `description` field is missing/non-string/empty.
         """
-        frontmatter = parse_frontmatter(path)
-        validate_frontmatter_structure(frontmatter, file_path=str(path))
-        return str(frontmatter["description"])
+        return str(self._read_and_validate(path)["description"])
 
     @keyword(name="Get Allowed Tools")
     @tier(1)
@@ -141,9 +145,7 @@ class SkillsLibrary:
             InvalidSkillFrontmatterError: If the frontmatter is invalid
                 OR `allowed-tools` is not a list of strings.
         """
-        frontmatter = parse_frontmatter(path)
-        validate_frontmatter_structure(frontmatter, file_path=str(path))
-        return list(frontmatter["allowed-tools"])
+        return list(self._read_and_validate(path)["allowed-tools"])
 
     @keyword(name="Get Disable Model Invocation")
     @tier(1)
@@ -151,8 +153,14 @@ class SkillsLibrary:
         """Return the `disable-model-invocation` bool from a skill `.md` file.
 
         [Tier 1 — Deterministic] — pure projection of `Get Frontmatter`
-        with a strict bool type check (YAML's `1` / `"yes"` coerce to
-        bool elsewhere; this keyword refuses non-bool values).
+        with a strict bool type check.
+
+        YAML coercion notes:
+            - `true`/`false`/`yes`/`no`/`on`/`off` parse to Python bool
+              (PyYAML 1.1 semantics) and are accepted.
+            - `1`/`0` integers parse to Python int and are REJECTED
+              (`isinstance(value, bool)` is False for ints).
+            - String forms like `"true"` are REJECTED — must be unquoted.
 
         Args:
             path: Filesystem path to the skill `.md` file.
@@ -164,9 +172,28 @@ class SkillsLibrary:
             InvalidSkillFrontmatterError: If the frontmatter is invalid
                 OR `disable-model-invocation` is not a bool.
         """
+        return bool(self._read_and_validate(path)["disable-model-invocation"])
+
+    def _read_and_validate(self, path: str | Path) -> dict[str, Any]:
+        """Parse + structurally-validate a skill `.md` file once per call.
+
+        Internal helper that consolidates the parse + validate steps
+        shared by `Get Description` / `Get Allowed Tools` / `Get
+        Disable Model Invocation`. Story 2.1 code-review B2 fix: the
+        earlier per-keyword `parse_frontmatter` + `validate_frontmatter_structure`
+        call pair iterated `REQUIRED_FIELDS` once per call; this
+        helper makes the cost one read + one parse + one validation
+        sweep per public-keyword invocation, matching the NFR-PERF-02
+        budget framing.
+
+        Tier-1 callers that need ALL fields should call `Get Frontmatter`
+        once + `Should Be Valid Frontmatter` on the result; chained
+        per-field getters each incur ONE I/O + parse cycle (cache-free
+        by design — `SkillsLibrary` is stateless under `pabot --processes N`).
+        """
         frontmatter = parse_frontmatter(path)
         validate_frontmatter_structure(frontmatter, file_path=str(path))
-        return bool(frontmatter["disable-model-invocation"])
+        return frontmatter
 
     @keyword(name="Should Be Valid Frontmatter")
     @tier(1)

@@ -16,15 +16,42 @@
 
 Reads the YAML frontmatter block between leading `---` delimiters at the
 top of a `.md` file and returns it as a `dict[str, Any]`. Raises
-`InvalidSkillFrontmatterError` per FR59 on any structural failure with
-the structured `(file_path, line_number, field_name, fix_suggestion)`
-attributes set so callers can react programmatically.
+`InvalidSkillFrontmatterError` on any structural failure (format per
+`docs/contracts/error-class-hierarchy.md` L96-104) with the structured
+`(file_path, line_number, field_name, fix_suggestion)` attributes set
+so callers can react programmatically.
 
-Per architecture L832-849: `_parser.py` is the sub-library's
-implementation-helper module (the `_internal.py`-equivalent named for
-its specific purpose). `library.py` owns the user-facing
-`@keyword`-decorated methods + the structural validators that surface
-`InvalidSkillFrontmatterError` to the test author.
+Per architecture L832-849: each sub-library contains a `library.py`
+(keywords) + an `_internal.py`-style implementation-helper module.
+Story 2.1 names the helper `_parser.py` for clarity; this is a Phase-1
+naming-deviation from architecture L836's canonical `_internal.py`.
+Tracked in deferred-work for Phase-1.5 cleanup (rename + amend
+architecture allowance OR migrate to `_internal.py`). `library.py`
+owns the user-facing `@keyword`-decorated methods + the structural
+validators that surface `InvalidSkillFrontmatterError` to the test
+author.
+
+Delimiter contract:
+    Both opening and closing `---` markers MUST appear at column 0 with
+    no leading whitespace. The scan uses `.rstrip()` (not `.strip()`)
+    so trailing whitespace is tolerated but indented `---` lines
+    inside YAML block scalars (e.g., `description: |\\n  ---\\n`) do
+    NOT prematurely terminate the frontmatter (code-review E2 fix
+    2026-05-19; was silently truncating frontmatter on the prior
+    `.strip()` shape).
+
+Encoding contract:
+    Files are read with `encoding="utf-8-sig"` so a UTF-8 BOM (common
+    on Windows-authored skills) is stripped transparently. Without the
+    BOM strip, the parser would raise "missing leading delimiter" on a
+    visually-correct file (code-review B6/E3 fix 2026-05-19).
+
+Error-message contract:
+    When `yaml.safe_load` raises, the multi-line `yaml.YAMLError`
+    message is collapsed to the FIRST line via `.splitlines()[0]` so
+    the rendered `InvalidSkillFrontmatterError.__str__` honors FR59's
+    "one-line summary" header per `docs/contracts/error-class-hierarchy.md`
+    L99 (code-review C1 fix 2026-05-19).
 
 Phase-1 scope: structural validation only. No expression evaluation of
 frontmatter values; no model-API-key gated activation (FR4 lands in
@@ -84,7 +111,11 @@ def parse_frontmatter(path: str | Path) -> dict[str, Any]:
         )
 
     try:
-        text = file_path.read_text(encoding="utf-8")
+        # `utf-8-sig` strips a UTF-8 BOM if present (Windows-authored .md
+        # files often have one). Without this, the BOM byte makes the
+        # first line `﻿---` and the delimiter check fails with a
+        # misleading "missing leading delimiter" — code-review B6/E3 fix.
+        text = file_path.read_text(encoding="utf-8-sig")
     except FileNotFoundError as exc:
         raise InvalidSkillFrontmatterError(
             f"Skill file not found: {file_path_str}.",
@@ -99,25 +130,29 @@ def parse_frontmatter(path: str | Path) -> dict[str, Any]:
         ) from exc
 
     lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
+    # `.rstrip()` (not `.strip()`) so indented `---` lines inside a YAML
+    # block scalar (e.g., `description: |\n  ---\n`) do NOT match.
+    # Pre-edit shape used `.strip()` and silently truncated frontmatter
+    # at any `---` inside the YAML body — code-review E2 fix.
+    if not lines or lines[0].rstrip() != "---":
         raise InvalidSkillFrontmatterError(
-            "Skill file missing leading `---` YAML frontmatter delimiter.",
+            "Skill file missing leading `---` YAML frontmatter delimiter at column 0.",
             file_path=file_path_str,
             line_number=1,
-            fix_suggestion="Add `---` as the first line, followed by YAML, then a closing `---`.",
+            fix_suggestion="Add `---` as the first line (column 0), followed by YAML, then a closing `---`.",
         )
 
     end_index: int | None = None
     for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
+        if lines[index].rstrip() == "---":
             end_index = index
             break
     if end_index is None:
         raise InvalidSkillFrontmatterError(
-            "Skill file missing closing `---` YAML frontmatter delimiter.",
+            "Skill file missing closing `---` YAML frontmatter delimiter at column 0.",
             file_path=file_path_str,
             line_number=len(lines),
-            fix_suggestion="Add a closing `---` line after the YAML block.",
+            fix_suggestion="Add a closing `---` line (column 0) after the YAML block.",
         )
 
     yaml_block = "\n".join(lines[1:end_index])
@@ -132,8 +167,16 @@ def parse_frontmatter(path: str | Path) -> dict[str, Any]:
         mark_line: int | None = None
         if mark is not None and hasattr(mark, "line"):
             mark_line = int(mark.line) + 1 + 1
+        # `yaml.YAMLError` renders as a multi-line message ("problem\n  in
+        # \"<unicode string>\"...\n  bogus_indent: ...\n  ^."). FR59
+        # requires a one-line summary on the header (per
+        # `error-class-hierarchy.md` L99). Use `exc.problem` (the bare
+        # problem statement) when available, falling back to the first
+        # line of the multi-line render. Code-review C1 fix.
+        problem = getattr(exc, "problem", None)
+        yaml_summary = str(problem) if problem else (str(exc).splitlines()[0] if str(exc) else "YAML parse error")
         raise InvalidSkillFrontmatterError(
-            f"YAML frontmatter failed to parse: {exc}.",
+            f"YAML frontmatter failed to parse: {yaml_summary}.",
             file_path=file_path_str,
             line_number=mark_line,
             fix_suggestion=(

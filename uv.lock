@@ -1869,7 +1869,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0,<7.0" },
     { name = "robotframework", specifier = "==7.4.2" },
     { name = "robotframework-pabot", marker = "extra == 'dev'", specifier = "==5.2.2" },
-    { name = "robotframework-pythonlibcore", specifier = ">=4.5,<5.0" },
+    { name = "robotframework-pythonlibcore", specifier = ">=4.5" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6,<1.0" },
 ]
 provides-extras = ["dev"]

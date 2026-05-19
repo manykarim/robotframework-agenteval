@@ -829,6 +829,15 @@ MCP.Tool Should Be Discoverable    search_database    ...
 
 CI enforcement: conformance suite `test_ac_simplicity_02_keyword_idiom.py` introspects `DynamicCore` keyword registry; asserts no sub-library `Should *` keywords exist; asserts every core ergonomic `Should *` has a paired `Get *`.
 
+**Phase-1 documented carve-out (ratified Story 2.1 code-review 2026-05-19, Codex C5 catch):**
+
+PRD FR2 (L1487) explicitly names `Should Be Valid Frontmatter` as the AssertionEngine matcher paired with `Skill.Get Frontmatter`. ADR-022 catalog row (`docs/adr/ADR-001-architectural-influences-catalog.md` L87) defers AssertionEngine adoption to Phase-2. Phase-1 therefore ships `Should Be Valid Frontmatter` on the `Skill` sub-library as a plain `@keyword`-decorated function (no AssertionEngine wiring). This is a TIME-BOXED deviation from the anti-pattern above, scoped to Phase-1 only; Phase-2 re-wires it as the proper AssertionEngine matcher per the canonical contract.
+
+The CI enforcement conformance test `test_ac_simplicity_02_keyword_idiom.py` is currently SKIPPED (one of the 11 conformance skips at end-of-Epic-1b); it is the right test to assert the carve-out's expiry once Phase-2 lands. Sibling future Phase-1 carve-outs (other `Should *` sub-library keywords) MUST be enumerated here AND tied to a Phase-2 ratification story before being shipped.
+
+Carve-out registry (extend per story):
+- `Skill.Should Be Valid Frontmatter` (Story 2.1; Phase-2 conversion target: Epic 6 Story 6.x AssertionEngine adoption, OR retire if PRD FR2 is amended).
+
 ### Module Organization Within Sub-libraries
 
 **Rule:** Each sub-library directory under `src/AgentEval/<name>/` contains:

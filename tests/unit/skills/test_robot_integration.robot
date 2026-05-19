@@ -9,7 +9,11 @@ Documentation    Story 2.1 RF integration test — imports the `Skill`
 Library    AgentEval.skills.library.SkillsLibrary    WITH NAME    Skill
 
 *** Variables ***
-${VALID_FIXTURE}    tests/fixtures/skills/example-valid.md
+# Story 2.1 code-review B1/E7 fix: anchor the fixture path to ${CURDIR} so
+# the suite runs cleanly from any CWD (CI happens to invoke from repo root,
+# but `cd /tmp && robot /abs/path/to/test_robot_integration.robot` would
+# break with the prior `tests/fixtures/skills/...` relative path).
+${VALID_FIXTURE}    ${CURDIR}/../../fixtures/skills/example-valid.md
 
 *** Test Cases ***
 Skill Get Frontmatter Returns Dict With Required Fields

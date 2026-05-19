@@ -67,7 +67,7 @@ development_status:
   epic-1b-retrospective: optional
 
   epic-2: in-progress
-  2-1-skill-static-inspection-keywords: review  # Dev-story complete 2026-05-19. All-gates green: ruff/format/mypy clean (33 src files); 324 unit + 30 conformance + 6 acceptance/tier1 pass; RF smoke + tests/unit/skills/test_robot_integration.robot pass. SkillsLibrary + InvalidSkillFrontmatterError (12th leaf) + DynamicCore composition shipped. Awaiting cross-LLM code review.
+  2-1-skill-static-inspection-keywords: done  # Code-review patches applied 2026-05-19. 4-reviewer pair (Blind + Edge-cases + Auditor + Codex 0.117.0): 13th consecutive cross-LLM STAR catch. 3-way HIGH (Auditor+Edge-cases+Codex): skills/__init__.py eager re-export caused order-dependent conventions-test fake-green (only test-ordering masked the circular import). 2-way HIGH (Blind+Edge-cases): CWD-relative RF fixture path + BOM-prefix misleading error. Edge-cases unique HIGH: `---` inside block scalar truncated frontmatter silently. Codex unique HIGH: FR59 one-line-summary contract violated by multi-line yaml.YAMLError + architecture L825 anti-pattern Phase-1 carve-out ratified. Blind unique HIGH: 3x redundant parse in chained getters + `get_frontmatter` docstring drift. Auditor unique HIGH: wrong contract line-range citations + over-attribution to FR59. 6 new code-review tests added. All-gates green: ruff/format/mypy clean (33 src files); 366 unit (was 324) + 30 conformance + 11 skipped + 6 tier1 + RF smoke + RF skills integration pass.
   2-2-subagent-hook-static-inspection-keywords: backlog
   2-3-mcp-static-inspection-keywords: backlog
   2-4-epic-2-conformance-fixtures-integration-tests-against-real-sample-files: backlog

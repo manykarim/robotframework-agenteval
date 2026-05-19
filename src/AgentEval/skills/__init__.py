@@ -15,15 +15,24 @@
 """AgentEval.skills sub-package.
 
 Skill sub-library: static-inspection keywords for skill `.md` files
-(PRD FR1 + Epic 2 Story 2.1). Re-exports `SkillsLibrary` for the
-top-level `AgentEval` `DynamicCore` composition + advanced consumers
-who import the sub-library directly (`Library AgentEval.skills.library
-WITH NAME Skill`).
+(PRD FR1 + Epic 2 Story 2.1).
 
-Phase-2 + Epic 7 add the FR4 model-API-key-gated activation decision
-(`Get Activation Decision`) on top of these Phase-1 static inspectors.
+Story 2.1 code-review fix: this `__init__.py` does NOT eagerly re-export
+`SkillsLibrary`. The earlier shape (`from AgentEval.skills.library
+import SkillsLibrary`) created a circular import that only test-ordering
+masked: when `tests/unit/conventions/_walk.py` loads `library.py`
+directly via `spec_from_file_location` (registering it in `sys.modules`
+under its fully-qualified name BEFORE finishing `exec_module`), Python
+tries to initialize the parent `AgentEval.skills` package, which then
+re-imports the half-loaded `library` module + raises ImportError.
+
+Consumers reach `SkillsLibrary` via:
+1. `from AgentEval.skills.library import SkillsLibrary` (Python).
+2. `Library AgentEval.skills.library.SkillsLibrary` (.robot).
+3. `importlib.import_module("AgentEval.skills.library")` + getattr
+   (the DynamicCore lazy-import loop in `AgentEval.__init__`).
+
+All 3 paths resolve through `library.py` directly; the package
+`__init__.py` does not need to re-export. Phase-2 + Epic 7 will add
+FR4 model-API-key-gated activation (`Get Activation Decision`) here.
 """
-
-from AgentEval.skills.library import SkillsLibrary
-
-__all__ = ["SkillsLibrary"]

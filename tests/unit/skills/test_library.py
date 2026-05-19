@@ -375,3 +375,127 @@ def test_parse_frontmatter_module_level_function_matches_keyword() -> None:
 def test_validate_frontmatter_structure_returns_none_on_valid() -> None:
     valid = parse_frontmatter(VALID_FIXTURE)
     assert validate_frontmatter_structure(valid) is None
+
+
+# --------------------------------------------------------------------------- #
+# Code-review fixes (Story 2.1 cross-LLM review 2026-05-19)
+# --------------------------------------------------------------------------- #
+
+
+def test_parse_frontmatter_handles_utf8_bom(lib: SkillsLibrary, tmp_path: Path) -> None:
+    """BOM-prefixed `.md` files (common on Windows) must parse cleanly.
+
+    Code-review B6/E3 fix: prior `read_text(encoding="utf-8")` left the BOM
+    in `lines[0]` so `.strip() != "---"` and the parser raised a misleading
+    "missing leading delimiter". Now reads with `utf-8-sig`.
+    """
+    bom_file = tmp_path / "bom.md"
+    bom_file.write_bytes(
+        b"\xef\xbb\xbf---\n"
+        b"name: bom-skill\n"
+        b"description: BOM-prefixed.\n"
+        b"allowed-tools: []\n"
+        b"disable-model-invocation: false\n"
+        b"---\n"
+        b"body\n"
+    )
+    frontmatter = lib.get_frontmatter(bom_file)
+    assert frontmatter["name"] == "bom-skill"
+
+
+def test_indented_dashes_inside_block_scalar_are_not_delimiters(lib: SkillsLibrary, tmp_path: Path) -> None:
+    """An indented `---` inside a YAML block scalar must NOT close the frontmatter.
+
+    Code-review E2 fix: prior `.strip() == "---"` check matched any line whose
+    trimmed content was `---`, silently truncating frontmatter that contained
+    `description: |\\n  ---\\n...`. Now uses `.rstrip() == "---"` so leading
+    whitespace prevents a match (delimiter must be at column 0).
+    """
+    skill = tmp_path / "block_scalar.md"
+    skill.write_text(
+        "---\n"
+        "name: block-scalar-skill\n"
+        "description: |\n"
+        "  multi-line\n"
+        "  ---\n"
+        "  more text\n"
+        "allowed-tools: []\n"
+        "disable-model-invocation: false\n"
+        "---\n"
+        "body\n"
+    )
+    # All 4 required fields must be reachable (parser must NOT have
+    # truncated the YAML block at the indented `---`).
+    frontmatter = lib.get_frontmatter(skill)
+    for field in REQUIRED_FIELDS:
+        assert field in frontmatter, f"indented `---` truncated frontmatter, lost {field!r}"
+    assert "multi-line" in frontmatter["description"]
+
+
+def test_malformed_yaml_error_summary_is_single_line(lib: SkillsLibrary) -> None:
+    """FR59 requires the `__str__` header to be a one-line summary.
+
+    Code-review C1 fix: `yaml.YAMLError.__str__` is multi-line (problem +
+    excerpt + caret); prior shape spilled the whole render into the
+    InvalidSkillFrontmatterError message, breaking the FR59 single-summary
+    contract. Now uses `exc.problem` or `.splitlines()[0]`.
+    """
+    with pytest.raises(InvalidSkillFrontmatterError) as exc_info:
+        lib.get_frontmatter(MALFORMED_YAML_FIXTURE)
+    message = Exception.__str__(exc_info.value)
+    # The Exception.__str__ value is the one-line summary (the multi-line
+    # FR59 layout is built by __str__ on top of this).
+    assert "\n" not in message, f"YAML error message spilled to multiple lines: {message!r}"
+
+
+def test_rendered_str_first_line_matches_fr59_header(lib: SkillsLibrary) -> None:
+    """The first line of `str(exc)` MUST be `INVALID_SKILL_FRONTMATTER: <summary>`.
+
+    Code-review C1 follow-up: the contract at
+    `docs/contracts/error-class-hierarchy.md` L96-104 requires the
+    header line then `File:` / `Line:` / `Field:` / `Fix:`. Pre-fix,
+    a multi-line YAML message pushed `File:` to line 5+.
+    """
+    with pytest.raises(InvalidSkillFrontmatterError) as exc_info:
+        lib.get_frontmatter(MALFORMED_YAML_FIXTURE)
+    rendered = str(exc_info.value)
+    lines = rendered.splitlines()
+    assert lines[0].startswith("INVALID_SKILL_FRONTMATTER: ")
+    assert lines[1].startswith("  File: ")
+    assert lines[2].startswith("  Line: ")
+    assert lines[3].startswith("  Field: ")
+    assert lines[4].startswith("  Fix: ")
+    assert len(lines) == 5, f"expected 5 lines; got {len(lines)}: {rendered!r}"
+
+
+def test_agenteval_loads_skills_library_via_dynamic_core() -> None:
+    """`Library AgentEval` must expose the `SkillsLibrary` keywords.
+
+    Code-review C4 fix: there was no committed test that exercised the
+    DynamicCore composition path; a typo in `_SUB_LIBRARIES` would have
+    silently dropped the Skill sub-library. Assert `_loaded_components`
+    contains `SkillsLibrary` AND that the parent's keyword registry
+    surfaces a Skill keyword.
+    """
+    from AgentEval import AgentEval as AgentEvalLib
+
+    library = AgentEvalLib()
+    assert "SkillsLibrary" in library._loaded_components
+    # DynamicCore exposes `get_keyword_names()` per pythonlibcore contract.
+    keyword_names = library.get_keyword_names()
+    assert "Get Frontmatter" in keyword_names, f"DynamicCore missing Skill keyword; have: {keyword_names!r}"
+
+
+def test_get_frontmatter_does_not_validate_required_fields(lib: SkillsLibrary) -> None:
+    """`Get Frontmatter` parses YAML but does NOT enforce the required-fields contract.
+
+    Code-review B3 fix: clarified in the docstring that `Get Frontmatter`
+    is YAML-structural-only; field validation lives in the sibling
+    getters + `Should Be Valid Frontmatter`. This test pins the
+    intentional asymmetry so future code-review feedback doesn't
+    re-flag it as a bug.
+    """
+    frontmatter = lib.get_frontmatter(MISSING_FIELDS_FIXTURE)
+    # Parser succeeds + returns partial dict; validation is the caller's job.
+    assert isinstance(frontmatter, dict)
+    assert "name" not in frontmatter  # MISSING_FIELDS_FIXTURE omits `name`

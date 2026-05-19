@@ -1115,7 +1115,7 @@ So that the FR63 determinism contract is auditable from Day 1 and architecture-l
 #### Story 2.1: Skill Static Inspection Keywords
 
 As **Devon (Agent Surface Author — skill author mode)** or **Priya (QA Engineer)**,
-I want `Skill.Get Frontmatter`, `Skill.Get Description`, `Skill.Get Allowed Tools`, `Skill.Get Disable Model Invocation` keywords plus `Should Be Valid Frontmatter` AssertionEngine operator,
+I want `Skill.Get Frontmatter`, `Skill.Get Description`, `Skill.Get Allowed Tools`, `Skill.Get Disable Model Invocation` keywords plus `Should Be Valid Frontmatter` validation keyword (Phase-1: plain `@keyword` per ADR-022 catalog row deferring AssertionEngine adoption to Phase-2; PRD FR2 ratifies the eventual matcher name. Story 2.1 code-review C5 fix 2026-05-19 amended this line.),
 So that I can assert on skill `.md` file structure in a `.robot` test in milliseconds without API keys or network — first deterministic skill-validation surface.
 
 **Acceptance Criteria:**
@@ -1133,7 +1133,7 @@ So that I can assert on skill `.md` file structure in a `.robot` test in millise
 **Then** `InvalidSkillFrontmatterError` is raised with message containing: (a) the file path, (b) the line number where YAML parsing failed, (c) the field name at fault (if identifiable), (d) a fix suggestion — per the FR59 format documented in Story 1a.4.
 
 **And Given** a skill file missing required frontmatter fields,
-**When** I call `Should Be Valid Frontmatter    ${frontmatter_dict}` using the AssertionEngine operator,
+**When** I call `Should Be Valid Frontmatter    ${frontmatter_dict}` as a plain `@keyword` (Phase-1; full AssertionEngine matcher wiring lands Phase-2 per ADR-022),
 **Then** the assertion fails with a structured error listing each missing required field; passing the same operator a complete frontmatter dict succeeds without error.
 
 **And** the keyword library exports the 4 keywords via `DynamicCore` lazy-loading per architecture L299/L354/L573 + agentguard ADR-003 inheritance catalog row (the pre-edit "ADR-006" citation was drift caught by Story 2.1 pre-create-story check D1 — ADR-006 is `agent-run-result-completeness-field.md`, NOT the DynamicCore composition source). Sub-library name "Skill" — short, clear, discoverable; e.g. `Skill.Get Description`. libdoc generation produces the `[Tier 1 — Deterministic]` badge on each keyword's docstring per Story 1b.6's conventions test.

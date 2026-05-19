@@ -226,17 +226,24 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
         """Lazy-import sub-libraries declared in `_SUB_LIBRARIES`.
 
         Per architecture L299/L354/L573 + agentguard `library.py:82-93`
-        pattern: each entry is `(module_path, class_name)`; failures to
-        import the module OR resolve the class are swallowed at DEBUG
-        log level so the top-level library imports green even when
-        later Epic sub-libraries are not yet shipped.
+        pattern: each entry is `(module_path, class_name)`; an
+        `ImportError` or `AttributeError` on the lazy-import is logged
+        at DEBUG + the sub-library is silently skipped (so the
+        top-level library imports green even when later Epic
+        sub-libraries are not yet shipped).
+
+        Constructor-side exceptions on `cls()` are NOT silently
+        swallowed (Story 2.1 code-review B7 fix; pre-edit shape logged
+        at WARNING + continued, which masked real bugs in sub-library
+        `__init__`). A constructor failure on a sub-library is a bug,
+        not optionality — re-raise so `Library AgentEval` fails loudly
+        instead of silently exposing a partial keyword namespace.
         """
         components: list[Any] = []
         for mod_name, cls_name in _SUB_LIBRARIES:
             try:
                 mod = importlib.import_module(mod_name)
                 cls = getattr(mod, cls_name)
-                components.append(cls())
             except (ImportError, AttributeError) as exc:
                 _logger.debug(
                     "AgentEval: sub-library %s.%s not loaded (%s)",
@@ -245,14 +252,9 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
                     exc,
                 )
                 continue
-            except Exception as exc:  # noqa: BLE001
-                _logger.warning(
-                    "AgentEval: sub-library %s.%s raised on init: %s",
-                    mod_name,
-                    cls_name,
-                    exc,
-                )
-                continue
+            # Constructor errors propagate — they indicate bugs, not
+            # optional sub-libraries. (Code-review B7 fix.)
+            components.append(cls())
         return components
 
     @keyword(name="Get Effective Config")

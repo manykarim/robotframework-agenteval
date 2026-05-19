@@ -1,6 +1,6 @@
 # Story 2.1: Skill Static Inspection Keywords
 
-Status: review
+Status: done
 
 ## Story
 
@@ -37,11 +37,13 @@ So that I can assert on skill `.md` file structure in a `.robot` test in millise
 
 **And Given** an invalid skill file at `tests/fixtures/skills/example-malformed-yaml.md` with broken YAML frontmatter,
 **When** I call `Skill.Get Frontmatter    tests/fixtures/skills/example-malformed-yaml.md`,
-**Then** `InvalidSkillFrontmatterError` is raised with `__str__` message containing per FR59 + `docs/contracts/error-class-hierarchy.md` L93-99:
-- (a) the file path,
-- (b) the line number where YAML parsing failed (when identifiable from `yaml.YAMLError.problem_mark.line`),
-- (c) the field name at fault (if identifiable),
-- (d) a fix suggestion (e.g., "check YAML indentation" or "ensure `allowed-tools` is a list").
+**Then** `InvalidSkillFrontmatterError` is raised with `__str__` message containing per `docs/contracts/error-class-hierarchy.md` L96-104:
+- (a) the file path (PRD FR59 element (a)),
+- (b) the line number where YAML parsing failed (when identifiable from `yaml.YAMLError.problem_mark.line`; PRD FR59 element (b)),
+- (c) a fix suggestion (e.g., "check YAML indentation" or "ensure `allowed-tools` is a list"; PRD FR59 element (c)),
+- (d) the field name at fault (if identifiable; contract-only addition at L102, not in PRD FR59 verbatim).
+
+Code-review fix (Codex/Auditor 2-way HIGH 2026-05-19): PRD FR59 L1587 enumerates only 3 elements (path / line / hint). The 4-element `(File/Line/Field/Fix)` format is the contract's amplification at L96-104. Attribute (d) to the contract, not FR59.
 
 The leaf inherits H_R7 `__str__` formatter (Story 1b.2): `str(exc) == "INVALID_SKILL_FRONTMATTER: <message>"` unless the leaf overrides per FR59-exact-format requirement (decide at impl time; for Story 2.1, override `__str__` to emit FR59-exact format like `UnsupportedBinaryVersionError` did in Story 1b.4).
 
@@ -254,3 +256,4 @@ None — single-pass implementation; no rollback needed.
 | ---------- | ------- | ----------- | ------ |
 | 2026-05-19 | 0.1.0   | Initial story creation (ready-for-dev). Pre-create-story drift check (11th consecutive use) caught 4 drifts: D1 ADR-006 → architecture L299/L354/L573 DynamicCore pattern; D2 NFR-PERF-01 → NFR-PERF-02 Tier-1 latency; D3 AssertionEngine deferred to Phase-2 per ADR-022 catalog row; D4 `InvalidSkillFrontmatterError` not in 11-leaf catalog → added as 12th leaf under AgentEvalIntegrityError. Pre-authoring fixes: epics.md L1125+L1139 amended; error-class-hierarchy.md L54+L92 amended. | Bob |
 | 2026-05-19 | 0.2.0   | Dev-story complete. SkillsLibrary + InvalidSkillFrontmatterError + DynamicCore composition shipped. 44 unit + 5 RF integration tests added; all gates green (ruff/format/mypy clean on 33 src files; 324 unit + 30 conformance + 6 acceptance/tier1 + RF smoke + tests/unit/skills/test_robot_integration.robot pass). Status: review. | Dev |
+| 2026-05-19 | 0.3.0   | Code-review patches applied. 4-reviewer pair (Blind + Edge-cases + Auditor + Codex 0.117.0): 13th consecutive cross-LLM STAR catch. 3-way HIGH (Auditor+Edge-cases+Codex agreed): `src/AgentEval/skills/__init__.py:27` eager re-export → order-dependent conventions-test fake-green (only test-ordering masked the circular import). Fixed by dropping eager re-export. Codex unique HIGH: FR59 multi-line YAML message violated one-line-summary contract (now uses `exc.problem`/.splitlines()[0]). Codex unique HIGH: architecture L825 anti-pattern carve-out ratified for Phase-1 `Should *` sub-library keyword. 2-way HIGH (Blind+Edge-cases): `${VALID_FIXTURE}` CWD-relative → anchored via `${CURDIR}`. 2-way HIGH (Blind+Edge-cases): BOM-prefix misleading → `utf-8-sig` strip. Edge-cases unique HIGH: `---` inside block scalar truncated frontmatter silently → require column-0 delimiter via `.rstrip()`. Blind HIGH: 3x redundant parse/validate in chained getters → consolidated via `_read_and_validate`. Blind HIGH: `get_frontmatter` docstring drift → clarified non-validating contract. Auditor HIGH: wrong contract line-range citations → amended L93-99/L92 → L96-104. Auditor HIGH: over-attribution of "(d) field name" to PRD FR59 → attributed to contract. 6 new tests added covering each fix. All-gates green: ruff/format/mypy clean (33 src files); 366 unit + 30 conformance + 11 skipped + 6 tier1 + RF smoke + RF skills integration pass. Status: done. | Dev |

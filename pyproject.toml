@@ -31,7 +31,7 @@ classifiers = [
 dependencies = [
   "mcp==1.27.1",
   "robotframework==7.4.2",
-  "robotframework-pythonlibcore>=4.5,<5.0",
+  "robotframework-pythonlibcore>=4.5",  # No upper bound per architecture L495 (Story 2.1 code-review A4 fix; pre-edit `<5.0` ceiling was unauthorized).
   "anyio==4.13.0",
   "litellm>=1.50,<2.0",
   "opentelemetry-api>=1.20,<2.0",
