@@ -246,7 +246,9 @@ class AgentEvalCompatError(AgentEvalError):
 
     Per ADR-014's 4-sub-base scheme. Compat errors typically signal:
         - `UnsupportedMCPVersionError` (Epic 3 Story 3.1; not yet implemented)
-        - `UnsupportedBinaryVersionError` (Epic 4 / Epic 11; not yet implemented)
+        - `UnsupportedBinaryVersionError` (Story 1b.4) — class declaration in
+          `errors.py`; per-adapter raise sites in Epic 4 Story 4.2 (Claude
+          Code CLI) + Epic 11 Story 11.3 (Copilot CLI)
         - `AdapterDiscoveryError` (Story 1b.3) — entry-points discovery failure
         - `AdapterVersionDriftWarning` (Epic 11 Story 11.3; warning, not error)
     """
@@ -332,7 +334,11 @@ class UnsupportedBinaryVersionError(AgentEvalCompatError):
     declaration + Epic 4 Story 4.2 / Epic 11 Story 11.3 per-adapter raise
     sites). The Story 1b.4 `SubprocessAdapter._assert_binary_version` helper
     provides the generic Phase-1 raise site with the FR47-exact error
-    message format:
+    message format ON `str(exc)` (NOT prefixed by the H_R7 `error_code:` —
+    this leaf overrides `__str__` to honor FR47 verbatim per Story 1b.4
+    code-review D6 ratification; the underlying `error_code` remains
+    available via the class attribute for FR49/FR50 machine-readable
+    consumers):
 
         `<binary> version <X> outside tested range <range>`
 
@@ -342,10 +348,40 @@ class UnsupportedBinaryVersionError(AgentEvalCompatError):
     (`copilot` binary outside ADR-010's `>=1.0.9,<2.0` range) inherit this
     contract.
 
+    Structured attrs (Story 1b.4 code-review D7 ratification): `binary`,
+    `detected`, `min_version`, `max_version` are exposed alongside the
+    string message so callers can react programmatically (e.g., suggest
+    `pip install '<binary>>=<min_version>'`) without string-parsing the
+    error message. Sibling `DuplicateRegistrationError` / `AdapterDiscoveryError`
+    follow the same pattern.
+
     `error_code = "UNSUPPORTED_BINARY_VERSION"`; exit code 78 (EX_CONFIG).
     """
 
     error_code: ClassVar[str] = "UNSUPPORTED_BINARY_VERSION"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        binary: str | None = None,
+        detected: str | None = None,
+        min_version: str | None = None,
+        max_version: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.binary: str | None = binary
+        self.detected: str | None = detected
+        self.min_version: str | None = min_version
+        self.max_version: str | None = max_version
+
+    def __str__(self) -> str:
+        # FR47-exact str(exc): NO H_R7 prefix on this leaf (Story 1b.4 D6
+        # ratification). The `error_code` ClassVar remains available for
+        # FR49 JUnit XML emission + FR50 exit-code mapping via direct
+        # attribute access; the human-readable str(exc) matches PRD FR47
+        # verbatim format.
+        return Exception.__str__(self)
 
 
 # --------------------------------------------------------------------------- #

@@ -26,7 +26,7 @@ agenteval publishes **one public Protocol** (`CodingAgentAdapter`) as the bounda
    - `_parse_event(line: str) -> Optional[ParsedEvent]` — parses one JSONL event line into the adapter's intermediate event type
    - `_finalize(events: list[ParsedEvent], exit_code: int) -> AgentRunResult` — folds the event stream into the final result
 
-The base class owns subprocess lifecycle: signal handling, timeout enforcement, stderr capture, exit-code mapping, truncation detection (per ADR-006).
+The base class owns subprocess lifecycle. **Phase-1 minimum surface (Story 1b.4):** spawn → iterate stdout through `_parse_event` → `_finalize` template-method orchestration; process-group SIGTERM (`os.killpg(os.getpgid(pid), SIGTERM)`) + wait/kill escalation on exception per Story 1b.1 `MCPLifecycleManager` precedent; exit-code passed through to `_finalize`; stdout + stderr file-descriptor cleanup. **Phase-2 carry-over (deferred-work.md DF8):** stderr capture into `AgentRunResult.metadata`; per-adapter `_timeout_seconds` enforcement at the template-method level; truncation detection on non-zero exit codes (per ADR-006). The pre-Story-1b.4-code-review wording promised all five responsibilities Phase-1; the code-review (Codex STAR catch) demonstrated Story 1b.4 ships only the first batch + amended this ADR to ratify the Phase-1 / Phase-2 split.
 
 `SubprocessAdapter` is part of the **contributor-facing public API** — community CLI-adapter authors are expected to subclass it, not re-implement subprocess lifecycle. It ships in Phase 1 documented in `docs/contributor-api.md` (separate from `docs/keywords/` libdoc, which targets keyword users).
 

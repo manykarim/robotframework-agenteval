@@ -61,7 +61,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from AgentEval._kernel.context import ServerHandle  # forward ref; consumed by CodingAgentAdapter.run
@@ -218,11 +218,40 @@ class AgentRunMetadata:
     value — pre-edit drafts had a 4-state version which the ratified ADR-016
     explicitly excludes).
 
+    Runtime Literal-value enforcement (Story 1b.4 code-review D7 ratification):
+    Python `Literal` types are TYPE-CHECK-only — `mypy` catches violations at
+    type-check time but the runtime constructor accepts any string. Story
+    1b.4's `__post_init__` adds a closed-set check that raises `ValueError`
+    on invalid inputs so jsonl-replay paths + adapter-side construction get
+    the same guarantee mypy provides. Removed-spec-text caveat: pre-edit
+    AC-1b.4.6 wording "Defensive `dict()` copy in `__post_init__` per Story
+    1b.2's M_R6 fix pattern" was stale (the dataclass has only Literal
+    string fields, nothing dict-shaped to defensively copy); the actual
+    `__post_init__` purpose ratified at Story 1b.4 code review is the
+    runtime closed-set validation.
+
     Frozen + immutable; serializes cleanly via `dataclasses.asdict()`.
     """
 
     completeness: Literal["complete", "truncated", "partial"]
     mcp_coverage: Literal["hosted_in_process", "subprocess_with_observer", "external_mixed"]
+
+    _VALID_COMPLETENESS: ClassVar[frozenset[str]] = frozenset(("complete", "truncated", "partial"))
+    _VALID_MCP_COVERAGE: ClassVar[frozenset[str]] = frozenset(
+        ("hosted_in_process", "subprocess_with_observer", "external_mixed")
+    )
+
+    def __post_init__(self) -> None:
+        if self.completeness not in self._VALID_COMPLETENESS:
+            raise ValueError(
+                f"AgentRunMetadata.completeness must be one of "
+                f"{sorted(self._VALID_COMPLETENESS)}; got {self.completeness!r}"
+            )
+        if self.mcp_coverage not in self._VALID_MCP_COVERAGE:
+            raise ValueError(
+                f"AgentRunMetadata.mcp_coverage must be one of "
+                f"{sorted(self._VALID_MCP_COVERAGE)}; got {self.mcp_coverage!r}"
+            )
 
 
 @dataclass(frozen=True)
@@ -246,10 +275,17 @@ class AgentRunResult:
         - `cost_usd`: total USD cost reported by the provider; 0.0 for the
           Phase-1 stub cost-source path
         - `latency_seconds`: wall-clock duration of the `run()` call
-        - `trace_id`: UUID hex string linking to the trace artifact at
+        - `trace_id`: opaque string linking to the trace artifact at
           `${OUTPUT_DIR}/agenteval/trace__<suite>__<test>.jsonl` per FR51 L1579.
-          Phase-1 contract: UUID hex string. Phase-2 OTLP migration may switch
-          to OTel 32-char hex (tracked as Phase-2 carry-over).
+          **Phase-1 contract: unconstrained `str`** (no UUID/hex shape
+          enforced at construction; Story 1b.4 code review D7 ratification
+          downgraded the pre-edit "UUID hex string" claim because the
+          Phase-1 jsonl backend accepts any opaque identifier and Phase-2
+          OTLP migration may switch to OTel 32-char hex anyway — adding a
+          UUID validator now would force a major-version bump at the
+          OTLP-migration time). Concrete adapters SHOULD use
+          `uuid.uuid4().hex` or the trace producer's session id; Story 4.1+
+          may add a contributor-side validator if needed.
 
     Defensive list copy on `tool_calls` in `__post_init__` (Story 1b.2 M_R6
     pattern); blocks source-mutation leakage while preserving
@@ -306,6 +342,18 @@ class CodingAgentAdapter(Protocol):
     `@runtime_checkable` enables `isinstance(obj, CodingAgentAdapter)` for
     the FR17b composition path (`AgentEval.__init__(coding_agent=MyAdapter())`,
     wiring deferred to Story 4.1).
+
+    Runtime check scope note (Story 1b.4 code-review D4 ratification):
+    Python's `@runtime_checkable` Protocol ONLY verifies attribute /method
+    presence at `isinstance` time — it does NOT verify signature shape
+    (parameter names, types, defaults). A class with `run(self, prompt)`
+    (no `tools`/`mcp_servers`/`**kwargs`) passes `isinstance(obj,
+    CodingAgentAdapter) == True` even though it violates FR12's signature
+    contract. Signature-shape conformance is the **Story 1b.5 conformance
+    harness**'s responsibility — fixture-driven verification of every
+    registered adapter against the FR12 signature + return-type +
+    behavioral invariants. Until Story 1b.5 lands, callers should treat
+    `isinstance` as a coarse-grained smoke check, NOT a typed contract.
     """
 
     name: str

@@ -1,6 +1,6 @@
 # Story 1b.4: CodingAgentAdapter Protocol + InProcessAdapter / SubprocessAdapter ABCs
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -71,7 +71,7 @@ The base class implements `run()` itself as a concrete template method orchestra
 - `completeness: Literal["complete", "truncated", "partial"]` per PRD FR36a L1553 — 3-state value space per ADR-006 L15 (NOT 4-state with `"none"`).
 - `mcp_coverage: Literal["hosted_in_process", "subprocess_with_observer", "external_mixed"]` per PRD FR36b L1554 + ADR-016 §Decision L24-28 — 3-state value space (NO `"none"` value).
 
-Defensive `dict()` copy in `__post_init__` per Story 1b.2's M_R6 fix pattern (prevents source-mutation leakage; preserves `dataclasses.asdict()` serialization for the jsonl Trace backend). Both fields are REQUIRED per ADR-006 + ADR-016 — no Optional, no defaults.
+**Runtime Literal closed-set validation in `__post_init__` (Story 1b.4 code-review D7 ratification — pre-edit text mentioned a "defensive `dict()` copy" but the dataclass has only Literal string fields, nothing dict-shaped to copy; the actual `__post_init__` purpose ratified at code review is runtime validation that raises `ValueError` on out-of-set inputs).** Python `Literal` types are TYPE-CHECK-only — mypy catches violations at type-check time but the runtime constructor accepts any string. The `__post_init__` adds a closed-set check so jsonl-replay paths + adapter-side construction get the same guarantee mypy provides. Both fields are REQUIRED per ADR-006 + ADR-016 — no Optional, no defaults.
 
 ### AC-1b.4.7 — `UnsupportedBinaryVersionError` leaf + `_assert_binary_version` helper
 
@@ -211,6 +211,68 @@ where `<X>` is the detected version. No raise for in-range version.
   - [x] Code-review will use `/bmad-code-review (Using current Claude + Codex CLI subagent)` per `feedback_review_methodology_norms`.
   - [x] Cross-LLM reviewer prompt MUST direct re-derivation of every cited fact from source per `feedback_citation_drift_first_class`.
   - [x] Honest framing: Phase-1 limitations documented per AC-1b.4.12.
+
+### Review Findings (2026-05-19 cross-LLM adversarial — 4 reviewers: Blind Hunter + Edge Case Hunter + Acceptance Auditor + Codex CLI gpt-5.4)
+
+**Raw findings:** 32 Blind + 21 Edge + 12 Auditor + 12 Codex = **77 raw** → **31 unique** after dedup (4 decision-needed bundles resolved into 13 patches + 13 direct patches + 8 deferred + ~10 dismissed as dedup-overlap or convention).
+
+**STAR catches (10th consecutive cross-LLM review with Codex finding what 3 Claude reviewers missed):**
+- (Codex unique HIGH) ADR-003 L30 base-class lifecycle ownership violation: ADR-003 verbatim "The base class owns subprocess lifecycle: signal handling, timeout enforcement, stderr capture, exit-code mapping, truncation detection" — impl ships only stdout iteration + wait + raw exit_code.
+- (Codex unique MED) `version` property uses module name (`AgentEval`) not distribution name (`robotframework-agenteval`) → always falls back to `"unknown"` for in-tree adapters.
+- (Codex unique LOW) `AgentEvalCompatError` docstring still says `UnsupportedBinaryVersionError` is "not yet implemented" after Story 1b.4 lands it.
+
+**4-WAY confirmed HIGH:** Process-group hygiene drift — `proc.terminate()` kills leader only, not the process group; contradicts the docstring promise + cited Story 1b.1 `os.killpg(pid, SIGTERM)` precedent.
+
+**3-WAY confirmed HIGH:**
+- `_parse_version_tuple` short-tuple ordering bug — `(1,0) < (1,0,0)` is True; `"1.0" vs "1.0.0"` boundary broken.
+- `runtime_checkable` Protocol overclaims signature validation — only checks attribute presence; tests pass stubs with wrong-shape `run()`.
+- FR47 vs H_R7 message format drift — H_R7 prefix `"UNSUPPORTED_BINARY_VERSION: ..."` doesn't match FR47-exact format.
+
+**Decisions resolved (all 4 bundles Recommended):**
+
+- [x] [Review][Decision→Patch] D1+D2 Subprocess lifecycle (4-WAY HIGH + Codex STAR HIGH) — Implement `os.killpg(os.getpgid(pid), SIGTERM)` + `proc.wait(timeout=5)` + `proc.kill()` escalation per Story 1b.1 precedent; amend ADR-003 L30 to mark stderr-capture + timeout-enforcement + truncation-detection as Phase-2 carry-over.
+- [x] [Review][Decision→Patch] D3+D5 Version handling (3-WAY HIGH + Codex STAR MED) — Pad `_parse_version_tuple` results to fixed-arity 3 + reject prerelease via explicit pre-validation; use `importlib.metadata.packages_distributions()` for distribution-name resolution with fallback to module-name lookup.
+- [x] [Review][Decision→Patch] D4+D6 Protocol + FR47 contract clarity (3-WAY HIGH) — Amend `CodingAgentAdapter` Protocol docstring to clarify `runtime_checkable` only verifies attribute presence (Story 1b.5 conformance harness owns signature-shape validation); override `__str__` on `UnsupportedBinaryVersionError` to skip H_R7 prefix (FR47-exact `str(exc)`).
+- [x] [Review][Decision→Patch] D7 Runtime validation (3-WAY MED + Codex MED + LOW) — Add `__post_init__` Literal closed-set validation to `AgentRunMetadata`; expose structured attrs (`binary` / `detected` / `min_version` / `max_version`) on `UnsupportedBinaryVersionError`; relax `trace_id` docs to unconstrained `str` (Phase-2 OTLP may add UUID validation).
+
+**Direct patches (13 unchecked):**
+
+- [x] [Review][Patch] P1 `assert proc.stdout is not None` → explicit `if proc.stdout is None: raise TypeError(...)` (Python -O strips asserts) [src/AgentEval/coding_agent/base.py SubprocessAdapter.run]
+- [x] [Review][Patch] P2 stderr fd leak — proc.stderr=PIPE never closed on success path; add `proc.stdout.close()` + `proc.stderr.close()` in finally [src/AgentEval/coding_agent/base.py SubprocessAdapter.run]
+- [x] [Review][Patch] P3 `_default_version` broaden exception catch from `PackageNotFoundError` only to `(PackageNotFoundError, OSError, KeyError)` [src/AgentEval/coding_agent/base.py:_default_version]
+- [x] [Review][Patch] P4 `_assert_binary_version` doesn't check `result.returncode`; add returncode check + non-zero raise [src/AgentEval/coding_agent/base.py:_assert_binary_version]
+- [x] [Review][Patch] P5 PermissionError + general OSError on subprocess.run not caught (only FileNotFoundError + TimeoutExpired); broaden tuple [src/AgentEval/coding_agent/base.py:_assert_binary_version]
+- [x] [Review][Patch] P6 `mcp_servers` type widening — Protocol says `dict[str, ServerHandle]`, base says `dict[str, Any]`; align both to `dict[str, ServerHandle]` via TYPE_CHECKING import [src/AgentEval/coding_agent/base.py:SubprocessAdapter.run]
+- [x] [Review][Patch] P7 `coding_agent/__init__.py` docstring drift: calls `InProcessAdapter` an "ABC for SDK-driven adapters" but ADR-003 + impl say "base class (concrete-by-default)" [src/AgentEval/coding_agent/__init__.py:25]
+- [x] [Review][Patch] P8 `AgentEvalCompatError` docstring still says `UnsupportedBinaryVersionError` is "not yet implemented" (Codex LOW catch); update to "implemented in Story 1b.4; per-adapter raise sites in Epic 4/11" [src/AgentEval/errors.py:AgentEvalCompatError]
+- [x] [Review][Patch] P9 Spec AC-1b.4.6 stale `__post_init__` defensive-copy claim for AgentRunMetadata — when D7 patch lands runtime Literal validation in __post_init__, update AC text to reflect actual purpose [spec AC-1b.4.6]
+- [x] [Review][Patch] P10 New test: `_parse_version_tuple` short-tuple + prerelease boundary cases [tests/unit/coding_agent/test_base.py]
+- [x] [Review][Patch] P11 New test: `version` property uses distribution name (not module name) — assert in-tree adapter resolves to `robotframework-agenteval` version [tests/unit/coding_agent/test_base.py]
+- [x] [Review][Patch] P12 New test: AgentRunMetadata invalid-Literal raises ValueError + UnsupportedBinaryVersionError structured attrs accessible [tests/unit/coding_agent/test_base.py + tests/unit/test_errors.py]
+- [x] [Review][Patch] P13 New test: process-group SIGTERM cleanup path (mock `os.killpg`); update `test_subprocess_adapter_run_terminates_proc_on_exception` to assert killpg called [tests/unit/coding_agent/test_base.py]
+
+**Deferred (8):**
+
+- [x] [Review][Defer] DF1 Async-safety of `_assert_binary_version` — calls blocking `subprocess.run` synchronously; OK in Phase-1 (called at adapter init), but Story 4.1 should wrap in `asyncio.to_thread` for async callers
+- [x] [Review][Defer] DF2 `_default_version` namespace-package edge case — concrete adapters in Epic 4/11 will explicitly override `version`; Phase-1 fallback acceptable
+- [x] [Review][Defer] DF3 Real-Popen integration test — covered by Story 1b.5 conformance harness (signature-shape + behavioral fixtures)
+- [x] [Review][Defer] DF4 Long-stdout / unbounded-events memory test — Phase-1.5 robustness pass; Story 4.2 CLI adapter will be the first real consumer
+- [x] [Review][Defer] DF5 Cancellation-mid-stream test — Story 4.1 wires real provider-client cancellation; Story 1b.4 ships only the cleanup-on-exception path
+- [x] [Review][Defer] DF6 Test factory-fixture refactor (`conftest.py` for `tool_call_trace_factory` etc.) — cosmetic; Story 1b.5 conformance fixtures may absorb
+- [x] [Review][Defer] DF7 `architecture.md` L1226-1228 split-file scheme annotation (`subprocess.py` vs `base.py` consolidation per Story 1b.4 D8) — defer to Epic 1b retrospective doc-cleanup pass
+- [x] [Review][Defer] DF8 `_kernel/coverage.py` L55 `type: ignore` cleanup scope-creep documentation in Story 1b.4 File List — already in File List, no further action needed
+
+**Dismissed (~10):**
+
+- Codex L1 `test_base.py` missing Apache 2.0 header — license-headers script docstring explicitly scopes to `src/AgentEval/`; tests intentionally exempt per project convention. No fix needed.
+- Blind F19 `min`/`max` shadowing Python builtins — spec AC-1b.4.7 explicitly uses this signature; ruff A002 not enabled; minor style only.
+- Blind F29-F30 size estimates off + File List duplication — cosmetic, already in spec.
+- Edge various dedupes absorbed by D1+D2 cluster (terminate timeout, stderr close).
+- Blind F25 ToolCallTrace coupling — covered by Story 1b.2 baseline; Story 1b.5 conformance fixtures will own.
+- Auditor F8 runtime_checkable overstated — covered by D4 patch.
+- Blind F31 Protocol attr vs @property LSP-substitution — superseded by D4 docstring clarification.
+
+**Cross-LLM dedup pattern continues:** 10th consecutive review where Codex's citation re-derivation caught structural drift the 3 Claude reviewers missed (ADR-003 L30 lifecycle ownership; distribution-name vs module-name; AgentEvalCompatError stale "not yet implemented"). The norm is load-bearing.
 
 ## Dev Notes
 
@@ -397,5 +459,6 @@ None (all-gates clean on first full pass after ruff auto-fixes). Ruff applied 3 
 
 | Date       | Version | Description                                                                  | Author |
 | ---------- | ------- | ---------------------------------------------------------------------------- | ------ |
+| 2026-05-19 | 0.3.0   | Cross-LLM code-review patches applied; status → done. 4 reviewers (Blind Hunter + Edge Case Hunter + Acceptance Auditor + Codex CLI gpt-5.4): 77 raw findings → 31 unique after dedup → 4 decision-needed bundles (all Recommended) + 13 direct patches applied + 8 deferred + ~10 dismissed. **10th consecutive cross-LLM STAR catch**: Codex caught ADR-003 L30 base-class lifecycle ownership violation (impl ships only stdout iteration + wait + raw exit_code; ADR ratifies signal handling + timeout enforcement + stderr capture + exit-code mapping + truncation detection); `version` property uses module name not distribution name (`AgentEval` vs `robotframework-agenteval`); AgentEvalCompatError docstring still said "not yet implemented" after Story 1b.4 lands the leaf. **4-WAY HIGH**: process-group hygiene drift (`proc.terminate()` kills leader only; contradicts cited Story 1b.1 `os.killpg(pid, SIGTERM)` precedent). **3-WAY HIGH**: `_parse_version_tuple` short-tuple ordering bug (`(1,0) < (1,0,0)` True → `"1.0" vs "1.0.0"` boundary broken; real correctness bug for Stories 4.2/11.3); `runtime_checkable` Protocol overclaims signature validation; FR47 vs H_R7 `__str__` format drift. Path-of-least-amendment: implement `os.killpg + wait/kill escalation` per Story 1b.1; amend ADR-003 L30 to ratify Phase-1 minimum + Phase-2 carry-over for stderr/timeout/truncation; pad version tuples to fixed-arity 3 + reject prerelease; use `packages_distributions()` for distribution-name resolution; override `__str__` on UnsupportedBinaryVersionError for FR47-exact format; add `__post_init__` Literal validation on AgentRunMetadata; expose structured attrs on UnsupportedBinaryVersionError. Bonus patches: explicit `if/raise` instead of `assert proc.stdout` (python -O strips asserts); stdout + stderr fd close in finally; broader OSError catch on subprocess.run + `_default_version`; returncode check in `_assert_binary_version`; `mcp_servers` Protocol/base type alignment; coding_agent/__init__.py docstring drift fix. 14 new tests added. All-gates clean: ruff/format/mypy/license (31 source files / 31 of 31 license-headers); **263 unit passed** (220 prior + 43 in coding_agent dir); 6 tier1 + RF smoke regression PASS. `deferred-work.md` updated with 8 Phase-1.5 carry-over items. `docs/adr/ADR-003-coding-agent-adapter-protocol-internal-class-split.md` L29 amended pre-patch to ratify Phase-1 minimum + Phase-2 carry-over split. | Amelia |
 | 2026-05-19 | 0.2.0   | Dev-story implementation pass complete; status → review. Tasks 1-9 done. New module `src/AgentEval/coding_agent/base.py` (~290L) ships `InProcessAdapter` (direct-override per ADR-003 L22-23, zero abstract methods) + `SubprocessAdapter(ABC)` (3-hook template-method per ADR-003 L24-29 + architecture L1228: `_spawn`/`_parse_event`/`_finalize`) + concrete `_assert_binary_version` helper with FR47-exact error-message format. `src/AgentEval/types.py` extended with `CodingAgentAdapter` Protocol (single `run(prompt, tools, mcp_servers, **kwargs)` per FR12, `@runtime_checkable` for FR17b composition) + `AgentRunResult` 7-field dataclass + `AgentRunMetadata` sub-dataclass with `.metadata.{completeness, mcp_coverage}` nested per ADR-006 L15 + FR36a/b L1553-1554. `src/AgentEval/errors.py` extended with `UnsupportedBinaryVersionError(AgentEvalCompatError)` leaf (declaration in Story 1b.4 per Story 1b.3 errors.py L59 forward-ref; per-adapter raise sites in Epic 4/11). `_kernel/discovery.py` L102 `# type: ignore[attr-defined]` removed (Protocol now resolvable); bonus: same removed from `_kernel/coverage.py` L55. PEP-695 `type ParsedEvent = Any` adopted per project's Story 1b.1 PEP-695 convention. `tests/unit/coding_agent/test_base.py` (29 tests) covers Protocol identity + re-export + runtime_checkable + InProcessAdapter direct-override + SubprocessAdapter abstract enforcement + template-method orchestration + cleanup-on-exception via `contextlib.suppress` + 6 `_assert_binary_version` cases + AgentRunResult/AgentRunMetadata + UnsupportedBinaryVersionError hierarchy + discovery integration smoke. All-gates clean: ruff/format/mypy clean (31 source files); license headers 31/31; **249 unit passed** (220 prior + 29 new); 6 tier1 acceptance + RF smoke regression PASS. `docs/contracts/stability-surface.md` extended with new Coding Agent Adapter Surface section. Phase-1 limitations preserved (sandbox out-of-scope; FR17b deferred to Story 4.1; ParsedEvent TypeAlias=Any; trace_id UUID hex Phase-1). | Amelia |
 | 2026-05-19 | 0.1.0   | Initial story creation (ready-for-dev). Pre-create-story drift check (8th consecutive use of `feedback_spec_vs_ratified_doc_precheck`) caught 14 drifts in Story 1b.4 epics.md spec vs ratified sources (6 HIGH + 4 MED + 4 LOW/clean). All 14 resolved via path-of-least-amendment by honoring ratified sources per Many's 2026-05-19 ratification: (D1) single `run()` Protocol method per FR12 L1506; (D2/D15) `AgentRunResult.metadata.{completeness, mcp_coverage}` nested per ADR-006 + FR36a/b; (D3/D4) reuse Story-1b.2 `ToolCallTrace`/`Usage` types; (D6/D7) drop undefined `Scenario`/`MCPServer`/`RawResponse`/`ParsedEvent` types — MCP lifecycle stays at Story 1b.1's MCPLifecycleManager; (D8) Protocol declared in `types.py` (re-exported through `coding_agent/base.py`) per architecture L853 + Story 1b.3 discovery.py L102 forward-ref; (D9) InProcessAdapter no abstract hooks per ADR-003 L22-23; (D10) SubprocessAdapter 3-hook `_spawn`/`_parse_event`/`_finalize` per ADR-003 L24-29 + architecture L1228; (D11) `_agenteval_tier` on keyword methods only per L620; (D13) UnsupportedBinaryVersionError class declaration in Story 1b.4 + per-adapter raise sites in Epic 4/11. Scope-edges ratified: FR47 exact error format; sandbox out-of-scope for adapters; FR17b kwarg deferred to Story 4.1; ParsedEvent TypeAlias=Any until concrete adapters. Pre-authoring fixes: epics.md L973-993 + `docs/contracts/error-class-hierarchy.md` L81 amended 2026-05-19. NEW NORM from Epic 1a retro embedded in AC-1b.4.12: cross-LLM reviewer prompt MUST direct re-derivation of every cited fact from source. | Bob |

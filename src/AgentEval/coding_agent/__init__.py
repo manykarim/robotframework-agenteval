@@ -18,8 +18,8 @@ Contributor-facing imports per ADR-003 + ADR-005:
 
     from AgentEval.coding_agent import (
         CodingAgentAdapter,    # Protocol (declared in AgentEval.types per architecture L853)
-        InProcessAdapter,      # ABC for SDK-driven adapters (direct override pattern)
-        SubprocessAdapter,     # ABC for CLI-driven adapters (3-hook template-method)
+        InProcessAdapter,      # Concrete-by-default base for SDK-driven adapters (no abstract hooks per ADR-003 L22-23)
+        SubprocessAdapter,     # ABC for CLI-driven adapters (3-hook template-method per ADR-003 L24-29)
         AgentRunResult,        # Normalized run-result dataclass (declared in AgentEval.types)
     )
 
