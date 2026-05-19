@@ -1,6 +1,12 @@
-# Story 1-5-1: Phase-1.5 Carry-Overs Catalog
+# Story 1c-1: Phase-1.5 Carry-Overs Catalog
 
-Status: ready-for-dev
+Status: done
+
+**Story-key rename (Codex 2-reviewer code-review MED 2026-05-19):** the pre-edit
+key was `1-5-1-` which `bmad-create-story` parses as `epic_num=1`, `story_num=5`
+(NOT "epic 1-5, story 1" — the parser uses first-two-dash-separated-segments).
+Renamed to `1c-1-` per the existing `1a`/`1b` precedent: Phase-1.5 = Epic 1c
+mini-epic. Sprint-status updated: `epic-1c: in-progress`; `1c-1-phase-1-5-carry-overs-catalog: done`.
 
 ## Story
 

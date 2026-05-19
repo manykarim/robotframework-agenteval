@@ -134,4 +134,20 @@ The 20 items below are real defects in the Story 0.1 spike's scratch Python code
 
 ---
 
+## Deferred from: Epic 2 (Stories 2.1 + 2.2 + 2.3 + 2.4) — ratified Epic 2 retro 2026-05-19
+
+Added by Story 1c-1 code-review (Auditor HIGH 2026-05-19 closed the
+`docs/contracts/error-class-hierarchy.md` L125 forward-reference / deferred-work.md /
+Phase-1.5 catalog three-way cross-reference). Maps to catalog IDs C12-C17 in
+`docs/phase-1-5-carry-overs.md`.
+
+- **DF-2-S1 `exit_code` ClassVar on 16 error leaves** — Per `docs/contracts/error-class-hierarchy.md` L125 forward-reference: per-leaf `exit_code: ClassVar[int]` deferred to Phase-1.5 to coincide with **Epic 8a Story 8a.1** (CLI exit-code translation layer). Pre-Story-8a.1 the contract L58-96 inventory table is authoritative; post-Phase-1.5 the leaf class attribute IS the source of truth. Catalog ID: C12.
+- **DF-2-S2 `_parser.py` → `_internal.py` rename hygiene** — Architecture L843-847 pins `_internal.py` as canonical; Stories 2.1+2.2+2.3 named the 4 helpers `_parser.py` for clarity. Deviation tracked in 4 module docstrings (skills, subagents, hooks, mcp). Effort M (4 files + ~6 import sites + 4 docstring updates + tests). Catalog ID: C13.
+- **DF-2-S3 `_build_pointer` duplication consolidation** — 2 copies live today (`hooks/_parser.py` + `mcp/_parser.py`); both byte-identical per Story 2.3 Codex probe. Consolidate to `src/AgentEval/_kernel/jsonptr.py` BEFORE a third copy lands in Epic 3+ runtime keywords. Catalog ID: C14.
+- **DF-2-S4 Architecture `MCPKeywords` → `MCPLibrary` rename across 4 sites** — Architecture L852/L853/L876/L950 all reference `MCPKeywords` but shipped class is `MCPLibrary` (matches `*Library` convention from Stories 2.1+2.2). Catalog ID: C15.
+- **DF-2-S5 rf-mcp sample drift-detection (checksum gate)** — `tests/integration/static_inspection/samples/rf-mcp.mcp.json` is verbatim copy of `/home/many/workspace/rf-mcp/.mcp.json`. Add a `scripts/sync-rf-mcp-sample.py` checksum gate OR a sync-cadence comment with source-revision SHA. Catalog ID: C16.
+- **DF-2-S6 `test_loader_smoke.py` adapter allow-list dynamic discovery** — Story 2.4 side-fix hardcoded `_ADAPTER_FIXTURE_DIRS = ("generic", "claude_code_cli")`. Replace with dynamic discovery (`any subdir NOT in {"static_inspection"}`); future adapter dirs auto-discovered. Catalog ID: C17.
+
+---
+
 *Update this file as new deferred items emerge from future reviews.*
