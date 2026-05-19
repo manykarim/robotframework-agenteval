@@ -190,4 +190,18 @@ Surfaced by porting a representative subset of rf-mcp's pytest MCP-surface tests
 
 ---
 
+## Deferred from: story-4.1 provider layer + generic coding-agent adapter (2026-05-20)
+
+Added by Story 4.1 (Provider Layer + Generic Adapter — Epic 4 Story 1). 5 drifts caught pre-authoring; 4 fixed in epics.md, 1 (DF-4.1-S1) tracked here. Plus 3 Phase-1 carve-outs surfaced during dev.
+
+- **DF-4.1-S1 (architecture-vs-impl drift)** — Architecture L894-898 declares `class AgentRunResult(BaseModel)` Pydantic; Story 1b.4 shipped `@dataclass(frozen=True)`. Architecture is stale. Phase-1.5 hygiene: amend architecture L883-905 to reflect the dataclass-shipped reality + the rationale (Pydantic overhead not justified for jsonl-asdict serialization path per Story 1b.2 backend design). Caught by Story 4.1 pre-create-story drift check (18th use, D-E). Effort XS (docstring + architecture L883-905 amendment).
+
+- **DF-4.1-S2 (Generic adapter MCP-tool-surface integration)** — Phase-1 Generic adapter `run()` accepts `mcp_servers=` kwarg but raises `NotImplementedError` on non-empty dict. Story 4.3 (orchestration keywords) + Epic 5 (hosted-MCP observer) land the actual MCP-tool-call dispatch + trace correlation. Phase-1 stance honest per `feedback_honest_framing`: don't ship a tool-call surface that returns empty results when the contract promises tool calls. Effort M (depends on Story 4.3 + Epic 5).
+
+- **DF-4.1-S3 (streaming Phase-1 stub)** — `LLMProviderAdapter.chat(stream=True)` raises `NotImplementedError` in both `MockProvider` + `LiteLLMAdapter`. PRD L1087 references the Protocol's `stream` arg as a forward-compat extension point. Phase-1.5: implement actual streaming surface — at minimum, async-iterator response shape on `ChatResponse`. Effort M.
+
+- **DF-4.1-S4 (FR36b vs AgentRunMetadata required-vs-conditional drift)** — PRD FR36b L1554 says `mcp_coverage` is REQUIRED **conditional on `mcp_servers=` usage**, but Story 1b.4's `AgentRunMetadata` makes it unconditionally REQUIRED with the closed 3-value Literal `("hosted_in_process", "subprocess_with_observer", "external_mixed")`. For Phase-1 no-MCP runs (Story 4.1 Generic adapter), no value is semantically clean. Pragmatic Phase-1 stance: declare `mcp_coverage="hosted_in_process"` as the vacuously-true value (0 MCP servers used, 0 of them external). Phase-1.5 resolution options: (a) amend FR36b to drop the conditional + accept Story 1b.4's unconditional contract, OR (b) extend `AgentRunMetadata` to allow `Optional[Literal[...]]` (None for no-MCP runs), OR (c) extend the Literal with a 4th value `"none"` for runs that didn't use MCP at all (NOTE: types.py L217-219 docstring explicitly excludes "none" per ratified ADR-016 — option (c) would require ADR-016 amendment). Surfaced by Story 4.1 pre-create-story drift check sub-finding D-D-extension via Bash probe; caught only because Generic adapter is the first adapter to face a no-MCP run scenario at metadata construction. Effort S (amendment-only; no code change).
+
+---
+
 *Update this file as new deferred items emerge from future reviews.*

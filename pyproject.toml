@@ -79,10 +79,18 @@ agenteval = "AgentEval.cli:main"
 # (Epic 4 for coding_agents/providers; Epic 5 for telemetry/listener; Phase 2+ for
 # judges/sandboxes).
 [project.entry-points."agenteval.coding_agents"]
-# Empty — populated by Epic 4 Story 4.1 (generic) + 4.2 (claude_code_cli).
+# Story 4.1 (Epic 4) — Generic LiteLLM-backed CodingAgentAdapter.
+# Story 4.2 will add claude-code-cli.
+generic = "AgentEval.coding_agent.generic:GenericAdapter"
 
 [project.entry-points."agenteval.providers"]
-# Empty — populated by Epic 4 Story 4.1 (litellm).
+# Story 4.1 (Epic 4) — LLMProviderAdapter implementations.
+# Both built-in providers are also registered in BUILTIN_PROVIDERS in
+# providers/factory.py so the factory works even when entry-points
+# haven't loaded (test-friendly). Entry-points OVERRIDE the built-in
+# registry per PRD FR17c.
+litellm = "AgentEval.providers.litellm_adapter:LiteLLMAdapter"
+mock = "AgentEval.providers.mock:MockProvider"
 
 [project.entry-points."agenteval.judges"]
 # Empty — Phase 2 (Epic 12).
