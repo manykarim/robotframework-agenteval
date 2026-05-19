@@ -1,0 +1,86 @@
+"""Conventions test: `@keyword` function names use snake_case + start with a verb.
+
+Story 1b.6 AC-1b.6.5 per `docs/contracts/coding-conventions.md`: every
+`@keyword`-decorated function name MUST:
+1. Match `^[a-z][a-z0-9_]*$` (snake_case; RF converts to Title Case at
+   registration via pythonlibcore).
+2. Start with a verb from the `_VERB_ALLOWLIST` constant.
+
+Future stories that need a new verb prefix MUST extend `_VERB_ALLOWLIST`
++ cite the new verb in their story spec (per Story 1b.6 Phase-1 limitations).
+
+End-of-Epic-1b state: zero `@keyword` functions → trivially pass.
+"""
+
+from __future__ import annotations
+
+import re
+
+import pytest
+
+from ._walk import find_library_modules, iter_keyword_functions, load_module_from_path
+
+_SNAKE_CASE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+# Verb allowlist — extend in future stories per Story 1b.6 Phase-1 limitations.
+# Each verb is the first `_`-separated token of a snake_case keyword name.
+_VERB_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "get",
+        "set",
+        "run",
+        "send",
+        "assert",
+        "check",
+        "validate",
+        "compute",
+        "list",
+        "start",
+        "stop",
+        "connect",
+        "disconnect",
+        "inspect",
+        "load",
+        "save",
+        "read",
+        "write",
+        "parse",
+        "wait",
+    }
+)
+
+
+def test_keyword_names_use_snake_case(capsys: pytest.CaptureFixture[str]) -> None:
+    library_modules = find_library_modules()
+    if not library_modules:
+        print("[CONVENTIONS] no library.py modules yet — no keywords to check")
+        return
+    violations: list[str] = []
+    for path in library_modules:
+        module = load_module_from_path(path)
+        for name, _func in iter_keyword_functions(module):
+            short = name.split(".")[-1]  # strip ClassName. prefix
+            if not _SNAKE_CASE_RE.match(short):
+                violations.append(f"{path}::{name} (not snake_case)")
+    assert not violations, f"@keyword function names not in snake_case per coding-conventions.md: {violations!r}"
+
+
+def test_keyword_names_start_with_allowlist_verb(capsys: pytest.CaptureFixture[str]) -> None:
+    library_modules = find_library_modules()
+    if not library_modules:
+        print("[CONVENTIONS] no library.py modules yet — no keywords to check")
+        return
+    violations: list[str] = []
+    for path in library_modules:
+        module = load_module_from_path(path)
+        for name, _func in iter_keyword_functions(module):
+            short = name.split(".")[-1]
+            first_token = short.split("_")[0]
+            if first_token not in _VERB_ALLOWLIST:
+                violations.append(f"{path}::{name} (first token {first_token!r} not in verb allowlist)")
+    assert not violations, (
+        f"@keyword names whose first token is not in the verb allowlist: "
+        f"{violations!r}. Allowlist: {sorted(_VERB_ALLOWLIST)!r}. Extend "
+        f"`_VERB_ALLOWLIST` in tests/unit/conventions/test_keyword_name_idiom.py "
+        f"if a new verb is needed."
+    )

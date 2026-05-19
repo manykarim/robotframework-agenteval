@@ -1,6 +1,6 @@
 # Story 1b.6: Determinism Contract Doc + 5 CI-Enforcement Conventions Tests
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -80,42 +80,42 @@ Document status promoted from "Phase-1 skeleton" to "Phase-1 stable" in the file
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Fill `docs/contracts/determinism-contract.md` per FR63 (AC: 1b.6.1)**
-  - [ ] Status frontmatter → "Phase-1 stable (Story 1b.6 2026-05-19)".
-  - [ ] §Contract section with subsections (a) Tier-1 bit-identical / (b) Tier-2/3 statistical interpretability / (c) Polling ban / (d) Reproducibility checklist (6 steps).
-  - [ ] Cross-references to ADR-012 + ADR-014 + ADR-022 (post-renumbering).
-  - [ ] Phase-1 limitations section: `Assert Run Determinism` + `Stat.Run N Times` deferred to Epic 6.
-  - [ ] §Change Policy section: explain how the contract evolves under per-leaf stability labels.
+- [x] **Task 1: Fill `docs/contracts/determinism-contract.md` per FR63 (AC: 1b.6.1)**
+  - [x] Status frontmatter → "Phase-1 stable (Story 1b.6 2026-05-19)".
+  - [x] §Contract section with subsections (a) Tier-1 bit-identical / (b) Tier-2/3 statistical interpretability / (c) Polling ban / (d) Reproducibility checklist (6 steps).
+  - [x] Cross-references to ADR-012 + ADR-014 + ADR-022 (post-renumbering).
+  - [x] Phase-1 limitations section: `Assert Run Determinism` + `Stat.Run N Times` deferred to Epic 6.
+  - [x] §Change Policy section: explain how the contract evolves under per-leaf stability labels.
 
-- [ ] **Task 2: Author `tests/unit/conventions/test_tier_annotation_present.py` (AC: 1b.6.2)**
-  - [ ] Walk `src/AgentEval/**/library.py` via `pathlib.glob` (returns empty list at end-of-Epic-1b).
-  - [ ] For each `library.py`, import + inspect for `@keyword`-decorated functions via RF's `robot.api.deco.keyword` marker.
-  - [ ] Assert each marked function has `_agenteval_tier` attribute (Story 1b.1 `tier.py` convention).
-  - [ ] Empty-set case: log "no library.py modules yet — no violations possible" and pass.
+- [x] **Task 2: Author `tests/unit/conventions/test_tier_annotation_present.py` (AC: 1b.6.2)**
+  - [x] Walk `src/AgentEval/**/library.py` via `pathlib.glob` (returns empty list at end-of-Epic-1b).
+  - [x] For each `library.py`, import + inspect for `@keyword`-decorated functions via RF's `robot.api.deco.keyword` marker.
+  - [x] Assert each marked function has `_agenteval_tier` attribute (Story 1b.1 `tier.py` convention).
+  - [x] Empty-set case: log "no library.py modules yet — no violations possible" and pass.
 
-- [ ] **Task 3: Author `tests/unit/conventions/test_error_class_hierarchy.py` (AC: 1b.6.3)**
-  - [ ] Import `src/AgentEval/errors.py` + iterate `__all__`.
-  - [ ] For each name in `__all__`, resolve the class object + assert it inherits from `AgentEvalError` (excluding known-non-Error names like `DegradedTraceWarning`).
-  - [ ] End-of-Epic-1b verifies 4 sub-bases + 6 leaves all conform.
+- [x] **Task 3: Author `tests/unit/conventions/test_error_class_hierarchy.py` (AC: 1b.6.3)**
+  - [x] Import `src/AgentEval/errors.py` + iterate `__all__`.
+  - [x] For each name in `__all__`, resolve the class object + assert it inherits from `AgentEvalError` (excluding known-non-Error names like `DegradedTraceWarning`).
+  - [x] End-of-Epic-1b verifies 4 sub-bases + 6 leaves all conform.
 
-- [ ] **Task 4: Author `tests/unit/conventions/test_no_bare_async_keywords.py` (AC: 1b.6.4)**
-  - [ ] Walk `src/AgentEval/**/library.py` for `@keyword`-decorated functions.
-  - [ ] Use `inspect.iscoroutinefunction` to detect `async def`.
-  - [ ] Assert none are coroutine functions per ADR-012.
+- [x] **Task 4: Author `tests/unit/conventions/test_no_bare_async_keywords.py` (AC: 1b.6.4)**
+  - [x] Walk `src/AgentEval/**/library.py` for `@keyword`-decorated functions.
+  - [x] Use `inspect.iscoroutinefunction` to detect `async def`.
+  - [x] Assert none are coroutine functions per ADR-012.
 
-- [ ] **Task 5: Author `tests/unit/conventions/test_keyword_name_idiom.py` (AC: 1b.6.5)**
-  - [ ] Walk `library.py` modules.
-  - [ ] For each `@keyword` function: assert name is snake_case via regex `^[a-z][a-z0-9_]*$`.
-  - [ ] Assert first underscore-token is in the verb allowlist (hardcoded `_VERB_ALLOWLIST` constant).
+- [x] **Task 5: Author `tests/unit/conventions/test_keyword_name_idiom.py` (AC: 1b.6.5)**
+  - [x] Walk `library.py` modules.
+  - [x] For each `@keyword` function: assert name is snake_case via regex `^[a-z][a-z0-9_]*$`.
+  - [x] Assert first underscore-token is in the verb allowlist (hardcoded `_VERB_ALLOWLIST` constant).
 
-- [ ] **Task 6: Author `tests/unit/conventions/test_docstring_libdoc_badge_alignment.py` (AC: 1b.6.6)**
-  - [ ] Walk `library.py` modules.
-  - [ ] For each `@keyword` function, read its `_agenteval_tier` attribute + compose expected badge via `tier_badge(n)` from `_kernel/tier.py`.
-  - [ ] Assert `function.__doc__` contains the badge string verbatim.
+- [x] **Task 6: Author `tests/unit/conventions/test_docstring_libdoc_badge_alignment.py` (AC: 1b.6.6)**
+  - [x] Walk `library.py` modules.
+  - [x] For each `@keyword` function, read its `_agenteval_tier` attribute + compose expected badge via `tier_badge(n)` from `_kernel/tier.py`.
+  - [x] Assert `function.__doc__` contains the badge string verbatim.
 
-- [ ] **Task 7: All-gates pass (AC: 1b.6.8)**
+- [x] **Task 7: All-gates pass (AC: 1b.6.8)**
 
-- [ ] **Task 8: Apply project norms (AC: 1b.6.9)**
+- [x] **Task 8: Apply project norms (AC: 1b.6.9)**
 
 ## Dev Notes
 
@@ -172,26 +172,47 @@ Document status promoted from "Phase-1 skeleton" to "Phase-1 stable" in the file
 
 ### Context Reference
 
-<!-- To be filled by dev-story workflow -->
+- Story spec (this file).
+- ADR-012 / ADR-014 / ADR-015 / ADR-022.
+- Story 1b.1 `_kernel/tier.py` `_agenteval_tier` + `tier_badge()`.
+- Story 1b.2 + 1b.3 + 1b.4 `errors.py` (5 leaves + 4 sub-bases + DegradedTraceWarning).
+- PRD FR28 + FR31a + FR31b + FR43 + FR63.
+- `docs/contracts/coding-conventions.md` + `docs/contracts/error-class-hierarchy.md`.
 
 ### Agent Model Used
 
-<!-- To be filled by dev-story workflow -->
+Claude Opus 4.7 (1M context) — `claude-opus-4-7[1m]`.
 
 ### Debug Log References
 
-<!-- To be filled by dev-story workflow -->
+None (all-gates clean on first full pass; 4 ruff auto-formats applied to the conventions test files).
 
 ### Completion Notes List
 
-<!-- To be filled by dev-story workflow -->
+- Task 1 — `docs/contracts/determinism-contract.md` filled to Phase-1 stable: §Contract section now covers (a) Tier-1 bit-identical per FR31a + (b) Tier-2/3 statistical interpretability per FR31b + (c) Polling ban per FR28 + (d) 6-step reproducibility checklist + `validate`-operator disabled-by-default per FR43. Cross-references to ADR-012/014/015/022. Phase-1 limitations section explicit. Status line promoted from skeleton to Phase-1 stable.
+- Tasks 2-6 — 5 conventions tests + 1 shared helper (`_walk.py`) authored. Total 7 test cases passing (5 named tests + 2 from test_error_class_hierarchy.py multi-test file + 2 from test_keyword_name_idiom.py multi-test file; some files have 1 test, others 2): `test_tier_annotation_present.py` (1 test); `test_error_class_hierarchy.py` (2 tests: every `__all__` export inherits AgentEvalError + no leaf inherits directly from base); `test_no_bare_async_keywords.py` (1 test); `test_keyword_name_idiom.py` (2 tests: snake_case + verb-allowlist); `test_docstring_libdoc_badge_alignment.py` (1 test). All 7 pass trivially on end-of-Epic-1b empty skeleton (zero `library.py` modules + zero `@keyword` functions). `test_error_class_hierarchy.py` actually-exercises against the current 4 sub-bases + 6 leaves + DegradedTraceWarning — that test runs full assertions today.
+- Task 7 — All-gates clean: ruff/format/mypy clean (still 31 source files; NO `src/AgentEval/` changes); license-headers PASS (31/31); pytest tests/unit **270 passed** (263 prior + 7 new conventions tests); pytest tests/conformance 30 passed + 11 skipped (Story 1b.5 regression); pytest tests/acceptance/tier1 6 passed; robot tests/acceptance/smoke PASS.
+- Task 8 — Project norms applied: code-review will use `/bmad-code-review (Using current Claude + Codex CLI subagent)` per `feedback_review_methodology_norms` (10th consecutive use); cross-LLM reviewer prompt will direct re-derivation per `feedback_citation_drift_first_class`; Phase-1 limitations explicitly documented in module docstrings + Dev Notes.
 
 ## File List
 
-<!-- To be filled by dev-story workflow -->
+**New files (6):**
+- `tests/unit/conventions/_walk.py` (~80L) — shared `find_library_modules()` + `iter_keyword_functions()` helpers.
+- `tests/unit/conventions/test_tier_annotation_present.py` (~40L) — AC-1b.6.2.
+- `tests/unit/conventions/test_error_class_hierarchy.py` (~70L, 2 tests) — AC-1b.6.3.
+- `tests/unit/conventions/test_no_bare_async_keywords.py` (~35L) — AC-1b.6.4.
+- `tests/unit/conventions/test_keyword_name_idiom.py` (~90L, 2 tests) — AC-1b.6.5.
+- `tests/unit/conventions/test_docstring_libdoc_badge_alignment.py` (~45L) — AC-1b.6.6.
+
+**Modified files (2):**
+- `docs/contracts/determinism-contract.md` — filled from Phase-1 skeleton → Phase-1 stable.
+- `_bmad-output/planning-artifacts/epics.md` L1064 — pre-authoring drift fix (ADR-A1 → ADR-012).
+
+**NO `src/AgentEval/` changes** — conventions tests are test infra (per architecture L853 test-infra-not-sub-library convention).
 
 ## Change Log
 
 | Date       | Version | Description                                                                  | Author |
 | ---------- | ------- | ---------------------------------------------------------------------------- | ------ |
+| 2026-05-19 | 0.2.0   | Dev-story implementation pass complete; status → review. Tasks 1-8 done. New: `tests/unit/conventions/_walk.py` shared helpers + 5 conventions tests (7 test cases total). `docs/contracts/determinism-contract.md` filled from Phase-1 skeleton to Phase-1 stable per FR63 verbatim: (a) Tier-1 bit-identical per FR31a; (b) Tier-2/3 statistical interpretability per FR31b; (c) polling ban per FR28; (d) 6-step reproducibility checklist; `validate`-operator opt-in per FR43. All-gates clean: ruff/format/mypy/license (31 source files); **270 unit passed** (263 prior + 7 new conventions); 30 conformance + 11 skipped + 6 tier1 + RF smoke regression. NO `src/AgentEval/` changes. Phase-1 limitations preserved: all 5 conventions tests trivially-pass on end-of-Epic-1b empty skeleton; `Assert Run Determinism` + `Stat.Run N Times` enforcement keywords deferred to Epic 6; verb allowlist grows as future stories add new verb prefixes. | Amelia |
 | 2026-05-19 | 0.1.0   | Initial story creation (ready-for-dev). Pre-create-story drift check (10th consecutive use) caught 4 drifts (1 MED + 3 LOW + 1 confirmed clean): D1 ADR-A1 → ADR-012 (post-renumbering); D2 dunder `__agenteval_tier__` → single-underscore `_agenteval_tier` per Story 1b.1 tier.py; D3 badge text exact strings per tier.py `_BADGES`; D4 Phase-1 empty-set case (zero library.py modules → tests pass trivially); D5 determinism-contract.md skeleton confirmed exists. Story 1b.6 closes Epic 1b: fills determinism-contract.md to Phase-1 stable + adds 5 CI-enforcement conventions tests passing on the current skeleton. NO src/AgentEval/ changes (conventions tests are test infra). | Bob |
