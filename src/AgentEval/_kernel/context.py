@@ -107,6 +107,8 @@ __all__ = [
     "ReleaseResult",
     "MCPLifecycleManager",
     "resolve_config",
+    "resolve_config_with_provenance",
+    "ConfigValue",
 ]
 
 
@@ -931,6 +933,54 @@ def _load_dotenv(path: Path = Path(".env")) -> dict[str, str]:
         value = _strip_dotenv_value(value.strip())
         result[key] = value
     return result
+
+
+@dataclass(frozen=True)
+class ConfigValue:
+    """Story 4.3 / PRD FR41: per-setting resolved value + provenance.
+
+    Returned by `resolve_config_with_provenance()` + the AgentEval
+    Library's `Get Effective Config setting=<key>` / `Get Effective
+    Config With Provenance` keywords. The `source` field names which
+    precedence-chain level "won" for that setting per PRD FR41 L1563
+    enum: `init_arg` / `env` / `dotenv` / `default`.
+    """
+
+    value: Any
+    source: Literal["init_arg", "env", "dotenv", "default"]
+
+
+def resolve_config_with_provenance(
+    kwarg_overrides: dict[str, Any],
+    *,
+    dotenv_path: Path = Path(".env"),
+) -> dict[str, ConfigValue]:
+    """Story 4.3 / PRD FR41: resolve config + track per-setting source.
+
+    Same precedence chain as `resolve_config()`; returns `ConfigValue`
+    instead of bare value so consumers can audit which level "won"
+    for each setting (debugging "why isn't my .env value applied?").
+    """
+    dotenv_values = _load_dotenv(dotenv_path)
+    _warn_on_unknown_agenteval_keys(dotenv_values, source=str(dotenv_path))
+    _warn_on_unknown_agenteval_keys(os.environ, source="os.environ")
+    resolved: dict[str, ConfigValue] = {}
+
+    for key, default_value in _FR42_DEFAULTS.items():
+        if key in kwarg_overrides:
+            resolved[key] = ConfigValue(value=kwarg_overrides[key], source="init_arg")
+            continue
+        env_name = _ENV_VAR_NAMES[key]
+        env_raw = os.environ.get(env_name)
+        if env_raw is not None:
+            resolved[key] = ConfigValue(value=_coerce_env_value(key, env_raw), source="env")
+            continue
+        if env_name in dotenv_values:
+            resolved[key] = ConfigValue(value=_coerce_env_value(key, dotenv_values[env_name]), source="dotenv")
+            continue
+        resolved[key] = ConfigValue(value=default_value, source="default")
+
+    return resolved
 
 
 def resolve_config(

@@ -106,7 +106,7 @@ __all__ = [
     "AgentEvalIntegrityError",
     "AgentEvalBudgetError",
     "AgentEvalCompatError",
-    # Leaves (15 implemented; 2 future per module docstring):
+    # Leaves (18 implemented; 2 future per module docstring):
     "IncompleteTraceError",
     "PollingDisallowedError",
     "TierViolationError",
@@ -115,6 +115,7 @@ __all__ = [
     "InvalidHookConfigError",
     "InvalidMCPServerConfigError",
     "InvalidMCPToolSchemaError",
+    "InvalidScenarioYAMLError",
     "CostExceededError",
     "RuntimeBudgetExceededError",
     "AdapterDiscoveryError",
@@ -378,6 +379,31 @@ class InvalidMCPServerConfigError(_FR59Tier1SetupFailureError):
     """
 
     error_code: ClassVar[str] = "INVALID_MCP_SERVER_CONFIG"
+
+
+class InvalidScenarioYAMLError(_FR59Tier1SetupFailureError):
+    """Raised when a scenario YAML file fails parse OR schema validation.
+
+    Per `docs/contracts/error-class-hierarchy.md` L? (18th leaf, ratified
+    2026-05-20 pre-Story-4.3 catalog amendment): Tier-1 setup-failure
+    semantics. Raised by `src/AgentEval/scenarios/loader.py` when:
+        - YAML file fails `yaml.safe_load()` (malformed YAML)
+        - Required top-level fields missing (`evals[]`)
+        - Required per-eval fields missing (`prompt`)
+        - Type contract violations (e.g., `evals` is not a list,
+          `repeat` is not an int)
+        - File extension is not `.yaml` / `.yml` or file does not exist
+
+    `field_name` JSON Pointer convention (parallel to
+    `InvalidHookConfigError` + `InvalidMCPToolSchemaError`): when a
+    nested-YAML/JSON validation fails, `field_name` carries an RFC 6901
+    JSON Pointer into the offending location, e.g., `/evals/0/prompt`.
+
+    `error_code = "INVALID_SCENARIO_YAML"`; exit code 65 (EX_DATAERR;
+    same family as other Tier-1 setup-failure errors).
+    """
+
+    error_code: ClassVar[str] = "INVALID_SCENARIO_YAML"
 
 
 class InvalidMCPToolSchemaError(_FR59Tier1SetupFailureError):

@@ -52,7 +52,12 @@ from typing import Any, Literal
 from robot.api.deco import keyword
 from robotlibcore import DynamicCore
 
-from AgentEval._kernel.context import _resolve_scope, resolve_config
+from AgentEval._kernel.context import (
+    ConfigValue,
+    _resolve_scope,
+    resolve_config,
+    resolve_config_with_provenance,
+)
 
 __version__ = "0.0.1"
 __all__: list[str] = ["AgentEval"]
@@ -98,7 +103,10 @@ _logger = logging.getLogger("AgentEval.library")
 # future stories accidentally register two components with overlapping
 # `@keyword(name=...)` values — preventing the silent last-wins regression
 # from recurring.
-_SUB_LIBRARIES: tuple[tuple[str, str], ...] = (("AgentEval.hooks.library", "HooksLibrary"),)
+_SUB_LIBRARIES: tuple[tuple[str, str], ...] = (
+    ("AgentEval.hooks.library", "HooksLibrary"),
+    ("AgentEval.orchestration.library", "OrchestrationLibrary"),
+)
 
 
 # Sentinel: distinguishes "user passed this kwarg" from "kwarg defaulted to
@@ -224,6 +232,10 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
         }
         kwarg_overrides = {k: v for k, v in kwarg_overrides.items() if v is not _UNSET}
         resolved = resolve_config(kwarg_overrides)
+        # Story 4.3 (PRD FR41 ConfigValue surface): also compute the
+        # provenance map for `Get Effective Config setting=key` +
+        # `Get Effective Config With Provenance` keywords.
+        self._config_provenance: dict[str, ConfigValue] = resolve_config_with_provenance(kwarg_overrides)
 
         self._provider = resolved["provider"]
         self._telemetry = resolved["telemetry"]
@@ -324,19 +336,38 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
         return components
 
     @keyword(name="Get Effective Config")
-    def get_effective_config(self) -> dict[str, Any]:
-        """Return the resolved config as a dict.
+    def get_effective_config(self, setting: str | None = None) -> Any:
+        """Return the resolved config as a dict OR a single ConfigValue.
 
-        Story 1b.1: returns the FR41 precedence-resolved values (kwarg →
-        env-var → `.env` → FR42 defaults).
+        Story 1b.1 + Story 4.3 (PRD FR41 ConfigValue surface):
+        - No arg → returns `dict[str, Any]` of resolved values (Story 1a.6
+          ratified shape; preserves backwards-compat with tier1 + smoke
+          tests).
+        - `setting=<key>` → returns `ConfigValue(value, source)` for that
+          single setting per PRD FR41 L1563. `source` is one of
+          `"init_arg"` / `"env"` / `"dotenv"` / `"default"`.
+
+        Story 4.3 carry-over DF-4.3-S1: full PRD FR41 `dict[str, ConfigValue]`
+        compliance is deferred to a Phase-1.5 sweep that migrates the
+        existing Story 1a.6 tier1 tests to the new shape. Until then,
+        the per-setting form + `Get Effective Config With Provenance`
+        provide the ConfigValue surface.
+
+        Args:
+            setting: Optional config-key name (e.g., `"max_cost_usd"`).
+                When None, returns the full `dict[str, Any]`. When set,
+                returns the single `ConfigValue` for that key.
 
         Returns:
-            dict[str, Any]: One entry per `__init__` parameter, in declared
-                order: `provider`, `telemetry`, `trace_backend`,
-                `allow_validate_operator`, `default_temperature`,
-                `mcp_per_test`, `allow_external_mcp_blind`, `max_cost_usd`,
-                `max_runtime_seconds`.
+            dict[str, Any] when `setting` is None; ConfigValue when set.
+
+        Raises:
+            KeyError: when `setting` is set but not a known config key.
         """
+        if setting is not None:
+            if setting not in self._config_provenance:
+                raise KeyError(f"unknown config setting {setting!r}; known: {sorted(self._config_provenance.keys())}")
+            return self._config_provenance[setting]
         return {
             "provider": self._provider,
             "telemetry": self._telemetry,
@@ -348,6 +379,19 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
             "max_cost_usd": self._max_cost_usd,
             "max_runtime_seconds": self._max_runtime_seconds,
         }
+
+    @keyword(name="Get Effective Config With Provenance")
+    def get_effective_config_with_provenance(self) -> dict[str, ConfigValue]:
+        """Story 4.3 / PRD FR41: return `dict[str, ConfigValue]` for the full settings map.
+
+        Each `ConfigValue` carries `value` + `source` per PRD FR41 L1563.
+        This is the PRD-FR41-compliant full surface that DF-4.3-S1 will
+        migrate `Get Effective Config` (no-arg) to once existing tier1
+        tests are updated.
+        """
+        # M_R6 shallow-copy pattern: protect against caller mutating
+        # the returned dict.
+        return dict(self._config_provenance)
 
     def _get_rf_test_id(self) -> str | None:
         """Read the current RF Listener v3 `test_id` from RF context.

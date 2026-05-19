@@ -222,4 +222,20 @@ Added by Story 4.2 (Claude Code CLI Adapter — Epic 4 Story 2). Pre-create-stor
 
 ---
 
+## Deferred from: story-4.3 orchestration keywords + config precedence (2026-05-20)
+
+Added by Story 4.3 (Orchestration Keywords — Epic 4 Story 3). Pre-create-story drift check (20th use) caught 5 drifts; 4 fixed in epics.md, 1 (DF-4.3-S1) tracked as Phase-1.5 carry-over. Plus 4 Phase-1 carve-outs surfaced during dev.
+
+- **DF-4.3-S1 (full PRD FR41 `dict[str, ConfigValue]` migration for `Get Effective Config` no-arg form)** — Story 4.3 pre-create-story drift D-B: PRD FR41 L1563 says `Get Effective Config` returns `dict[str, ConfigValue]`. Story 1a.6 shipped `dict[str, Any]` (just the resolved values). Story 4.3 pragmatic stance ships ConfigValue via additive `setting=key` form + new `Get Effective Config With Provenance` keyword to avoid breaking 5 existing tier1 tests at `tests/acceptance/tier1/test_ac_fr42_library_defaults.py` that consume the dict[str, Any] shape. Phase-1.5 sweep: migrate tier1 tests to access `.value` + `.source`, then change no-arg form to return ConfigValue dict per PRD FR41. Effort S (5 test edits + the no-arg keyword body change). Cross-link: `feedback_citation_drift_first_class` Epic 3 ratification confirms pre-create-story check is necessary-but-not-sufficient; the PRD FR41 drift was caught at story-authoring time but the breaking-change tradeoff drove the additive Phase-1 path.
+
+- **DF-4.3-S2 (`mcp_servers=` comma-separated name-list resolution)** — Story 4.3 Phase-1 carve-out: `Send Prompt` + `Run Scenario` accept `mcp_servers=` in 3 shapes — dict[name → handle] (forwarded directly), None / empty (no-op), comma-separated name string. Phase-1 raises `NotImplementedError` on non-empty name-string because Story 3.1 ratified the per-call-session pattern where the .robot test owns the `MCPServerHandle` — no Library-managed registry exists to resolve names to handles. Phase-1.5 paths: (a) library-side handle registry populated by `MCP.Start Server`; (b) per-test variable scope inspection (RF-runtime-coupled). Effort M. Cross-link: DF-4.1-S2 + DF-4.2-S1 (adapter-side `mcp_servers=` integration is also Phase-1 stubbed).
+
+- **DF-4.3-S3 (`Send Prompt` + `Run Scenario` parse RF list/dict args from string)** — RF passes args as strings by default; Python-style dict/list literals (e.g., `mcp_servers={"echo": ${handle}}`) require `${{}}` syntax or BuiltIn.Evaluate. The Phase-1 keyword accepts dict | str | None typed annotations + RF coerces at the boundary. Phase-1.5 hygiene: add explicit type-coercion at the keyword body OR a clear RF-side example pattern in the docstring. Effort XS.
+
+- **DF-4.3-S4 (full multi-turn scenario conversation threading)** — Story 4.3 `Run Scenario` Phase-1 executes each `evals[]` entry as a separate `adapter.run()` call (single-turn per eval × repeat count). PRD FR15 implies multi-turn potential ("declarative evaluation scenario"). Phase-1.5: extend scenario YAML schema with `turns: list[Turn]` per eval; thread `assistant`/`user` message history across turns; per-turn `expect:` assertions. Requires adapter-side multi-turn support which Stories 4.1 + 4.2 don't yet provide. Effort L. Cross-link: deepens DF-4.1-S2 + DF-4.2-S1 (MCP integration enables tool-use multi-turn).
+
+- **DF-4.3-S5 (adapter constructor-kwargs vs run-kwargs split via signature introspection)** — Story 4.3 Phase-1: `Send Prompt` + `Run Scenario` forward ALL `**kwargs` to the adapter constructor (e.g., `Send Prompt provider=mock model=foo` → `GenericAdapter(provider="mock", model="foo")`). The adapter ignores unknown kwargs (stored on `self._adapter_config`). Phase-1.5: split based on `inspect.signature(adapter_cls.__init__).parameters` so call-time-only kwargs (e.g., `temperature` per-call) route to `run()` not the constructor. Phase-1 stance defensible because Story 1b.4's `InProcessAdapter` swallows unknown kwargs; ClaudeCodeCLIAdapter constructor is `(**kwargs)` only. Effort S. Improvement: lower-friction multi-call patterns where the user wants per-call provider overrides without re-constructing the adapter.
+
+---
+
 *Update this file as new deferred items emerge from future reviews.*
