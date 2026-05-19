@@ -27,6 +27,7 @@ _SNAKE_CASE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 # Growth log:
 #   Story 2.1 (2026-05-19): added "should" for `Should Be Valid Frontmatter`
 #       (Phase-1 plain @keyword pending Phase-2 ADR-022 AssertionEngine adoption).
+#   Story 3.2 (2026-05-19): added "call" for `MCP.Call Tool` per PRD FR9b.
 _VERB_ALLOWLIST: frozenset[str] = frozenset(
     {
         "get",
@@ -50,6 +51,7 @@ _VERB_ALLOWLIST: frozenset[str] = frozenset(
         "parse",
         "wait",
         "should",
+        "call",
     }
 )
 

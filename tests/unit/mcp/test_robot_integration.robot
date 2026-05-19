@@ -45,3 +45,23 @@ MCP Start Server Stdio Returns Handle Without Spawning
 MCP Start Server Rejects Unsupported Transport
     [Documentation]    Story 3.1: invalid transport rejected by Literal type-check OR by start_server.
     Run Keyword And Expect Error    *cannot be converted to*    MCP.Start Server    echo    websocket
+
+MCP List Tools In Memory Returns Echo Back
+    [Documentation]    Story 3.2: List Tools against bundled echo via in_memory transport.
+    ${factory}=    Evaluate    __import__('AgentEval.mcp.bundled.echo', fromlist=['build_server']).build_server
+    ${handle}=    MCP.Start Server    echo    in_memory    server_factory=${factory}
+    ${tools}=    MCP.List Tools    ${handle}
+    Length Should Be    ${tools}    1
+    Should Be Equal    ${tools[0].name}    echo_back
+    MCP.Stop Server    ${handle}
+
+MCP Call Tool In Memory Echoes Text
+    [Documentation]    Story 3.2: Call Tool returns MCPToolResult with is_error=False + non-empty content.
+    ${factory}=    Evaluate    __import__('AgentEval.mcp.bundled.echo', fromlist=['build_server']).build_server
+    ${handle}=    MCP.Start Server    echo    in_memory    server_factory=${factory}
+    ${args}=    Create Dictionary    text=robotframework
+    ${result}=    MCP.Call Tool    ${handle}    echo_back    ${args}
+    Should Not Be True    ${result.is_error}
+    Should Be True    ${result.latency_ms} > 0
+    Length Should Be    ${result.correlation_id}    32
+    MCP.Stop Server    ${handle}

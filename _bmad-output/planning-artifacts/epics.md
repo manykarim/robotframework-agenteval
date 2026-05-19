@@ -1262,7 +1262,7 @@ So that I can introspect what tools a connected MCP server offers, invoke tools 
 
 **Acceptance Criteria:**
 
-**Given** a connected MCP server from Story 3.1's `MCP.Connect`,
+**Given** a connected MCP server from Story 3.1's `MCP.Connect To Server` (Story 3.2 pre-create-story drift D-A 2026-05-19; pre-edit "MCP.Connect" was Story 3.1 D-A drift that escaped initial fix scope),
 **When** I call `${tools}=    MCP.List Tools    name=echo` in a `.robot` test,
 **Then** the variable receives a list of `MCPTool` dataclass instances, each with `name`, `description`, `input_schema` (JSON Schema dict), and `output_schema` (optional).
 

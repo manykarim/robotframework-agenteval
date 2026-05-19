@@ -106,7 +106,7 @@ __all__ = [
     "AgentEvalIntegrityError",
     "AgentEvalBudgetError",
     "AgentEvalCompatError",
-    # Leaves (14 implemented; 2 future per module docstring):
+    # Leaves (15 implemented; 2 future per module docstring):
     "IncompleteTraceError",
     "PollingDisallowedError",
     "TierViolationError",
@@ -121,6 +121,7 @@ __all__ = [
     "DuplicateRegistrationError",
     "UnsupportedBinaryVersionError",
     "UnsupportedMCPVersionError",
+    "MCPConnectionLostError",
     # Warnings (1):
     "DegradedTraceWarning",
 ]
@@ -664,6 +665,64 @@ class UnsupportedMCPVersionError(AgentEvalCompatError):
         # ClassVar remains available for FR49 JUnit XML emission + FR50
         # exit-code mapping via direct attribute access.
         return Exception.__str__(self)
+
+
+class MCPConnectionLostError(AgentEvalCompatError):
+    """Raised when an MCP client session loses connection mid-call.
+
+    Per PRD FR9b + `docs/contracts/error-class-hierarchy.md` L84 (17th
+    leaf, 5th Compat-family leaf, ratified 2026-05-19 pre-Story-3.2
+    catalog amendment). Raised by `src/AgentEval/mcp/lifecycle.py:
+    list_tools` + `call_tool` when the per-call MCP session encounters
+    a transport-layer failure during the operation:
+        - stdio subprocess crashes mid-`call_tool`
+        - in_memory anyio cancel scope failure
+        - streamable_http connection reset (Phase-1.5)
+
+    Distinct from `IncompleteTraceError` (Integrity-family, setup-time
+    coverage gate) and from `UnsupportedMCPVersionError` (Compat-family,
+    initialize-handshake failure). This leaf covers RUNTIME connection
+    loss during a per-call session that already passed `initialize()`.
+
+    Per Epic 2 retro Action #3 ratification (parallel to
+    `UnsupportedMCPVersionError`): inherits `AgentEvalCompatError`
+    DIRECTLY (NOT via `_FR59Tier1SetupFailureError`); runtime errors
+    don't get the FR59 5-line setup-failure layout.
+
+    Structured attrs (for programmatic consumers + diagnostic logging):
+        - `server_name` — the handle name of the server that lost
+          connection (e.g., `"echo"`).
+        - `last_operation` — the keyword operation that was in-flight
+          when the connection died (e.g., `"list_tools"`, `"call_tool"`).
+        - `fix_suggestion` — operator-facing remediation hint (e.g.,
+          inspect server logs, re-run `MCP.Start Server`).
+
+    Phase-1 design: per Story 3.1's per-call-session pattern, the
+    AsyncExitStack reaps any spawned subprocess inside the
+    `try/except BaseException` cleanup in `transport.py`. This error
+    re-raises AFTER cleanup, so callers never see leaked subprocesses
+    in their workspace.
+
+    `error_code = "MCP_CONNECTION_LOST"`; exit code 69 (sysexits-
+    extended; pinned by epics.md Story 8a.1 L1660; sibling to
+    `UnsupportedMCPVersionError` exit code 68 — both Compat-family
+    runtime errors).
+    """
+
+    error_code: ClassVar[str] = "MCP_CONNECTION_LOST"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        server_name: str | None = None,
+        last_operation: str | None = None,
+        fix_suggestion: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.server_name: str | None = server_name
+        self.last_operation: str | None = last_operation
+        self.fix_suggestion: str | None = fix_suggestion
 
 
 # --------------------------------------------------------------------------- #

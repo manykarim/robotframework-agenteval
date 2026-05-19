@@ -175,6 +175,7 @@ def test_keyword_names_use_snake_case_method_names() -> None:
         "parse",
         "wait",
         "should",
+        "call",
     }
     violations: list[str] = []
     for cls in _all_library_classes():

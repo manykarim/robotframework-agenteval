@@ -64,7 +64,11 @@ from AgentEval.mcp._parser import (
 from AgentEval.mcp.lifecycle import (
     MCPServerHandle,
     MCPSession,
+    MCPTool,
+    MCPToolResult,
+    call_tool,
     connect_to_server,
+    list_tools,
     start_server,
     stop_server,
 )
@@ -272,3 +276,77 @@ class MCPLibrary:
             None.
         """
         stop_server(handle)
+
+    # --------------------------------------------------------------- #
+    # Story 3.2: MCP tool inspection keywords (PRD FR9a + FR9b)
+    # --------------------------------------------------------------- #
+
+    @keyword(name="List Tools")
+    @tier(1)
+    def list_tools(self, handle: MCPServerHandle) -> list[MCPTool]:
+        """List the tools advertised by the MCP server at `handle` (PRD FR9a).
+
+        [Tier 1 — Deterministic] — opens a fresh per-call MCP session
+        (per Story 3.1 Phase-1 pattern), runs `initialize()`, calls
+        the MCP spec's `list_tools` operation, then tears down. Each
+        call pays the full handshake cost; Phase-1.5 may introduce
+        pooled sessions for hot loops.
+
+        Args:
+            handle: An `MCPServerHandle` from `Start Server`.
+
+        Returns:
+            A list of `MCPTool` dataclasses (one per advertised tool)
+            with `name`, `description`, `input_schema`, and optional
+            `output_schema` per the MCP spec.
+
+        Raises:
+            ValueError: If transport is `streamable_http` (Phase-1
+                passthrough) or required handle params are missing.
+            UnsupportedMCPVersionError: If `initialize()` rejects the
+                negotiated protocol version.
+            MCPConnectionLostError: If the transport layer fails
+                mid-call.
+        """
+        return list_tools(handle)
+
+    @keyword(name="Call Tool")
+    @tier(1)
+    def call_tool(
+        self,
+        handle: MCPServerHandle,
+        tool_name: str,
+        arguments: dict[str, Any] | None = None,
+    ) -> MCPToolResult:
+        """Invoke a tool by name on the MCP server at `handle` (PRD FR9b).
+
+        [Tier 1 — Deterministic] — given a deterministic server tool,
+        opens a fresh per-call MCP session, runs `initialize()`,
+        invokes the named tool, computes wall-clock latency, then
+        tears down. Tool-LEVEL error responses surface as
+        `MCPToolResult(is_error=True, ...)` — first-class data, NOT
+        exceptions. Infrastructure failures raise
+        `MCPConnectionLostError`.
+
+        Args:
+            handle: An `MCPServerHandle` from `Start Server`.
+            tool_name: The tool name as advertised by the server.
+            arguments: Optional dict of tool-specific arguments
+                (default `{}`).
+
+        Returns:
+            `MCPToolResult` with `content` (list of content blocks),
+            `is_error`, `error_message`, `latency_ms` (wall-clock from
+            request-send to response-receive), and per-call
+            `correlation_id` (Phase-1 uuid4 hex placeholder; Epic 5
+            wires real trace-id lookup).
+
+        Raises:
+            ValueError: If transport is `streamable_http` (Phase-1
+                passthrough) or required handle params are missing.
+            UnsupportedMCPVersionError: If `initialize()` rejects the
+                negotiated protocol version.
+            MCPConnectionLostError: If the transport layer fails
+                mid-call (subprocess crash, anyio stream closed, etc.).
+        """
+        return call_tool(handle, tool_name, arguments)

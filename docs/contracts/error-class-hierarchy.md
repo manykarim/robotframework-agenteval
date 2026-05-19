@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Documents agenteval's **unified error hierarchy** as a publishable consumer-facing contract. Every error agenteval raises inherits from `AgentEvalError` (a common base with a structured `error_code: str` class attribute). 4 semantic sub-bases enable selective programmatic catch (`try/except AgentEvalBudgetError` to retry with smaller scope; `try/except AgentEvalIntegrityError` to fail fast). 16 leaves at 4 sub-bases (incremented to 12 by Story 2.1, 14 by Story 2.2, 16 by Story 2.3 pre-authoring amendments). The contract is the single source contributors + consumers consult when (a) catching agenteval errors, (b) authoring the JUnit XML emitter, (c) implementing the `agenteval` CLI exit-code mapping per FR50.
+Documents agenteval's **unified error hierarchy** as a publishable consumer-facing contract. Every error agenteval raises inherits from `AgentEvalError` (a common base with a structured `error_code: str` class attribute). 4 semantic sub-bases enable selective programmatic catch (`try/except AgentEvalBudgetError` to retry with smaller scope; `try/except AgentEvalIntegrityError` to fail fast). 17 leaves at 4 sub-bases (incremented to 12 by Story 2.1, 14 by Story 2.2, 16 by Story 2.3, 17 by Story 3.2 pre-authoring amendments). The contract is the single source contributors + consumers consult when (a) catching agenteval errors, (b) authoring the JUnit XML emitter, (c) implementing the `agenteval` CLI exit-code mapping per FR50.
 
 ## Scope
 
@@ -50,10 +50,10 @@ FR50 exit codes use **sysexits.h-style per-leaf mapping** (ratified 2026-05-18 p
 | --- | --- |
 | `AgentEvalSafetyError(AgentEvalError)` | `SandboxRequiredError`, `ValidateOperatorDisallowed` |
 | `AgentEvalBudgetError(AgentEvalError)` | `CostExceededError`, `RuntimeBudgetExceededError` |
-| `AgentEvalCompatError(AgentEvalError)` | `UnsupportedMCPVersionError`, `UnsupportedBinaryVersionError`, `AdapterDiscoveryError`, `AdapterVersionDriftWarning` |
+| `AgentEvalCompatError(AgentEvalError)` | `UnsupportedMCPVersionError`, `UnsupportedBinaryVersionError`, `AdapterDiscoveryError`, `AdapterVersionDriftWarning`, `MCPConnectionLostError` |
 | `AgentEvalIntegrityError(AgentEvalError)` | `PollingDisallowedError`, `IncompleteTraceError`, `TierViolationError`, `InvalidSkillFrontmatterError`, `InvalidSubagentDefinitionError`, `InvalidHookConfigError`, `InvalidMCPServerConfigError`, `InvalidMCPToolSchemaError` |
 
-**Total: 16 leaves** (Safety: 2 + Budget: 2 + Compat: 4 + Integrity: 8). Story 2.1 added `InvalidSkillFrontmatterError`; Story 2.2 added `InvalidSubagentDefinitionError` + `InvalidHookConfigError`; Story 2.3 added `InvalidMCPServerConfigError` + `InvalidMCPToolSchemaError` (all Tier-1 setup-failure semantics, parallel to `InvalidSkillFrontmatterError`). Adding additional leaves requires ADR amendment per ADR-014 §Decision.
+**Total: 17 leaves** (Safety: 2 + Budget: 2 + Compat: 5 + Integrity: 8). Story 2.1 added `InvalidSkillFrontmatterError`; Story 2.2 added `InvalidSubagentDefinitionError` + `InvalidHookConfigError`; Story 2.3 added `InvalidMCPServerConfigError` + `InvalidMCPToolSchemaError` (all Tier-1 setup-failure semantics, parallel to `InvalidSkillFrontmatterError`); Story 3.2 added `MCPConnectionLostError` (Compat-family runtime leaf, parallel to `UnsupportedMCPVersionError`). Adding additional leaves requires ADR amendment per ADR-014 §Decision.
 
 ### Per-leaf inventory (error_code + exit_code + one-line description + owning epic)
 
@@ -81,6 +81,7 @@ Exit codes are **sysexits.h-aligned per-leaf** (ratified 2026-05-18 per Story 1a
 | `UnsupportedBinaryVersionError` | `UNSUPPORTED_BINARY_VERSION` | `78` (EX_CONFIG) | CLI adapter detected a binary version outside the adapter's pinned range (e.g., `copilot` outside `>=1.0.9,<2.0` per ADR-010). | Class declaration in **Story 1b.4** (`src/AgentEval/errors.py` leaf + `_assert_binary_version` helper in `SubprocessAdapter`); per-adapter raise sites in **Epic 4 Story 4.2** (Claude Code CLI) + **Epic 11 Story 11.3** (Copilot CLI). |
 | `AdapterDiscoveryError` | `ADAPTER_DISCOVERY_ERROR` | `78` (EX_CONFIG) | Entry-points discovery encountered a partially-installed adapter package (per ADR-013). | **IMPLEMENTED — Story 1b.3 (`src/AgentEval/errors.py` leaf + `src/AgentEval/_kernel/discovery._discover_entry_point_group` raise site + `get_adapter` miss path).** |
 | `AdapterVersionDriftWarning` | `ADAPTER_VERSION_DRIFT` | `0` (warning, not failure — emitted via RF Listener log, no exit-fail) | Adapter shipped against an older MCP SDK; observer's `request_handlers` dict-wrap pattern may no longer match (per ADR-004 Consequences). | Epic 11 Story 11.3 |
+| `MCPConnectionLostError` | `MCP_CONNECTION_LOST` | `69` (sysexits-extended; same family as `UnsupportedMCPVersionError` L80 = 68 — Compat-family runtime errors) | MCP client session lost connection mid-call (subprocess crash, transport disconnect, anyio cancel scope failure). Distinct from `IncompleteTraceError` (Integrity-family setup-time) — this is a runtime connection failure during `MCP.Call Tool` or `MCP.List Tools`. Surfaces `server_name` + `last_operation` structured attrs for diagnostic logging. | **Epic 3 Story 3.2** (MCP tool inspection keywords; first per-call-session connection-loss raise site). |
 
 #### AgentEvalIntegrityError family
 
