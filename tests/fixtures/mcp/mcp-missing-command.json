@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "broken": {
+      "args": ["server.js"],
+      "transport": "stdio"
+    }
+  }
+}

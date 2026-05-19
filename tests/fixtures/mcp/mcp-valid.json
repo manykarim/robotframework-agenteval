@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "echo": {
+      "command": "node",
+      "args": ["server.js"],
+      "env": {"DEBUG": "1"},
+      "transport": "stdio",
+      "tools": {
+        "search": {
+          "type": "object",
+          "properties": {
+            "query": {"type": "string"}
+          },
+          "required": ["query"]
+        },
+        "ping": {
+          "type": "object",
+          "properties": {}
+        }
+      }
+    },
+    "remote": {
+      "command": "agenteval-remote-proxy",
+      "transport": "streamable_http"
+    }
+  }
+}

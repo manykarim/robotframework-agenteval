@@ -106,13 +106,15 @@ __all__ = [
     "AgentEvalIntegrityError",
     "AgentEvalBudgetError",
     "AgentEvalCompatError",
-    # Leaves (11 implemented; 3 future per module docstring):
+    # Leaves (13 implemented; 3 future per module docstring):
     "IncompleteTraceError",
     "PollingDisallowedError",
     "TierViolationError",
     "InvalidSkillFrontmatterError",
     "InvalidSubagentDefinitionError",
     "InvalidHookConfigError",
+    "InvalidMCPServerConfigError",
+    "InvalidMCPToolSchemaError",
     "CostExceededError",
     "RuntimeBudgetExceededError",
     "AdapterDiscoveryError",
@@ -348,6 +350,64 @@ class InvalidHookConfigError(_FR59Tier1SetupFailureError):
     """
 
     error_code: ClassVar[str] = "INVALID_HOOK_CONFIG"
+
+
+class InvalidMCPServerConfigError(_FR59Tier1SetupFailureError):
+    """Raised when a `.mcp.json` MCP-server declaration is malformed or incomplete.
+
+    Per `docs/contracts/error-class-hierarchy.md` L95 (15th leaf, ratified
+    2026-05-19 pre-Story-2.3 catalog amendment): Tier-1 setup-failure
+    semantics. Raised by `src/AgentEval/mcp/_parser.py` when:
+        - JSON fails `json.load()` (malformed JSON)
+        - File extension is not `.json` or file does not exist
+        - Top-level value is not an object
+        - `mcpServers` (or top-level) is not a mapping
+        - A server entry is missing required `command` field
+        - Type contract violations on `args` (must be list[str]),
+          `env` (must be dict[str,str]), `transport` (must be str)
+        - `transport` is not one of FR7's enum: `stdio`, `streamable_http`, `in_memory`
+
+    `field_name` carries an RFC 6901 JSON Pointer (e.g.,
+    `/mcpServers/echo/command`) into the offending location. Parallels
+    the JSON Pointer convention established by `InvalidHookConfigError`
+    + `InvalidMCPToolSchemaError`.
+
+    `error_code = "INVALID_MCP_SERVER_CONFIG"`; exit code 65 (EX_DATAERR).
+    """
+
+    error_code: ClassVar[str] = "INVALID_MCP_SERVER_CONFIG"
+
+
+class InvalidMCPToolSchemaError(_FR59Tier1SetupFailureError):
+    """Raised when an MCP tool's input JSON Schema is malformed.
+
+    Per PRD FR6 ("`MCP.Validate Tool Schema <tool_name>` raises
+    `InvalidMCPToolSchemaError` with the JSON Pointer and validation
+    error message if the schema is malformed") +
+    `docs/contracts/error-class-hierarchy.md` L96 (16th leaf, ratified
+    2026-05-19 pre-Story-2.3 catalog amendment): Tier-1 setup-failure
+    semantics. Raised by `src/AgentEval/mcp/_parser.py` when:
+        - Requested tool is not declared in `.mcp.json:tools` extension
+        - Tool's schema does not validate against the jsonschema
+          Draft 2020-12 meta-schema
+        - `tools` field on the server entry is not a mapping
+        - A tool's schema value is not a mapping
+
+    Phase-1 carve-out: tool schemas are read from the declarative
+    `.mcp.json:tools` extension (a per-server `tools: { name: schema }`
+    mapping). PRD FR6's "running MCP server" runtime retrieval is
+    Phase-2 + Epic 3 scope.
+
+    `field_name` carries an RFC 6901 JSON Pointer (e.g.,
+    `/mcpServers/echo/tools/search/properties/query`) into the
+    offending sub-schema. The wrapped jsonschema validation error
+    is available via `__cause__` for callers needing the verbatim
+    diagnostic.
+
+    `error_code = "INVALID_MCP_TOOL_SCHEMA"`; exit code 65 (EX_DATAERR).
+    """
+
+    error_code: ClassVar[str] = "INVALID_MCP_TOOL_SCHEMA"
 
 
 # --------------------------------------------------------------------------- #

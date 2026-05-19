@@ -116,3 +116,10 @@ jobs:
 
       - name: robot tests/unit/hooks (RF hook integration)
         run: uv run robot --output NONE --report NONE --log NONE tests/unit/hooks/test_robot_integration.robot
+
+      # Story 2.3: RF integration test for the `MCP` sub-library.
+      # MCPLibrary is EXCLUDED from DynamicCore composition per Story 2.2
+      # collision-prevention norm; users access via `Library AgentEval.mcp.library.MCPLibrary
+      # WITH NAME MCP`. This step surfaces regressions in that pattern.
+      - name: robot tests/unit/mcp (RF mcp integration)
+        run: uv run robot --output NONE --report NONE --log NONE tests/unit/mcp/test_robot_integration.robot

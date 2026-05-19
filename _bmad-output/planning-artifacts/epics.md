@@ -1194,7 +1194,7 @@ So that I can assert on `.mcp.json` declarations and MCP tool schemas in a `.rob
 **When** I call `MCP.Validate Tool Schema    tool_name=broken_tool    config_path=tests/fixtures/mcp/mcp-with-broken-tool.json`,
 **Then** `InvalidMCPToolSchemaError` is raised with: (a) the JSON Pointer to the offending location, (b) the jsonschema validation error message, (c) the FR59 format applied.
 
-**And** all 3 keywords ship with `[Tier 1 — Deterministic]` libdoc badges, snake_case + verb-prefix names, and per-keyword P95 <50ms latency on the fixture set.
+**And** all 3 keywords ship with `[Tier 1 — Deterministic]` libdoc badges, snake_case + verb-prefix names, and per-keyword **median** <50 ms latency on the fixture set per NFR-PERF-02 PRD L1608 (pre-edit "P95 <50ms" wording was drift caught by Story 2.3 pre-create-story check D-A 2026-05-19 — NFR-PERF-02 specifies median, not P95; same drift as Story 2.2 D-A).
 
 ---
 

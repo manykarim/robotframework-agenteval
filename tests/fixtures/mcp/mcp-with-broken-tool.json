@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "echo": {
+      "command": "node",
+      "transport": "stdio",
+      "tools": {
+        "broken_tool": {
+          "type": "not_a_valid_type",
+          "properties": {
+            "query": {"type": "string"}
+          }
+        }
+      }
+    }
+  }
+}
