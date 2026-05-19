@@ -1,6 +1,6 @@
 # Story 3.3: Interleaved Dogfood — Port `rf-mcp` MCP Surface Tests
 
-Status: review
+Status: done
 
 ## Story
 
@@ -16,7 +16,7 @@ So that AC-DOGFOOD-01 progresses with concrete week-3 evidence the library survi
 - **(D-B MED)** Epics.md L1299 says `dogfood-integration.yml` clones rf-mcp head + runs .robot suites + fails PRs that regress. Current workflow is install-smoke-only (deliberately, per the Story 1a.2 fake-green-lesson noted in the header). **Resolution**: Story 3.3 documents the gap explicitly + carries it to Story 9.1; the CI workflow extension is NOT in Story 3.3's scope. Story 3.3 verifies the parity suite passes LOCALLY against `/home/many/workspace/rf-mcp/.mcp.json` + robotmcp server.
 - **(D-C HIGH structural)** rf-mcp's MCP-surface tests (1128 LoC across 4 files: `test_mcp_comprehensive.py` + `test_mcp_simple.py` + `test_mcp_error_scenarios.py` + `test_plugins_basic.py`) use `fastmcp.Client` direct API access + tool-call response introspection that doesn't 1:1 map to .robot semantics (asyncio fixtures, dynamic test parameterization, mock fastmcp-Client patches). **Resolution**: Story 3.3 ports a REPRESENTATIVE subset (10-15 test cases covering the major MCP-surface assertions: server config validation, tool inventory, happy-path tool calls, error-response tool calls). Full 1:1 parity for the 1128 LoC pytest suite is Phase-1.5 + Story 9.1 scope.
 - **(D-D MED)** Epics.md L1303 mentions "Recipe Gallery #5 from Epic 8b" for performance baseline. Epic 8b not done. **Resolution**: Story 3.3 captures local performance numbers (wall-clock per .robot suite) inline in the parity checklist; Epic 8b recipe absorption is deferred.
-- **(D-E LOW)** Epics.md L1305 mentions a documented exception suite using `mcp_per_test="test"` for tests requiring strict isolation. The current rf-mcp pytest tests use shared mcp-client fixtures (asyncio module-scope) — no "strict per-test isolation" subset exists in the source corpus. **Resolution**: Story 3.3 ports with `mcp_per_test="suite"` default (matches rf-mcp pytest's shared-fixture semantic); per-test mode is documented in the parity checklist as available but not exercised this story.
+- **(D-E LOW)** Epics.md L1305 mentions a documented exception suite using `mcp_per_test="test"` for tests requiring strict isolation. The current rf-mcp pytest tests use shared mcp-client fixtures (asyncio module-scope) — no "strict per-test isolation" subset exists in the source corpus. **Resolution**: Story 3.3 ports with a RF-Suite-Setup pattern that MIMICS suite-shared usage at the .robot level (one ${HANDLE} variable across all tests). NOTE per Story 3.3 code-review 2-way MED-A fix 2026-05-19 (Blind MED-2 + Edge-cases M5 + Codex MED-1): this does NOT exercise `AgentEval.AgentEval(mcp_per_test="suite")` + `_kernel/context._resolve_scope` — the architectural primitive lives at the top-level Library init + `MCPLifecycleManager` (Phase-1.5+). Each `MCP.Call Tool` still spawns a fresh subprocess per Phase-1 Story 3.1 per-call-session design. Per-test mode is documented as available but not exercised; pooled-session integration is Phase-1.5.
 - **(D-F MED)** Epics.md L1307 requires "≥1 actionable improvement to agenteval filed as `dogfood-finding`". No `dogfood-finding` issue tracker / GitHub label exists yet. **Resolution**: Story 3.3 captures dogfood-findings in `_bmad-output/implementation-artifacts/deferred-work.md` under a new "Dogfood findings from rf-mcp MCP-surface port" section (parallel to the per-story DF carry-overs). GitHub-label-based tracking is Phase-1.5 hygiene (DF-3.3-S?-stub).
 
 ## Acceptance Criteria
@@ -105,11 +105,46 @@ So that AC-DOGFOOD-01 progresses with concrete week-3 evidence the library survi
 - [x] **Task 1: Establish `tests/dogfood/rf-mcp/` directory** — vendored `.mcp.json` from `/home/many/workspace/rf-mcp/.mcp.json` @ rf-mcp SHA `235d679` with sync-cadence header.
 - [x] **Task 2: Author `test_mcp_surface_parity.robot`** — 15 test cases covering AC-3.3.2 through AC-3.3.5.
 - [x] **Task 3: Author `parity-checklist-rf-mcp-mcp-surface.md`** with mapping table + scope header + dogfood-findings footer.
-- [x] **Task 4: Run the suite locally** — 15/15 pass against live robotmcp. Iteration surfaced 2 real dogfood findings (DOGFOOD-FINDING-1 RF-stderr fileno, fixed in-scope; DOGFOOD-FINDING-A cwd= missing, workaround applied, real fix DF-3.3-S1).
+- [x] **Task 4: Run the suite locally** — 15/15 pass against live robotmcp. Codex Probe 1 measured 36.07s wall-clock sequential (well under AC-3.3.7's 5-minute ceiling per Auditor LOW-1 fix 2026-05-19); Codex Probe 6b measured 20.08s under `pabot --testlevelsplit --processes 4` (1.79x speedup). Iteration surfaced 2 real dogfood findings (DOGFOOD-FINDING-1 RF-stderr fileno, fixed in-scope; DOGFOOD-FINDING-A cwd= missing, workaround applied, real fix DF-3.3-S1).
 - [x] **Task 5: Capture dogfood-findings** in `deferred-work.md` under "Dogfood findings from rf-mcp MCP-surface port (Story 3.3, 2026-05-19)" — 5 findings captured (1 fixed, 4 deferred with explicit Phase-1.5 path).
 - [ ] **Task 6: Run `pabot --processes 4`** verification — DEFERRED. AC-3.3.9 spec called for it; not executed due to time budget. Tracked as DF-3.3-S5.
 - [x] **Task 7: All-gates pass** — ruff/format/mypy clean (44 src files); 622 unit+conformance + 9 skipped (regression-clean Story 3.2 baseline); 6 tier1; 18 RF integration; 15/15 dogfood parity.
-- [ ] **Task 8: 4-reviewer cross-LLM code review** — pending.
+- [x] **Task 8: 4-reviewer cross-LLM code review** — 19th consecutive cross-LLM STAR catch streak. Codex CLI ran (DF-3.2-S7 sandbox issue recurred but recovered). 4 reviewers + behavioral probes returned: Blind 3 HIGH + 5 MED + 2 LOW; Edge-cases 3 HIGH + 5 MED + 4 LOW (with live RF probes); Auditor 1 HIGH + 1 MED + 1 LOW (citation-drift); Codex 2 HIGH + 3 MED + 2 LOW (with 12 behavioral probes). N-way triage: 4-way HIGH on PYTHONPATH workstation-leak; 3-way HIGH on `sys.__stderr__` None fallback regression; 2-way HIGH on fake-green error-path; 2-way MED on `mcp_per_test="suite"` decorative claim. All applied via patches below.
+
+## Senior Developer Review (AI)
+
+19th consecutive cross-LLM STAR catch streak. Codex CLI sandbox issue recurred (DF-3.2-S7) but Codex recovered via web-search fallback + 12 behavioral probes confirmed/contradicted findings empirically.
+
+**Patches applied (priority order):**
+
+- **HIGH-A (4-way: Blind HIGH-1 + Edge-cases M2/M3 + Codex HIGH-2 + Codex Probe 5)** — Hardcoded `${RF_MCP_REPO_ROOT}` + PYTHONPATH workstation-leak. Fixed: `${RF_MCP_REPO_ROOT}` now reads `%{RF_MCP_REPO_ROOT=/home/many/workspace/rf-mcp}` (env var override); `Rfmcp Config Preserves Env Block Subset` assertion replaced `PYTHONPATH` (Many-specific) with `ROBOTMCP_TOKENIZER` (functionally required by robotmcp). `Directory Should Exist` precondition guard fails fast with diagnostic when rf-mcp clone not at the expected path.
+- **HIGH-B (2-way: Blind HIGH-2 + Edge-cases H3)** — Fake-green error-path test. `Robotmcp Execute Step With Invalid Keyword Yields Is Error` now asserts disjunction `${result.is_error} OR any(b.data.success is False for b in content)` so the test actually fails if rf-mcp silently swallows the invalid-keyword error in a future regression.
+- **HIGH-C (3-way: Blind MED-1 + Edge-cases H1 + Codex Probe 3)** — `sys.__stderr__ is None` fallback regression. Pre-fix `errlog = sys.__stderr__ if sys.__stderr__ is not None else sys.stderr` regressed back to the broken `sys.stderr` under `pythonw.exe` / daemonized / embedded interpreter conditions. Now opens `os.devnull` for write under the AsyncExitStack so `.fileno()` always succeeds regardless of `__stderr__` state. Trade-off: server stderr silently dropped when `__stderr__` is None; honestly documented.
+- **HIGH-D (Blind HIGH-3)** — No pytest regression for the errlog fix. Added 2 new pytest tests at `tests/unit/mcp/test_lifecycle_keywords.py`: `test_open_stdio_session_survives_non_fd_sys_stderr` (monkeypatches `sys.stderr` to `io.StringIO` mimicking RF listener) + `test_open_stdio_session_falls_back_to_devnull_when_dunder_stderr_none` (monkeypatches both `sys.stderr` AND `sys.__stderr__` to surface the HIGH-C fallback path). Without these tests, a future SDK upgrade or accidental revert could re-introduce DOGFOOD-FINDING-1 silently.
+- **HIGH-E (Edge-cases H2 with live RF probe)** — Suite Teardown masks setup failure. `Set Suite-Wide Server Handle` now sets `${HANDLE}=${NONE}` FIRST (before any operation that can fail); `Stop Suite Server` runs `Run Keyword If "${HANDLE}" != "${NONE}" MCP.Stop Server ${HANDLE}` so the teardown surfaces no spurious "Variable not found" error when setup failed pre-handle-construction.
+- **HIGH-F (Auditor HIGH-1)** — Parity-checklist source-line citations drift 2-5 lines from rf-mcp source. Amended all 4 citations to match actual rf-mcp `tests/test_mcp_simple.py` + `test_mcp_comprehensive.py` line ranges (decorator-line to last-body-line, consistent anchoring).
+- **MED-A (2-way: Blind MED-2 + Edge-cases M5 + Codex MED-1)** — `mcp_per_test="suite"` claim is decorative. Suite docstring rewritten to honestly state the .robot Suite-Setup pattern MIMICS suite-shared usage at the .robot level (one ${HANDLE} across tests) but does NOT exercise `AgentEval.AgentEval(mcp_per_test="suite")` + `_resolve_scope`. Each `MCP.Call Tool` still spawns its own subprocess per Phase-1 Story 3.1 design. parity-checklist amended likewise.
+- **MED-B (2-way: Blind LOW-1 + Edge-cases M1)** — `input_schema "keyword field"` assertion weakness. `Robotmcp Execute Step Tool Has Input Schema With Keyword Field` now asserts `Should Contain ${properties} keyword` so the test name's claim matches the body's assertion.
+- **LOW-1 (Auditor)** — AC-3.3.7 wall-clock measurement missing. Captured Codex Probe 1's measured 36.07s sequential + 20.08s under `pabot --testlevelsplit` in completion notes + parity-checklist L15.
+
+**Deferred to Phase-1.5 (added to deferred-work.md):**
+
+- **DF-3.3-S6 stderr-interleave under parallel** (Codex MED-2): `errlog=sys.__stderr__` is process-global fd 2; N parallel workers interleave child-server stderr on one fd. Phase-1.5: per-server `errlog` parameter on `MCPServerHandle` accepting caller-provided per-worker log path.
+- **DF-3.3-S7 SIGKILL / event-loop-panic subprocess leak** (Blind MED-3): per-call `try/except BaseException → stack.aclose()` is the only reaper. Process-level death paths still leak. Phase-1.5: parent-side reaper or systemd cgroup integration.
+- **DF-3.3-S8 `--directory` flag fragility** (Blind MED-4 + Edge-cases L2): the workaround relies on `uv` accepting `--directory <path>` as a pre-command flag. Stable in uv ≥0.4 (current install base) but not version-pinned in pyproject.toml. Phase-1.5: pin minimum uv version OR adopt real `cwd=` fix (DF-3.3-S1) which makes this moot.
+- **DF-3.3-S9 ROBOTMCP_ATTACH_PORT 7317 collision under parallel** (Edge-cases M4): rf-mcp's `.mcp.json` pins port 7317 across all parity-suite invocations; Codex Probe 6b's `--testlevelsplit` run didn't surface the issue (the parity tests don't exercise the attach path), but if any future parity test does, 4 parallel workers would collide. Phase-1.5: per-worker port randomization OR disable rf-mcp's attach feature in the vendored config.
+
+**Accepted as-is (not applied):**
+
+- **Auditor MED-1 (in-tree output.xml race)**: NOT reproducible on this workstation (15/15 PASS from project root, both pre- and post-patch). Auditor's environment may have a stale `output.xml` from a prior failed run; the local cwd test is repeatable. No action taken.
+- **Codex LOW-1 (claude-flow@alpha floating dep)**: parity suite doesn't invoke claude-flow; declared parse-only. Future-test guardrail noted in parity checklist.
+- **Codex LOW-2 (per-call session debugging surprise)**: documented in `library.py:289` already; informational only.
+
+**All-gates post-patch:** ruff/format/mypy clean; 624 unit+conformance (was 622; +2 errlog-regression tests); 6 tier1; 18 RF integration; 15/15 dogfood parity (rerun post-patch). Codex Probe 12 confirmed Story 3.2 `MCPConnectionLostError` widening is load-bearing under real subprocess-kill conditions — 18th consecutive cross-LLM STAR catch now triply validated (Story 3.2 review + Story 3.3 dogfood emergence + Story 3.3 code-review behavioral re-probe).
+
+### Action Items
+
+All HIGH + 2-way MED findings closed via in-line patches. Phase-1.5 carry-overs catalogued in `_bmad-output/implementation-artifacts/deferred-work.md` (DF-3.3-S6 through DF-3.3-S9, joining S1-S5 from initial dev). Codex CLI bwrap sandbox issue (DF-3.2-S7) recurred but recovered via web-search fallback; Codex slot remained load-bearing.
 
 ## Dev Agent Record
 

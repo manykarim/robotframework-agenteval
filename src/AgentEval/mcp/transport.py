@@ -44,6 +44,7 @@ try/except/cleanup pattern.
 
 from __future__ import annotations
 
+import os
 import sys
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
@@ -133,11 +134,26 @@ async def open_stdio_session(
     params = StdioServerParameters(command=command, args=args or [], env=env)
     stack = AsyncExitStack()
     try:
-        # Story 3.3 dogfood DOGFOOD-FINDING-1 fix: use `sys.__stderr__`
-        # so the SDK's `.fileno()` call survives RF's listener stderr
-        # replacement. Falls back to `sys.stderr` if `__stderr__` is
-        # None (uncommon — happens under pytest capture in some modes).
-        errlog = sys.__stderr__ if sys.__stderr__ is not None else sys.stderr
+        # Story 3.3 dogfood DOGFOOD-FINDING-1 + Story 3.3 code-review
+        # 3-way HIGH (Blind + Edge-cases H1 + Codex Probe 3 2026-05-19):
+        # the SDK's `.fileno()` call on the errlog handle crashes under
+        # RF runtime because the listener replaces `sys.stderr` with a
+        # non-fd-backed capture buffer. `sys.__stderr__` is the
+        # un-wrapped real stderr Python stashes at interpreter startup;
+        # it survives RF's wrapper. HOWEVER, `sys.__stderr__` can be
+        # `None` under `pythonw.exe`, daemonized processes, embedded
+        # interpreters, IDLE, and some test harnesses. The pre-fix
+        # fallback `sys.stderr` regressed straight back to the original
+        # bug. Code-review HIGH fix: open `os.devnull` for write +
+        # push onto the AsyncExitStack so it's reaped at session
+        # teardown. Trade-off: server-subprocess stderr is silently
+        # dropped when `__stderr__` is None; documented + acceptable
+        # (RF operators preferring observability can set
+        # `PYTHONUNBUFFERED=1` + run from a tty where `__stderr__` is
+        # non-None).
+        errlog = (
+            sys.__stderr__ if sys.__stderr__ is not None else stack.enter_context(open(os.devnull, "w"))  # noqa: SIM115 -- managed via AsyncExitStack
+        )
         read_stream, write_stream = await stack.enter_async_context(stdio_client(params, errlog=errlog))
         session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
         return TransportSession(session=session, stack=stack, transport="stdio")

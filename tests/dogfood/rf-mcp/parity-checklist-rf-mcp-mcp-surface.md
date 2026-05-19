@@ -10,9 +10,11 @@
 
 **Story 3.3 scope (drift D-C, ratified 2026-05-19):** REPRESENTATIVE subset — 15 `.robot` test cases covering the MCP-surface assertions (server config, lifecycle, tool inventory, happy-path tool calls, error-response tool calls, latency + correlation_id). Full 1:1 parity for the 1128-LoC pytest corpus is **Story 9.1 + Phase-1.5** scope (when rf-mcp adopts agenteval as a dependency, the .robot suite migrates into rf-mcp itself + the dogfood-integration.yml CI workflow extends to clone-and-run).
 
-**Local execution:** `uv run robot tests/dogfood/rf-mcp/test_mcp_surface_parity.robot` — pass-rate **15/15 (100%)** as of 2026-05-19 against live `robotmcp` server (heavy, ~6s startup amortized via `mcp_per_test="suite"`).
+**Local execution:** `uv run robot tests/dogfood/rf-mcp/test_mcp_surface_parity.robot` — pass-rate **15/15 (100%)** as of 2026-05-19 against live `robotmcp` server. Story 3.3 code-review Edge-cases M2 + Codex Probe 5 fix 2026-05-19: the suite reads `${RF_MCP_REPO_ROOT}` from the `RF_MCP_REPO_ROOT` env var (default `/home/many/workspace/rf-mcp`); other operators set the env var to their rf-mcp clone path.
 
-**Performance baseline:** suite wall-clock ~30-60s on dev workstation (Intel i9, 32GB RAM, Linux 6.8); ~2s per tool-call after suite-shared handshake. Epic 8b Recipe Gallery #5 absorption is deferred (drift D-D).
+**Performance baseline:** Codex Probe 1 measured **36.07s wall-clock sequential** on dev workstation (Intel i9, 32GB RAM, Linux 6.8); ~2s per tool-call. Each `MCP.Call Tool` spawns its own subprocess per Phase-1 Story 3.1 design — the "amortized suite startup" framing was misleading (Story 3.3 code-review Blind MED-2 + Edge-cases M5 + Codex MED-1 fix); the suite-shared handshake is metadata-only. Epic 8b Recipe Gallery #5 absorption is deferred (drift D-D).
+
+**Parallel execution:** Codex Probe 6b measured **20.08s wall-clock under `pabot --testlevelsplit --processes 4`** (1.79x speedup); plain `pabot --processes 4` (no `--testlevelsplit`) is a no-op for this single-suite suite. DF-3.3-S5 covers the formal pabot verification.
 
 ---
 
@@ -24,14 +26,14 @@
 | `Rfmcp Config Preserves Env Block Subset` | (implicit) | agenteval-native | Verifies env passthrough; rf-mcp's robotmcp depends on `ROBOTMCP_*` + `PYTHONPATH`. |
 | `Rfmcp Config Declares Multiple Servers` | (implicit) | agenteval-native | rf-mcp's real config has `robotmcp` + `claude-flow`. |
 | `Robotmcp Server Handle Constructs Without Spawning` | (implicit; pytest skips lifecycle layer) | agenteval-native | Validates the per-call-session Phase-1 pattern. |
-| `Robotmcp Server Connects And Negotiates Protocol Version` | `tests/test_mcp_simple.py` L13-17 (`mcp_client` fixture creates `Client(mcp)`) | representative | rf-mcp uses in-process; agenteval drives stdio subprocess. Same handshake contract. |
-| `Robotmcp List Tools Includes Execute Step` | `tests/test_mcp_simple.py:test_simple_log_execution` L23-43 | representative | Pytest indirectly verifies via successful `call_tool("execute_step", ...)`; .robot asserts via explicit `MCP.List Tools`. |
-| `Robotmcp List Tools Includes Analyze Scenario` | `tests/test_mcp_simple.py:test_analyze_scenario_structure` L46-58 | representative | Same pattern. |
-| `Robotmcp List Tools Includes Find Keywords` | `tests/test_mcp_simple.py:test_find_keywords_structure` L60-65 | representative | Same pattern. |
+| `Robotmcp Server Connects And Negotiates Protocol Version` | `tests/test_mcp_simple.py` L15-20 (`mcp_client` fixture creates `Client(mcp)`) | representative | rf-mcp uses in-process; agenteval drives stdio subprocess. Same handshake contract. |
+| `Robotmcp List Tools Includes Execute Step` | `tests/test_mcp_simple.py:test_simple_log_execution` L22-40 | representative | Pytest indirectly verifies via successful `call_tool("execute_step", ...)`; .robot asserts via explicit `MCP.List Tools`. |
+| `Robotmcp List Tools Includes Analyze Scenario` | `tests/test_mcp_simple.py:test_analyze_scenario_structure` L43-55 | representative | Same pattern. |
+| `Robotmcp List Tools Includes Find Keywords` | `tests/test_mcp_simple.py:test_find_keywords_structure` L58-71 | representative | Same pattern. |
 | `Robotmcp Execute Step Tool Has Input Schema With Keyword Field` | (implicit; pytest doesn't introspect schema) | agenteval-native | Verifies tool input_schema's structural shape via `MCPTool.input_schema`. |
-| `Robotmcp Execute Step Calls Log Keyword Successfully` | `tests/test_mcp_simple.py:test_simple_log_execution` L23-43 | full | Direct port; same args + same result-shape assertions. |
-| `Robotmcp Analyze Scenario Returns Success` | `tests/test_mcp_simple.py:test_analyze_scenario_structure` L46-58 | full | Direct port. |
-| `Robotmcp Find Keywords Returns Results` | `tests/test_mcp_simple.py:test_find_keywords_structure` L60-65 + `tests/test_mcp_comprehensive.py:test_find_keywords_strategies` L68-79 | full | Pattern-strategy variant. |
+| `Robotmcp Execute Step Calls Log Keyword Successfully` | `tests/test_mcp_simple.py:test_simple_log_execution` L22-40 | full | Direct port; same args + same result-shape assertions. |
+| `Robotmcp Analyze Scenario Returns Success` | `tests/test_mcp_simple.py:test_analyze_scenario_structure` L43-55 | full | Direct port. |
+| `Robotmcp Find Keywords Returns Results` | `tests/test_mcp_simple.py:test_find_keywords_structure` L58-71 + `tests/test_mcp_comprehensive.py:test_find_keywords_strategies` L67-78 | full | Pattern-strategy variant. |
 | `Robotmcp Execute Step With Invalid Keyword Yields Is Error` | `tests/test_mcp_error_scenarios.py:test_execute_step_invalid_keyword` | representative | rf-mcp's error semantics vary by code path; .robot asserts the no-exception invariant + latency_ms. |
 | `Robotmcp Call Unknown Tool Yields Is Error` | (mirrors agenteval's AC-3.2.5 + MCP spec) | full | Direct application of FR9b error-response-is-first-class-data. |
 | `Robotmcp Call Tool Reports Per-Call Correlation Id` | (implicit; pytest doesn't surface correlation_id) | agenteval-native | Validates Story 3.2 FR9b correlation_id Phase-1 uuid4 placeholder. |

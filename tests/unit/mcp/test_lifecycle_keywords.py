@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from AgentEval._kernel.tier import get_keyword_tier, tier_badge
@@ -330,3 +332,60 @@ def test_connect_to_server_stdio_handshake_abort_no_subprocess_leak(
         connect_to_server(handle)
     # If we got here without hanging, the AsyncExitStack closed properly
     # + reaped the subprocess. The test passes by NOT timing out.
+
+
+def test_open_stdio_session_survives_non_fd_sys_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Story 3.3 code-review Blind HIGH-3 fix 2026-05-19: regression
+    test for the DOGFOOD-FINDING-1 errlog fix.
+
+    Pre-Story-3.3 the SDK's `stdio_client(server, errlog=sys.stderr)`
+    default crashed under RF runtime because RF replaces `sys.stderr`
+    with a non-fd-backed capture buffer + the SDK calls `.fileno()`
+    on it. This test simulates that condition by monkeypatching
+    `sys.stderr` to an `io.StringIO()` (no `.fileno()`) + asserting
+    `connect_to_server` against the bundled echo stdio target still
+    succeeds. Pre-fix: `io.UnsupportedOperation: fileno`. Post-fix:
+    the suite uses `sys.__stderr__` (or `os.devnull` fallback).
+    """
+    import io
+
+    # Replace `sys.stderr` with a non-fd-backed buffer (RF listener shape).
+    monkeypatch.setattr(sys, "stderr", io.StringIO())
+    handle = start_server(
+        name="echo",
+        transport="stdio",
+        command=sys.executable,
+        args=["-m", "AgentEval.mcp.bundled.echo"],
+    )
+    # The handshake must succeed despite the broken `sys.stderr`.
+    session = connect_to_server(handle)
+    assert session.name == "echo"
+    assert session.transport == "stdio"
+    assert session.protocol_version  # non-empty per FR46
+
+
+def test_open_stdio_session_falls_back_to_devnull_when_dunder_stderr_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Story 3.3 code-review HIGH-C fix 2026-05-19 (Blind MED + Edge-cases
+    H1 + Codex Probe 3): when `sys.__stderr__ is None` AND `sys.stderr`
+    is also non-fd-backed (pythonw.exe / daemonized / embedded
+    interpreter), the fallback opens `os.devnull` for write so the
+    SDK's `.fileno()` succeeds. Pre-fix the fallback was the broken
+    `sys.stderr` itself, regressing to the original bug.
+    """
+    import io
+
+    monkeypatch.setattr(sys, "stderr", io.StringIO())
+    monkeypatch.setattr(sys, "__stderr__", None)
+    handle = start_server(
+        name="echo",
+        transport="stdio",
+        command=sys.executable,
+        args=["-m", "AgentEval.mcp.bundled.echo"],
+    )
+    session = connect_to_server(handle)
+    assert session.name == "echo"
+    assert session.protocol_version

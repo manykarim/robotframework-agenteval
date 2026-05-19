@@ -26,25 +26,39 @@ Suite Teardown   Stop Suite Server
 
 *** Variables ***
 ${VENDORED_MCP_JSON}        ${CURDIR}/.mcp.json
-${RF_MCP_REPO_ROOT}         /home/many/workspace/rf-mcp
+# Story 3.3 code-review 4-way HIGH-A fix 2026-05-19 (Blind HIGH-1 + Edge-cases M2
+# + Codex Probe 5): default to Many's workstation but allow override via env var
+# so other operators (and Story 9.1 CI) can run the suite without forking. RF's
+# `%{VAR=default}` syntax does environment lookup with fallback.
+${RF_MCP_REPO_ROOT}         %{RF_MCP_REPO_ROOT=/home/many/workspace/rf-mcp}
 ${ROBOTMCP_SERVER_NAME}     robotmcp
 
 *** Keywords ***
 Set Suite-Wide Server Handle
-    [Documentation]    Suite-scoped per-test MCP handle. Per `mcp_per_test="suite"`
-    ...                default (Story 3.3 drift D-E): one robotmcp subprocess
-    ...                across all parity tests; tear-down at Suite Teardown.
+    [Documentation]    Suite-scoped MCP handle. Per Story 3.3 code-review MED-A
+    ...                fix 2026-05-19 (Blind MED-2 + Edge-cases M5):
+    ...                `MCP.Start Server` is pure handle construction at this
+    ...                layer; each `MCP.Call Tool` / `MCP.List Tools` invocation
+    ...                STILL opens its own subprocess via the Phase-1 per-call-
+    ...                session pattern (Story 3.1 design at `lifecycle.py:_open_session`).
+    ...                The Suite Setup pattern here MIMICS suite-scoped reuse at
+    ...                the .robot level (one handle stored as ${HANDLE}; shared
+    ...                across all 15 tests), but the architectural `mcp_per_test`
+    ...                kwarg on `AgentEval.AgentEval(...)` + `_resolve_scope` is
+    ...                NOT exercised — that wiring lives at the top-level Library
+    ...                init + the `MCPLifecycleManager` (Phase-1.5+).
     ...
-    ...                Story 3.3 dogfood DOGFOOD-FINDING-A workaround:
-    ...                agenteval's `MCP.Start Server` lacks a `cwd=` parameter,
-    ...                but `uv run -m robotmcp.server` only resolves when invoked
-    ...                from rf-mcp's project root. Workaround: inject
-    ...                `--directory ${RF_MCP_REPO_ROOT}` as the first uv flag.
-    ...                Real fix (add cwd= to MCPServerHandle / start_server) is
-    ...                tracked as DF-3.3-S1 in deferred-work.md.
+    ...                Initialize ${HANDLE} to ${NONE} FIRST (Story 3.3
+    ...                code-review Edge-cases H2 fix) so Suite Teardown can
+    ...                guard cleanly even when subsequent setup steps fail.
+    Set Suite Variable    ${HANDLE}    ${NONE}
+    Directory Should Exist    ${RF_MCP_REPO_ROOT}    rf-mcp repo not found at ${RF_MCP_REPO_ROOT}; set RF_MCP_REPO_ROOT env var or clone rf-mcp there
     ${servers}=    MCP.Get Server Config    ${VENDORED_MCP_JSON}
     ${entry}=    Set Variable    ${servers["${ROBOTMCP_SERVER_NAME}"]}
-    # Inject `--directory <rf-mcp-root>` per dogfood-finding workaround.
+    # Story 3.3 dogfood DOGFOOD-FINDING-A workaround: agenteval's `MCP.Start Server`
+    # lacks a `cwd=` parameter. `uv run -m robotmcp.server` only resolves when
+    # invoked from rf-mcp's project root → inject `--directory ${RF_MCP_REPO_ROOT}`
+    # as the first uv flag. Real fix tracked DF-3.3-S1.
     ${args}=    Evaluate    ['--directory', $RF_MCP_REPO_ROOT] + list($entry["args"])
     ${handle}=    MCP.Start Server
     ...    name=${ROBOTMCP_SERVER_NAME}
@@ -55,7 +69,11 @@ Set Suite-Wide Server Handle
     Set Suite Variable    ${HANDLE}    ${handle}
 
 Stop Suite Server
-    MCP.Stop Server    ${HANDLE}
+    [Documentation]    Story 3.3 code-review Edge-cases H2 fix 2026-05-19:
+    ...                guard against ${HANDLE}=${NONE} (Suite Setup failed
+    ...                pre-handle-construction) so Teardown doesn't mask the
+    ...                real setup failure with a confusing "Variable not found".
+    Run Keyword If    "${HANDLE}" != "${NONE}"    MCP.Stop Server    ${HANDLE}
 
 Call Robotmcp Tool
     [Documentation]    Wrapper for `MCP.Call Tool` against the suite-handle.
@@ -82,13 +100,20 @@ Rfmcp Config Parses And Declares Robotmcp Server
     Should Contain    ${servers["robotmcp"]["args"]}    robotmcp.server
 
 Rfmcp Config Preserves Env Block Subset
-    [Documentation]    Verifies the env passthrough across `Get Server Config`
-    ...                — rf-mcp's robotmcp depends on multiple ROBOTMCP_* vars.
+    [Documentation]    Verifies the env passthrough across `Get Server Config`.
+    ...                rf-mcp's robotmcp depends on ROBOTMCP_* vars
+    ...                (functionally required per rf-mcp's server.py defaults).
+    ...                Story 3.3 code-review HIGH-A fix 2026-05-19 (4-way:
+    ...                Blind HIGH-1 + Edge-cases M3 + Codex HIGH-2 + Codex
+    ...                Probe 5): the pre-edit assertion pinned `PYTHONPATH`
+    ...                which is Many-workstation-specific (points at
+    ...                /home/many/workspace/robotframework-PlatynUI/...).
+    ...                Removed PYTHONPATH pin so the test stays portable.
     ${servers}=    MCP.Get Server Config    ${VENDORED_MCP_JSON}
     ${env}=    Set Variable    ${servers["robotmcp"]["env"]}
     Should Contain    ${env}    ROBOTMCP_INSTRUCTIONS
     Should Contain    ${env}    ROBOTMCP_ATTACH_HOST
-    Should Contain    ${env}    PYTHONPATH
+    Should Contain    ${env}    ROBOTMCP_TOKENIZER
 
 Rfmcp Config Declares Multiple Servers
     [Documentation]    rf-mcp's real .mcp.json declares 2 servers (robotmcp +
@@ -146,11 +171,17 @@ Robotmcp List Tools Includes Find Keywords
 
 Robotmcp Execute Step Tool Has Input Schema With Keyword Field
     [Documentation]    Validates the tool's input_schema declares the required
-    ...                `keyword` field (one of the canonical rf-mcp args).
+    ...                `keyword` field. Story 3.3 code-review MED-B fix 2026-05-19
+    ...                (2-way Blind LOW-1 + Edge-cases M1): the pre-edit body
+    ...                only asserted `input_schema.type == "object"` which passes
+    ...                for any tool with any object schema. Now also asserts the
+    ...                `keyword` property is declared per the test name's claim.
     [Tags]    slow
     ${tools}=    MCP.List Tools    ${HANDLE}
     ${execute_step}=    Evaluate    next(t for t in $tools if t.name == "execute_step")
     Should Be Equal    ${execute_step.input_schema.get("type")}    object
+    ${properties}=    Set Variable    ${execute_step.input_schema.get("properties", {})}
+    Should Contain    ${properties}    keyword
 
 # --- Tool-call parity (AC-3.3.5) — Epic 3 Story 3.2 keywords -------------------
 
@@ -188,16 +219,27 @@ Robotmcp Execute Step With Invalid Keyword Yields Is Error
     ...                (test_mcp_error_scenarios.py): invalid keyword name must
     ...                surface as `MCPToolResult(is_error=True, ...)` per FR9b
     ...                first-class-data semantics. NOT an exception.
+    ...
+    ...                Story 3.3 code-review 2-way HIGH-B fix 2026-05-19 (Blind
+    ...                HIGH-2 + Edge-cases H3): the pre-edit body only asserted
+    ...                `latency_ms > 0` (the comment's disjunction was prose,
+    ...                not an assertion) — fake-green: ANY successful round-trip
+    ...                passed. rf-mcp's error surface varies by code path:
+    ...                either `is_error=True` (MCP spec form) OR `is_error=False`
+    ...                with `content[].data["success"]=False` (rf-mcp pattern).
+    ...                Either is acceptable; assert at least ONE of the two is
+    ...                present so a future rf-mcp silent-swallow regression
+    ...                fails the test.
     [Tags]    slow
     ${args}=    Create Dictionary
     ...    keyword=ThisKeywordDoesNotExist
     ...    arguments=${{[]}}
     ...    session_id=parity_test_err
     ${result}=    Call Robotmcp Tool    execute_step    ${args}
-    # rf-mcp may return is_error=True OR may return is_error=False with the
-    # error captured inside content[].data["success"]=False (rf-mcp pattern).
-    # Either is acceptable; the parity check is that NO exception is raised.
     Should Be True    ${result.latency_ms} > 0
+    ${success_in_content}=    Evaluate    any((b.get('data') or {}).get('success') is False for b in $result.content if isinstance(b, dict))
+    ${error_surfaced}=    Evaluate    bool($result.is_error) or bool($success_in_content)
+    Should Be True    ${error_surfaced}    rf-mcp returned neither is_error=True nor content[].data["success"]=False; the invalid-keyword error contract has regressed
 
 Robotmcp Call Unknown Tool Yields Is Error
     [Documentation]    Mirrors agenteval's own AC-3.2.5 + the underlying MCP
