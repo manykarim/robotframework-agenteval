@@ -69,19 +69,40 @@ def test_get_effective_config_setting_env_source(monkeypatch: pytest.MonkeyPatch
     assert cv.source == "env"
 
 
-def test_get_effective_config_setting_unknown_raises_key_error() -> None:
+def test_get_effective_config_setting_unknown_raises_value_error() -> None:
+    """Story 4.3 code-review Blind MED-1 fix 2026-05-20: KeyError → ValueError
+    (typed-input-validation idiom).
+    """
     agent = AgentEval()
-    with pytest.raises(KeyError, match="unknown config setting"):
+    with pytest.raises(ValueError, match="unknown config setting"):
         agent.get_effective_config(setting="nonexistent_key_xyz")
 
 
 def test_get_effective_config_setting_lists_known_keys_on_error() -> None:
     agent = AgentEval()
-    with pytest.raises(KeyError) as exc_info:
+    with pytest.raises(ValueError) as exc_info:
         agent.get_effective_config(setting="bogus")
     msg = str(exc_info.value)
     assert "provider" in msg
     assert "max_cost_usd" in msg
+
+
+def test_config_value_rejects_invalid_source_at_runtime() -> None:
+    """Story 4.3 code-review 2-way MED-B fix 2026-05-20 (Blind M4 + Edge-cases M2):
+    `__post_init__` validates source against the closed Literal set so typos
+    fail loud per M_R11 instead of silently producing invalid records.
+    """
+    with pytest.raises(ValueError, match="source must be one of"):
+        ConfigValue(value="x", source="invalid")  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        ConfigValue(value="x", source="initarg")  # type: ignore[arg-type] -- typo
+
+
+def test_config_value_accepts_all_four_literal_sources() -> None:
+    """The 4 PRD FR41 source enum values must construct cleanly."""
+    for source in ("init_arg", "env", "dotenv", "default"):
+        cv = ConfigValue(value="x", source=source)  # type: ignore[arg-type]
+        assert cv.source == source
 
 
 def test_get_effective_config_with_provenance_returns_full_dict() -> None:

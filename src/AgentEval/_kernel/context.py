@@ -944,10 +944,24 @@ class ConfigValue:
     Config With Provenance` keywords. The `source` field names which
     precedence-chain level "won" for that setting per PRD FR41 L1563
     enum: `init_arg` / `env` / `dotenv` / `default`.
+
+    Story 4.3 code-review 2-way MED-B fix 2026-05-20 (Blind M4 +
+    Edge-cases M2): `__post_init__` validates `source` against the
+    closed Literal set at runtime. Python `Literal` types are TYPE-
+    CHECK-only; downstream consumers (test fixtures, hand-constructed
+    instances) could pre-edit pass `source="initarg"` (typo) and
+    silently produce an invalid `ConfigValue`. Same defensive pattern
+    as `ServerSpec.__post_init__`.
     """
+
+    _VALID_SOURCES: ClassVar[frozenset[str]] = frozenset(("init_arg", "env", "dotenv", "default"))
 
     value: Any
     source: Literal["init_arg", "env", "dotenv", "default"]
+
+    def __post_init__(self) -> None:
+        if self.source not in self._VALID_SOURCES:
+            raise ValueError(f"ConfigValue.source must be one of {sorted(self._VALID_SOURCES)}; got {self.source!r}")
 
 
 def resolve_config_with_provenance(

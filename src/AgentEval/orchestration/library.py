@@ -35,6 +35,7 @@ Phase-1 carve-outs (DF-4.3-S2 + DF-4.3-S3):
 
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 from robot.api.deco import keyword
@@ -48,8 +49,68 @@ from AgentEval.types import AgentRunResult
 __all__ = ["OrchestrationLibrary"]
 
 
+# Story 4.3 code-review 3-way HIGH-A fix 2026-05-20 (Blind H2 + Edge-cases H1 +
+# Codex HIGH-3): the pre-edit `adapter: str = "generic"` default could not
+# distinguish "caller didn't pass adapter" from "caller explicitly passed
+# adapter=generic". Use a sentinel matching Story 1b.1 H3 `_UNSET` pattern.
+class _Unset:
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "_UNSET"
+
+    def __bool__(self) -> bool:
+        return False
+
+
+_UNSET: Any = _Unset()
+
+
+def _split_adapter_kwargs(adapter_cls: type, kwargs: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Story 4.3 code-review 2-way HIGH-D fix 2026-05-20 (Codex HIGH-2):
+    split caller kwargs into "constructor kwargs" (accepted by the adapter's
+    `__init__`) vs "run-time kwargs" (forwarded to `run()`). Pre-edit ALL
+    kwargs went to the constructor; strict third-party adapters crashed
+    (TypeError) + per-call kwargs like `temperature` never reached `run()`.
+
+    Strategy: introspect `adapter_cls.__init__` signature. Named params (other
+    than `self` and `kwargs`) are constructor-bound; everything else goes to
+    `run_kwargs`. Adapters accepting `**kwargs` get ALL kwargs (preserves the
+    Story 1b.4 InProcessAdapter._adapter_config swallow-pattern).
+    """
+    try:
+        sig = inspect.signature(adapter_cls)  # signature of the class IS the __init__ signature minus self
+    except (TypeError, ValueError):
+        # Fallback: forward everything to ctor (Story 4.3 Phase-1 behavior).
+        return dict(kwargs), {}
+    accepts_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+    if accepts_var_keyword:
+        # Adapter's __init__ has **kwargs — forward everything (Story 1b.4
+        # InProcessAdapter pattern stores unknown kwargs on _adapter_config).
+        return dict(kwargs), {}
+    ctor_param_names = {
+        p.name
+        for p in sig.parameters.values()
+        if p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+    }
+    ctor_kwargs = {k: v for k, v in kwargs.items() if k in ctor_param_names}
+    run_kwargs = {k: v for k, v in kwargs.items() if k not in ctor_param_names}
+    return ctor_kwargs, run_kwargs
+
+
 class OrchestrationLibrary:
     """`Send Prompt` + `Run Scenario` keywords (Story 4.3 / PRD FR14 + FR15)."""
+
+    def __init__(self, default_provider: str | None = None) -> None:
+        """Story 4.3 code-review 2-way HIGH-C fix 2026-05-20 (Blind H3 + Codex HIGH-1):
+        accept a `default_provider` to receive the AgentEval library's resolved
+        config. Without this, `AgentEval(provider='mock').send_prompt(prompt='hi')`
+        bypassed the library-level config and hit real LiteLLM with no model
+        (raising ValueError). The AgentEval `_build_components()` now passes
+        `self._provider` here so PRD FR41 precedence propagates to the
+        orchestration surface.
+        """
+        self._default_provider: str | None = default_provider
 
     @keyword(name="Send Prompt")
     @tier(2)
@@ -88,20 +149,22 @@ class OrchestrationLibrary:
                 + DF-4.1-S2 + DF-4.2-S1 — adapter-side integration is
                 Phase-1.5).
         """
-        # Resolve the adapter class via Story 1b.3 entry-points discovery.
-        # Forward all kwargs to the adapter constructor; the adapter
-        # decides what to keep as construction state (e.g., provider,
-        # model) vs apply per-call. Phase-1 design: `Send Prompt
-        # provider=mock model=foo` constructs `GenericAdapter(provider=
-        # "mock", model="foo")`. Story 4.3 carry-over DF-4.3-S5: a
-        # future story could split constructor-kwargs from run-kwargs
-        # via adapter-signature introspection; Phase-1 ships the
-        # all-to-constructor pattern + relies on the adapter ignoring
-        # unknown kwargs (Story 1b.4 InProcessAdapter stores them in
-        # `self._adapter_config`).
+        # Story 4.3 code-review 2-way HIGH-C fix 2026-05-20: inject the
+        # library-level `provider` default when caller didn't pass one.
+        # Preserves PRD FR41 precedence (call kwarg > library config).
+        effective_kwargs = dict(kwargs)
+        if self._default_provider is not None and "provider" not in effective_kwargs:
+            effective_kwargs["provider"] = self._default_provider
+
+        # Story 4.3 code-review 2-way HIGH-D fix 2026-05-20 (Codex HIGH-2):
+        # split caller kwargs into adapter-constructor kwargs vs run() kwargs
+        # via signature introspection. Pre-edit ALL kwargs went to ctor,
+        # which (a) crashed strict adapters with TypeError on unknown kwargs
+        # + (b) silently dropped per-call kwargs like `temperature` that
+        # the user intended to reach `chat()`.
         adapter_cls = get_adapter(adapter)
-        adapter_kwargs = {k: v for k, v in kwargs.items() if k != "prompt"}
-        adapter_instance = adapter_cls(**adapter_kwargs)
+        ctor_kwargs, run_kwargs = _split_adapter_kwargs(adapter_cls, effective_kwargs)
+        adapter_instance = adapter_cls(**ctor_kwargs)
 
         # Story 4.3 Phase-1 carve-out (DF-4.3-S2): mcp_servers string-form
         # name-resolution to live handles is Phase-1.5; the dict-form
@@ -122,10 +185,10 @@ class OrchestrationLibrary:
                     )
 
         # Forward to the adapter's `run()` per FR12 single-method Protocol.
-        # Phase-1: all caller kwargs went to the constructor; run() only
-        # gets prompt + mcp_servers. The adapter applies its stored
-        # construction state (e.g., GenericAdapter._model) in run().
-        result = adapter_instance.run(prompt, mcp_servers=mcp_servers_resolved)
+        # Per HIGH-D fix: run_kwargs (kwargs the adapter ctor didn't take)
+        # are forwarded to run() so per-call settings like `temperature`
+        # reach the underlying provider.
+        result = adapter_instance.run(prompt, mcp_servers=mcp_servers_resolved, **run_kwargs)
         assert isinstance(result, AgentRunResult)
         return result
 
@@ -133,7 +196,7 @@ class OrchestrationLibrary:
     @tier(3)
     def run_scenario(
         self,
-        adapter: str = "generic",
+        adapter: str | _Unset = _UNSET,
         scenario: str = "",
         mcp_servers: dict[str, Any] | str | None = None,
         **kwargs: Any,
@@ -170,36 +233,58 @@ class OrchestrationLibrary:
             raise ValueError("Run Scenario requires `scenario=<path>` kwarg")
         scenario_obj = load_scenario(scenario)
 
-        # PRD FR15 precedence resolution: keyword kwarg WINS over scenario
-        # YAML `agent:` field per epics.md ratified contract (per-keyword
-        # kwargs are call-time overrides; scenario YAML is per-scenario
-        # static config). Defensible Phase-1 stance.
-        resolved_adapter_name = (
-            adapter if adapter != "generic" or scenario_obj.agent is None else (scenario_obj.agent or adapter)
-        )
+        # Story 4.3 code-review 3-way HIGH-A fix 2026-05-20 (Blind H2 +
+        # Edge-cases H1 + Codex HIGH-3): use `_UNSET` sentinel to honestly
+        # distinguish "caller didn't pass adapter" from "caller explicitly
+        # passed adapter=generic". Pre-edit string-compared to "generic"
+        # which collided with the function default — the inverse of the
+        # docstring contract.
+        resolved_adapter_name: str
+        if adapter is _UNSET:
+            resolved_adapter_name = scenario_obj.agent or "generic"
+        else:
+            assert isinstance(adapter, str)
+            resolved_adapter_name = adapter
         adapter_cls = get_adapter(resolved_adapter_name)
-        # Story 4.3 Phase-1: forward kwargs to adapter constructor (see
-        # Send Prompt comment for rationale). Scenario YAML top-level
-        # `model`/`provider` fields are also forwarded as construction
-        # kwargs unless the caller passed an explicit override.
-        adapter_kwargs: dict[str, Any] = dict(kwargs)
-        if scenario_obj.model is not None and "model" not in adapter_kwargs:
-            adapter_kwargs["model"] = scenario_obj.model
-        if scenario_obj.provider is not None and "provider" not in adapter_kwargs:
-            adapter_kwargs["provider"] = scenario_obj.provider
-        adapter_instance = adapter_cls(**adapter_kwargs)
+        # Story 4.3 code-review 2-way HIGH-C fix: inject library-level
+        # `provider` default when neither caller kwargs NOR scenario YAML
+        # specifies one.
+        merged_kwargs: dict[str, Any] = dict(kwargs)
+        if scenario_obj.model is not None and "model" not in merged_kwargs:
+            merged_kwargs["model"] = scenario_obj.model
+        if scenario_obj.provider is not None and "provider" not in merged_kwargs:
+            merged_kwargs["provider"] = scenario_obj.provider
+        if self._default_provider is not None and "provider" not in merged_kwargs and scenario_obj.provider is None:
+            merged_kwargs["provider"] = self._default_provider
+        # Story 4.3 code-review 2-way HIGH-D fix: split into ctor / run kwargs.
+        ctor_kwargs, run_kwargs = _split_adapter_kwargs(adapter_cls, merged_kwargs)
+        adapter_instance = adapter_cls(**ctor_kwargs)
 
-        # mcp_servers Phase-1 stub (DF-4.3-S2 — same as Send Prompt).
+        # Story 4.3 code-review 2-way HIGH-B fix 2026-05-20 (Blind H1 +
+        # Codex HIGH-4): pre-edit silently dropped `scenario_obj.mcp_servers`
+        # — the loader parsed + validated the field but the executor never
+        # read it. A user writing scenario YAML with `mcp_servers: [echo]`
+        # got silent no-MCP execution. Now we honor the YAML field when
+        # the caller didn't pass `mcp_servers=` explicitly; resolution
+        # then flows through the SAME name-list path (which today raises
+        # NotImplementedError per DF-4.3-S2 — loud-fail is correct).
         mcp_servers_resolved: dict[str, Any] | None = None
-        if mcp_servers is not None:
-            if isinstance(mcp_servers, dict):
-                mcp_servers_resolved = mcp_servers if mcp_servers else None
-            elif isinstance(mcp_servers, str):
-                name_list = [n.strip() for n in mcp_servers.split(",") if n.strip()]
+        effective_mcp_servers: dict[str, Any] | str | None = mcp_servers
+        if effective_mcp_servers is None and scenario_obj.mcp_servers:
+            # Comma-join the scenario YAML list and pass through the same
+            # name-list resolution code path that the caller-string form uses.
+            effective_mcp_servers = ",".join(scenario_obj.mcp_servers)
+        if effective_mcp_servers is not None:
+            if isinstance(effective_mcp_servers, dict):
+                mcp_servers_resolved = effective_mcp_servers if effective_mcp_servers else None
+            elif isinstance(effective_mcp_servers, str):
+                name_list = [n.strip() for n in effective_mcp_servers.split(",") if n.strip()]
                 if name_list:
                     raise NotImplementedError(
                         "Run Scenario does not yet resolve comma-separated MCP server name lists "
-                        "to ServerHandle instances (Story 4.3 DF-4.3-S2 carry-over)."
+                        "to ServerHandle instances (Story 4.3 DF-4.3-S2 carry-over). "
+                        "This applies to BOTH the caller `mcp_servers=` kwarg AND the scenario "
+                        "YAML `mcp_servers:` field — pre-fix the YAML field was silently dropped."
                     )
 
         results: list[AgentRunResult] = []
@@ -208,6 +293,7 @@ class OrchestrationLibrary:
                 result = adapter_instance.run(
                     eval_entry.prompt,
                     mcp_servers=mcp_servers_resolved,
+                    **run_kwargs,
                 )
                 assert isinstance(result, AgentRunResult)
                 results.append(result)

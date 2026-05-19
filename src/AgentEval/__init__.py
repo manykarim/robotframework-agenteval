@@ -307,7 +307,15 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
                 continue
             # Constructor errors propagate — they indicate bugs, not
             # optional sub-libraries. (Code-review B7 fix.)
-            components.append(cls())
+            # Story 4.3 code-review 2-way HIGH-C fix 2026-05-20 (Blind H3 +
+            # Codex HIGH-1): propagate library-level `provider` to
+            # `OrchestrationLibrary` so `AgentEval(provider="mock").send_prompt(...)`
+            # actually routes through the mock provider. Pre-edit broke
+            # PRD FR41 precedence at the orchestration boundary.
+            if cls_name == "OrchestrationLibrary":
+                components.append(cls(default_provider=self._provider))
+            else:
+                components.append(cls())
 
         # Collision detector — raise loudly on duplicate keyword names
         # across components (Story 2.2 code-review HIGH-1 fix).
@@ -362,11 +370,15 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
             dict[str, Any] when `setting` is None; ConfigValue when set.
 
         Raises:
-            KeyError: when `setting` is set but not a known config key.
+            ValueError: when `setting` is set but not a known config key.
         """
         if setting is not None:
             if setting not in self._config_provenance:
-                raise KeyError(f"unknown config setting {setting!r}; known: {sorted(self._config_provenance.keys())}")
+                # Story 4.3 code-review Blind MED-1 fix 2026-05-20: `ValueError`
+                # (typed-input-validation idiom matching `_resolve_scope` L162),
+                # NOT `KeyError` (dict-lookup-miss semantic). User-facing
+                # keyword boundary.
+                raise ValueError(f"unknown config setting {setting!r}; known: {sorted(self._config_provenance.keys())}")
             return self._config_provenance[setting]
         return {
             "provider": self._provider,

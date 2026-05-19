@@ -53,25 +53,36 @@ def load_scenario(path: str | Path) -> Scenario:
         raise InvalidScenarioYAMLError(
             f"scenario YAML file not found: {p}",
             file_path=str(p),
-            field_name="/",
+            field_name="",
             fix_suggestion="Verify the path exists and is readable.",
         )
     if p.suffix.lower() not in (".yaml", ".yml"):
         raise InvalidScenarioYAMLError(
             f"scenario file must have .yaml or .yml extension; got {p.suffix!r}",
             file_path=str(p),
-            field_name="/",
+            field_name="",
             fix_suggestion="Rename the file to use .yaml or .yml extension.",
         )
 
     try:
         raw_text = p.read_text(encoding="utf-8")
+    # Story 4.3 code-review Edge-cases H3 fix 2026-05-20: also catch
+    # `UnicodeDecodeError` (a `ValueError` subclass, NOT `OSError`) so
+    # non-UTF-8 scenario files (latin-1, UTF-16 without BOM, accidentally-
+    # binary files) wrap cleanly per the Tier-1 setup-failure contract.
     except OSError as exc:
         raise InvalidScenarioYAMLError(
             f"failed to read scenario YAML: {exc}",
             file_path=str(p),
-            field_name="/",
+            field_name="",
             fix_suggestion="Verify the file is readable + UTF-8 encoded.",
+        ) from exc
+    except UnicodeDecodeError as exc:
+        raise InvalidScenarioYAMLError(
+            f"scenario YAML is not valid UTF-8: {exc}",
+            file_path=str(p),
+            field_name="",
+            fix_suggestion="Re-save the file as UTF-8 (no BOM); avoid accidental binary content.",
         ) from exc
 
     try:
@@ -83,15 +94,19 @@ def load_scenario(path: str | Path) -> Scenario:
             f"malformed YAML: {exc}",
             file_path=str(p),
             line_number=line + 1 if line is not None else None,
-            field_name="/",
+            field_name="",
             fix_suggestion="Validate the YAML with `python -c 'import yaml; yaml.safe_load(open(...))'`.",
         ) from exc
 
+    # Story 4.3 code-review Edge-cases M4 + Codex LOW-1 fix 2026-05-20:
+    # root JSON Pointer per RFC 6901 §5 is empty string `""`, NOT `"/"`
+    # (which would resolve to the empty-string-keyed child of root).
+    # All root-level errors now use `field_name=""`.
     if not isinstance(parsed, dict):
         raise InvalidScenarioYAMLError(
             f"scenario YAML top-level must be a mapping; got {type(parsed).__name__}",
             file_path=str(p),
-            field_name="/",
+            field_name="",
             fix_suggestion="Wrap the content in a top-level YAML mapping with `evals:` key.",
         )
 
@@ -131,7 +146,16 @@ def _parse_scenario(doc: dict[str, Any], *, file_path: str) -> Scenario:
     model = _validate_optional_str(doc.get("model"), field_name="/model", file_path=file_path)
     provider = _validate_optional_str(doc.get("provider"), field_name="/provider", file_path=file_path)
     agent = _validate_optional_str(doc.get("agent"), field_name="/agent", file_path=file_path)
-    mcp_servers_raw = doc.get("mcp_servers") or []
+    # Story 4.3 code-review 3-way MED-A fix 2026-05-20 (Blind M2 + Edge-cases
+    # M1 + Codex MED-1): distinguish "absent / None" from "wrong type". The
+    # pre-edit `doc.get("mcp_servers") or []` short-circuited on ANY falsy
+    # value — `[]`, `{}`, `0`, `False`, `""` all silently coerced to `[]`,
+    # masking real user-error YAML. Now use explicit absence check + type
+    # validation.
+    if "mcp_servers" not in doc or doc["mcp_servers"] is None:
+        mcp_servers_raw: list[Any] = []
+    else:
+        mcp_servers_raw = doc["mcp_servers"]
     if not isinstance(mcp_servers_raw, list):
         raise InvalidScenarioYAMLError(
             f"`mcp_servers` must be a list of names; got {type(mcp_servers_raw).__name__}",
@@ -181,6 +205,18 @@ def _parse_eval(entry: Any, *, idx: int, file_path: str) -> ScenarioEval:
             field_name=f"/evals/{idx}/prompt",
             fix_suggestion="Use a string prompt.",
         )
+    # Story 4.3 code-review Edge-cases L2 + Codex MED-1 fix 2026-05-20:
+    # reject empty / whitespace-only prompts so `prompt: ""` fails loud
+    # rather than silently dispatching the adapter with an empty prompt
+    # (which on real LLM providers would burn tokens with no semantic
+    # input). Matches the `Run Scenario scenario=""` empty-check pattern.
+    if not prompt.strip():
+        raise InvalidScenarioYAMLError(
+            f"`evals[{idx}].prompt` must be a non-empty string; got {prompt!r}",
+            file_path=file_path,
+            field_name=f"/evals/{idx}/prompt",
+            fix_suggestion="Provide the prompt text; empty prompts are rejected to avoid silent no-op dispatches.",
+        )
     repeat_raw = entry.get("repeat", 1)
     if not isinstance(repeat_raw, int) or isinstance(repeat_raw, bool):
         # `bool` is a subclass of `int` in Python; explicitly reject.
@@ -197,7 +233,15 @@ def _parse_eval(entry: Any, *, idx: int, file_path: str) -> ScenarioEval:
             field_name=f"/evals/{idx}/repeat",
             fix_suggestion="Use a positive integer for repeat count.",
         )
-    expect = entry.get("expect") or {}
+    # Story 4.3 code-review 3-way MED-A fix 2026-05-20: distinguish
+    # "absent / null" from "wrong type". Pre-edit `entry.get(k) or {}`
+    # short-circuited on falsy non-mapping values (`expect: 0`,
+    # `expect: false`, `expect: []`) silently producing `{}` and
+    # masking real user-error.
+    if "expect" not in entry or entry["expect"] is None:
+        expect: dict[str, Any] = {}
+    else:
+        expect = entry["expect"]
     if not isinstance(expect, dict):
         raise InvalidScenarioYAMLError(
             f"`evals[{idx}].expect` must be a mapping; got {type(expect).__name__}",
@@ -205,7 +249,10 @@ def _parse_eval(entry: Any, *, idx: int, file_path: str) -> ScenarioEval:
             field_name=f"/evals/{idx}/expect",
             fix_suggestion="Format `expect` as a YAML mapping of assertion thresholds.",
         )
-    judge = entry.get("judge") or {}
+    if "judge" not in entry or entry["judge"] is None:
+        judge: dict[str, Any] = {}
+    else:
+        judge = entry["judge"]
     if not isinstance(judge, dict):
         raise InvalidScenarioYAMLError(
             f"`evals[{idx}].judge` must be a mapping; got {type(judge).__name__}",

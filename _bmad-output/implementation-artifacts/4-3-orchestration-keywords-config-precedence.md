@@ -1,6 +1,6 @@
 # Story 4.3: Orchestration Keywords + Config Precedence
 
-Status: review
+Status: done
 
 ## Story
 
@@ -112,7 +112,45 @@ So that I can run agent flows from a `.robot` test (single prompt or multi-eval 
 - [x] **Task 6: `src/AgentEval/__init__.py`** — extend `Get Effective Config` with `setting=` form + new `Get Effective Config With Provenance` keyword + register `OrchestrationLibrary` in `_SUB_LIBRARIES`.
 - [x] **Task 7: Unit tests** — 25 scenario loader tests + 25 orchestration library tests + 13 config-provenance tests = 63 new.
 - [x] **Task 8: All-gates pass.**
-- [ ] **Task 9: 4-reviewer cross-LLM code review** — pending.
+- [x] **Task 9: 4-reviewer cross-LLM code review** — 22nd consecutive cross-LLM STAR catch streak. Codex CLI `--dangerously-bypass-approvals-and-sandbox` operational. 4 reviewers returned: Blind 4 HIGH + 4 MED + 2 LOW; Edge-cases 3 HIGH + 4 MED + 7 LOW; Auditor 3 LOW (citation only); Codex 4 HIGH + 1 MED + 1 LOW. All HIGH + 2-way MEDs applied via patches below.
+
+## Senior Developer Review (AI)
+
+22nd consecutive cross-LLM STAR catch streak. Codex CLI sandbox bypass remains operational. Cross-reviewer overlap was unusually strong — 3-way HIGH on adapter-precedence sentinel inversion + 2-way HIGH on 3 more independent production bugs. Auditor returned 0 HIGH/MED (only 3 LOW citation hygiene) — Story 4.3 spec was PRD-compliant at the citation level; the real bugs lived in the implementation surface.
+
+**Patches applied (priority order):**
+
+- **3-way HIGH-A (Blind H2 + Edge-cases H1 + Codex HIGH-3)** — `Run Scenario` adapter precedence INVERTED from docstring. Pre-edit `adapter if adapter != "generic" or scenario_obj.agent is None else ...` couldn't distinguish "caller passed adapter=generic explicitly" from "default fired" — YAML always won when caller passed the default value. Replaced with `_UNSET` sentinel pattern (matching Story 1b.1 H3 ratification): `adapter: str | _Unset = _UNSET`; `if adapter is _UNSET: resolved = scenario_obj.agent or "generic"`. New tests pin the precedence in both directions.
+- **2-way HIGH-B (Blind H1 + Codex HIGH-4)** — `Run Scenario` silently dropped `scenario_obj.mcp_servers` field. Loader parsed + validated; executor never read it. Fix: when caller's `mcp_servers=` is None AND scenario YAML has non-empty `mcp_servers:`, flow YAML through the same name-list resolution path (which today raises NotImplementedError per DF-4.3-S2). Loud-fail is correct; silent-drop was the bug.
+- **2-way HIGH-C (Blind H3 + Codex HIGH-1 with empirical ValueError repro)** — Library-level `AgentEval(provider="mock")` bypassed by orchestration keywords. Codex behavioral probe: `AgentEval(provider="mock").send_prompt(prompt="hi")` raised ValueError because LiteLLM was hit not Mock. Fix: `OrchestrationLibrary.__init__(default_provider=None)` accepts the parent library's resolved config; `AgentEval._build_components()` forwards `self._provider`. Send Prompt + Run Scenario consult `self._default_provider` when caller doesn't pass `provider=`.
+- **2-way HIGH-D (Codex HIGH-2 + DF-4.3-S5 elevation)** — per-call kwargs forwarded to adapter CONSTRUCTOR not `run()`. Pre-edit ALL `**kwargs` to ctor → strict adapters crashed (TypeError) + per-call `temperature=0.5` silently dropped. Fix: `_split_adapter_kwargs(adapter_cls, kwargs)` introspects via `inspect.signature(adapter_cls)`; adapters with `**kwargs` get everything (Story 1b.4 `InProcessAdapter._adapter_config` pattern preserved); strict-signature adapters get only their named params. Run-kwargs forwarded to `adapter.run(**run_kwargs)`. DF-4.3-S5 elevated from Phase-1.5 to in-story because Codex's probe with `StrictAdapter` proved the public surface was broken.
+- **1-way HIGH-F (Edge-cases H3)** — `UnicodeDecodeError` uncaught in scenario loader (it's `ValueError` subclass, not `OSError`). Now wrapped as `InvalidScenarioYAMLError` with explicit fix_suggestion.
+- **1-way HIGH-G (Blind H4)** — Fake-green precedence tests. Pre-edit `test_run_scenario_forwards_model_from_yaml` + `test_run_scenario_kwarg_overrides_scenario_model` only asserted `len(results) == 1`; Mock ignores model so precedence was unverified. Rewritten via `GenericAdapter.__init__` monkeypatch capturing actual model kwarg flow. Validates `feedback_test_name_assertion_match` 5th catch.
+- **3-way MED-A (Blind M2 + Edge-cases M1 + Codex MED-1)** — Loader's `entry.get(k) or default` silently coerced `expect: []`, `expect: 0`, `expect: false`, `mcp_servers: {}` to the empty default. Fix: distinguish "absent / None" from "wrong type"; absent uses default, wrong-type raises typed error.
+- **2-way MED-B (Blind M4 + Edge-cases M2)** — `ConfigValue.source` Literal type-check-only. `__post_init__` now validates against the 4-value PRD FR41 enum at runtime per M_R11 fail-loud.
+- **2-way MED-C (Edge-cases M4 + Codex LOW-1)** — `field_name="/"` violates RFC 6901 §5 (root pointer is `""`). All 6 root-level error sites amended.
+- **Blind MED-1** — KeyError → ValueError on `Get Effective Config setting=key` unknown name (typed-input-validation idiom matches `_resolve_scope` L162).
+- **Edge-cases L2 + Codex MED-1 sub-finding** — Loader now rejects empty/whitespace-only prompts at parse time (`fail-loud` per M_R11).
+
+**Carried to Phase-1.5 (DF-4.3-S6..S8):**
+
+- **DF-4.3-S6 (Edge-cases H2)**: `@guarded_fanout` decorator on `Run Scenario`. ADR-015 mandates this for Tier-3; Story 4.3 ships without because the `@guarded_fanout` decorator wiring requires non-trivial estimator function + library-level kwarg threading. Phase-1.5 hygiene story. Until then, `Run Scenario` is Tier-3-annotated but cost/runtime-unsupervised — operators must enforce budgets manually.
+- **DF-4.3-S7 (Edge-cases M3)**: `resolve_config` + `resolve_config_with_provenance` share precedence logic but coded twice. Phase-1.5 hygiene: refactor `resolve_config` to call `resolve_config_with_provenance` + project `.value`.
+- **DF-4.3-S8 (Blind M3)**: dead `if k != "prompt"` filter in pre-edit Send Prompt removed via HIGH-D's `_split_adapter_kwargs` refactor. NOT a Phase-1.5 carry-over — already closed.
+
+**Accepted as-is:**
+
+- Edge-cases L1 (float repeat coercion): defensible Phase-1 strictness; document if user-friction surfaces.
+- Edge-cases L3-L7: probe-confirmed clean (no bugs).
+- Blind M4 (ConfigValue.value deep-copy for mutable inner values): theoretical concern; all 9 FR42 defaults are immutable scalars today. Document; revisit when a mutable-value setting lands.
+
+**Production-validation thesis preserved**: H-B + H-D mirror Story 4.2's prompt-not-fed pattern + Story 3.3's RF↔SDK errlog pattern — fixture-only tests miss real-call-path bugs; the 4-reviewer cross-LLM pattern (with behavioral probes) catches them.
+
+**All-gates post-patch:** ruff/format/mypy clean (54 src files); **815 unit+conformance + 8 skipped** (was 798 Story 4.3 dev close; **+17 new behavioral defenses**); 6 tier1; 9 RF integration; license headers PASS.
+
+### Action Items
+
+All HIGH + 2-way MED findings closed via in-line patches. 3 new Phase-1.5 carry-overs catalogued (DF-4.3-S6..S8). Codex CLI sandbox bypass remains operational per Story 4.1 + 4.2 + 4.3 precedent.
 
 ## Dev Notes
 
