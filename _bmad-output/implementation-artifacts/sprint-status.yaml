@@ -74,6 +74,11 @@ development_status:
   epic-2: done  # Epic 2 CLOSED 2026-05-19 — all 4 stories (2.1-2.4) shipped with cross-LLM code-review patches applied. Tier-1 static-inspection surface complete (4 sub-libraries: Skills, Subagents, Hooks, MCP; 16 error-class-hierarchy leaves total, +5 from Epic 2; 24 conformance fixtures; 17 integration tests against real-world / representative samples). Retrospective optional.
   epic-2-retrospective: done  # Conducted 2026-05-19. epic-2-retro-2026-05-19.md saved. 5 action items into Epic 3: (1) per-sub-library CI step assertion; (2) 15th drift-check use for Story 3.1; (3) UnsupportedMCPVersionError inherits AgentEvalCompatError directly (Many ratified); (4) Phase-1.5 tracking story (Many ratified — TBD soon); (5) Codex behavioral-probe reminder for Story 3.1 review prompt.
 
+  # Phase-1.5: Hygiene + Carry-overs (mini-epic between Epic 2 and Epic 3 per Epic 2 retro Action #4 ratification 2026-05-19).
+  epic-1-5: in-progress  # Created 2026-05-19 to track Phase-1.5 carry-overs. Catalog at docs/phase-1-5-carry-overs.md (17 items). Execution is opportunistic during related epic work; M/L items get sibling stories under 1-5-N keys.
+  1-5-1-phase-1-5-carry-overs-catalog: review  # Dev-story complete 2026-05-19. 17-item catalog at docs/phase-1-5-carry-overs.md + cross-ref to deferred-work.md. Closes Epic 0 Action #6 / Epic 1a Action #5 / Epic 2 Action #4 carry-over chain. Awaiting 2-reviewer code-review (Codex + Claude Auditor) per AC-1-5-1.6.
+  epic-1-5-retrospective: optional
+
   epic-3: backlog
   3-1-mcp-server-lifecycle-keywords-start-connect-stop-spec-version-gate: backlog
   3-2-mcp-tool-inspection-keywords-list-tools-call-tool: backlog
