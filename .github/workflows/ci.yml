@@ -86,37 +86,12 @@ jobs:
         run: uv run robot --output NONE --report NONE --log NONE tests/acceptance/smoke
 
       # tests/unit has real kernel unit tests as of Story 1b.1 (54+ tests covering
-      # _kernel/{context, tier, run_async}.py). EXECUTE the tests (not just
-      # collect) — exit-5 leniency removed for this dir per Story 1b.1 (HIGH-1
-      # lesson generalized).
+      # _kernel/{context, tier, run_async}.py) plus Story 1b.6's conventions
+      # tests (17 cases: 7 convention checks + 10 violation-detection per
+      # Blind#12 fake-green-prevention patch). EXECUTE the tests (not just
+      # collect) — exit-5 leniency retired for ALL of tests/unit per Story
+      # 1b.6 CI-log-forensics fix; the prior `--ignore=tests/unit/conventions`
+      # exclusion was a Story 1b.1 placeholder pending Story 1b.6 conventions
+      # implementation, now removed.
       - name: pytest tests/unit (real tests)
-        run: uv run pytest tests/unit --ignore=tests/unit/conventions -q
-
-      # Phase-1 collect-only sweep across the 1 still-empty test directory.
-      # Story 1a.1 baseline produces empty tests/ dirs (only .gitkeep +
-      # __init__.py). pytest exits 5 ("no tests collected") on empty dirs,
-      # which we accept as Phase-1 success. As of Story 1b.1:
-      #   - tests/acceptance/tier1: real-execute step above
-      #   - tests/acceptance/smoke: real-execute robot step above
-      #   - tests/unit (excluding conventions): real-execute step above
-      #   - tests/unit/conventions: still placeholder; collect-only (Story 1b.6
-      #     will land the 5 convention-enforcement tests + retire this leniency).
-      - name: pytest Phase-1 collect-only sweep (still-empty placeholder dirs)
-        shell: bash
-        run: |
-          set +e
-          fail=0
-          collect() {
-            uv run pytest "$1" -q --collect-only
-            local code=$?
-            if [ "$code" -eq 0 ]; then
-              echo "::notice::pytest $1 collect-only OK"
-            elif [ "$code" -eq 5 ]; then
-              echo "::notice::pytest $1 collect-only OK (exit 5: no tests collected — Phase-1 placeholder)"
-            else
-              echo "::error::pytest $1 failed with exit $code"
-              fail=1
-            fi
-          }
-          collect tests/unit/conventions
-          exit "$fail"
+        run: uv run pytest tests/unit -q
