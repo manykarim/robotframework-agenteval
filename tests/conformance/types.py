@@ -7,8 +7,13 @@ Story 1b.2 `src/AgentEval/types.py` L46-56 precedent): Story 1b.5 ships
 stdlib `@dataclass(frozen=True)` instead of Pydantic. Reasons mirror
 Story 1b.2: Pydantic is NOT a direct dep + stdlib dataclasses provide
 sufficient field-declaration + `dataclasses.asdict()` for the JSONL
-trace-backend serialization path. Phase-1.5 carry-over to Pydantic tracked
-in `_bmad-output/implementation-artifacts/deferred-work.md`.
+trace-backend serialization path. The Pydantic-migration trigger is
+"when Epic 5's OTLP serialization needs validation" — see
+`_bmad-output/implementation-artifacts/deferred-work.md` Story 1b.5
+section DF-1b.5-S2 for the consolidated Phase-1.5 carry-over entry
+covering ToolCallTrace + Usage + RunManifest (Story 1b.2) + AgentRunResult
++ AgentRunMetadata (Story 1b.4) + ConformanceFixture + ConformanceResult
+(Story 1b.5).
 
 Cross-sub-library import note (architecture L853): these types live in
 `tests/conformance/` (test infra), NOT `src/AgentEval/types.py`, because
@@ -50,7 +55,10 @@ class ConformanceFixture:
     scenario_name: str
     agent_run_result: dict[str, Any]
     expected_tool_calls: list[dict[str, Any]]
-    expected_errors: list[str] = field(default_factory=list)
+    # Story 1b.5 code-review H5 (Codex unique catch): expected_errors entries
+    # are structured `{class_name, error_code, message_contains?}` dicts per
+    # Decision-4 contract, NOT plain strings (pre-edit type was `list[str]`).
+    expected_errors: list[dict[str, Any]] = field(default_factory=list)
     reproducibility_footer: dict[str, Any] = field(default_factory=dict)
 
 

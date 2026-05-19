@@ -35,7 +35,7 @@
       "args": {"text": "Hello, world!"},
       "result": "Hello, world!",
       "error": null,
-      "latency_ms_min": 0,
+      "latency_ms": 1.0,
       "source": "hosted_mcp",
       "gen_ai_tool_call_id": "echo-002",
       "sequence_index": 0
@@ -43,8 +43,8 @@
   ],
   "expected_errors": [],
   "reproducibility_footer": {
-    "library_version": "0.1.0",
-    "redaction_policy_hash": "sha256:placeholder",
+    "library_version": "0.0.1",
+    "redaction_policy_hash": "sha256:placeholder-phase1",
     "started_at": "2026-05-19T00:00:00Z",
     "ended_at": "2026-05-19T00:00:01Z"
   }

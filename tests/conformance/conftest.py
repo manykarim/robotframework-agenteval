@@ -10,6 +10,14 @@ from __future__ import annotations
 
 from .harness import (  # noqa: F401 — pytest fixture re-exports
     adapter_registry,
+    deterministic_mock_agent,
     mock_provider,
     truncation_injection_harness,
 )
+
+__all__ = [
+    "adapter_registry",
+    "deterministic_mock_agent",
+    "mock_provider",
+    "truncation_injection_harness",
+]

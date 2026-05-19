@@ -1415,7 +1415,7 @@ robotframework-agenteval/
 │   │   ├── ADR-002-adapter-cap-rule.md         # Was ADR-005 in PRD sidecar
 │   │   ├── ADR-003-protocol-class-split.md     # Was ADR-006 in PRD sidecar
 │   │   ├── ADR-004-hosted-mcp-observation.md
-│   │   ├── ADR-005-conformance-fidelity-oracles.md
+│   │   ├── ADR-005-conformance-suite-fidelity-oracles.md
 │   │   ├── ADR-006-completeness-field.md
 │   │   ├── ADR-007-mcp-coverage-incomplete-trace-error.md
 │   │   ├── ADR-008-mcp-spec-version-gate.md

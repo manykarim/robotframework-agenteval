@@ -7,9 +7,14 @@
 # AC reference: AC-1a.2.3 (conformance.yml), AC-1a.2.9 (workflow hygiene).
 #
 # Story 1b.5 (2026-05-19) replaced the `--collect-only` placeholder with a real
-# `pytest tests/conformance -q` invocation. At end-of-Story-1b.5 the empty
-# entry-point set + skeleton per-AC test files cause every test to SKIP via
-# `pytest.skip("Owning epic N not yet shipped")` markers; pytest returns 0.
+# `pytest tests/conformance -q` invocation. At end-of-Story-1b.5 the expected
+# output is approximately "30 passed + 11 skipped":
+#   - ~30 passed: test_loader_smoke.py exercises the 6-fixture round-trip +
+#     schema-violation matrix; test_harness_self_validation.py exercises the
+#     DeterministicMockAgent + assert_adapter_signature + adapter_registry
+#     loaded_so_far recovery path.
+#   - ~11 skipped: 10 per-AC test files + 1 test_structural_shape.py SKIP via
+#     `pytest.skip("Owning epic N not yet shipped")` markers per ADR-017.
 # Concrete adapters in Epic 4 Story 4.1 (Generic LiteLLM) + Story 4.2 (Claude
 # Code CLI) start exercising the 6 fixtures (generic + claude_code_cli ×
 # echo_simple/echo_truncated/echo_external_mcp) against the harness.

@@ -21,9 +21,9 @@
   "expected_tool_calls": [],
   "expected_errors": [],
   "reproducibility_footer": {
-    "library_version": "0.1.0",
-    "redaction_policy_hash": "sha256:placeholder",
+    "library_version": "0.0.1",
+    "redaction_policy_hash": "sha256:placeholder-phase1",
     "started_at": "2026-05-19T00:00:00Z",
-    "ended_at": "2026-05-19T00:00:00Z"
+    "ended_at": "2026-05-19T00:00:01Z"
   }
 }

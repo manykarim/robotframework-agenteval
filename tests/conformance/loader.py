@@ -22,6 +22,7 @@ References:
 
 from __future__ import annotations
 
+import functools
 import json
 from pathlib import Path
 
@@ -35,8 +36,14 @@ __all__ = ["load_fixture", "SCHEMA_PATH"]
 SCHEMA_PATH = Path(__file__).parent / "fixture-schema.json"
 
 
+@functools.lru_cache(maxsize=1)
 def _load_schema() -> dict:
-    """Load + return the parsed fixture-schema.json contents."""
+    """Load + return the parsed fixture-schema.json contents (cached).
+
+    Story 1b.5 code-review Blind#10 patch: cached so repeated `load_fixture`
+    calls don't re-read + re-parse the schema file. Test-time invalidation
+    via `_load_schema.cache_clear()`.
+    """
     return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
@@ -52,12 +59,23 @@ def load_fixture(path: Path) -> ConformanceFixture:
 
     Raises:
         jsonschema.ValidationError: schema violation (per Story 1b.5 D7
-            ratification — no new agenteval error class).
+            ratification — no new agenteval error class). Includes date-time
+            format-checker enforcement on `reproducibility_footer.started_at`
+            + `ended_at` (Story 1b.5 code-review fix per Blind#22 + Edge).
         FileNotFoundError: path does not exist.
+        IsADirectoryError: path is a directory.
+        UnicodeDecodeError: non-UTF-8 file.
         json.JSONDecodeError: malformed JSON.
     """
     raw = json.loads(path.read_text(encoding="utf-8"))
-    jsonschema.validate(instance=raw, schema=_load_schema())
+    # Enable format-checker for `format: date-time` enforcement per Story
+    # 1b.5 code-review fix (Blind#22 + Edge): jsonschema treats `format` as
+    # advisory unless format_checker is explicitly passed.
+    jsonschema.validate(
+        instance=raw,
+        schema=_load_schema(),
+        format_checker=jsonschema.FormatChecker(),
+    )
     return ConformanceFixture(
         schema_version=raw["_schema_version"],
         adapter_name=raw["adapter_name"],

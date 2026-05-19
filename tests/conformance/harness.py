@@ -62,6 +62,8 @@ __all__ = [
     "mock_provider",
     "run_fixture",
     "assert_adapter_signature",
+    "DeterministicMockAgent",
+    "deterministic_mock_agent",
 ]
 
 
@@ -73,8 +75,23 @@ def adapter_registry() -> list[type[CodingAgentAdapter]]:
     Claude Code CLI lands Story 4.2. Per-AC test files parametrize over
     this fixture + SKIP when empty (the ratified end-of-Story-1b.5
     state).
+
+    Story 1b.5 code-review Codex STAR catch M4: catches
+    `AdapterDiscoveryError` per Story 1b.3 `loaded_so_far` contract.
+    A single broken third-party adapter entry-point should NOT abort the
+    whole conformance suite — instead, surface the successfully-loaded
+    adapters via `loaded_so_far` so resilient discovery flows through.
     """
-    discovered = discovery.discover_adapters()
+    from AgentEval.errors import AdapterDiscoveryError
+
+    try:
+        discovered = discovery.discover_adapters()
+    except AdapterDiscoveryError as exc:
+        # Per ADR-013 L42 + Story 1b.3 partial-install contract: recover
+        # successfully-loaded adapters via `loaded_so_far`. Log the broken
+        # registration via stderr (pytest captures by default).
+        loaded_so_far: dict[str, type] = getattr(exc, "loaded_so_far", {}) or {}
+        return list(loaded_so_far.values())
     return list(discovered.values())
 
 
@@ -186,49 +203,195 @@ def assert_adapter_signature(adapter_cls: type) -> None:
     Used by `test_structural_shape.py` (per ADR-017 L36) against every
     registered adapter from the `adapter_registry` fixture.
 
+    Story 1b.5 code-review H2 fix (4-way: Blind+Auditor+Codex+spec AC-1b.5.4):
+    pre-edit checked only name presence + "has-some-default" + `**kwargs`
+    presence. Strengthened to also assert:
+    - `adapter_cls` is a class (NOT an instance).
+    - `prompt` is `POSITIONAL_OR_KEYWORD` (NOT positional-only NOR keyword-only).
+    - `tools` + `mcp_servers` defaults are EXACTLY `None` (NOT `[]` / `()` / `...`).
+    - Return annotation is `AgentRunResult` or its forward-ref string.
+
     Args:
         adapter_cls: A class purporting to implement the
             `CodingAgentAdapter` Protocol.
 
     Raises:
         AssertionError: signature shape doesn't match FR12. The message
-            includes which parameter is missing/renamed/has-wrong-default.
+            includes which parameter is missing/renamed/has-wrong-kind/
+            has-wrong-default/has-wrong-return-annotation.
     """
+    if adapter_cls is None:
+        raise AssertionError("adapter_cls is None (PRD FR12 violation)")
+    if not isinstance(adapter_cls, type):
+        raise AssertionError(
+            f"assert_adapter_signature expected a class; got instance of {type(adapter_cls).__name__!r}"
+        )
+    cls_name = adapter_cls.__name__
     run = getattr(adapter_cls, "run", None)
     if run is None:
-        raise AssertionError(f"{adapter_cls.__name__!r} has no `run` method (PRD FR12 violation)")
+        raise AssertionError(f"{cls_name!r} has no `run` method (PRD FR12 violation)")
     sig = inspect.signature(run)
     params = list(sig.parameters.values())
 
     # First param is `self`; skip.
     if not params or params[0].name != "self":
-        raise AssertionError(
-            f"{adapter_cls.__name__}.run must have `self` as first parameter; got {[p.name for p in params]!r}"
-        )
+        raise AssertionError(f"{cls_name}.run must have `self` as first parameter; got {[p.name for p in params]!r}")
 
     expected_params = ["self", "prompt", "tools", "mcp_servers"]
     actual_param_names = [p.name for p in params]
     for expected_name in expected_params:
         if expected_name not in actual_param_names:
             raise AssertionError(
-                f"{adapter_cls.__name__}.run is missing required parameter "
+                f"{cls_name}.run is missing required parameter "
                 f"{expected_name!r} per PRD FR12 `run(prompt, tools=None, "
                 f"mcp_servers=None, **kwargs) -> AgentRunResult`; got "
                 f"{actual_param_names!r}"
             )
 
-    # `tools` and `mcp_servers` MUST have None defaults per FR12.
+    # H2 fix: `prompt` MUST be POSITIONAL_OR_KEYWORD (NOT keyword-only,
+    # NOT positional-only) per FR12 `(self, prompt: str, ...)` shape.
+    prompt_param = sig.parameters["prompt"]
+    if prompt_param.kind not in (inspect.Parameter.POSITIONAL_OR_KEYWORD,):
+        raise AssertionError(
+            f"{cls_name}.run parameter `prompt` must be POSITIONAL_OR_KEYWORD "
+            f"per PRD FR12; got {prompt_param.kind.name}"
+        )
+
+    # H2 fix: `tools` and `mcp_servers` defaults MUST be exactly None.
     for kw_name in ("tools", "mcp_servers"):
         param = sig.parameters[kw_name]
         if param.default is inspect.Parameter.empty:
             raise AssertionError(
-                f"{adapter_cls.__name__}.run parameter {kw_name!r} must have "
-                f"default value None per PRD FR12; got no default"
+                f"{cls_name}.run parameter {kw_name!r} must have default value None per PRD FR12; got no default"
+            )
+        if param.default is not None:
+            raise AssertionError(
+                f"{cls_name}.run parameter {kw_name!r} default must be exactly None per PRD FR12; got {param.default!r}"
             )
 
     # `**kwargs` MUST be present.
     has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
     if not has_var_keyword:
+        raise AssertionError(f"{cls_name}.run must accept `**kwargs` per PRD FR12; got {actual_param_names!r}")
+
+    # H2 fix: return annotation MUST be `AgentRunResult` or its forward-ref
+    # string `"AgentRunResult"` (when adapter uses `from __future__ import
+    # annotations`). Pre-edit code didn't check this despite the docstring
+    # claiming to + AC-1b.5.4 explicitly enumerating "wrong return
+    # annotation" as a catch surface.
+    ret = sig.return_annotation
+    if ret is inspect.Signature.empty:
         raise AssertionError(
-            f"{adapter_cls.__name__}.run must accept `**kwargs` per PRD FR12; got {actual_param_names!r}"
+            f"{cls_name}.run must declare a return annotation per PRD FR12 (`-> AgentRunResult`); got no annotation"
         )
+    # Accept either the live class object OR the forward-ref string
+    # (because adapters typically use `from __future__ import annotations`
+    # which stringifies all annotations).
+    ret_name = ret.__name__ if isinstance(ret, type) else str(ret)
+    if ret_name != "AgentRunResult":
+        raise AssertionError(
+            f"{cls_name}.run return annotation must be `AgentRunResult` per PRD FR12; got {ret_name!r}"
+        )
+
+
+# ===== Phase-1 deterministic mock agent (ADR-005 L17/L28 + Story 1b.5 code-review H3) ============ #
+
+
+class DeterministicMockAgent:
+    """Deterministic mock agent per ADR-005 L17/L28 + Story 1b.5 code-review H3.
+
+    The Codex + Auditor STAR catch in Story 1b.5 code review surfaced that
+    ADR-005 L17 mandates a deterministic mock agent shipping in Phase 1
+    ("It implements `CodingAgentAdapter` with hardcoded responses for a
+    fixed scenario set") + L28 ratifies "Mock agent + fixed-scenario
+    fixtures must ship in Phase 1". The pre-Story-1b.5-code-review impl
+    omitted the mock-agent class entirely, leaving `run_fixture` unable
+    to exercise the contract end-to-end.
+
+    This class implements `CodingAgentAdapter` (via Story 1b.4 Protocol
+    duck-typing) with hardcoded responses keyed by `scenario_name`
+    matching the 6 reference fixtures. Concrete adapters in Epic 4 Story
+    4.1 (Generic LiteLLM) + Story 4.2 (Claude Code CLI) replace this
+    mock for production-quality runs; the mock stays in the test infra
+    for harness self-validation + community adapter authors who want a
+    reference impl.
+
+    Phase-1 scope: covers `echo_simple` / `echo_truncated` /
+    `echo_external_mcp` per the 6-fixture set. New scenarios in future
+    stories add cases here.
+    """
+
+    name: str = "deterministic_mock"
+    version: str = "1.0.0"
+
+    def run(
+        self,
+        prompt: str,
+        tools: list[str] | None = None,  # noqa: ARG002
+        mcp_servers: dict[str, Any] | None = None,  # noqa: ARG002
+        scenario_name: str = "echo_simple",
+        **kwargs: Any,  # noqa: ARG002
+    ) -> Any:
+        """Return a hardcoded `AgentRunResult` matching the named scenario.
+
+        Note: return type is `Any` (not `AgentRunResult`) to defer the
+        import until call time + avoid the test-infra-vs-src-package
+        import discipline question. Concrete adapters in Epic 4 use the
+        proper `-> AgentRunResult` annotation per FR12.
+        """
+        from AgentEval.types import AgentRunMetadata, AgentRunResult, Usage
+
+        if scenario_name == "echo_simple":
+            return AgentRunResult(
+                response_text=prompt,
+                tool_calls=[],
+                usage=Usage(input_tokens=5, output_tokens=5),
+                metadata=AgentRunMetadata(
+                    completeness="complete",
+                    mcp_coverage="hosted_in_process",
+                ),
+                cost_usd=0.0001,
+                latency_seconds=0.05,
+                trace_id="mock-trace-echo-simple",
+            )
+        if scenario_name == "echo_truncated":
+            return AgentRunResult(
+                response_text=prompt[: len(prompt) // 2],
+                tool_calls=[],
+                usage=Usage(input_tokens=5, output_tokens=2),
+                metadata=AgentRunMetadata(
+                    completeness="truncated",
+                    mcp_coverage="hosted_in_process",
+                ),
+                cost_usd=0.00005,
+                latency_seconds=0.02,
+                trace_id="mock-trace-echo-truncated",
+            )
+        if scenario_name == "echo_external_mcp":
+            return AgentRunResult(
+                response_text=f"{prompt} from external MCP",
+                tool_calls=[],
+                usage=Usage(input_tokens=5, output_tokens=8),
+                metadata=AgentRunMetadata(
+                    completeness="complete",
+                    mcp_coverage="external_mixed",
+                ),
+                cost_usd=0.0001,
+                latency_seconds=0.08,
+                trace_id="mock-trace-echo-external-mcp",
+            )
+        raise ValueError(
+            f"DeterministicMockAgent: unknown scenario_name {scenario_name!r}; "
+            f"supported: echo_simple, echo_truncated, echo_external_mcp"
+        )
+
+
+@pytest.fixture
+def deterministic_mock_agent() -> DeterministicMockAgent:
+    """pytest fixture exposing a `DeterministicMockAgent` instance.
+
+    Used by Story 1b.5 conformance harness self-tests + future Epic 4
+    smoke tests that need a Phase-1 adapter without depending on Story
+    4.1/4.2's concrete adapters.
+    """
+    return DeterministicMockAgent()
