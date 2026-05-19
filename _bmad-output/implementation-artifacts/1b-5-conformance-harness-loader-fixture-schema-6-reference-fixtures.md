@@ -1,6 +1,6 @@
 # Story 1b.5: Conformance Harness + Loader + Fixture Schema + 6 Reference Fixtures
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -148,61 +148,61 @@ All 6 fixtures publish the contract; no concrete adapter exists at end-of-Story-
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Author `tests/conformance/fixture-schema.json` (AC: 1b.5.1)**
-  - [ ] JSON Schema draft-07 (matches stdlib `jsonschema` default).
-  - [ ] Required top-level: `_schema_version`, `adapter_name`, `scenario_name`, `agent_run_result`, `expected_tool_calls`, `expected_errors`, `reproducibility_footer`.
-  - [ ] `_schema_version` semver pattern.
-  - [ ] `agent_run_result` nested schema with `response_text`, `tool_calls`, `usage`, `metadata.completeness` Literal enum + `metadata.mcp_coverage` Literal enum, `cost_usd`, `latency_seconds`, `trace_id`.
-  - [ ] `expected_tool_calls` array of objects with `name`, `args`, `result` / `error`, `latency_ms` (≥ 0 not exact match per ADR-005 L19-22), `source` Literal, `gen_ai_tool_call_id`, `sequence_index`.
-  - [ ] `expected_errors` array of strings (error-class names).
-  - [ ] `reproducibility_footer` with `library_version`, `redaction_policy_hash`, `started_at` / `ended_at` (ISO-8601).
+- [x] **Task 1: Author `tests/conformance/fixture-schema.json` (AC: 1b.5.1)**
+  - [x] JSON Schema draft-07 (matches stdlib `jsonschema` default).
+  - [x] Required top-level: `_schema_version`, `adapter_name`, `scenario_name`, `agent_run_result`, `expected_tool_calls`, `expected_errors`, `reproducibility_footer`.
+  - [x] `_schema_version` semver pattern.
+  - [x] `agent_run_result` nested schema with `response_text`, `tool_calls`, `usage`, `metadata.completeness` Literal enum + `metadata.mcp_coverage` Literal enum, `cost_usd`, `latency_seconds`, `trace_id`.
+  - [x] `expected_tool_calls` array of objects with `name`, `args`, `result` / `error`, `latency_ms` (≥ 0 not exact match per ADR-005 L19-22), `source` Literal, `gen_ai_tool_call_id`, `sequence_index`.
+  - [x] `expected_errors` array of strings (error-class names).
+  - [x] `reproducibility_footer` with `library_version`, `redaction_policy_hash`, `started_at` / `ended_at` (ISO-8601).
 
-- [ ] **Task 2: Author `tests/conformance/types.py` (AC: 1b.5.2)**
-  - [ ] `ConformanceFixture` `@dataclass(frozen=True)` per AC-1b.5.2.
-  - [ ] `ConformanceResult` `@dataclass(frozen=True)` per AC-1b.5.2.
-  - [ ] Module docstring cites architecture Decision-4 + Story 1b.2 Pydantic-substitution precedent.
+- [x] **Task 2: Author `tests/conformance/types.py` (AC: 1b.5.2)**
+  - [x] `ConformanceFixture` `@dataclass(frozen=True)` per AC-1b.5.2.
+  - [x] `ConformanceResult` `@dataclass(frozen=True)` per AC-1b.5.2.
+  - [x] Module docstring cites architecture Decision-4 + Story 1b.2 Pydantic-substitution precedent.
 
-- [ ] **Task 3: Author `tests/conformance/loader.py` (AC: 1b.5.3)**
-  - [ ] `load_fixture(path: Path) -> ConformanceFixture` reads JSON + validates against `fixture-schema.json` via stdlib `jsonschema.validate` + populates `ConformanceFixture`.
-  - [ ] Schema validation failure raises `jsonschema.ValidationError` (NOT a new agenteval error class).
-  - [ ] Module docstring cites architecture L737.
+- [x] **Task 3: Author `tests/conformance/loader.py` (AC: 1b.5.3)**
+  - [x] `load_fixture(path: Path) -> ConformanceFixture` reads JSON + validates against `fixture-schema.json` via stdlib `jsonschema.validate` + populates `ConformanceFixture`.
+  - [x] Schema validation failure raises `jsonschema.ValidationError` (NOT a new agenteval error class).
+  - [x] Module docstring cites architecture L737.
 
-- [ ] **Task 4: Author `tests/conformance/harness.py` (AC: 1b.5.4)**
-  - [ ] `adapter_registry` pytest fixture iterating `_kernel.discovery.discover_adapters()` + entry-points; empty list at end-of-Story-1b.5.
-  - [ ] `truncation_injection_harness` fixture exposing mock-agent subprocess controller per ADR-006.
-  - [ ] `mock_provider` fixture exposing known-cost/runtime mock per ADR-015.
-  - [ ] `run_fixture(fixture, adapter) -> ConformanceResult` orchestrator (Phase-1 SKIP-on-no-adapter stub).
-  - [ ] `assert_adapter_signature(adapter_cls) -> None` signature-shape verifier via `inspect.signature`.
+- [x] **Task 4: Author `tests/conformance/harness.py` (AC: 1b.5.4)**
+  - [x] `adapter_registry` pytest fixture iterating `_kernel.discovery.discover_adapters()` + entry-points; empty list at end-of-Story-1b.5.
+  - [x] `truncation_injection_harness` fixture exposing mock-agent subprocess controller per ADR-006.
+  - [x] `mock_provider` fixture exposing known-cost/runtime mock per ADR-015.
+  - [x] `run_fixture(fixture, adapter) -> ConformanceResult` orchestrator (Phase-1 SKIP-on-no-adapter stub).
+  - [x] `assert_adapter_signature(adapter_cls) -> None` signature-shape verifier via `inspect.signature`.
 
-- [ ] **Task 5: Author 10 per-AC skeleton test files + test_structural_shape.py (AC: 1b.5.5)**
-  - [ ] `test_ac_simplicity_01_evidence_block.py` SKIP marker "Owning epic Epic 5 Story 5.x".
-  - [ ] `test_ac_simplicity_02_keyword_idiom.py` SKIP marker "Owning epic Epic 1b Story 1b.6 / Epic 2".
-  - [ ] `test_ac_discover_01_cohort.py` SKIP marker "Owning epic Epic 2 Story 2.3 / Epic 3 Story 3.2".
-  - [ ] `test_ac_discover_02_cost_guardrail.py` SKIP marker "Owning epic Epic 6 Story 6.x".
-  - [ ] `test_ac_dogfood_01_replacement.py` SKIP marker "Owning epic Epic 8b dogfood port".
-  - [ ] `test_ac_conformance_01_fidelity_oracles.py` SKIP marker "Owning epic Epic 4 Story 4.1 + 4.2".
-  - [ ] `test_ac_conformance_02_completeness.py` SKIP marker "Owning epic Epic 4 Story 4.2 + Epic 6".
-  - [ ] `test_ac_mcp_observe_01_coverage.py` SKIP marker "Owning epic Epic 3 Story 3.1 / Epic 5".
-  - [ ] `test_ac_mcp_observe_02_version_gate.py` SKIP marker "Owning epic Epic 3 Story 3.1".
-  - [ ] `test_ac_mcp_observe_03_per_test_scope.py` SKIP marker "Owning epic Story 0.2 ratified + Epic 3 / Epic 5".
-  - [ ] `test_structural_shape.py` SKIPs when `adapter_registry` empty.
+- [x] **Task 5: Author 10 per-AC skeleton test files + test_structural_shape.py (AC: 1b.5.5)**
+  - [x] `test_ac_simplicity_01_evidence_block.py` SKIP marker "Owning epic Epic 5 Story 5.x".
+  - [x] `test_ac_simplicity_02_keyword_idiom.py` SKIP marker "Owning epic Epic 1b Story 1b.6 / Epic 2".
+  - [x] `test_ac_discover_01_cohort.py` SKIP marker "Owning epic Epic 2 Story 2.3 / Epic 3 Story 3.2".
+  - [x] `test_ac_discover_02_cost_guardrail.py` SKIP marker "Owning epic Epic 6 Story 6.x".
+  - [x] `test_ac_dogfood_01_replacement.py` SKIP marker "Owning epic Epic 8b dogfood port".
+  - [x] `test_ac_conformance_01_fidelity_oracles.py` SKIP marker "Owning epic Epic 4 Story 4.1 + 4.2".
+  - [x] `test_ac_conformance_02_completeness.py` SKIP marker "Owning epic Epic 4 Story 4.2 + Epic 6".
+  - [x] `test_ac_mcp_observe_01_coverage.py` SKIP marker "Owning epic Epic 3 Story 3.1 / Epic 5".
+  - [x] `test_ac_mcp_observe_02_version_gate.py` SKIP marker "Owning epic Epic 3 Story 3.1".
+  - [x] `test_ac_mcp_observe_03_per_test_scope.py` SKIP marker "Owning epic Story 0.2 ratified + Epic 3 / Epic 5".
+  - [x] `test_structural_shape.py` SKIPs when `adapter_registry` empty.
 
-- [ ] **Task 6: Author 6 reference fixtures at `fixtures/<adapter>/<scenario>.json` (AC: 1b.5.6)**
-  - [ ] `fixtures/generic/echo_simple.json` — `metadata.completeness="complete"`, `metadata.mcp_coverage="hosted_in_process"`, 1 expected tool call.
-  - [ ] `fixtures/generic/echo_truncated.json` — `metadata.completeness="truncated"`, `metadata.mcp_coverage="hosted_in_process"`, empty `expected_tool_calls`, empty `expected_errors`.
-  - [ ] `fixtures/generic/echo_external_mcp.json` — `metadata.mcp_coverage="external_mixed"`, `expected_errors=["IncompleteTraceError"]`.
-  - [ ] `fixtures/claude_code_cli/echo_simple.json` — mirrors generic but with `adapter_name="claude_code_cli"`.
-  - [ ] `fixtures/claude_code_cli/echo_truncated.json` — same.
-  - [ ] `fixtures/claude_code_cli/echo_external_mcp.json` — same.
+- [x] **Task 6: Author 6 reference fixtures at `fixtures/<adapter>/<scenario>.json` (AC: 1b.5.6)**
+  - [x] `fixtures/generic/echo_simple.json` — `metadata.completeness="complete"`, `metadata.mcp_coverage="hosted_in_process"`, 1 expected tool call.
+  - [x] `fixtures/generic/echo_truncated.json` — `metadata.completeness="truncated"`, `metadata.mcp_coverage="hosted_in_process"`, empty `expected_tool_calls`, empty `expected_errors`.
+  - [x] `fixtures/generic/echo_external_mcp.json` — `metadata.mcp_coverage="external_mixed"`, `expected_errors=["IncompleteTraceError"]`.
+  - [x] `fixtures/claude_code_cli/echo_simple.json` — mirrors generic but with `adapter_name="claude_code_cli"`.
+  - [x] `fixtures/claude_code_cli/echo_truncated.json` — same.
+  - [x] `fixtures/claude_code_cli/echo_external_mcp.json` — same.
 
-- [ ] **Task 7: Upgrade `.github/workflows/conformance.yml` (AC: 1b.5.7)**
-  - [ ] Replace `--collect-only` placeholder with real `uv run pytest tests/conformance -q`.
-  - [ ] Triggers unchanged: `workflow_dispatch + release: published`.
-  - [ ] Output assertion: all tests skip; returncode 0.
+- [x] **Task 7: Upgrade `.github/workflows/conformance.yml` (AC: 1b.5.7)**
+  - [x] Replace `--collect-only` placeholder with real `uv run pytest tests/conformance -q`.
+  - [x] Triggers unchanged: `workflow_dispatch + release: published`.
+  - [x] Output assertion: all tests skip; returncode 0.
 
-- [ ] **Task 8: All-gates pass (AC: 1b.5.9)**
+- [x] **Task 8: All-gates pass (AC: 1b.5.9)**
 
-- [ ] **Task 9: Apply project norms (AC: 1b.5.10)**
+- [x] **Task 9: Apply project norms (AC: 1b.5.10)**
 
 ## Dev Notes
 
@@ -279,26 +279,73 @@ All 6 fixtures publish the contract; no concrete adapter exists at end-of-Story-
 
 ### Context Reference
 
-<!-- To be filled by dev-story workflow -->
+- Story spec (this file).
+- Architecture L724-751 Decision-4 + L737 + L738-739 + L853 + L1367-1391.
+- ADR-005 `docs/adr/ADR-005-conformance-suite-fidelity-oracles.md` (oracle contract + per-release schedule).
+- ADR-006 `docs/adr/ADR-006-agent-run-result-completeness-field.md` (truncation injection).
+- ADR-017 `docs/adr/ADR-017-conformance-suite-organization-per-ac-test-files.md` (per-AC files + harness fixtures).
+- Story 1b.2 `src/AgentEval/types.py` L46-56 (Pydantic-substitution precedent).
+- Story 1b.3 `_kernel/discovery.py` (`discover_adapters()` consumed by `adapter_registry` fixture).
+- Story 1b.4 `src/AgentEval/types.py` L346-356 (signature-shape hand-off).
 
 ### Agent Model Used
 
-<!-- To be filled by dev-story workflow -->
+Claude Opus 4.7 (1M context) — `claude-opus-4-7[1m]`.
 
 ### Debug Log References
 
-<!-- To be filled by dev-story workflow -->
+One ruff F811 false-positive: `adapter_registry` fixture imported in `test_structural_shape.py` + used as parameter triggered redefinition warning. Resolved canonically via `tests/conformance/conftest.py` re-exporting the harness fixtures so per-AC test files use them by parameter name without explicit imports.
 
 ### Completion Notes List
 
-<!-- To be filled by dev-story workflow -->
+- Task 1 — `tests/conformance/fixture-schema.json` (~95L) authored: JSON Schema draft-07 with Decision-4 ratified field set (`_schema_version` semver + `adapter_name` + `scenario_name` + `agent_run_result` nested schema with 3-state Literal completeness + mcp_coverage + `expected_tool_calls` with allowable-variation annotations + `expected_errors` + `reproducibility_footer`).
+- Task 2 — `tests/conformance/types.py` (~80L) authored: `ConformanceFixture` + `ConformanceResult` stdlib `@dataclass(frozen=True)` per Story 1b.2 precedent. Module docstring cites architecture Decision-4 + Phase-1.5 Pydantic carry-over.
+- Task 3 — `tests/conformance/loader.py` (~75L) authored: `load_fixture(path: Path) -> ConformanceFixture` singular per architecture L737; stdlib `jsonschema.validate`; raises `jsonschema.ValidationError` on schema violation per D7 ratification (NO new agenteval error class).
+- Task 4 — `tests/conformance/harness.py` (~215L) authored: `adapter_registry` fixture iterating Story 1b.3's `discover_adapters()` (empty list at end-of-Story-1b.5); `truncation_injection_harness` + `mock_provider` fixtures Phase-1 stubs raising NotImplementedError on builder calls (concrete implementation lands Epic 4/6); `run_fixture(fixture, adapter)` Phase-1 stub returns `ConformanceResult(passed=False, skip_reason="...")` for all calls; `assert_adapter_signature(adapter_cls)` inspects `inspect.signature(adapter_cls.run)` against FR12 contract (parameter names + `tools=None`/`mcp_servers=None` defaults + `**kwargs` presence) raising structured `AssertionError` on mismatch.
+- Task 5 — 10 per-AC test files + `test_structural_shape.py` (~30L each) authored: each calls `pytest.skip("Owning epic N Story X.Y not yet shipped — see ADR-017 + epics.md")` with explicit owning-epic markers per ADR-017 pattern. `test_structural_shape.py` SKIPs gracefully when `adapter_registry` empty; per-adapter signature assertion wires when concrete adapters land.
+- Task 5a (bonus) — `tests/conformance/conftest.py` authored re-exporting harness fixtures so per-AC test files use them by parameter name. Resolves ruff F811 false-positive cleanly.
+- Task 5b (bonus) — `tests/conformance/test_loader_smoke.py` (~95L) added: parametrized test that loads + schema-validates each of the 6 reference fixtures + asserts count = 6 + asserts per-scenario invariants (truncated → `completeness="truncated"`; external_mcp → `mcp_coverage="external_mixed"` + `IncompleteTraceError` in `expected_errors`; simple → `completeness="complete"`). Plus an invalid-fixture test verifying `jsonschema.ValidationError` raised on schema violation. This is the only Story 1b.5 conformance test that actually EXERCISES code (the 10 per-AC tests SKIP until owning epics ship).
+- Task 6 — 6 reference fixtures at `tests/conformance/fixtures/<adapter>/<scenario>.json` authored: `generic/echo_simple.json` + `generic/echo_truncated.json` + `generic/echo_external_mcp.json` + same 3 under `claude_code_cli/`. Each populated with the Decision-4 schema fields + realistic placeholder values (UUID-style trace_ids, `library_version` 0.1.0, ISO-8601 timestamps).
+- Task 7 — `.github/workflows/conformance.yml` upgraded: replaced `--collect-only` placeholder with real `uv run pytest tests/conformance -q`. Triggers unchanged (`workflow_dispatch + release: published`). Comment block updated to reflect Story 1b.5 deliverable.
+- Task 8 — All-gates clean: `uv run ruff check src/ tests/` clean; `uv run ruff format` clean (65 files); `uv run mypy src/` clean (still 31 source files — no new src/ files); license headers PASS (31/31; tests exempt per project convention); `uv run pytest tests/conformance -q` **11 passed + 11 skipped** (11 loader-smoke parametrize + 10 per-AC SKIPs + 1 test_structural_shape SKIP); `uv run pytest tests/unit -q --ignore=tests/unit/conventions` 263 passed (regression); `uv run pytest tests/acceptance/tier1 -q` 6 passed; `uv run robot tests/acceptance/smoke` PASS.
+- Task 9 — Project norms applied: code-review will use `/bmad-code-review (Using current Claude + Codex CLI subagent)`; cross-LLM reviewer prompt will direct re-derivation per `feedback_citation_drift_first_class`; Phase-1 limitations documented (no concrete adapter; all 10 per-AC tests SKIP; `run_fixture` Phase-1 stub; stdlib dataclasses substituted for Pydantic).
 
 ## File List
 
-<!-- To be filled by dev-story workflow -->
+**New files (~25):**
+- `tests/conformance/__init__.py` (empty)
+- `tests/conformance/conftest.py` (fixture re-exports)
+- `tests/conformance/fixture-schema.json` (~95L)
+- `tests/conformance/types.py` (~80L)
+- `tests/conformance/loader.py` (~75L)
+- `tests/conformance/harness.py` (~215L)
+- `tests/conformance/test_loader_smoke.py` (~95L) — only Story-1b.5-exercising test
+- `tests/conformance/test_structural_shape.py` (~30L) — SKIP until adapters land
+- `tests/conformance/test_ac_simplicity_01_evidence_block.py` (~15L SKIP skeleton)
+- `tests/conformance/test_ac_simplicity_02_keyword_idiom.py` (~15L SKIP skeleton)
+- `tests/conformance/test_ac_discover_01_cohort.py` (~15L SKIP skeleton)
+- `tests/conformance/test_ac_discover_02_cost_guardrail.py` (~15L SKIP skeleton)
+- `tests/conformance/test_ac_dogfood_01_replacement.py` (~15L SKIP skeleton)
+- `tests/conformance/test_ac_conformance_01_fidelity_oracles.py` (~15L SKIP skeleton)
+- `tests/conformance/test_ac_conformance_02_completeness.py` (~15L SKIP skeleton)
+- `tests/conformance/test_ac_mcp_observe_01_coverage.py` (~15L SKIP skeleton)
+- `tests/conformance/test_ac_mcp_observe_02_version_gate.py` (~15L SKIP skeleton)
+- `tests/conformance/test_ac_mcp_observe_03_per_test_scope.py` (~15L SKIP skeleton)
+- `tests/conformance/fixtures/generic/echo_simple.json`
+- `tests/conformance/fixtures/generic/echo_truncated.json`
+- `tests/conformance/fixtures/generic/echo_external_mcp.json`
+- `tests/conformance/fixtures/claude_code_cli/echo_simple.json`
+- `tests/conformance/fixtures/claude_code_cli/echo_truncated.json`
+- `tests/conformance/fixtures/claude_code_cli/echo_external_mcp.json`
+
+**Modified files (1):**
+- `.github/workflows/conformance.yml` — `--collect-only` placeholder → real `pytest tests/conformance -q` invocation; triggers unchanged.
+
+**No `src/AgentEval/` changes** — conformance harness is test infra; per architecture L853 it lives at `tests/conformance/`, not as a sub-library.
 
 ## Change Log
 
 | Date       | Version | Description                                                                  | Author |
 | ---------- | ------- | ---------------------------------------------------------------------------- | ------ |
+| 2026-05-19 | 0.2.0   | Dev-story implementation pass complete; status → review. Tasks 1-9 done. New: tests/conformance/{fixture-schema.json (~95L) + types.py (~80L) + loader.py (~75L) + harness.py (~215L) + conftest.py + test_loader_smoke.py (~95L) + 10 per-AC test skeleton files + test_structural_shape.py} + 6 reference fixtures at fixtures/<adapter>/<scenario>.json. `.github/workflows/conformance.yml` upgraded from --collect-only placeholder to real `pytest tests/conformance -q`. All-gates clean: ruff/format/mypy/license (31 source files); 263 unit (regression) + 11 conformance passed (loader smoke + 6-fixture round-trip + invariants) + 11 conformance skipped (10 per-AC + 1 structural shape; owning-epic markers in place) + 6 tier1 + RF smoke. Per architecture L853 conformance harness lives at tests/conformance/ — NO src/AgentEval/ changes. Phase-1 limitations preserved: no concrete adapter exists at end of Story 1b.5 (Generic LiteLLM lands Story 4.1; Claude Code CLI lands Story 4.2); all 10 per-AC test files SKIP with owning-epic markers; `run_fixture` Phase-1 stub returns `ConformanceResult(passed=False, skip_reason="...")` for all calls; stdlib `@dataclass(frozen=True)` substituted for architecture Decision-4's "Pydantic" per Story 1b.2 precedent. | Amelia |
 | 2026-05-19 | 0.1.0   | Initial story creation (ready-for-dev). Pre-create-story drift check (9th consecutive use) caught 20 drifts (12 HIGH + 6 MED + 2 LOW) in pre-edit Story 1b.5 spec — wholesale divergence from architecture Decision-4 + ADR-005 + ADR-017 + Epic 1b L272 summary. All 20 resolved via path-of-least-amendment by honoring ratified sources per Many's 2026-05-19 ratification: per-adapter `<adapter>/<scenario>.json` layout (D1); Decision-4 schema field set (D2); per-AC test files (D3); drop invented `oracle_type` enum + `trajectory_match` (D4/D5/D6); stdlib `jsonschema.ValidationError` not new agenteval leaf (D7); drop Epic-2/Epic-3-owned error fixtures (D8/D14); singular `load_fixture -> ConformanceFixture` (D9); stdlib `@dataclass(frozen=True)` per Story 1b.2 precedent (D10/D19); `pytest.skip` markers in per-AC test files (D11); per-release CI not per-PR (D12); signature-shape verifier hand-off (D13); contract-publication framing (D15); drop Tier tag from fixture (D16); post-renumbering ADR refs (D17); `adapter_registry` + truncation-injection + mock-provider per ADR-017 L40-43 (D18); ratified 6-fixture set (D20). Pre-authoring fix: epics.md L1039-1057 re-authored 2026-05-19. NO new source files (`src/AgentEval/` unchanged); NO ADR or contract amendments needed — ratified sources were already correct; the spec was the divergent surface. | Bob |

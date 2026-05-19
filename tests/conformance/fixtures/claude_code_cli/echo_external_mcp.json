@@ -1,0 +1,51 @@
+{
+  "_schema_version": "1.0.0",
+  "adapter_name": "claude_code_cli",
+  "scenario_name": "echo_external_mcp",
+  "agent_run_result": {
+    "response_text": "Hello from external MCP",
+    "tool_calls": [
+      {
+        "name": "external_echo",
+        "args": {"text": "Hello"},
+        "result": "Hello from external MCP",
+        "error": null,
+        "latency_ms": 30.0,
+        "source": "adapter",
+        "gen_ai_tool_call_id": "ext-echo-002",
+        "sequence_index": 0
+      }
+    ],
+    "usage": {
+      "input_tokens": 5,
+      "output_tokens": 8,
+      "cached_input_tokens": 0
+    },
+    "metadata": {
+      "completeness": "complete",
+      "mcp_coverage": "external_mixed"
+    },
+    "cost_usd": 0.0002,
+    "latency_seconds": 0.12,
+    "trace_id": "00000000-0000-4000-8000-000000000013"
+  },
+  "expected_tool_calls": [
+    {
+      "name": "external_echo",
+      "args": {"text": "Hello"},
+      "result": "Hello from external MCP",
+      "error": null,
+      "latency_ms_min": 0,
+      "source": "adapter",
+      "gen_ai_tool_call_id": "ext-echo-002",
+      "sequence_index": 0
+    }
+  ],
+  "expected_errors": ["IncompleteTraceError"],
+  "reproducibility_footer": {
+    "library_version": "0.1.0",
+    "redaction_policy_hash": "sha256:placeholder",
+    "started_at": "2026-05-19T00:00:00Z",
+    "ended_at": "2026-05-19T00:00:01Z"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "_schema_version": "1.0.0",
+  "adapter_name": "claude_code_cli",
+  "scenario_name": "echo_truncated",
+  "agent_run_result": {
+    "response_text": "Hello, w",
+    "tool_calls": [],
+    "usage": {
+      "input_tokens": 5,
+      "output_tokens": 2,
+      "cached_input_tokens": 0
+    },
+    "metadata": {
+      "completeness": "truncated",
+      "mcp_coverage": "hosted_in_process"
+    },
+    "cost_usd": 0.0001,
+    "latency_seconds": 0.04,
+    "trace_id": "00000000-0000-4000-8000-000000000012"
+  },
+  "expected_tool_calls": [],
+  "expected_errors": [],
+  "reproducibility_footer": {
+    "library_version": "0.1.0",
+    "redaction_policy_hash": "sha256:placeholder",
+    "started_at": "2026-05-19T00:00:00Z",
+    "ended_at": "2026-05-19T00:00:00Z"
+  }
+}

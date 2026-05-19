@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentEval Conformance Fixture",
+  "description": "Schema for AgentEval golden-trace conformance fixtures per architecture Decision-4 + ADR-005 fidelity-oracle contract. Validated by tests/conformance/loader.py:load_fixture().",
+  "type": "object",
+  "required": [
+    "_schema_version",
+    "adapter_name",
+    "scenario_name",
+    "agent_run_result",
+    "expected_tool_calls",
+    "expected_errors",
+    "reproducibility_footer"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "_schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Semver version of the fixture schema; current 1.0.0."
+    },
+    "adapter_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Adapter identifier the fixture targets (matches directory name under fixtures/)."
+    },
+    "scenario_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Scenario identifier within the adapter's fixture directory (matches filename without .json)."
+    },
+    "agent_run_result": {
+      "type": "object",
+      "required": ["response_text", "tool_calls", "usage", "metadata", "cost_usd", "latency_seconds", "trace_id"],
+      "additionalProperties": false,
+      "properties": {
+        "response_text": {"type": "string"},
+        "tool_calls": {"type": "array"},
+        "usage": {
+          "type": "object",
+          "required": ["input_tokens", "output_tokens"],
+          "additionalProperties": false,
+          "properties": {
+            "input_tokens": {"type": "integer", "minimum": 0},
+            "output_tokens": {"type": "integer", "minimum": 0},
+            "cached_input_tokens": {"type": "integer", "minimum": 0, "default": 0}
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "required": ["completeness", "mcp_coverage"],
+          "additionalProperties": false,
+          "properties": {
+            "completeness": {
+              "type": "string",
+              "enum": ["complete", "truncated", "partial"],
+              "description": "3-state Literal per ADR-006 L15 + PRD FR36a L1553."
+            },
+            "mcp_coverage": {
+              "type": "string",
+              "enum": ["hosted_in_process", "subprocess_with_observer", "external_mixed"],
+              "description": "3-state Literal per ADR-016 §Decision L24-28 + PRD FR36b L1554."
+            }
+          }
+        },
+        "cost_usd": {"type": "number", "minimum": 0},
+        "latency_seconds": {"type": "number", "minimum": 0},
+        "trace_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "expected_tool_calls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "source"],
+        "properties": {
+          "name": {"type": "string"},
+          "args": {"type": "object"},
+          "result": {},
+          "error": {"type": ["string", "null"]},
+          "latency_ms_min": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Per ADR-005 L19-22: allowable variation — latency_ms > 0 NOT exact match; fixture pins a minimum, harness asserts actual >= minimum."
+          },
+          "source": {
+            "type": "string",
+            "enum": ["adapter", "hosted_mcp"]
+          },
+          "gen_ai_tool_call_id": {"type": "string"},
+          "sequence_index": {"type": "integer", "minimum": 0}
+        }
+      },
+      "description": "Sequence of expected ToolCallTrace records with allowable-variation annotations per ADR-005 L19-22."
+    },
+    "expected_errors": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Error-class names expected from this scenario (e.g., IncompleteTraceError for external_mixed scenarios under default allow_external_mcp_blind=False). Empty for non-error scenarios."
+    },
+    "reproducibility_footer": {
+      "type": "object",
+      "required": ["library_version", "redaction_policy_hash"],
+      "additionalProperties": true,
+      "properties": {
+        "library_version": {"type": "string"},
+        "redaction_policy_hash": {"type": "string"},
+        "started_at": {"type": "string"},
+        "ended_at": {"type": "string"}
+      },
+      "description": "Per FR39 — reproducibility audit fields captured when the golden fixture was recorded."
+    }
+  }
+}
