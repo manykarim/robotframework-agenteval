@@ -137,21 +137,56 @@ def test_litellm_chat_extracts_tool_calls(
     assert resp.tool_calls[0].arguments == {"q": "abc"}
 
 
-def test_litellm_chat_cost_falls_back_to_none_on_exception(
+def test_litellm_chat_cost_falls_back_to_none_on_notfound_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`completion_cost()` exception → `cost_usd=None` (AC-4.1.3 NotFoundError fallback)."""
+    """`completion_cost()` raises `litellm.exceptions.NotFoundError` → `cost_usd=None`.
+
+    Story 4.1 code-review 2-way HIGH fix 2026-05-20 (Blind H3 + Edge-cases H-2 +
+    `feedback_test_name_assertion_match`): pre-edit test claimed AC-4.1.3
+    NotFoundError fallback but raised generic `RuntimeError`. Test passed only
+    because `_safe_cost`'s `except Exception` was overbroad — tightening the
+    except clause to the actual documented `NotFoundError` would have broken
+    the test, proving the test name's "NotFoundError" claim was fake-green.
+    Now narrows BOTH the production code (litellm_adapter.py:_safe_cost) AND
+    the test to the actual documented exception class.
+    """
     import litellm
 
     monkeypatch.setattr(litellm, "completion", lambda **kwargs: _build_fixture_response())
 
     def _raise(completion_response: Any) -> float:
-        raise RuntimeError("provider has no pricing metadata")
+        raise litellm.exceptions.NotFoundError(
+            message="provider has no pricing metadata",
+            model="custom/local-vllm",
+            llm_provider="custom",
+        )
 
     monkeypatch.setattr(litellm, "completion_cost", _raise)
     adapter = LiteLLMAdapter(default_model="openai/gpt-4o")
     resp = adapter.chat(messages=[Message(role="user", content="x")])
     assert resp.cost_usd is None
+
+
+def test_litellm_chat_cost_propagates_unrelated_exceptions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Story 4.1 code-review 2-way HIGH fix 2026-05-20: `_safe_cost` MUST NOT
+    swallow `ValueError`, `TypeError`, etc. — those are real LiteLLM bugs +
+    must fail loud per M_R11. Narrowing the catch ensures unrelated exceptions
+    propagate.
+    """
+    import litellm
+
+    monkeypatch.setattr(litellm, "completion", lambda **kwargs: _build_fixture_response())
+
+    def _raise(completion_response: Any) -> float:
+        raise ValueError("real LiteLLM bug not a missing-pricing case")
+
+    monkeypatch.setattr(litellm, "completion_cost", _raise)
+    adapter = LiteLLMAdapter(default_model="openai/gpt-4o")
+    with pytest.raises(ValueError, match="real LiteLLM bug"):
+        adapter.chat(messages=[Message(role="user", content="x")])
 
 
 def test_litellm_chat_maps_tools_to_openai_function_shape(
@@ -188,3 +223,83 @@ def test_litellm_chat_returns_chat_response_shape(
     resp = adapter.chat(messages=[Message(role="user", content="hi")])
     assert isinstance(resp, ChatResponse)
     assert resp.cost_usd == 0.0042
+
+
+def test_message_to_litellm_dict_emits_tool_calls_arguments_as_json_string(
+    captured_completion_call: dict[str, Any],
+) -> None:
+    """Story 4.1 code-review Blind HIGH-2 fix 2026-05-20: OpenAI / LiteLLM
+    spec REQUIRES `messages[].tool_calls[].function.arguments` to be a
+    JSON-encoded STRING, not a Python dict. Pre-edit emitted dict, which
+    breaks multi-turn tool-use round-trips against real providers.
+    """
+    from AgentEval.providers.base import ToolCallRequest
+
+    adapter = LiteLLMAdapter(default_model="openai/gpt-4o")
+    adapter.chat(
+        messages=[
+            Message(
+                role="assistant",
+                content="",
+                tool_calls=[ToolCallRequest(id="1", name="search", arguments={"q": "abc", "limit": 5})],
+            ),
+        ]
+    )
+    forwarded = captured_completion_call["kwargs"]["messages"][0]
+    tc = forwarded["tool_calls"][0]
+    # The arguments field MUST be a JSON STRING, not a dict.
+    assert isinstance(tc["function"]["arguments"], str)
+    # The JSON string MUST round-trip back to the original dict.
+    import json
+
+    assert json.loads(tc["function"]["arguments"]) == {"q": "abc", "limit": 5}
+
+
+def test_parse_arguments_surfaces_malformed_json_via_sentinel() -> None:
+    """Story 4.1 code-review 2-way HIGH (Edge-cases H-3 + Codex MED-2 + Blind M2)
+    fix 2026-05-20: pre-edit `_parse_arguments` silently returned `{}` on
+    malformed JSON / non-object inputs. Now stashes a `_parse_error` sentinel
+    key so downstream tool-dispatch code can detect + react.
+    """
+    from AgentEval.providers.litellm_adapter import _parse_arguments
+
+    # Malformed JSON.
+    bad = _parse_arguments('{"q": "abc"')
+    assert "_parse_error" in bad
+    assert "malformed JSON" in bad["_parse_error"]
+    assert bad["_raw"] == '{"q": "abc"'
+
+    # Non-object JSON (null, list, scalar).
+    null_args = _parse_arguments("null")
+    assert "_parse_error" in null_args
+    assert "expected JSON object" in null_args["_parse_error"]
+
+    list_args = _parse_arguments("[1, 2, 3]")
+    assert "_parse_error" in list_args
+
+    # Valid JSON object still passes cleanly (no sentinel).
+    clean = _parse_arguments('{"q": "abc"}')
+    assert "_parse_error" not in clean
+    assert clean == {"q": "abc"}
+
+
+def test_safe_cost_propagates_unrelated_exceptions_loudly() -> None:
+    """Story 4.1 code-review 2-way HIGH (Blind H3 + Edge-cases H-2) fix
+    2026-05-20: `_safe_cost` narrows from `except Exception` to
+    `except (litellm.exceptions.NotFoundError, KeyError)`. Direct unit test.
+    """
+    import litellm
+
+    from AgentEval.providers.litellm_adapter import _safe_cost
+
+    # Build a fake completion response that triggers a TypeError inside the
+    # cost computation via monkeypatching the litellm function.
+    original = litellm.completion_cost
+    try:
+        litellm.completion_cost = lambda completion_response: (_ for _ in ()).throw(  # noqa: B023
+            TypeError("real bug not a missing-pricing case")
+        )
+        with pytest.raises(TypeError, match="real bug"):
+            _safe_cost(object())
+    finally:
+        litellm.completion_cost = original

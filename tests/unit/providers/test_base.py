@@ -122,3 +122,38 @@ def test_protocol_has_name_property() -> None:
     mp = MockProvider()
     assert mp.name == "mock"
     assert mp.version == "mock"
+
+
+def test_chat_response_rejects_negative_cost() -> None:
+    """Story 4.1 code-review Edge-cases L-3 fix 2026-05-20: negative cost
+    silently passes downstream budget assertions per `feedback_n_way_agreement_weight`
+    fail-loud principle.
+    """
+    with pytest.raises(ValueError, match="cost_usd"):
+        ChatResponse(text="x", cost_usd=-1.0)
+
+
+def test_chat_response_rejects_nan_cost() -> None:
+    import math
+
+    with pytest.raises(ValueError, match="cost_usd"):
+        ChatResponse(text="x", cost_usd=math.nan)
+
+
+def test_chat_response_rejects_inf_cost() -> None:
+    import math
+
+    with pytest.raises(ValueError, match="cost_usd"):
+        ChatResponse(text="x", cost_usd=math.inf)
+
+
+def test_chat_response_accepts_zero_cost() -> None:
+    """Zero is non-negative finite — should be accepted (Mock provider emits 0.0)."""
+    resp = ChatResponse(text="x", cost_usd=0.0)
+    assert resp.cost_usd == 0.0
+
+
+def test_chat_response_accepts_none_cost() -> None:
+    """None is the LiteLLM NotFoundError fallback path — must be accepted."""
+    resp = ChatResponse(text="x", cost_usd=None)
+    assert resp.cost_usd is None

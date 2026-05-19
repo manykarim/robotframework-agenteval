@@ -100,15 +100,39 @@ class MockProvider:
                 "set stream=False or use a streaming-capable provider"
             )
         if self._responses is not None:
-            # Scripted mode — IndexError naturally surfaces if exhausted.
+            # Story 4.1 code-review Codex LOW-1 fix 2026-05-20: explicit
+            # IndexError with diagnostic context. Pre-edit bare list-index
+            # error had no scripted-count + no call-index. PRD L1087
+            # positions MockProvider as the canonical reference Raj copies,
+            # so diagnostic quality matters.
+            if self._call_index >= len(self._responses):
+                raise IndexError(
+                    f"MockProvider scripted-mode exhausted: configured "
+                    f"{len(self._responses)} responses, call #{self._call_index + 1} "
+                    "overflows. Add more responses or use echo mode (responses=None)."
+                )
             response = self._responses[self._call_index]
             self._call_index += 1
             return response
         # Echo mode: find last user-role text content.
+        # Story 4.1 code-review Edge-cases M-2 fix 2026-05-20: pre-edit
+        # silently returned `text=""` when the last user message had
+        # list-content (multi-modal). Now explicitly raise so callers
+        # know multi-modal echo is Phase-1 out-of-scope (DF-4.1-S3).
+        # Empty echo for "no user message at all" stays silent (matches
+        # test_mock_echo_returns_empty_when_no_user_messages).
         echoed_text = ""
         for msg in reversed(messages):
-            if msg.role == "user" and isinstance(msg.content, str):
-                echoed_text = msg.content
+            if msg.role == "user":
+                if isinstance(msg.content, str):
+                    echoed_text = msg.content
+                else:
+                    # List-content user message — explicitly NotImplementedError.
+                    raise NotImplementedError(
+                        "MockProvider echo mode does not flatten multi-modal "
+                        "list-content user messages in Phase-1 (DF-4.1-S3 stub). "
+                        "Use scripted mode (responses=[...]) for multi-modal cases."
+                    )
                 break
         return ChatResponse(
             text=echoed_text,
@@ -119,8 +143,16 @@ class MockProvider:
         )
 
 
-# Runtime self-check: at module import time, verify the structural
-# Protocol conformance via @runtime_checkable. This is a Phase-1
-# safety net catching shape drift between MockProvider + Protocol.
-_check: LLMProviderAdapter = MockProvider()
-del _check
+# Story 4.1 code-review 3-way HIGH (Blind H1 + Edge-cases H-1 + Codex MED-1
+# 2026-05-20): the pre-edit `_check: LLMProviderAdapter = MockProvider(); del _check`
+# pattern was DECORATIVE — Python doesn't enforce annotations at runtime, so
+# attribute-name drift on MockProvider silently passes import. Replaced with
+# explicit `assert isinstance(...)` which DOES exercise the
+# `@runtime_checkable` Protocol attribute check at module load time. The
+# assert catches attribute-presence drift (missing `chat`, `name`, `version`);
+# signature drift (e.g., `chat(self)` no-arg) still escapes per Python's
+# `@runtime_checkable` limitation — that's caught by mypy strict + the
+# conformance test suite (Story 1b.5).
+assert isinstance(MockProvider(), LLMProviderAdapter), (
+    "MockProvider drifted from LLMProviderAdapter Protocol attribute set"
+)

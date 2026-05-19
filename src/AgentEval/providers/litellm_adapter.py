@@ -138,11 +138,19 @@ def _message_to_litellm_dict(msg: Message) -> dict[str, Any]:
         # Multi-modal content: LiteLLM accepts a list of content-part dicts.
         out["content"] = [_content_block_to_litellm_dict(b) for b in msg.content]
     if msg.tool_calls:
+        # Story 4.1 code-review Blind HIGH-2 fix 2026-05-20: OpenAI / LiteLLM
+        # spec requires `messages[].tool_calls[].function.arguments` to be a
+        # JSON-encoded STRING, not a Python dict. The receive side
+        # (`_parse_arguments` above) already handles string→dict, but the
+        # send side was emitting dicts — multi-turn tool-use round-trips
+        # would fail against real providers. Now consistently JSON-encoded.
+        import json
+
         out["tool_calls"] = [
             {
                 "id": tc.id,
                 "type": "function",
-                "function": {"name": tc.name, "arguments": tc.arguments},
+                "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
             }
             for tc in msg.tool_calls
         ]
@@ -230,7 +238,22 @@ def _safe_get(obj: Any, key: str) -> Any:
 
 
 def _parse_arguments(raw: Any) -> dict[str, Any]:
-    """Parse tool-call `arguments` which LiteLLM may return as a JSON-string OR dict."""
+    """Parse tool-call `arguments` which LiteLLM may return as a JSON-string OR dict.
+
+    Story 4.1 code-review 2-way HIGH (Blind M2 + Edge-cases H-3 + Codex
+    MED-2 Probe 10 2026-05-20): pre-edit silently returned `{}` on
+    malformed JSON / non-object inputs (`'{bad json'`, `'null'`, `'[1,2]'`,
+    `'"x"'`) — indistinguishable from a legitimately empty `arguments` dict.
+    Downstream consumers couldn't tell a provider parse-failure from a
+    tool-called-with-no-args case. Phase-1 impact is limited because
+    `GenericAdapter` doesn't dispatch tools yet (DF-4.1-S2), but the
+    silent-coercion bug is dormant for Story 4.3+.
+
+    Fix per M_R11 "fail loud": stash a `_parse_error` marker key into
+    the returned dict when parsing fails so downstream tool-dispatch code
+    can detect + raise. Callers wanting strict behavior can check
+    `"_parse_error" in arguments` and refuse to dispatch.
+    """
     if raw is None:
         return {}
     if isinstance(raw, dict):
@@ -240,28 +263,46 @@ def _parse_arguments(raw: Any) -> dict[str, Any]:
             import json
 
             parsed = json.loads(raw)
-        except (json.JSONDecodeError, ValueError):
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-    return {}
+        except (json.JSONDecodeError, ValueError) as exc:
+            # Surface the parse failure via a sentinel key so downstream
+            # code can detect + react (vs silent {} which masks the bug).
+            return {"_parse_error": f"malformed JSON: {exc}", "_raw": raw}
+        if isinstance(parsed, dict):
+            return parsed
+        # Non-object JSON (`null`, list, scalar) — surface the type mismatch.
+        return {
+            "_parse_error": f"expected JSON object, got {type(parsed).__name__}",
+            "_raw": raw,
+        }
+    return {"_parse_error": f"unexpected arguments type {type(raw).__name__}", "_raw": raw}
 
 
 def _safe_cost(response: Any) -> float | None:
-    """Compute cost via LiteLLM's `completion_cost()`; None on `NotFoundError`."""
+    """Compute cost via LiteLLM's `completion_cost()`; None on `NotFoundError`.
+
+    Story 4.1 code-review 2-way HIGH (Blind H3 + Edge-cases H-2 2026-05-20):
+    pre-edit `except Exception` was overbroad — it swallowed `AttributeError`,
+    `TypeError`, `ValueError` from real LiteLLM bugs as `cost_usd=None`. Now
+    narrows to the documented `litellm.exceptions.NotFoundError` + `KeyError`
+    (LiteLLM's pricing-table lookup for unknown models). Anything else
+    propagates so cost-computation bugs fail loud per M_R11.
+    """
     try:
         cost = litellm.completion_cost(completion_response=response)
-    except Exception:  # noqa: BLE001 -- LiteLLM raises various NotFoundError variants for unknown models
-        # The MED rationale: LiteLLM's `completion_cost()` raises
-        # `litellm.exceptions.NotFoundError` for some custom providers
-        # (e.g., local Ollama, vLLM without pricing metadata); using a
-        # broad except here is intentional + matches the FR13a Phase-1
-        # carve-out. Adapters that need stricter behavior can override
-        # `_map_response` or filter on the specific LiteLLM exception
-        # class downstream.
+    except (litellm.exceptions.NotFoundError, KeyError):
+        # NotFoundError = LiteLLM doesn't have pricing metadata for the
+        # model (e.g., custom Ollama/vLLM deployment). KeyError = LiteLLM
+        # internal pricing-table dict lookup miss. Both = no-cost-data
+        # condition, return None so the GenericAdapter can coerce to 0.0.
         return None
     return float(cost) if cost is not None else None
 
 
-# Runtime self-check at module import: verify Protocol conformance.
-_check: LLMProviderAdapter = LiteLLMAdapter()
-del _check
+# Story 4.1 code-review 3-way HIGH (Blind H1 + Edge-cases H-1 + Codex MED-1
+# 2026-05-20): explicit assert (NOT annotated-assignment which Python doesn't
+# enforce at runtime). Catches attribute-name drift at module load; signature
+# drift still escapes per Python's `@runtime_checkable` limitation — that's
+# the mypy strict + conformance suite's job.
+assert isinstance(LiteLLMAdapter(), LLMProviderAdapter), (
+    "LiteLLMAdapter drifted from LLMProviderAdapter Protocol attribute set"
+)

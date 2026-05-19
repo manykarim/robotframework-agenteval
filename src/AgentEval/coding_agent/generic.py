@@ -132,7 +132,18 @@ class GenericAdapter(InProcessAdapter):
                 "observer) land the MCP-tool-call dispatch + trace correlation. "
                 "Use `mcp_servers=None` for Phase-1 single-shot prompts."
             )
-        _ = tools  # Phase-1: Generic adapter doesn't advertise tools — see DF-4.1-S2.
+        # Story 4.1 code-review Edge-cases M-3 fix 2026-05-20: pre-edit
+        # `tools` was silently dropped (`_ = tools`) — asymmetric to
+        # `mcp_servers` which raises Phase-1 stub. Now raise symmetrically
+        # so a non-empty tools list fails loud rather than silently no-op
+        # producing AgentRunResult(tool_calls=[]) when the caller asked
+        # for tool advertising. None or empty list still allowed.
+        if tools:
+            raise NotImplementedError(
+                "GenericAdapter.run does not advertise tools to the provider in "
+                "Phase-1 (DF-4.1-S2); the tool-dispatch surface lands in Story 4.3 + "
+                "Epic 5. Use `tools=None` for Phase-1 single-shot prompts."
+            )
 
         messages = [Message(role="user", content=prompt)]
         t0 = time.monotonic()
@@ -147,18 +158,11 @@ class GenericAdapter(InProcessAdapter):
                 output_tokens=response.usage.output_tokens,
                 cached_input_tokens=response.usage.cached_input_tokens,
             ),
-            # Story 4.1 pre-create-story drift D-D-extension 2026-05-20:
-            # epics.md L1329 said `mcp_coverage="none"` but Story 1b.4 +
-            # ADR-016 §Decision L24-28 ratified the 3-value closed enum
-            # (no "none"). PRD FR36b L1554 says mcp_coverage is REQUIRED
-            # *conditional on `mcp_servers=` usage* — but AgentRunMetadata
-            # makes it unconditionally required. For Phase-1 no-MCP runs,
-            # the most-correct ratified value is "hosted_in_process"
-            # (vacuously true: 0 MCP servers used, 0 of them were
-            # external). DF-4.1-S4 tracks the FR36b-vs-AgentRunMetadata
-            # required-vs-conditional drift for Phase-1.5 resolution.
-            # Similarly `completeness="complete"` not pre-edit "full" —
-            # Story 1b.4 ratified Literal is "complete"/"truncated"/"partial".
+            # `mcp_coverage="hosted_in_process"` per ratified
+            # `docs/contracts/mcp-coverage-detection.md:18` ("Generic
+            # LiteLLM: trivially hosted_in_process"). `completeness="complete"`
+            # per Story 1b.4 ratified Literal — see DF-4.1-S4 for the
+            # FR36b-vs-AgentRunMetadata required-vs-conditional drift.
             metadata=AgentRunMetadata(
                 completeness="complete",
                 mcp_coverage="hosted_in_process",

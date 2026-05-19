@@ -182,6 +182,20 @@ class ChatResponse:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tool_calls", list(self.tool_calls))
+        # Story 4.1 code-review Edge-cases L-3 fix 2026-05-20: a buggy
+        # provider returning negative / NaN / Inf cost propagates into
+        # `AgentRunResult.cost_usd`, silently bypassing downstream
+        # cost-budget assertions (`assert result.cost_usd < 0.10` passes
+        # on `-5.00`). Validate at construction per M_R11 fail-loud.
+        if self.cost_usd is not None:
+            import math
+
+            if math.isnan(self.cost_usd) or math.isinf(self.cost_usd) or self.cost_usd < 0:
+                raise ValueError(
+                    f"ChatResponse.cost_usd must be non-negative finite OR None; "
+                    f"got {self.cost_usd!r} (adapter likely emitted a sentinel "
+                    "or provider bug — fix the adapter)"
+                )
 
 
 @runtime_checkable
@@ -193,6 +207,13 @@ class LLMProviderAdapter(Protocol):
     time. Phase-1 ships 2 implementations: `LiteLLMAdapter`
     (140+ providers via LiteLLM) + `MockProvider` (deterministic stub
     for unit tests).
+
+    **`@runtime_checkable` limitation (Story 4.1 code-review Codex LOW-2
+    2026-05-20):** `isinstance(provider, LLMProviderAdapter)` validates
+    attribute *names* only — `chat()` SIGNATURE drift (e.g., a class
+    with `def chat(self)` no-arg shape) silently passes the Protocol
+    check. The conformance test suite (Story 1b.5) + `mypy --strict`
+    are the load-bearing safety nets for signature conformance.
 
     Single method `chat()` per architecture L890. The `stream` keyword-
     only parameter is reserved per PRD L1087's narrative; Phase-1

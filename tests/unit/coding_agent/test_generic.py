@@ -51,9 +51,18 @@ def test_generic_adapter_name_is_GenericAdapter() -> None:  # noqa: N802
 
 
 def test_generic_adapter_version_resolves_via_metadata() -> None:
+    """Story 4.1 code-review Blind L3 fix 2026-05-20: assertion now actually
+    exercises the `_default_version` semver-resolution path (not just
+    non-empty), matching the test-name-vs-body invariant per
+    `feedback_test_name_assertion_match`.
+    """
     adapter = GenericAdapter(provider_instance=MockProvider())
-    # `_default_version` resolves the top-level package's installed-distribution version.
-    assert adapter.version != ""
+    version = adapter.version
+    # `_default_version` resolves the top-level package's installed-distribution
+    # version. Result must be either the resolved version (digit-prefixed) OR
+    # the fallback "unknown" sentinel — anything else indicates a regression.
+    assert version != ""
+    assert version == "unknown" or version[0].isdigit()
 
 
 def test_generic_adapter_run_returns_agent_run_result() -> None:
@@ -136,6 +145,26 @@ def test_generic_adapter_run_non_empty_mcp_servers_raises_not_implemented() -> N
     fake_handle = object()
     with pytest.raises(NotImplementedError, match="DF-4.1-S2"):
         adapter.run("hi", mcp_servers={"echo": fake_handle})
+
+
+def test_generic_adapter_run_non_empty_tools_raises_not_implemented() -> None:
+    """Story 4.1 code-review Edge-cases M-3 fix 2026-05-20: `tools=` is now
+    symmetric to `mcp_servers=` — non-empty raises NotImplementedError rather
+    than silently no-op. Pre-edit silent-discard was the asymmetric footgun.
+    """
+    adapter = GenericAdapter(provider_instance=_scripted_mock())
+    with pytest.raises(NotImplementedError, match="advertise tools"):
+        adapter.run("hi", tools=["real_tool"])
+
+
+def test_generic_adapter_run_empty_tools_allowed() -> None:
+    """Empty tools list OR None is still allowed (no raise)."""
+    adapter = GenericAdapter(provider_instance=_scripted_mock())
+    result = adapter.run("hi", tools=None)
+    assert isinstance(result, AgentRunResult)
+    adapter2 = GenericAdapter(provider_instance=_scripted_mock())
+    result2 = adapter2.run("hi", tools=[])
+    assert isinstance(result2, AgentRunResult)
 
 
 def test_generic_adapter_constructor_resolves_provider_by_name() -> None:

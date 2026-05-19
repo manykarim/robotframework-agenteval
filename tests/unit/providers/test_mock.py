@@ -101,6 +101,40 @@ def test_mock_returns_scripted_tool_calls() -> None:
     assert resp.tool_calls[0].arguments == {"q": "abc"}
 
 
+def test_mock_echo_mode_raises_on_multi_modal_user_content() -> None:
+    """Story 4.1 code-review Edge-cases M-2 fix 2026-05-20: pre-edit silently
+    returned `text=""` for list-content user messages (multi-modal), which
+    masked the Phase-1 limitation. Now explicitly raises so callers know.
+    """
+    from AgentEval.providers.base import ContentBlock
+
+    mp = MockProvider()
+    with pytest.raises(NotImplementedError, match="multi-modal"):
+        mp.chat(
+            messages=[
+                Message(
+                    role="user",
+                    content=[ContentBlock(type="text", data={"text": "hello"})],
+                )
+            ]
+        )
+
+
+def test_mock_scripted_mode_overflow_error_has_diagnostic_context() -> None:
+    """Story 4.1 code-review Codex LOW-1 fix 2026-05-20: pre-edit raised bare
+    `IndexError('list index out of range')` from list-indexing. Now includes
+    the scripted-response count + the call index for diagnostic.
+    """
+    mp = MockProvider(responses=[ChatResponse(text="only"), ChatResponse(text="second")])
+    mp.chat(messages=[Message(role="user", content="x")])
+    mp.chat(messages=[Message(role="user", content="x")])
+    with pytest.raises(IndexError) as exc_info:
+        mp.chat(messages=[Message(role="user", content="x")])
+    msg = str(exc_info.value)
+    assert "2 responses" in msg
+    assert "call #3" in msg
+
+
 def test_mock_name_is_mock() -> None:
     assert MockProvider().name == "mock"
 

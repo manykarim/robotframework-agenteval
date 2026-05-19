@@ -100,3 +100,35 @@ def test_get_provider_tolerates_discover_providers_failure(
     # Built-in litellm still resolves cleanly.
     p = get_provider("litellm")
     assert isinstance(p, LiteLLMAdapter)
+
+
+def test_get_provider_recovers_loaded_so_far_on_partial_discovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Story 4.1 code-review Codex HIGH (Probe 6b 2026-05-20): when
+    `discover_providers()` raises `AdapterDiscoveryError` with
+    `loaded_so_far={...}`, the factory MUST recover the successful
+    overrides (NOT silently fall through to built-ins). Pre-fix the
+    factory threw away `loaded_so_far`, silently breaking FR17c
+    override on partial-discovery failure.
+    """
+    import AgentEval.providers.factory as factory_mod
+
+    class OverrideMock:
+        name = "mock"
+        version = "override"
+
+        def chat(self, messages: Any, tools: Any = None, **kwargs: Any) -> ChatResponse:  # type: ignore[no-untyped-def]
+            return ChatResponse(text="FROM_OVERRIDE")
+
+    def _partial_failure() -> dict[str, type]:
+        raise AdapterDiscoveryError(
+            "broken third-party plugin",
+            loaded_so_far={"mock": OverrideMock},
+        )
+
+    monkeypatch.setattr(factory_mod, "discover_providers", _partial_failure)
+    p = get_provider("mock")
+    # MUST be OverrideMock, NOT the built-in MockProvider.
+    assert isinstance(p, OverrideMock)
+    assert p.chat(messages=[Message(role="user", content="x")]).text == "FROM_OVERRIDE"
