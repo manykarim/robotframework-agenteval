@@ -1,6 +1,6 @@
 # Story 1b.4: CodingAgentAdapter Protocol + InProcessAdapter / SubprocessAdapter ABCs
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -137,30 +137,30 @@ where `<X>` is the detected version. No raise for in-range version.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Extend `src/AgentEval/types.py` with Protocol + AgentRunResult + AgentRunMetadata (AC: 1b.4.1, 1b.4.5, 1b.4.6)**
-  - [ ] Imports: `from typing import Protocol, runtime_checkable, Literal, Any, TYPE_CHECKING`; `from dataclasses import dataclass, field`. Forward-ref `ServerHandle` from `AgentEval._kernel.context` (TYPE_CHECKING only — runtime accepts the dict shape).
-  - [ ] `AgentRunMetadata` `@dataclass(frozen=True)` with `completeness: Literal["complete", "truncated", "partial"]` + `mcp_coverage: Literal["hosted_in_process", "subprocess_with_observer", "external_mixed"]`. Defensive `__post_init__` copying any mutable source per Story 1b.2 M_R6 pattern.
-  - [ ] `AgentRunResult` `@dataclass(frozen=True)` with the 7 fields per AC-1b.4.5. Defensive copy on `tool_calls` (list of frozen dataclasses; defensive `list(...)` wrap is sufficient).
-  - [ ] `CodingAgentAdapter` `@runtime_checkable Protocol` with the single `run()` method signature per AC-1b.4.1 + `name` / `version` `@property` declarations.
-  - [ ] Update module docstring's "Subsequent stories ADD types" list: retire `AgentRunResult`/`ToolCall`/`TokenUsage`/`Scenario`/`MCPServer`/`RawResponse` Story-1b.4 forward-ref mentions (Story 1b.4 ships `AgentRunResult` + `AgentRunMetadata` + `CodingAgentAdapter`; the others were undefined drift now resolved).
-  - [ ] `__all__` extends with: `"CodingAgentAdapter"`, `"AgentRunResult"`, `"AgentRunMetadata"`.
+- [x] **Task 1: Extend `src/AgentEval/types.py` with Protocol + AgentRunResult + AgentRunMetadata (AC: 1b.4.1, 1b.4.5, 1b.4.6)**
+  - [x] Imports: `from typing import Protocol, runtime_checkable, Literal, Any, TYPE_CHECKING`; `from dataclasses import dataclass, field`. Forward-ref `ServerHandle` from `AgentEval._kernel.context` (TYPE_CHECKING only — runtime accepts the dict shape).
+  - [x] `AgentRunMetadata` `@dataclass(frozen=True)` with `completeness: Literal["complete", "truncated", "partial"]` + `mcp_coverage: Literal["hosted_in_process", "subprocess_with_observer", "external_mixed"]`. Defensive `__post_init__` copying any mutable source per Story 1b.2 M_R6 pattern.
+  - [x] `AgentRunResult` `@dataclass(frozen=True)` with the 7 fields per AC-1b.4.5. Defensive copy on `tool_calls` (list of frozen dataclasses; defensive `list(...)` wrap is sufficient).
+  - [x] `CodingAgentAdapter` `@runtime_checkable Protocol` with the single `run()` method signature per AC-1b.4.1 + `name` / `version` `@property` declarations.
+  - [x] Update module docstring's "Subsequent stories ADD types" list: retire `AgentRunResult`/`ToolCall`/`TokenUsage`/`Scenario`/`MCPServer`/`RawResponse` Story-1b.4 forward-ref mentions (Story 1b.4 ships `AgentRunResult` + `AgentRunMetadata` + `CodingAgentAdapter`; the others were undefined drift now resolved).
+  - [x] `__all__` extends with: `"CodingAgentAdapter"`, `"AgentRunResult"`, `"AgentRunMetadata"`.
 
-- [ ] **Task 2: Extend `src/AgentEval/errors.py` with `UnsupportedBinaryVersionError` leaf (AC: 1b.4.7)**
-  - [ ] `class UnsupportedBinaryVersionError(AgentEvalCompatError):` with `error_code: ClassVar[str] = "UNSUPPORTED_BINARY_VERSION"`. Docstring cites FR47 + contract L81 (Story 1b.4 declaration + Epic 4/11 raise sites).
-  - [ ] `__all__` extends with `"UnsupportedBinaryVersionError"` under the existing leaves section.
-  - [ ] Module docstring's "remaining 6 leaves" future-list retires `UnsupportedBinaryVersionError` (now 5 remaining: `PollingDisallowedError`, `UnsupportedMCPVersionError`, `TierViolationError`, `ValidateOperatorDisallowed`, `AdapterVersionDriftWarning`). Verify count matches list. Bullet for `UnsupportedBinaryVersionError` removed from the future-list AND moved to the "implemented leaves" section above.
+- [x] **Task 2: Extend `src/AgentEval/errors.py` with `UnsupportedBinaryVersionError` leaf (AC: 1b.4.7)**
+  - [x] `class UnsupportedBinaryVersionError(AgentEvalCompatError):` with `error_code: ClassVar[str] = "UNSUPPORTED_BINARY_VERSION"`. Docstring cites FR47 + contract L81 (Story 1b.4 declaration + Epic 4/11 raise sites).
+  - [x] `__all__` extends with `"UnsupportedBinaryVersionError"` under the existing leaves section.
+  - [x] Module docstring's "remaining 6 leaves" future-list retires `UnsupportedBinaryVersionError` (now 5 remaining: `PollingDisallowedError`, `UnsupportedMCPVersionError`, `TierViolationError`, `ValidateOperatorDisallowed`, `AdapterVersionDriftWarning`). Verify count matches list. Bullet for `UnsupportedBinaryVersionError` removed from the future-list AND moved to the "implemented leaves" section above.
 
-- [ ] **Task 3: Author `src/AgentEval/coding_agent/base.py` (~250L) with re-export + ABCs (AC: 1b.4.2, 1b.4.3, 1b.4.4)**
-  - [ ] Apache 2.0 license header.
-  - [ ] Module docstring citing ADR-003 (`docs/adr/ADR-003-coding-agent-adapter-protocol-internal-class-split.md`) L22-29 + architecture L1226-1228 + PRD FR12 + Story 1b.3 `_kernel/discovery.py` integration.
-  - [ ] Re-export: `from AgentEval.types import CodingAgentAdapter as CodingAgentAdapter` + `from AgentEval.types import AgentRunResult as AgentRunResult`.
-  - [ ] `ParsedEvent: TypeAlias = Any` (Story 1b.4 placeholder; Epic 4/11 concrete adapters declare per-adapter intermediate types).
-  - [ ] `class InProcessAdapter:` (concrete-by-default, NO ABC inheritance, NO `@abstractmethod`):
+- [x] **Task 3: Author `src/AgentEval/coding_agent/base.py` (~250L) with re-export + ABCs (AC: 1b.4.2, 1b.4.3, 1b.4.4)**
+  - [x] Apache 2.0 license header.
+  - [x] Module docstring citing ADR-003 (`docs/adr/ADR-003-coding-agent-adapter-protocol-internal-class-split.md`) L22-29 + architecture L1226-1228 + PRD FR12 + Story 1b.3 `_kernel/discovery.py` integration.
+  - [x] Re-export: `from AgentEval.types import CodingAgentAdapter as CodingAgentAdapter` + `from AgentEval.types import AgentRunResult as AgentRunResult`.
+  - [x] `ParsedEvent: TypeAlias = Any` (Story 1b.4 placeholder; Epic 4/11 concrete adapters declare per-adapter intermediate types).
+  - [x] `class InProcessAdapter:` (concrete-by-default, NO ABC inheritance, NO `@abstractmethod`):
     - `__init__(self, **kwargs: Any) -> None` capturing `self._adapter_config: dict[str, Any] = dict(kwargs)`.
     - `@property name(self) -> str` default returning `type(self).__name__`.
     - `@property version(self) -> str` default reading `importlib.metadata.version(type(self).__module__.split('.')[0])` with `"unknown"` fallback on `PackageNotFoundError`.
     - No `run()` implementation — subclasses MUST override `run()`. Document the contract in the class docstring.
-  - [ ] `class SubprocessAdapter(ABC):` (3-hook template-method per ADR-003 L24-29):
+  - [x] `class SubprocessAdapter(ABC):` (3-hook template-method per ADR-003 L24-29):
     - `__init__(self, **kwargs: Any) -> None` capturing `self._adapter_config: dict[str, Any] = dict(kwargs)`.
     - `@abstractmethod _spawn(self, prompt: str, **kwargs: Any) -> subprocess.Popen[str]`.
     - `@abstractmethod _parse_event(self, line: str) -> ParsedEvent | None`.
@@ -168,23 +168,23 @@ where `<X>` is the detected version. No raise for in-range version.
     - Concrete `run(self, prompt, tools=None, mcp_servers=None, **kwargs) -> AgentRunResult` orchestrating: call `_spawn` → iterate `proc.stdout` line-by-line through `_parse_event` (collecting non-None into `events`) → `proc.wait()` → `_finalize(events, proc.returncode)`. Wraps the whole sequence in try/finally that ensures `proc.terminate()` on exception (process-group hygiene per Story 1b.1 MCPLifecycleManager precedent).
     - Concrete `_assert_binary_version(self, binary: str, min: str, max: str | None) -> None` helper. Calls `subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=5)`. Parses version via regex `r"(\d+\.\d+(?:\.\d+)?)"` (semver-ish). Composes `<range>` per AC-1b.4.7. Raises `UnsupportedBinaryVersionError` with FR47-exact message. Subclasses MAY override the version-extraction helper if their CLI uses a different invocation pattern.
     - Default `name` / `version` properties same as `InProcessAdapter`.
-  - [ ] `__all__` exports: `["CodingAgentAdapter", "InProcessAdapter", "SubprocessAdapter", "AgentRunResult", "ParsedEvent"]`.
+  - [x] `__all__` exports: `["CodingAgentAdapter", "InProcessAdapter", "SubprocessAdapter", "AgentRunResult", "ParsedEvent"]`.
 
-- [ ] **Task 4: Update `src/AgentEval/coding_agent/__init__.py` re-exports (AC: 1b.4.8)**
-  - [ ] Re-export 4 contributor-facing names: `CodingAgentAdapter` (from `AgentEval.types`), `InProcessAdapter`, `SubprocessAdapter`, `AgentRunResult` (from `AgentEval.types`).
-  - [ ] `__all__ = ["CodingAgentAdapter", "InProcessAdapter", "SubprocessAdapter", "AgentRunResult"]`.
-  - [ ] Module docstring lists the documented public-import paths.
+- [x] **Task 4: Update `src/AgentEval/coding_agent/__init__.py` re-exports (AC: 1b.4.8)**
+  - [x] Re-export 4 contributor-facing names: `CodingAgentAdapter` (from `AgentEval.types`), `InProcessAdapter`, `SubprocessAdapter`, `AgentRunResult` (from `AgentEval.types`).
+  - [x] `__all__ = ["CodingAgentAdapter", "InProcessAdapter", "SubprocessAdapter", "AgentRunResult"]`.
+  - [x] Module docstring lists the documented public-import paths.
 
-- [ ] **Task 5: Remove `# type: ignore[attr-defined]` from `_kernel/discovery.py` L102 (AC: 1b.4.9)**
-  - [ ] After Task 1 lands the Protocol in `AgentEval.types`, the discovery.py forward-ref `from AgentEval.types import CodingAgentAdapter` resolves cleanly.
-  - [ ] Remove the `# type: ignore[attr-defined]  # forward ref; lands in Story 1b.4` comment.
-  - [ ] Verify with `uv run mypy src/AgentEval/_kernel/discovery.py`.
+- [x] **Task 5: Remove `# type: ignore[attr-defined]` from `_kernel/discovery.py` L102 (AC: 1b.4.9)**
+  - [x] After Task 1 lands the Protocol in `AgentEval.types`, the discovery.py forward-ref `from AgentEval.types import CodingAgentAdapter` resolves cleanly.
+  - [x] Remove the `# type: ignore[attr-defined]  # forward ref; lands in Story 1b.4` comment.
+  - [x] Verify with `uv run mypy src/AgentEval/_kernel/discovery.py`.
 
-- [ ] **Task 6: Author `tests/unit/coding_agent/test_base.py` (~280L, ~25 tests) (AC: 1b.4.10)**
-  - [ ] Test file's Apache 2.0 license header.
-  - [ ] Import `pytest`, `subprocess`, `dataclasses.asdict`, the Story 1b.4 Protocol/ABCs/types/errors, Story 1b.2's `ToolCallTrace`/`Usage`.
-  - [ ] Create test directory `tests/unit/coding_agent/` with `__init__.py`.
-  - [ ] Test categories:
+- [x] **Task 6: Author `tests/unit/coding_agent/test_base.py` (~280L, ~25 tests) (AC: 1b.4.10)**
+  - [x] Test file's Apache 2.0 license header.
+  - [x] Import `pytest`, `subprocess`, `dataclasses.asdict`, the Story 1b.4 Protocol/ABCs/types/errors, Story 1b.2's `ToolCallTrace`/`Usage`.
+  - [x] Create test directory `tests/unit/coding_agent/` with `__init__.py`.
+  - [x] Test categories:
     - Protocol structural typing (~3 tests).
     - InProcessAdapter direct-override + default properties (~4 tests).
     - SubprocessAdapter abstract enforcement + template-method orchestration (~6 tests, including `_parse_event` returning None to skip lines + termination-on-exception cleanup).
@@ -194,23 +194,23 @@ where `<X>` is the detected version. No raise for in-range version.
     - `_kernel/discovery.py` integration smoke (~1 test).
     - `UnsupportedBinaryVersionError` hierarchy + `error_code` + `__str__` (~2 tests).
 
-- [ ] **Task 7: All-gates pass (AC: 1b.4.11)**
-  - [ ] `uv run ruff check src/ tests/` clean.
-  - [ ] `uv run ruff format --check src/ tests/` clean.
-  - [ ] `uv run mypy src/` clean (31 source files).
-  - [ ] `uv run python scripts/check-license-headers.py` PASS.
-  - [ ] `uv run pytest tests/unit -q --ignore=tests/unit/conventions` — all tests pass (220 prior + ~25 new = ~245+).
-  - [ ] `uv run pytest tests/acceptance/tier1 -q` — 6 FR42 tests still pass.
-  - [ ] `uv run robot tests/acceptance/smoke` — RF smoke test still passes.
+- [x] **Task 7: All-gates pass (AC: 1b.4.11)**
+  - [x] `uv run ruff check src/ tests/` clean.
+  - [x] `uv run ruff format --check src/ tests/` clean.
+  - [x] `uv run mypy src/` clean (31 source files).
+  - [x] `uv run python scripts/check-license-headers.py` PASS.
+  - [x] `uv run pytest tests/unit -q --ignore=tests/unit/conventions` — all tests pass (220 prior + ~25 new = ~245+).
+  - [x] `uv run pytest tests/acceptance/tier1 -q` — 6 FR42 tests still pass.
+  - [x] `uv run robot tests/acceptance/smoke` — RF smoke test still passes.
 
-- [ ] **Task 8: Update `docs/contracts/stability-surface.md` (AC: 1b.4.2, 1b.4.5)**
-  - [ ] Add new section "Coding Agent Adapter Surface (Story 1b.4)" registering `CodingAgentAdapter` Protocol (`provisional`); `InProcessAdapter` ABC (`provisional`); `SubprocessAdapter` ABC + 3 hooks `_spawn`/`_parse_event`/`_finalize` (`provisional`); `_assert_binary_version` helper (`provisional`); `AgentRunResult` dataclass + 7 fields (`provisional`); `AgentRunMetadata` sub-dataclass + 2 fields (`provisional`); `agenteval.coding_agents` entry-points group (`stable` — already registered by Story 1a.4 sandbox surface section).
-  - [ ] Extend "Top-level errors + types surface" section: add `UnsupportedBinaryVersionError` leaf (`stable`); add `AgentRunResult` + `AgentRunMetadata` dataclasses (`provisional`).
+- [x] **Task 8: Update `docs/contracts/stability-surface.md` (AC: 1b.4.2, 1b.4.5)**
+  - [x] Add new section "Coding Agent Adapter Surface (Story 1b.4)" registering `CodingAgentAdapter` Protocol (`provisional`); `InProcessAdapter` ABC (`provisional`); `SubprocessAdapter` ABC + 3 hooks `_spawn`/`_parse_event`/`_finalize` (`provisional`); `_assert_binary_version` helper (`provisional`); `AgentRunResult` dataclass + 7 fields (`provisional`); `AgentRunMetadata` sub-dataclass + 2 fields (`provisional`); `agenteval.coding_agents` entry-points group (`stable` — already registered by Story 1a.4 sandbox surface section).
+  - [x] Extend "Top-level errors + types surface" section: add `UnsupportedBinaryVersionError` leaf (`stable`); add `AgentRunResult` + `AgentRunMetadata` dataclasses (`provisional`).
 
-- [ ] **Task 9: Apply project norms (AC: 1b.4.12)**
-  - [ ] Code-review will use `/bmad-code-review (Using current Claude + Codex CLI subagent)` per `feedback_review_methodology_norms`.
-  - [ ] Cross-LLM reviewer prompt MUST direct re-derivation of every cited fact from source per `feedback_citation_drift_first_class`.
-  - [ ] Honest framing: Phase-1 limitations documented per AC-1b.4.12.
+- [x] **Task 9: Apply project norms (AC: 1b.4.12)**
+  - [x] Code-review will use `/bmad-code-review (Using current Claude + Codex CLI subagent)` per `feedback_review_methodology_norms`.
+  - [x] Cross-LLM reviewer prompt MUST direct re-derivation of every cited fact from source per `feedback_citation_drift_first_class`.
+  - [x] Honest framing: Phase-1 limitations documented per AC-1b.4.12.
 
 ## Dev Notes
 
@@ -331,23 +331,54 @@ Pure addition. The H_R7 `__str__` formatter is inherited. The module docstring's
 
 ### Context Reference
 
-<!-- To be filled by dev-story workflow -->
+- Story spec (this file).
+- Architecture L853 (cross-sub-library import discipline) + L885-889 (`AgentRunResult` shape) + L1226-1228 (`coding_agent/base.py` location + SubprocessAdapter hooks) + L1523 (sandbox routes through scenarios/).
+- ADR-003 (`docs/adr/ADR-003-coding-agent-adapter-protocol-internal-class-split.md`) — Protocol + InProcessAdapter direct-override + SubprocessAdapter 3-hook template.
+- ADR-006 — `.metadata.completeness` REQUIRED nesting.
+- ADR-016 — `mcp_coverage` 3-state value space.
+- PRD FR12 (single `run()` method) + FR36a/b (Literal value spaces) + FR47 (error-message format) + FR51 (`trace_id=<uuid>`).
+- `docs/contracts/error-class-hierarchy.md` L81 — `UnsupportedBinaryVersionError` ownership row (amended pre-authoring).
+- Story 1b.1 `_kernel/{context, tier, run_async}.py` — `ServerHandle` consumed by `run()` mcp_servers + `@tier(3)` decorator pattern.
+- Story 1b.2 `src/AgentEval/types.py` (`ToolCallTrace` + `Usage` + `RunManifest`) + `errors.py` (base + H_R7 `__str__` formatter inherited).
+- Story 1b.3 `_kernel/discovery.py` L102 — TYPE_CHECKING forward-ref `from AgentEval.types import CodingAgentAdapter` (resolved by Story 1b.4; `type: ignore` removed).
+- Story 1b.3 `src/AgentEval/errors.py` — `AgentEvalCompatError` sub-base that `UnsupportedBinaryVersionError` extends.
 
 ### Agent Model Used
 
-<!-- To be filled by dev-story workflow -->
+Claude Opus 4.7 (1M context) — `claude-opus-4-7[1m]`.
 
 ### Debug Log References
 
-<!-- To be filled by dev-story workflow -->
+None (all-gates clean on first full pass after ruff auto-fixes). Ruff applied 3 auto-fixes during the gate run: (1) removed unused `field` import that crept in via the types.py edit; (2) replaced `try/except/pass` with `contextlib.suppress(OSError, ProcessLookupError)` in `SubprocessAdapter.run()` cleanup path; (3) PEP-695 `type ParsedEvent = Any` (replacing `TypeAlias` form per project's adopted Story 1b.1 PEP-695 convention). Also caught + removed a now-resolvable `# type: ignore[attr-defined]` from `_kernel/coverage.py` L55 (Story 1b.2 forward-ref to `AgentRunResult` that Story 1b.4 lands).
 
 ### Completion Notes List
 
-<!-- To be filled by dev-story workflow -->
+- Task 1 — `src/AgentEval/types.py` extended with `AgentRunMetadata` + `AgentRunResult` + `CodingAgentAdapter` Protocol. `AgentRunMetadata` is `@dataclass(frozen=True)` with 2 REQUIRED Literal fields per ADR-006 + ADR-016. `AgentRunResult` is `@dataclass(frozen=True)` with 7 fields including the `metadata: AgentRunMetadata` nested sub-dataclass per ADR-006 + FR36a/b; defensive `list()` copy on `tool_calls` in `__post_init__` per Story 1b.2 M_R6 pattern. `CodingAgentAdapter` Protocol uses `@runtime_checkable` for FR17b composition path; single `run(prompt, tools, mcp_servers, **kwargs)` method + `name`/`version` properties per FR12 L1506 (NOT 2-method per D1 ratification).
+- Task 2 — `src/AgentEval/errors.py` extended with `UnsupportedBinaryVersionError(AgentEvalCompatError)` leaf. `error_code: ClassVar[str] = "UNSUPPORTED_BINARY_VERSION"`. `__all__` extended. Module docstring's "remaining 6 leaves" retired UnsupportedBinaryVersionError → now 5 leaves listed in the future-list (PollingDisallowedError, UnsupportedMCPVersionError, TierViolationError, ValidateOperatorDisallowed, AdapterVersionDriftWarning).
+- Task 3 — `src/AgentEval/coding_agent/base.py` (~290L) authored: re-export `CodingAgentAdapter` + `AgentRunResult` from `AgentEval.types`; `type ParsedEvent = Any` (PEP-695 form); `_default_version()` + `_parse_version_tuple()` helpers; `_SEMVER_RE` regex; `InProcessAdapter` concrete-by-default base with `__init__` config-capture + default `name`/`version` properties + zero abstract methods per ADR-003 L22-23; `SubprocessAdapter(ABC)` with exactly 3 `@abstractmethod` hooks (`_spawn` / `_parse_event` / `_finalize`) + concrete template-method `run()` (orchestrates spawn → iterate `_parse_event` → `_finalize` with `contextlib.suppress(OSError, ProcessLookupError)`-guarded `proc.terminate()` cleanup-on-exception per Story 1b.1 process-group hygiene) + concrete `_assert_binary_version()` helper raising `UnsupportedBinaryVersionError` with FR47-exact format `<binary> version <X> outside tested range <range>`.
+- Task 4 — `src/AgentEval/coding_agent/__init__.py` rewritten with 4 re-exports + `__all__`. Documents the contributor-facing import path.
+- Task 5 — `src/AgentEval/_kernel/discovery.py` L102 `# type: ignore[attr-defined]` removed (Protocol now resolvable). Bonus: `src/AgentEval/_kernel/coverage.py` L55 forward-ref `# type: ignore[attr-defined]` for `AgentRunResult` also removed (Story 1b.2 baseline caught by mypy after Story 1b.4 lands the dataclass).
+- Task 6 — `tests/unit/coding_agent/__init__.py` + `tests/unit/coding_agent/test_base.py` (~390L) authored. 29 tests covering: Protocol identity + re-export (3); `runtime_checkable` Protocol semantics (2); InProcessAdapter no-abstract-instantiate + default `name`/`version` + kwargs-capture + subclass override (5); SubprocessAdapter abstract enforcement + partial-impl failure + template-method orchestration (event-line + blank-line + non-event skip + nonzero exit) + cleanup-on-exception (5); `_assert_binary_version` 6 cases (in-range + below-min + at-max + max-None + unparseable + missing-binary) (6); `AgentRunResult` construction + frozen + defensive copy + `asdict` round-trip (4); `AgentRunMetadata` exhaustive value-space iteration (1); `UnsupportedBinaryVersionError` hierarchy + H_R7 `__str__` + base-catches-all (3); `_kernel/discovery.py` integration smoke (1).
+- Task 7 — All-gates clean: ruff/format/mypy clean (31 source files); license headers 31/31; `pytest tests/unit -q --ignore=tests/unit/conventions` **249 passed** (220 prior + 29 new); `pytest tests/acceptance/tier1 -q` 6 passed (Story 1a.6 FR42 regression); `robot tests/acceptance/smoke` PASS.
+- Task 8 — `docs/contracts/stability-surface.md` extended with new "Coding Agent Adapter Surface (Story 1b.4)" section (Protocol + ABCs + helpers as `provisional`; `ParsedEvent` as `experimental`; 3-hook contract + FR47 message format as `stable`). Top-level errors section extended with `UnsupportedBinaryVersionError` (`stable`); types section extended with `AgentRunResult` + `AgentRunMetadata` (`provisional`); 3-state Literal value spaces + `.metadata` nesting marked `stable` per ADR-006 + ADR-016.
+- Task 9 — Project norms applied: code-review will use `/bmad-code-review (Using current Claude + Codex CLI subagent)`; cross-LLM reviewer prompt will be directed to re-derive cited facts per `feedback_citation_drift_first_class`; Phase-1 limitations documented (sandbox out-of-scope; FR17b deferred to Story 4.1; ParsedEvent TypeAlias=Any; trace_id UUID hex Phase-1).
 
 ## File List
 
-<!-- To be filled by dev-story workflow -->
+**New source files (1):**
+- `src/AgentEval/coding_agent/base.py` (291L) — `CodingAgentAdapter` re-export + `InProcessAdapter` direct-override base + `SubprocessAdapter(ABC)` 3-hook template-method + `_assert_binary_version` helper + `type ParsedEvent = Any`
+
+**New test files (2):**
+- `tests/unit/coding_agent/__init__.py` (0L, empty)
+- `tests/unit/coding_agent/test_base.py` (~390L, 29 tests)
+
+**Modified files (5):**
+- `src/AgentEval/types.py` — pure extension: `CodingAgentAdapter` Protocol + `AgentRunResult` + `AgentRunMetadata` dataclasses
+- `src/AgentEval/errors.py` — pure extension: `UnsupportedBinaryVersionError(AgentEvalCompatError)` leaf
+- `src/AgentEval/coding_agent/__init__.py` — re-export 4 contributor-facing names
+- `src/AgentEval/_kernel/discovery.py` — remove `# type: ignore[attr-defined]` from L102 TYPE_CHECKING forward-ref
+- `src/AgentEval/_kernel/coverage.py` — remove same `# type: ignore[attr-defined]` from L55 forward-ref (bonus caught by mypy after Protocol declaration lands)
+- `docs/contracts/stability-surface.md` — new Coding Agent Adapter Surface section + extended top-level errors/types section
 
 **New source files (1):**
 - `src/AgentEval/coding_agent/base.py` (~250L) — `CodingAgentAdapter` re-export + `InProcessAdapter` direct-override base + `SubprocessAdapter(ABC)` 3-hook template-method + `_assert_binary_version` helper + `ParsedEvent: TypeAlias = Any`
@@ -366,4 +397,5 @@ Pure addition. The H_R7 `__str__` formatter is inherited. The module docstring's
 
 | Date       | Version | Description                                                                  | Author |
 | ---------- | ------- | ---------------------------------------------------------------------------- | ------ |
+| 2026-05-19 | 0.2.0   | Dev-story implementation pass complete; status → review. Tasks 1-9 done. New module `src/AgentEval/coding_agent/base.py` (~290L) ships `InProcessAdapter` (direct-override per ADR-003 L22-23, zero abstract methods) + `SubprocessAdapter(ABC)` (3-hook template-method per ADR-003 L24-29 + architecture L1228: `_spawn`/`_parse_event`/`_finalize`) + concrete `_assert_binary_version` helper with FR47-exact error-message format. `src/AgentEval/types.py` extended with `CodingAgentAdapter` Protocol (single `run(prompt, tools, mcp_servers, **kwargs)` per FR12, `@runtime_checkable` for FR17b composition) + `AgentRunResult` 7-field dataclass + `AgentRunMetadata` sub-dataclass with `.metadata.{completeness, mcp_coverage}` nested per ADR-006 L15 + FR36a/b L1553-1554. `src/AgentEval/errors.py` extended with `UnsupportedBinaryVersionError(AgentEvalCompatError)` leaf (declaration in Story 1b.4 per Story 1b.3 errors.py L59 forward-ref; per-adapter raise sites in Epic 4/11). `_kernel/discovery.py` L102 `# type: ignore[attr-defined]` removed (Protocol now resolvable); bonus: same removed from `_kernel/coverage.py` L55. PEP-695 `type ParsedEvent = Any` adopted per project's Story 1b.1 PEP-695 convention. `tests/unit/coding_agent/test_base.py` (29 tests) covers Protocol identity + re-export + runtime_checkable + InProcessAdapter direct-override + SubprocessAdapter abstract enforcement + template-method orchestration + cleanup-on-exception via `contextlib.suppress` + 6 `_assert_binary_version` cases + AgentRunResult/AgentRunMetadata + UnsupportedBinaryVersionError hierarchy + discovery integration smoke. All-gates clean: ruff/format/mypy clean (31 source files); license headers 31/31; **249 unit passed** (220 prior + 29 new); 6 tier1 acceptance + RF smoke regression PASS. `docs/contracts/stability-surface.md` extended with new Coding Agent Adapter Surface section. Phase-1 limitations preserved (sandbox out-of-scope; FR17b deferred to Story 4.1; ParsedEvent TypeAlias=Any; trace_id UUID hex Phase-1). | Amelia |
 | 2026-05-19 | 0.1.0   | Initial story creation (ready-for-dev). Pre-create-story drift check (8th consecutive use of `feedback_spec_vs_ratified_doc_precheck`) caught 14 drifts in Story 1b.4 epics.md spec vs ratified sources (6 HIGH + 4 MED + 4 LOW/clean). All 14 resolved via path-of-least-amendment by honoring ratified sources per Many's 2026-05-19 ratification: (D1) single `run()` Protocol method per FR12 L1506; (D2/D15) `AgentRunResult.metadata.{completeness, mcp_coverage}` nested per ADR-006 + FR36a/b; (D3/D4) reuse Story-1b.2 `ToolCallTrace`/`Usage` types; (D6/D7) drop undefined `Scenario`/`MCPServer`/`RawResponse`/`ParsedEvent` types — MCP lifecycle stays at Story 1b.1's MCPLifecycleManager; (D8) Protocol declared in `types.py` (re-exported through `coding_agent/base.py`) per architecture L853 + Story 1b.3 discovery.py L102 forward-ref; (D9) InProcessAdapter no abstract hooks per ADR-003 L22-23; (D10) SubprocessAdapter 3-hook `_spawn`/`_parse_event`/`_finalize` per ADR-003 L24-29 + architecture L1228; (D11) `_agenteval_tier` on keyword methods only per L620; (D13) UnsupportedBinaryVersionError class declaration in Story 1b.4 + per-adapter raise sites in Epic 4/11. Scope-edges ratified: FR47 exact error format; sandbox out-of-scope for adapters; FR17b kwarg deferred to Story 4.1; ParsedEvent TypeAlias=Any until concrete adapters. Pre-authoring fixes: epics.md L973-993 + `docs/contracts/error-class-hierarchy.md` L81 amended 2026-05-19. NEW NORM from Epic 1a retro embedded in AC-1b.4.12: cross-LLM reviewer prompt MUST direct re-derivation of every cited fact from source. | Bob |

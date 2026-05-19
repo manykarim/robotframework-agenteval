@@ -27,7 +27,16 @@ Story 1b.2 ships the MINIMAL subset of the catalog needed by
   `_check_mcp_coverage` gate per FR37 + ADR-016 L44 when a run reports
   `mcp_coverage == "external_mixed"` without `allow_external_mcp_blind=True`.
 
-Story 1b.3 EXTENDS this module with 2 new sub-bases + 4 new leaves (pure
+Story 1b.4 EXTENDS this module with 1 new leaf (pure addition):
+
+- `UnsupportedBinaryVersionError(AgentEvalCompatError)` — class declaration
+  per Story 1b.3 `errors.py` L59 forward-ref; raised by per-adapter pin
+  enforcement in Epic 4 Story 4.2 (Claude Code CLI) + Epic 11 Story 11.3
+  (Copilot CLI) per the `error-class-hierarchy.md` L81 ownership row
+  (amended pre-Story-1b.4-authoring). `SubprocessAdapter._assert_binary_version`
+  helper (Story 1b.4 base.py) provides the generic Phase-1 raise site.
+
+Story 1b.3 EXTENDED this module with 2 new sub-bases + 4 new leaves (pure
 addition, no refactor of Story 1b.2's classes):
 
 - `AgentEvalBudgetError(AgentEvalError)` — sub-base for cost/runtime budget
@@ -56,7 +65,6 @@ The remaining 6 leaves from `docs/contracts/error-class-hierarchy.md` (Story
 
 - `PollingDisallowedError` — Story 1b.6 (Determinism Contract + convention enforcer)
 - `UnsupportedMCPVersionError` — Epic 3 Story 3.1 (MCP transport)
-- `UnsupportedBinaryVersionError` — Story 1b.4 / Epic 4 (CLI adapter version pin enforcement)
 - `TierViolationError` — Story 1b.6 (convention enforcer)
 - `ValidateOperatorDisallowed` — Epic 6 Story 6.2 (assertion gate enforcement)
 - `AdapterVersionDriftWarning` — Epic 11 Story 11.3 (warning, not error)
@@ -100,12 +108,13 @@ __all__ = [
     "AgentEvalIntegrityError",
     "AgentEvalBudgetError",
     "AgentEvalCompatError",
-    # Leaves (5 implemented; 6 future per module docstring):
+    # Leaves (6 implemented; 5 future per module docstring):
     "IncompleteTraceError",
     "CostExceededError",
     "RuntimeBudgetExceededError",
     "AdapterDiscoveryError",
     "DuplicateRegistrationError",
+    "UnsupportedBinaryVersionError",
     # Warnings (1):
     "DegradedTraceWarning",
 ]
@@ -314,6 +323,29 @@ class DuplicateRegistrationError(AdapterDiscoveryError):
     ) -> None:
         super().__init__(message, loaded_so_far=loaded_so_far)
         self.sources: tuple[str, str] = sources
+
+
+class UnsupportedBinaryVersionError(AgentEvalCompatError):
+    """Raised when a CLI adapter detects a binary version outside its pinned range.
+
+    Per PRD FR47 + `docs/contracts/error-class-hierarchy.md` L81 (Story 1b.4
+    declaration + Epic 4 Story 4.2 / Epic 11 Story 11.3 per-adapter raise
+    sites). The Story 1b.4 `SubprocessAdapter._assert_binary_version` helper
+    provides the generic Phase-1 raise site with the FR47-exact error
+    message format:
+
+        `<binary> version <X> outside tested range <range>`
+
+    where `<range>` is `">={min}, <{max}"` when both bounds set or
+    `">={min}"` when `max=None`. Per-adapter raise sites in Epic 4 Story 4.2
+    (`claude` binary outside Story 4.2's pinned range) + Epic 11 Story 11.3
+    (`copilot` binary outside ADR-010's `>=1.0.9,<2.0` range) inherit this
+    contract.
+
+    `error_code = "UNSUPPORTED_BINARY_VERSION"`; exit code 78 (EX_CONFIG).
+    """
+
+    error_code: ClassVar[str] = "UNSUPPORTED_BINARY_VERSION"
 
 
 # --------------------------------------------------------------------------- #

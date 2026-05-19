@@ -28,8 +28,14 @@ projection accessors:
 
 Subsequent stories ADD types to this same module:
 
-- Story 1b.4 (CodingAgentAdapter Protocol): `AgentRunResult`, `ToolCall`,
-  `TokenUsage`, `Scenario`, `MCPServer`, `RawResponse`
+- Story 1b.4 (CodingAgentAdapter Protocol): `CodingAgentAdapter` Protocol +
+  `AgentRunResult` + `AgentRunMetadata` dataclasses. Pre-edit Story 1b.4
+  spec mentioned `ToolCall` / `TokenUsage` / `Scenario` / `MCPServer` /
+  `RawResponse` forward-refs which were retired by the 8th-consecutive
+  pre-create-story drift check (D3/D4/D6/D7 — Story 1b.4 reuses existing
+  `ToolCallTrace` + `Usage` types and drops the other 3 undefined types
+  per architecture L853 import-discipline + ADR-003 + FR12 single-method
+  Protocol).
 - Story 1b.5 (Conformance harness): fixture-schema types
 - Epic 3 (MCP lifecycle): `MCPHandle`, `MCPTool`
 - Epic 4 (CodingAgent adapters): adapter-side projection types
@@ -55,12 +61,18 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from AgentEval._kernel.context import ServerHandle  # forward ref; consumed by CodingAgentAdapter.run
 
 __all__ = [
     "ToolCallTrace",
     "Usage",
     "RunManifest",
+    "AgentRunMetadata",
+    "AgentRunResult",
+    "CodingAgentAdapter",
 ]
 
 
@@ -185,3 +197,143 @@ class RunManifest:
             "agenteval_tier_breakdown",
             dict(self.agenteval_tier_breakdown),
         )
+
+
+# --------------------------------------------------------------------------- #
+# Story 1b.4 — CodingAgentAdapter Protocol + AgentRunResult shape             #
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class AgentRunMetadata:
+    """Run-level metadata for an `AgentRunResult` (PRD FR36a + FR36b + ADR-006 + ADR-016).
+
+    Per ADR-006 L15 + PRD FR36a L1553: `completeness` is REQUIRED + the
+    `.metadata.completeness` nesting is REQUIRED (NOT a flat top-level field
+    on AgentRunResult).
+
+    Per PRD FR36b L1554 + ADR-016 §Decision L24-28: `mcp_coverage` is
+    REQUIRED + the 3-state value space `("hosted_in_process",
+    "subprocess_with_observer", "external_mixed")` is closed (NO `"none"`
+    value — pre-edit drafts had a 4-state version which the ratified ADR-016
+    explicitly excludes).
+
+    Frozen + immutable; serializes cleanly via `dataclasses.asdict()`.
+    """
+
+    completeness: Literal["complete", "truncated", "partial"]
+    mcp_coverage: Literal["hosted_in_process", "subprocess_with_observer", "external_mixed"]
+
+
+@dataclass(frozen=True)
+class AgentRunResult:
+    """Normalized result of a single coding-agent run (PRD FR12 + ADR-003 + ADR-006).
+
+    Produced by every `CodingAgentAdapter.run()` invocation. Sub-libraries
+    (`metrics/`, `_assertions/`, the OTel Listener) consume this shape per
+    architecture L853's "Cross-sub-library data flow goes through ... shared
+    types in `agenteval/types.py`" rule.
+
+    Fields (per AC-1b.4.5 + architecture L885-889):
+        - `response_text`: primary text output from the agent
+        - `tool_calls`: list of `ToolCallTrace` (Story 1b.2 type; NOT a new
+          `ToolCall` type — Story 1b.4 code-review drift D3 resolution)
+        - `usage`: `Usage` token-usage record (Story 1b.2 type; NOT a new
+          `TokenUsage` alias — Story 1b.4 drift D4 resolution)
+        - `metadata`: `AgentRunMetadata` sub-dataclass holding nested
+          `.metadata.completeness` + `.metadata.mcp_coverage` per ADR-006 L15
+          + FR36a/b L1553-1554 (REQUIRED nesting; D2/D15 drift resolution)
+        - `cost_usd`: total USD cost reported by the provider; 0.0 for the
+          Phase-1 stub cost-source path
+        - `latency_seconds`: wall-clock duration of the `run()` call
+        - `trace_id`: UUID hex string linking to the trace artifact at
+          `${OUTPUT_DIR}/agenteval/trace__<suite>__<test>.jsonl` per FR51 L1579.
+          Phase-1 contract: UUID hex string. Phase-2 OTLP migration may switch
+          to OTel 32-char hex (tracked as Phase-2 carry-over).
+
+    Defensive list copy on `tool_calls` in `__post_init__` (Story 1b.2 M_R6
+    pattern); blocks source-mutation leakage while preserving
+    `dataclasses.asdict()` round-tripping.
+
+    Frozen + immutable; serializes cleanly via `dataclasses.asdict()` for the
+    jsonl Trace backend.
+    """
+
+    response_text: str
+    tool_calls: list[ToolCallTrace]
+    usage: Usage
+    metadata: AgentRunMetadata
+    cost_usd: float
+    latency_seconds: float
+    trace_id: str
+
+    def __post_init__(self) -> None:
+        # Defensive copy of tool_calls list per Story 1b.2 M_R6 pattern.
+        # Inner ToolCallTrace items are already frozen dataclasses; the list
+        # itself is the mutability surface we close here.
+        object.__setattr__(self, "tool_calls", list(self.tool_calls))
+
+
+@runtime_checkable
+class CodingAgentAdapter(Protocol):
+    """Contributor-facing Protocol for coding-agent adapters (PRD FR12 L1506 + ADR-003).
+
+    SINGLE `run()` method per PRD FR12 (NOT a 2-method `send_prompt +
+    run_scenario` split — the pre-edit Story 1b.4 spec had drifted; resolved
+    by the 8th-consecutive pre-create-story drift check D1). Properties
+    `name` + `version` expose adapter identity.
+
+    Phase-1 import location ratification (Story 1b.4 D8 drift resolution):
+    This Protocol lives at `src/AgentEval/types.py`, NOT at
+    `src/AgentEval/coding_agent/base.py`. `coding_agent/base.py` re-exports
+    it. The location decision is forced by architecture L853 cross-sub-
+    library import discipline + Story 1b.3 `_kernel/discovery.py` L102
+    TYPE_CHECKING forward-ref `from AgentEval.types import CodingAgentAdapter`
+    (which would create a circular dep if the Protocol lived in a sub-library).
+
+    Tier metadata note (D11 drift resolution): the Protocol does NOT carry a
+    `_agenteval_tier` class attribute. Tier semantics apply to library KEYWORD
+    methods (e.g., `Send Prompt`, `Run Scenario`) decorated with `@tier(3)`
+    per Story 1b.1's `tier.py` + architecture L620, NOT to adapter classes.
+    Adapters are runtime mechanisms; tier is a keyword-side property.
+
+    MCP lifecycle note (D7 drift resolution): the adapter CONSUMES live
+    `ServerHandle` instances via the `mcp_servers=` kwarg of `run()`.
+    Adapters do NOT manage MCP server lifecycle — that's Story 1b.1's
+    `MCPLifecycleManager` responsibility (per Story 0.2 spike findings:
+    single canonical owner of acquire/release across the agent run).
+
+    `@runtime_checkable` enables `isinstance(obj, CodingAgentAdapter)` for
+    the FR17b composition path (`AgentEval.__init__(coding_agent=MyAdapter())`,
+    wiring deferred to Story 4.1).
+    """
+
+    name: str
+    version: str
+
+    def run(
+        self,
+        prompt: str,
+        tools: list[str] | None = None,
+        mcp_servers: dict[str, ServerHandle] | None = None,
+        **kwargs: Any,
+    ) -> AgentRunResult:
+        """Execute a single agent run + return the normalized result.
+
+        Args:
+            prompt: Agent input prompt (single-turn semantics; multi-turn
+                scenarios fold into this via Story 1b.5 fixture schemas).
+            tools: Optional list of tool names the agent may use; None
+                signals "adapter default tool set".
+            mcp_servers: Optional dict of `{name: ServerHandle}` where each
+                handle is the live MCP server connection owned by Story
+                1b.1's `MCPLifecycleManager`.
+            **kwargs: Adapter-specific extension parameters (e.g., a model
+                override, temperature, tool-choice constraint).
+
+        Returns:
+            `AgentRunResult` with the 7 fields populated; the `metadata`
+            sub-dataclass MUST carry both `completeness` + `mcp_coverage`
+            per FR36a/b.
+        """
+        ...

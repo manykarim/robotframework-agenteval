@@ -14,7 +14,31 @@
 
 """AgentEval.coding_agent sub-package.
 
-CodingAgentAdapter Protocol + InProcessAdapter/SubprocessAdapter ABCs per ADR-A6.
+Contributor-facing imports per ADR-003 + ADR-005:
 
-Modules land in Epic 1b Story 1b.4 + Epic 4.
+    from AgentEval.coding_agent import (
+        CodingAgentAdapter,    # Protocol (declared in AgentEval.types per architecture L853)
+        InProcessAdapter,      # ABC for SDK-driven adapters (direct override pattern)
+        SubprocessAdapter,     # ABC for CLI-driven adapters (3-hook template-method)
+        AgentRunResult,        # Normalized run-result dataclass (declared in AgentEval.types)
+    )
+
+Concrete adapter implementations land in Epic 4 (Generic LiteLLM + Claude
+Code CLI) + Epic 10 (Claude Agent SDK + OpenAI Agents SDK) + Epic 11 (Codex
+CLI + Copilot CLI) per ADR-005's "≤2 adapters per vendor + 1 universal
+escape hatch" rule.
 """
+
+from AgentEval.coding_agent.base import (
+    AgentRunResult,
+    CodingAgentAdapter,
+    InProcessAdapter,
+    SubprocessAdapter,
+)
+
+__all__ = [
+    "CodingAgentAdapter",
+    "InProcessAdapter",
+    "SubprocessAdapter",
+    "AgentRunResult",
+]

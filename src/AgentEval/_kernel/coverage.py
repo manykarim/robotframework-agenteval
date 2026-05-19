@@ -52,7 +52,7 @@ from typing import TYPE_CHECKING
 from AgentEval.errors import IncompleteTraceError
 
 if TYPE_CHECKING:
-    from AgentEval.types import AgentRunResult  # type: ignore[attr-defined]  # forward ref; lands in Story 1b.4
+    from AgentEval.types import AgentRunResult  # Story 1b.4 lands the dataclass
 
 __all__ = ["_check_mcp_coverage"]
 

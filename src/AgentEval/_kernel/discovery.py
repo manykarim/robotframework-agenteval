@@ -99,7 +99,7 @@ from typing import TYPE_CHECKING
 from AgentEval.errors import AdapterDiscoveryError, DuplicateRegistrationError
 
 if TYPE_CHECKING:
-    from AgentEval.types import CodingAgentAdapter  # type: ignore[attr-defined]  # forward ref; lands in Story 1b.4
+    from AgentEval.types import CodingAgentAdapter  # Story 1b.4 lands the Protocol
 
 __all__ = [
     "discover_adapters",
