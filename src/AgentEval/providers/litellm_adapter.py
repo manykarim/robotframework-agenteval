@@ -95,6 +95,13 @@ class LiteLLMAdapter:
         **kwargs: Any,
     ) -> ChatResponse:
         """Send a conversation to LiteLLM + map the response back."""
+        # Story 6.3 AC-6.3.5: Tier-1 LLM-invocation ban per PRD FR30b.
+        # Walks the Python call stack; raises TierViolationError if the topmost
+        # `@keyword`-decorated frame has `_agenteval_tier == 1`. No-op when
+        # called outside an `@keyword` context (pytest, scripts).
+        from AgentEval._kernel.tier_acl import enforce_tier1_no_llm
+
+        enforce_tier1_no_llm()
         if stream:
             raise NotImplementedError(
                 "LiteLLMAdapter does not support streaming in Phase-1 (DF-4.1-S3); "

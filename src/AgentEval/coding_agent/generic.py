@@ -152,6 +152,12 @@ class GenericAdapter(InProcessAdapter):
     ) -> AgentRunResult:
         """Execute a single-shot prompt through the configured provider.
 
+        Story 6.3 code-review HIGH-θ fix (Auditor 1-way on Task 11 verbatim):
+        `enforce_tier1_no_llm()` wired at the entry point per PRD FR30b — was
+        missing from Story 6.3 dev despite Task 11 explicitly enumerating
+        `GenericAdapter.run()` as a required call-site (alongside the now-
+        wired `LiteLLMAdapter.chat()` + `MockProvider.chat()`).
+
         Phase-1 scope (Story 5.2 absorbed DF-4.1-S2 per Epic 4 retro Action #5):
         - `tools` is still a Phase-1 carve-out — the multi-turn tool-dispatch
           loop is Phase-2 (DF-5.2-S3); Story 5.2 lands the observer wiring +
@@ -184,6 +190,11 @@ class GenericAdapter(InProcessAdapter):
                 "Phase-1 (DF-5.2-S3); the multi-turn tool-dispatch loop is Phase-2 "
                 "scope. Use `tools=None` for Phase-1 single-shot prompts."
             )
+
+        # Story 6.3 AC-6.3.5: Tier-1 LLM-invocation ban per PRD FR30b.
+        from AgentEval._kernel.tier_acl import enforce_tier1_no_llm
+
+        enforce_tier1_no_llm()
 
         # Story 5.2 DF-4.1-S2 absorption: wire mcp_servers through the
         # HostedMcpObserver instead of raising NotImplementedError.

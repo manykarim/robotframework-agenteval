@@ -837,13 +837,13 @@ The CI enforcement conformance test `test_ac_simplicity_02_keyword_idiom.py` is 
 
 Carve-out registry (extend per story):
 - `Skill.Should Be Valid Frontmatter` (Story 2.1; Phase-2 conversion target: Epic 6 Story 6.x AssertionEngine adoption, OR retire if PRD FR2 is amended).
-- `AssertionsLibrary.Trajectory Should Match` (Story 6.2; Phase-2 conversion target: Story 6.3 AssertionEngine wrap once `robotframework-assertion-engine` dep is pinned + `_assertions/adapter.py` ships).
-- `AssertionsLibrary.Tool Call Should Have Occurred` (Story 6.2; same Phase-2 target).
-- `AssertionsLibrary.Agent Response Should Contain` (Story 6.2; same Phase-2 target).
-- `AssertionsLibrary.Agent Response Should Match Regex` (Story 6.2; same Phase-2 target).
-- `AssertionsLibrary.Agent Response Should Match Schema` (Story 6.2; same Phase-2 target).
+- `AssertionsLibrary.Trajectory Should Match` (Story 6.2; **Phase-1.5 conversion target: DF-6.3-S2 AssertionEngine wrap** — the gating engine `_assertions/adapter.py` + `robotframework-assertion-engine>=4.0,<5.0` dep ship Story 6.3 per AC-6.3.5; the actual 5-keyword + Skill wrapping was deferred per Story 6.3 in-flight amendment 2026-05-20 because all 5 are `@tier(1)` and the polling-ban + validate-gates are no-ops at that tier — wrapping adds new kwargs for no behavior change).
+- `AssertionsLibrary.Tool Call Should Have Occurred` (Story 6.2; same Phase-1.5 target).
+- `AssertionsLibrary.Agent Response Should Contain` (Story 6.2; same Phase-1.5 target).
+- `AssertionsLibrary.Agent Response Should Match Regex` (Story 6.2; same Phase-1.5 target).
+- `AssertionsLibrary.Agent Response Should Match Schema` (Story 6.2; same Phase-1.5 target).
 
-**Story 6.2 code-review HIGH-θ Auditor 1-way amendment 2026-05-20:** the 5 `AssertionsLibrary` entries were added to the test-side `_PHASE_1_SHOULD_CARVE_OUTS` allowlist in Story 6.2's commit but the architecture-side registry above was missed (parallel doc-doc drift). This block ratifies the architecture-side carve-out registry to match the test allowlist. Phase-2 AssertionEngine adoption (ADR-022 / Story 6.3) retires all 5 + `Skill.Should Be Valid Frontmatter` in one wave by wrapping the keywords through the `_assertions/adapter.py` AssertionEngine surface.
+**Story 6.2 code-review HIGH-θ Auditor 1-way amendment 2026-05-20:** the 5 `AssertionsLibrary` entries were added to the test-side `_PHASE_1_SHOULD_CARVE_OUTS` allowlist in Story 6.2's commit but the architecture-side registry above was missed (parallel doc-doc drift). This block ratifies the architecture-side carve-out registry to match the test allowlist. **Story 6.3 in-flight amendment 2026-05-20:** Phase-1.5 wave DF-6.3-S2 (NOT Story 6.3 directly) wires the 5 `AssertionsLibrary` keywords + 1 `Skill.Should Be Valid Frontmatter` through `_assertions/adapter.py.assert_value()` for the polling-ban + validate-gate. Story 6.3 ships the gating engine + ADR-019 + `Stat.*` sub-library; the 5+1 keyword wrap is bundled with the matching-backend swap (existing DF-6.3-S1) into a single Phase-1.5 wave.
 
 ### Module Organization Within Sub-libraries
 

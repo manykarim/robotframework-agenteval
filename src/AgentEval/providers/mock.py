@@ -93,7 +93,13 @@ class MockProvider:
         Raises:
             NotImplementedError: when `stream=True` (DF-4.1-S3 Phase-1 stub).
             IndexError: scripted mode exhausted.
+            TierViolationError: per PRD FR30b when called from a Tier-1
+                `@keyword`-decorated frame (Story 6.3 AC-6.3.5).
         """
+        # Story 6.3 AC-6.3.5: Tier-1 LLM-invocation ban per PRD FR30b.
+        from AgentEval._kernel.tier_acl import enforce_tier1_no_llm
+
+        enforce_tier1_no_llm()
         if stream:
             raise NotImplementedError(
                 "MockProvider does not support streaming in Phase-1 (DF-4.1-S3); "

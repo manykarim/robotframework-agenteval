@@ -1841,6 +1841,7 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "pyyaml" },
     { name = "robotframework" },
+    { name = "robotframework-assertion-engine" },
     { name = "robotframework-pythonlibcore" },
 ]
 
@@ -1868,11 +1869,25 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0,<7.0" },
     { name = "pyyaml", specifier = ">=6.0,<7.0" },
     { name = "robotframework", specifier = "==7.4.2" },
+    { name = "robotframework-assertion-engine", specifier = ">=4.0,<5.0" },
     { name = "robotframework-pabot", marker = "extra == 'dev'", specifier = "==5.2.2" },
     { name = "robotframework-pythonlibcore", specifier = ">=4.5" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6,<1.0" },
 ]
 provides-extras = ["dev", "claude-code"]
+
+[[package]]
+name = "robotframework-assertion-engine"
+version = "4.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "robotframework" },
+    { name = "robotframework-pythonlibcore" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/17/60/95f147d398d64df296893ccfac4d063c89c0163981cad84743eb3b288885/robotframework_assertion_engine-4.0.0.tar.gz", hash = "sha256:44c0299faa1e0fe2b4731707bf57a6d317353a4e13a17893c725fb6d215a0c7d", size = 12287, upload-time = "2026-02-11T13:50:47.027Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b5/50/b2855aec50e426f253912263f45f4d76b92e2fa02d6ecd8d2eea34d00d52/robotframework_assertion_engine-4.0.0-py3-none-any.whl", hash = "sha256:f2ad3805ba4fc427e9880bd27ff43ce5806d765938a6d879ff2806a09e28ada4", size = 13078, upload-time = "2026-02-11T13:50:45.274Z" },
+]
 
 [[package]]
 name = "robotframework-pabot"

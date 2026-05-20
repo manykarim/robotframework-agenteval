@@ -1640,15 +1640,15 @@ So that non-deterministic agent flows are characterized statistically + the tier
 
 **Given** any agent keyword (Send Prompt, Run Scenario, Discoverability),
 **When** I call `${results}=    Stat.Run N Times    n=10    keyword=Send Prompt    keyword_args=[adapter=generic, prompt=Hello]` in a `.robot` test,
-**Then** the wrapper runs the keyword 10 independent times with proper test-id sub-scoping (each trial gets its own trace scope), accumulates results, returns a list of 10 `AgentRunResult` instances.
+**Then** the wrapper runs the keyword 10 independent times with proper test-id sub-scoping (each trial gets its own trace scope), accumulates results, returns a `list[KeywordRun]` of 10 instances (per FR26 verbatim return type + `docs/contracts/determinism-contract.md` L55 ratified by Story 1b.6 Codex STAR catch; pre-edit "10 `AgentRunResult` instances" was a doc-doc drift — `KeywordRun` is the FR26 type, NOT `AgentRunResult` — amended Story 6.3 pre-create-story drift check 2026-05-20 / 29th use of `feedback_spec_vs_ratified_doc_precheck`).
 
 **And Given** the 10 results + a success predicate,
 **When** I call `${pass_at_3}=    Stat.Get Pass At K    ${results}    k=3    predicate=lambda r: r.completeness == "full"`,
 **Then** the variable receives the unbiased Pass@k estimate per HumanEval methodology (FR27), with confidence interval per Wilson CI.
 
-**And Given** the kernel `tier.py` from Story 1b.1 + `_assertions/adapter.py` from Epic 1b scaffolding,
-**When** a `.robot` test uses the `validate` AssertionEngine operator on a Tier-2/3 keyword without `allow_validate_operator=True`,
-**Then** `PollingDisallowedError` is raised per FR28 with the FR56 actionable message ("polling not allowed on non-deterministic keywords; use Stat.Run N Times instead, or set allow_validate_operator=True if you know what you're doing").
+**And Given** the kernel `tier.py` from Story 1b.1 + `_assertions/adapter.py` newly minted by Story 6.3 per architecture L647 (agentguard `_assertions/adapter.py:101-105` pattern),
+**When** a `.robot` test calls a Tier-2 or Tier-3 keyword passing a `polling=` argument,
+**Then** `PollingDisallowedError` is raised per FR28 with the FR56 actionable message format (keyword name + RF test file path + line number from call stack + verbatim `${runs}=  Stat.Run N Times ...` remediation snippet + ADR link). NOTE: pre-edit Story 6.3 AC-3 conflated polling-ban with validate-disabled gate — the `validate` operator + `allow_validate_operator=False` raise is `ValidateOperatorDisallowed` (AC-7), NOT `PollingDisallowedError`. Two distinct gates per FR28 (polling kwarg trigger) vs FR43 (validate operator trigger). Amended Story 6.3 pre-create-story drift check 2026-05-20 / 29th use of `feedback_spec_vs_ratified_doc_precheck` — architecture L647 + L922-931 + agentguard adapter all use `polling=` kwarg as the FR28 trigger.
 
 **And Given** a Tier-1 keyword (e.g., `Skill.Get Frontmatter`) somehow registered to invoke an LLM (e.g., test mistake),
 **When** the LLM invocation attempts during the keyword execution,
@@ -1656,7 +1656,7 @@ So that non-deterministic agent flows are characterized statistically + the tier
 
 **And Given** `${tier}=    Get Keyword Tier    keyword=Skill.Get Frontmatter`,
 **When** the keyword runs,
-**Then** the result is `1` (the keyword's tier annotation); calling on `Stat.Run N Times` returns `1` (the runner itself is Tier-1; only the wrapped keyword may be Tier-2/3).
+**Then** the result is `1` (the keyword's tier annotation); calling on `Stat.Run N Times` returns `3` (per architecture L380 + L1056 — `Stat.Run N Times` is a Tier-3 fan-out keyword carrying `@guarded_fanout` cost-guardrail enforcement per ADR-015; the wrapped keyword's tier governs the actual fan-out independently). NOTE: pre-edit epic AC-5 said "the runner itself is Tier-1; only the wrapped keyword may be Tier-2/3" — that wording confuses the tier classification (Tier-1/2/3 = LLM-call structure) with the fan-out enforcement model (`@guarded_fanout` only applies to Tier-3 keywords). Per Story 6.3 pre-create-story drift check 2026-05-20 / 29th use of `feedback_spec_vs_ratified_doc_precheck`: amended to architecture-aligned Tier-3 classification.
 
 **And Given** Story 1b.6's determinism contract document,
 **When** I run a Tier-1 keyword twice with identical inputs in a single test,

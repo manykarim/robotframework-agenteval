@@ -58,6 +58,7 @@ from AgentEval._kernel.context import (
     resolve_config,
     resolve_config_with_provenance,
 )
+from AgentEval._kernel.tier import tier
 
 __version__ = "0.0.1"
 __all__: list[str] = ["AgentEval"]
@@ -109,6 +110,7 @@ _SUB_LIBRARIES: tuple[tuple[str, str], ...] = (
     ("AgentEval.telemetry.library", "TelemetryLibrary"),
     ("AgentEval.metrics.library", "MetricsLibrary"),
     ("AgentEval._assertions.library", "AssertionsLibrary"),
+    ("AgentEval.stats.library", "StatsLibrary"),  # NEW per Story 6.3 (PRD FR26-31a)
 )
 
 
@@ -327,6 +329,15 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
                 # MetricsLibrary — FR37 default-deny gate on tool-call-
                 # bearing assertions (Trajectory + Tool Call).
                 components.append(cls(allow_external_mcp_blind=self._allow_external_mcp_blind))
+            elif cls_name == "StatsLibrary":
+                # Story 6.3 AC-6.3.8: forward `max_cost_usd` + `max_runtime_seconds`
+                # for `Stat.Run N Times` Tier-3 `@guarded_fanout` enforcement (ADR-015).
+                components.append(
+                    cls(
+                        max_cost_usd=self._max_cost_usd,
+                        max_runtime_seconds=self._max_runtime_seconds,
+                    )
+                )
             else:
                 components.append(cls())
 
@@ -357,6 +368,7 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
         return components
 
     @keyword(name="Get Effective Config")
+    @tier(1)
     def get_effective_config(self, setting: str | None = None) -> Any:
         """Return the resolved config as a dict OR a single ConfigValue.
 
@@ -405,7 +417,68 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
             "max_runtime_seconds": self._max_runtime_seconds,
         }
 
+    @keyword(name="Get Keyword Tier")
+    @tier(1)
+    def get_keyword_tier(self, keyword: str) -> int:
+        """[Tier 1 — Deterministic] Return the tier annotation for an RF keyword (PRD FR30a).
+
+        Story 6.3 AC-6.3.7: walks the composed DynamicCore keyword registry +
+        top-level methods to resolve `keyword` (verbatim RF name) to its
+        `_agenteval_tier` integer.
+
+        Per epic AC-5 (epics.md:1659 verbatim ratified Story 6.3 D-14
+        amendment 2026-05-20): calling on `Stat.Run N Times` returns `3` (the
+        runner is a Tier-3 fan-out keyword per architecture L380 + L1056;
+        `@guarded_fanout` cost-guardrail enforcement requires Tier-3
+        classification). Note: this is an amendment of the pre-edit "returns
+        1" claim — the runner's tier governs the fan-out enforcement model,
+        independent of the wrapped keyword's own tier.
+
+        Args:
+            keyword: Verbatim RF keyword name (e.g., `"Send Prompt"`,
+                `"Stat.Run N Times"`, `"Get Effective Config"`).
+
+        Returns:
+            `int ∈ {1, 2, 3}` — the keyword's tier.
+
+        Raises:
+            ValueError: if `keyword` is not found in the composed library
+                (with a sorted-list-of-known-keywords hint), OR if the keyword
+                exists but has no `@tier(N)` annotation, OR if the annotated
+                tier is outside `{1, 2, 3}` (defensive range check per Story
+                6.3 code-review HIGH-π fix).
+        """
+        from AgentEval._kernel.tier import find_tier_through_wrappers
+
+        # DynamicCore exposes `self.keywords` as a {name: bound_method} dict —
+        # canonical registry walked by libdoc + the RF runner.
+        kw_map: dict[str, Any] = self.keywords
+        if keyword not in kw_map:
+            raise ValueError(
+                f"keyword {keyword!r} not found in AgentEval library; known keywords: {sorted(kw_map.keys())!r}"
+            )
+        bound = kw_map[keyword]
+        # Story 6.3 code-review HIGH-δ fix (Codex + Blind + Auditor 3-way):
+        # `find_tier_through_wrappers` walks the `__wrapped__` chain so
+        # `@tier`-annotated methods are detected regardless of decorator
+        # ordering (`@tier(3)` may sit on the outer wrapper after
+        # `@guarded_fanout()` wraps the inner function).
+        target = getattr(bound, "__func__", bound)
+        tier_value = find_tier_through_wrappers(target)
+        if tier_value is None:
+            raise ValueError(f"keyword {keyword!r} found but has no @tier(N) annotation (internal contract violation)")
+        # Story 6.3 code-review HIGH-π fix (Blind 1-way): defensive range
+        # check — a `@tier(4)` typo would otherwise propagate to operator-
+        # facing surfaces as an invalid tier value.
+        if tier_value not in (1, 2, 3):
+            raise ValueError(
+                f"keyword {keyword!r} has invalid tier annotation @tier({tier_value!r}); "
+                f"valid tiers are 1, 2, 3 per PRD FR30a."
+            )
+        return tier_value
+
     @keyword(name="Get Effective Config With Provenance")
+    @tier(1)
     def get_effective_config_with_provenance(self) -> dict[str, ConfigValue]:
         """Story 4.3 / PRD FR41: return `dict[str, ConfigValue]` for the full settings map.
 

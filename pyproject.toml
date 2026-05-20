@@ -42,6 +42,12 @@ dependencies = [
   "opentelemetry-sdk>=1.27,<2.0",
   "pyyaml>=6.0,<7.0",
   "jsonschema>=4.0,<5.0",
+  # Story 6.3 (2026-05-20) — AssertionEngine adoption per ADR-019 + architecture L138/L1646.
+  # Wraps Story 6.2 `Should *` keywords + `Skill.Should Be Valid Frontmatter` through
+  # `_assertions/adapter.py` for polling-ban (FR28) + validate-gate (FR43) dispatch.
+  # Pre-approved via Story 6.2 epic L1629 amendment ("Story 6.3 will add the
+  # robotframework-assertion-engine>=4.0,<5.0 dep").
+  "robotframework-assertion-engine>=4.0,<5.0",
 ]
 
 [project.optional-dependencies]

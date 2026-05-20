@@ -98,8 +98,8 @@ This contract evolves per [`stability-surface.md`](stability-surface.md) labels.
 
 ## Phase-1 limitations
 
-- `Assert Run Determinism <keyword> <args> expect=byte_identical` conformance keyword: **deferred to Epic 6 Story 6.x** (Tier-3 cost-guardrail family ships the determinism asserter alongside `Stat.Run N Times`).
-- `Stat.Run N Times` + `Stat.Get Pass At K` statistical primitives: **deferred to Epic 6 Story 6.x**.
+- ~~`Assert Run Determinism <keyword> <args> expect=byte_identical` conformance keyword: deferred to Epic 6 Story 6.x~~ → **shipped Story 6.3 (2026-05-20)** as `Stat.Assert Run Determinism` on `StatsLibrary` per PRD FR31a; conformance fixture at `tests/conformance/test_tier1_byte_identical_run.py` enumerates all Tier-1 keywords + invokes the asserter on each.
+- ~~`Stat.Run N Times` + `Stat.Get Pass At K` statistical primitives: deferred to Epic 6 Story 6.x~~ → **shipped Story 6.3 (2026-05-20)** on `StatsLibrary` per PRD FR26-FR27; Wilson CI paired getter `Stat.Get Pass At K Confidence Interval` ships alongside per Story 6.3 D-1 resolution.
 - Per-AC conformance test for `Assert Run Determinism`: skeleton at `tests/conformance/test_ac_dogfood_01_replacement.py` (Story 1b.5 baseline) SKIPs until owning epic ships.
 - Doc-build CI step that asserts this file's required sections exist + the single-paragraph summary is byte-identical to the PRD source per FR63 final clause: **deferred to Phase-1.5 hygiene story** (no `mkdocs-build` workflow exists yet at Phase-1 close).
 

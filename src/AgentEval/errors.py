@@ -102,14 +102,16 @@ from typing import ClassVar
 __all__ = [
     # Base (1):
     "AgentEvalError",
-    # Sub-bases (3 of 4 ratified — Safety still pending):
+    # Sub-bases (4 of 4 ratified — Safety added Story 6.3):
     "AgentEvalIntegrityError",
+    "AgentEvalSafetyError",
     "AgentEvalBudgetError",
     "AgentEvalCompatError",
-    # Leaves (18 implemented; 2 future per module docstring):
+    # Leaves (19 implemented + ValidateOperatorDisallowed; 1 future per docstring):
     "IncompleteTraceError",
     "PollingDisallowedError",
     "TierViolationError",
+    "ValidateOperatorDisallowed",
     "InvalidSkillFrontmatterError",
     "InvalidSubagentDefinitionError",
     "InvalidHookConfigError",
@@ -223,13 +225,47 @@ class TierViolationError(AgentEvalIntegrityError):
     `determinism-contract.md` Tier Model ACL gates: Tier-1 keywords may
     NOT call Tier-2/3 keywords internally; Tier-2 keywords may NOT embed
     Tier-3 fan-outs. Phase-1 (Story 1b.6): class declaration ships in
-    `errors.py`. The raise site lands when convention enforcement reaches
-    runtime in Epic 6 (alongside `PollingDisallowedError`).
+    `errors.py`. Raise sites land Story 6.3 (`_kernel/tier_acl.enforce_tier1_no_llm`
+    + `Stat.Assert Run Determinism` per AC-6.3.4 / AC-6.3.5).
 
     `error_code = "TIER_VIOLATION"`; exit code 70 (EX_SOFTWARE).
     """
 
     error_code: ClassVar[str] = "TIER_VIOLATION"
+
+
+class AgentEvalSafetyError(AgentEvalError):
+    """Sub-base for safety/security gates (Story 6.3 mint per ADR-014 sub-base #4).
+
+    Per `docs/contracts/error-class-hierarchy.md` L51 + L62: the 4th sub-base
+    in the ADR-014 scheme. Phase-1 leaves under this sub-base:
+
+    - `ValidateOperatorDisallowed` — `validate` AssertionEngine operator used
+      without `allow_validate_operator=True` opt-in (FR43); Story 6.3 enforces.
+    - `SandboxRequiredError` — currently lives at `src/AgentEval/security/policy.py`
+      per Story 1a.1 baseline; Phase-1.5 hygiene carry-over to re-home here.
+    """
+
+
+class ValidateOperatorDisallowed(AgentEvalSafetyError):  # noqa: N818 — ratified name per ADR-014 (Story 1a.4 code-review HIGH-4 2026-05-18: NO `Error` suffix, matches agentguard's AssertionEngine adapter naming convention)
+    """Raised when the AssertionEngine `validate` operator is used without opt-in.
+
+    Per PRD FR43 (prd.md:1565) + ADR-014 ratification (Story 1a.4 2026-05-18 —
+    class name verbatim WITHOUT `Error` suffix, contrasting the rest of the
+    hierarchy; this matches agentguard's AssertionEngine adapter naming).
+
+    The `validate` operator uses `eval()` which executes arbitrary expressions
+    against `actual` / `expected` — explicitly opt-in via
+    `Library    AgentEval    allow_validate_operator=True` (default `False`
+    per FR42). Story 6.3 ships the raise site in
+    `_kernel/tier_acl.enforce_validate_operator_disallowed` + the
+    `_assertions/adapter.py` dispatch gate.
+
+    `error_code = "VALIDATE_OPERATOR_DISALLOWED"`; exit code 77 (EX_NOPERM)
+    per `docs/contracts/error-class-hierarchy.md:67`.
+    """
+
+    error_code: ClassVar[str] = "VALIDATE_OPERATOR_DISALLOWED"
 
 
 class _FR59Tier1SetupFailureError(AgentEvalIntegrityError):

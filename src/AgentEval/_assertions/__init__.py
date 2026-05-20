@@ -14,7 +14,19 @@
 
 """AgentEval._assertions sub-package.
 
-agenteval's assertion adapter with tier+polling+validate gates.
+agenteval's assertion library + AssertionEngine adapter:
 
-Module lands in Epic 1b Story 1b.4.
+- `library.py` (Story 6.2) — `AssertionsLibrary` with 5 `Should *` keywords
+  (Trajectory / ToolCall / AgentResponse evidence-layer assertions per PRD
+  FR23a/FR23b/FR24/FR25).
+- `_internal.py` (Story 6.2) — 7 pure matching helpers consumed by
+  `library.py`.
+- `adapter.py` (Story 6.3) — `assert_value()` free function with three
+  fail-fast gates (FR28 polling-ban + FR43 validate-gate + AssertionEngine
+  dispatch per ADR-019).
+
+Per Story 2.1 sub-library discipline: NO re-exports here; the
+`AssertionsLibrary` class is loaded by `AgentEval/__init__.py:_SUB_LIBRARIES`
+through `importlib.import_module("AgentEval._assertions.library")`. The
+`adapter.assert_value()` function is imported directly by consumers.
 """

@@ -34,11 +34,39 @@ at library import.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Literal, TypeVar
+from typing import Any, Literal, TypeVar
 
 F = TypeVar("F", bound=Callable[..., object])
 
-__all__ = ["tier", "get_keyword_tier", "tier_badge"]
+__all__ = ["tier", "get_keyword_tier", "tier_badge", "find_tier_through_wrappers"]
+
+
+def find_tier_through_wrappers(func: Any) -> int | None:
+    """Walk `__wrapped__` chain (functools.wraps) checking for `_agenteval_tier`.
+
+    Story 6.3 code-review HIGH-δ fix (Codex + Blind + Auditor 3-way): when a
+    `@tier(N)` decorator is composed with another decorator that uses
+    `functools.wraps` (e.g., `@guarded_fanout`), the tier attribute can land
+    on EITHER the outer wrapper OR the inner function depending on decorator
+    application order. This helper checks every level of the chain (outer →
+    inner) and returns the first integer `_agenteval_tier` found, or `None`.
+
+    Returns `None` for unannotated functions.
+    """
+    seen: set[int] = set()
+    current = func
+    for _ in range(20):  # bounded loop to avoid pathological cycles
+        if id(current) in seen:
+            return None
+        seen.add(id(current))
+        value = getattr(current, "_agenteval_tier", None)
+        if isinstance(value, int):
+            return value
+        wrapped = getattr(current, "__wrapped__", None)
+        if wrapped is None or wrapped is current:
+            return None
+        current = wrapped
+    return None
 
 
 _TIER_BADGES: dict[int, str] = {
