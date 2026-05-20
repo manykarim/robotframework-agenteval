@@ -108,6 +108,7 @@ _SUB_LIBRARIES: tuple[tuple[str, str], ...] = (
     ("AgentEval.orchestration.library", "OrchestrationLibrary"),
     ("AgentEval.telemetry.library", "TelemetryLibrary"),
     ("AgentEval.metrics.library", "MetricsLibrary"),
+    ("AgentEval._assertions.library", "AssertionsLibrary"),
 )
 
 
@@ -320,6 +321,11 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
                 # Story 6.1 AC-6.1.2: propagate library-level
                 # `allow_external_mcp_blind` to MetricsLibrary so the
                 # FR37 default-deny gate respects PRD FR42 precedence.
+                components.append(cls(allow_external_mcp_blind=self._allow_external_mcp_blind))
+            elif cls_name == "AssertionsLibrary":
+                # Story 6.2 AC-6.2.7: same propagation pattern as
+                # MetricsLibrary — FR37 default-deny gate on tool-call-
+                # bearing assertions (Trajectory + Tool Call).
                 components.append(cls(allow_external_mcp_blind=self._allow_external_mcp_blind))
             else:
                 components.append(cls())

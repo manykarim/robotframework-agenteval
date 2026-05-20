@@ -82,11 +82,17 @@ def test_keyword_name_idiom_regex_rejects_pascal_case() -> None:
 
 
 def test_keyword_name_idiom_allowlist_rejects_non_verb() -> None:
-    """The verb allowlist rejects names whose first underscore-token isn't a verb."""
+    """The verb allowlist rejects names whose first underscore-token isn't a verb.
+
+    Story 6.2 (2026-05-20) added `tool` (and `trajectory` + `agent`) to the
+    allowlist as PRD-mandated noun-verbs (per FR23-25 BFCL evidence-layer
+    keyword names). Sentinel updated to `dance` — a verb absent from the
+    allowlist by design.
+    """
     from .test_keyword_name_idiom import _VERB_ALLOWLIST
 
     assert "get" in _VERB_ALLOWLIST
-    assert "tool" not in _VERB_ALLOWLIST  # noun, not verb
+    assert "dance" not in _VERB_ALLOWLIST  # action absent from allowlist
 
 
 def test_docstring_badge_alignment_detects_missing_badge() -> None:

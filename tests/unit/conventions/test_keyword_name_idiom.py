@@ -28,6 +28,12 @@ _SNAKE_CASE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 #   Story 2.1 (2026-05-19): added "should" for `Should Be Valid Frontmatter`
 #       (Phase-1 plain @keyword pending Phase-2 ADR-022 AssertionEngine adoption).
 #   Story 3.2 (2026-05-19): added "call" for `MCP.Call Tool` per PRD FR9b.
+#   Story 6.2 (2026-05-20): added "trajectory" + "tool" + "agent" for the
+#       PRD FR23-25-mandated assertion keyword surface (`Trajectory Should Match`,
+#       `Tool Call Should Have Occurred`, `Agent Response Should Contain` +
+#       `Match Regex` + `Match Schema`). These verbs are domain nouns-as-actions
+#       per the BFCL trajectory/tool-call/response evidence-layer framing —
+#       the PRD names are load-bearing and can't be coerced into a generic verb.
 _VERB_ALLOWLIST: frozenset[str] = frozenset(
     {
         "get",
@@ -52,6 +58,10 @@ _VERB_ALLOWLIST: frozenset[str] = frozenset(
         "wait",
         "should",
         "call",
+        # Story 6.2 — PRD FR23-25 assertion library:
+        "trajectory",
+        "tool",
+        "agent",
     }
 )
 

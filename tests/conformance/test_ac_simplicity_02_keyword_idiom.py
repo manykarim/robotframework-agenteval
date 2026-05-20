@@ -48,6 +48,16 @@ from AgentEval._kernel.tier import get_keyword_tier
 _PHASE_1_SHOULD_CARVE_OUTS: frozenset[tuple[str, str]] = frozenset(
     {
         ("SkillsLibrary", "Should Be Valid Frontmatter"),
+        # Story 6.2 (2026-05-20) — PRD FR23a/FR23b/FR24/FR25 assertion library:
+        # the BFCL three-layer evidence framing (trajectory / tool-call / response)
+        # uses `Should *` keyword names verbatim from the PRD. AssertionEngine
+        # adoption (ADR-022) is deferred to Story 6.3 per Story 6.2 D-1 drift
+        # fix; until then these are Phase-1 plain @keyword definitions.
+        ("AssertionsLibrary", "Trajectory Should Match"),
+        ("AssertionsLibrary", "Tool Call Should Have Occurred"),
+        ("AssertionsLibrary", "Agent Response Should Contain"),
+        ("AssertionsLibrary", "Agent Response Should Match Regex"),
+        ("AssertionsLibrary", "Agent Response Should Match Schema"),
     }
 )
 
@@ -153,6 +163,11 @@ def test_keyword_names_use_snake_case_method_names() -> None:
     import re
 
     snake = re.compile(r"^[a-z][a-z0-9_]*$")
+    # Verb allowlist — kept in sync with
+    # `tests/unit/conventions/test_keyword_name_idiom.py:_VERB_ALLOWLIST`.
+    # Story 6.2 (2026-05-20) added `trajectory` + `tool` + `agent` for the
+    # PRD FR23-25 assertion library (Trajectory/ToolCall/AgentResponse
+    # Should-* keywords). Names are load-bearing per PRD.
     verb_allowlist = {
         "get",
         "set",
@@ -176,6 +191,10 @@ def test_keyword_names_use_snake_case_method_names() -> None:
         "wait",
         "should",
         "call",
+        # Story 6.2 — PRD FR23-25 assertion library:
+        "trajectory",
+        "tool",
+        "agent",
     }
     violations: list[str] = []
     for cls in _all_library_classes():
