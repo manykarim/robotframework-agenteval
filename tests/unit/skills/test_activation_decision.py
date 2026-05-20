@@ -240,3 +240,45 @@ def test_invalid_skill_path_raises(lib: SkillsLibrary) -> None:
     """Providing a non-existent path raises InvalidSkillFrontmatterError."""
     with pytest.raises(InvalidSkillFrontmatterError):
         lib.get_activation_decision("/does/not/exist.md", "prompt")
+
+
+# --------------------------------------------------------------------------- #
+# AC-7.1.7 item 10: model kwarg forwarded to adapter ctor                     #
+# --------------------------------------------------------------------------- #
+
+
+def test_model_kwarg_forwarded_to_adapter_ctor(lib: SkillsLibrary) -> None:
+    """model= kwarg is added to ctor_kwargs and forwarded to the adapter constructor.
+
+    Verifies that `model=` is NOT silently dropped and does NOT appear in
+    the `run()` kwargs (it belongs to the constructor, not the run call).
+    """
+    ctor_kwargs_seen: dict[str, Any] = {}
+    run_kwargs_seen: dict[str, Any] = {}
+
+    class _KwargsCapture(InProcessAdapter):
+        def __init__(self, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
+            ctor_kwargs_seen.update(self._adapter_config)
+
+        def run(self, prompt: str, **kwargs: Any) -> AgentRunResult:
+            run_kwargs_seen.update(kwargs)
+            return AgentRunResult(
+                response_text="no-match",
+                tool_calls=[],
+                usage=Usage(input_tokens=1, output_tokens=1),
+                metadata=AgentRunMetadata(completeness="complete", mcp_coverage="hosted_in_process"),
+                cost_usd=0.001,
+                latency_seconds=0.001,
+                trace_id="c" * 32,
+            )
+
+    register_adapter("stub_act_model_forward", _KwargsCapture)
+    lib.get_activation_decision(
+        VALID_FIXTURE,
+        "prompt",
+        adapter="stub_act_model_forward",
+        model="anthropic/claude-sonnet-4-6",
+    )
+    assert ctor_kwargs_seen.get("model") == "anthropic/claude-sonnet-4-6"
+    assert "model" not in run_kwargs_seen
