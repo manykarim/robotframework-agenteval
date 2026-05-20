@@ -1,0 +1,34 @@
+# Story 4.4 bundled task fixture for Phase-1 unit tests + smoke usage.
+# Three representative natural-language tasks that should exercise the
+# bundled echo MCP server's `echo_back` tool (Story 3.1 + 3.2).
+#
+# Phase-1 carve-out (DF-4.1-S2 + DF-4.2-S1): the adapter-side
+# mcp_servers= integration is stubbed. Until those carry-overs land,
+# this fixture exercises the orchestration plumbing only.
+#
+# Schema (Story 4.4 PRD FR10a):
+#   tasks: list of task entries
+#   each task:
+#     id: unique string identifier
+#     prompt: natural-language prompt sent to the agent
+#     expected_tools: optional list[str]; successful trial = any of
+#                     these tool names appears in result.tool_calls
+#     required: optional bool (default True); flagged for the
+#               evidence-block summary
+
+tasks:
+  - id: echo_simple
+    prompt: "Please echo the text 'hello world' back to me using your available tools."
+    expected_tools:
+      - echo_back
+
+  - id: echo_with_context
+    prompt: "I need you to repeat back the phrase 'the quick brown fox' verbatim. Use the appropriate tool."
+    expected_tools:
+      - echo_back
+
+  - id: echo_indirect
+    prompt: "Could you reflect this string back to me unchanged: 'discoverability matters'?"
+    expected_tools:
+      - echo_back
+    required: false

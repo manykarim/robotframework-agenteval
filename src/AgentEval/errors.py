@@ -116,6 +116,7 @@ __all__ = [
     "InvalidMCPServerConfigError",
     "InvalidMCPToolSchemaError",
     "InvalidScenarioYAMLError",
+    "InvalidDiscoverabilityTasksError",
     "CostExceededError",
     "RuntimeBudgetExceededError",
     "AdapterDiscoveryError",
@@ -404,6 +405,29 @@ class InvalidScenarioYAMLError(_FR59Tier1SetupFailureError):
     """
 
     error_code: ClassVar[str] = "INVALID_SCENARIO_YAML"
+
+
+class InvalidDiscoverabilityTasksError(_FR59Tier1SetupFailureError):
+    """Raised when a discoverability tasks YAML file fails parse OR schema validation.
+
+    Per `docs/contracts/error-class-hierarchy.md` L? (19th leaf, ratified
+    2026-05-20 pre-Story-4.4 catalog amendment): Tier-1 setup-failure
+    semantics. Raised by `src/AgentEval/discoverability/loader.py` when:
+        - YAML file fails `yaml.safe_load()` (malformed YAML)
+        - Required top-level `tasks: list[Task]` missing OR empty
+        - Per-task `id` or `prompt` missing/wrong-type
+        - `expected_tools` not a list of strings when present
+        - File extension is not `.yaml` / `.yml` or file does not exist
+
+    `field_name` JSON Pointer convention (parallel to
+    `InvalidScenarioYAMLError`): RFC 6901 pointer into the offending
+    location, e.g., `/tasks/0/prompt`. Root errors use `""` per RFC 6901 §5.
+
+    `error_code = "INVALID_DISCOVERABILITY_TASKS"`; exit code 65 (EX_DATAERR;
+    same family as other Tier-1 setup-failure errors).
+    """
+
+    error_code: ClassVar[str] = "INVALID_DISCOVERABILITY_TASKS"
 
 
 class InvalidMCPToolSchemaError(_FR59Tier1SetupFailureError):

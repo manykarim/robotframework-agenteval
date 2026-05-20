@@ -49,13 +49,22 @@ Phase-1 limitations:
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from robot.api.deco import keyword
 
+from AgentEval._kernel.discovery import get_adapter
 from AgentEval._kernel.tier import tier
+from AgentEval.discoverability.loader import load_discoverability_tasks
+from AgentEval.discoverability.schema import (
+    DiscoverabilityResult,
+    DiscoverabilitySummary,
+    TaskResult,
+)
+from AgentEval.discoverability.wilson_ci import wilson_score_interval
 from AgentEval.mcp._parser import (
     get_tool_schema,
     parse_mcp_servers,
@@ -350,3 +359,205 @@ class MCPLibrary:
                 mid-call (subprocess crash, anyio stream closed, etc.).
         """
         return call_tool(handle, tool_name, arguments)
+
+    # --------------------------------------------------------------- #
+    # Story 4.4: MVP Tool Discoverability (PRD FR10a + AC-DISCOVER-01)
+    # --------------------------------------------------------------- #
+
+    @keyword(name="Get Tool Discoverability")
+    @tier(3)
+    def get_tool_discoverability(
+        self,
+        mcp_server: str = "",
+        adapter: str = "generic",
+        model: str | None = None,
+        tasks: str = "",
+        trials_per_task: int = 3,
+        max_cost_usd: float = 5.00,
+        max_runtime_seconds: float | None = None,
+        **kwargs: Any,
+    ) -> DiscoverabilityResult:
+        """Drive N-trial discoverability evaluation of an MCP server's tools (PRD FR10a).
+
+        [Tier 3 — Stochastic Fan-Out] — for each task in the YAML, dispatches
+        `trials_per_task` adapter.run() calls and inspects `tool_calls` to
+        compute Pass@k with Wilson CI bounds.
+
+        Phase-1 carve-out (DF-4.4-S1): `@guarded_fanout` enforcement of
+        `max_cost_usd` + `max_runtime_seconds` is DEFERRED — same architectural
+        gap as Story 4.3 DF-4.3-S6 (MCPLibrary is excluded from
+        `_SUB_LIBRARIES` per Story 2.2 norm; no clean path to inject
+        library-level budgets without architectural change). The kwargs are
+        accepted + tracked on the result but NOT enforced. Operators must
+        bound cost manually until Phase-1.5 plumbs the cross-library config.
+
+        Phase-1 carve-out (DF-4.1-S2 + DF-4.2-S1): `mcp_server=` is NOT
+        forwarded to `adapter.run(mcp_servers=...)` because both Phase-1
+        adapters (Generic + Claude Code CLI) raise `NotImplementedError`
+        on non-empty `mcp_servers`. The kwarg is accepted for forward-
+        compatibility + validated as non-empty; tool-call success is
+        gated on what the model returns from prompt alone (useful for
+        stub-adapter tests; meaningful for real LLMs only when
+        DF-4.1-S2 + DF-4.2-S1 land).
+
+        Empty-`expected_tools` semantics (Story 4.4 code-review 3-way
+        MED-A 2026-05-20): when a task's `expected_tools` is `[]`, the
+        keyword treats ANY tool call as success (wildcard mode — useful
+        for "did the agent invoke ANY tool?" probes). `competing_tools_picked`
+        in this case collects ALL called tool names (since there's no
+        expected set to subtract); operators get the same visibility
+        regardless of whether `expected_tools` is populated.
+
+        Args:
+            mcp_server: Name of the MCP server (per `MCP.Start Server`).
+                Must be a non-empty string. Phase-1: accepted but NOT
+                forwarded to `adapter.run()` (DF-4.1-S2 + DF-4.2-S1).
+            adapter: Adapter name (default `"generic"`).
+            model: Model identifier (e.g., `"anthropic/claude-sonnet-4-6"`).
+            tasks: Path to the discoverability tasks YAML.
+            trials_per_task: Number of trials per task (Pass@k semantics).
+            max_cost_usd: Budget cap (Phase-1: tracked, NOT enforced —
+                DF-4.4-S1 carry-over).
+            max_runtime_seconds: Runtime cap (Phase-1: tracked, NOT enforced).
+            **kwargs: Provider/adapter forward-compat kwargs.
+
+        Returns:
+            `DiscoverabilityResult` with `per_task_results` + `summary`
+            (aggregate pass rate + cost + runtime) + `mcp_coverage`,
+            per PRD FR10a L1499 ratified shape.
+
+        Raises:
+            InvalidDiscoverabilityTasksError: on tasks YAML parse/schema failure.
+            AdapterDiscoveryError: on unknown adapter name.
+            ValueError: when required kwargs are missing/empty.
+        """
+        # Story 4.4 code-review MED-B fix 2026-05-20 (Codex empirical probe):
+        # `total_runtime_seconds` must capture the full end-to-end wall time
+        # operators care about for AC-DISCOVER-02 budget audit — including
+        # tasks YAML load + adapter resolution + adapter construction, NOT
+        # just the trial dispatch loop. Pre-edit `t_start` fired after ctor
+        # and underreported by the ctor cost (probe: 0.0202 vs 0.3712 actual).
+        t_start = time.monotonic()
+
+        # Story 4.4 code-review MED-E fix 2026-05-20 (Edge-cases M2): pre-edit
+        # accepted `mcp_server=""` silently — Phase-1 the field is unused
+        # (DF-4.1-S2) but future-proofing means rejecting the empty-string
+        # input now so existing callers don't lock in a no-op default.
+        if not mcp_server:
+            raise ValueError(
+                "Get Tool Discoverability requires `mcp_server=<name>` kwarg "
+                "(name of an MCP server started via `MCP.Start Server`); empty "
+                "string is rejected even in Phase-1 where DF-4.1-S2 stubs the "
+                "adapter-side integration."
+            )
+        if not tasks:
+            raise ValueError("Get Tool Discoverability requires `tasks=<yaml-path>` kwarg")
+        if trials_per_task < 1:
+            raise ValueError(f"trials_per_task must be >= 1; got {trials_per_task}")
+
+        # Load + validate the tasks YAML.
+        task_list = load_discoverability_tasks(tasks)
+
+        # Resolve the adapter (Phase-1 simplified: route ALL kwargs to ctor
+        # like Story 4.3 pre-split-introspection — orchestration's split
+        # logic lives on OrchestrationLibrary, not MCPLibrary; MCPLibrary
+        # is a Phase-1 sub-library that doesn't yet inherit the split.
+        # DF-4.4-S2 carry-over for ctor/run split parity.).
+        adapter_cls = get_adapter(adapter)
+        adapter_ctor_kwargs: dict[str, Any] = dict(kwargs)
+        if model is not None:
+            adapter_ctor_kwargs["model"] = model
+        try:
+            adapter_instance = adapter_cls(**adapter_ctor_kwargs)
+        except TypeError as exc:
+            # Story 4.4 code-review MED-D fix 2026-05-20 (Blind): pre-edit
+            # comment claimed "fall back to no-kwarg construction + log the
+            # dropped kwargs" but the handler actually re-raises with no
+            # fallback. Fixed the comment-vs-code drift — re-raise is
+            # intentional + DF-4.4-S2 carry-over plumbs the real split.
+            raise TypeError(
+                f"Adapter {adapter!r} doesn't accept kwargs {sorted(adapter_ctor_kwargs)}; "
+                "DF-4.4-S2 carry-over (ctor/run split parity for MCPLibrary "
+                "lands in Phase-1.5 — mirroring Story 4.3's "
+                "`_split_adapter_kwargs` introspection on OrchestrationLibrary). "
+                "For now, pass kwargs the adapter accepts."
+            ) from exc
+
+        # Per-call mcp_servers integration is DF-4.1-S2 / DF-4.2-S1; for now
+        # we DON'T forward the mcp_server name since the adapter would just
+        # raise NotImplementedError. Phase-1 dispatches WITHOUT MCP context;
+        # tool-call success is gated on what the model returns from prompt
+        # alone.
+        _ = mcp_server
+
+        per_task: list[TaskResult] = []
+        total_cost = 0.0
+        for task in task_list:
+            tool_calls_per_trial: list[list[Any]] = []
+            cost_per_trial: list[float] = []
+            success_count = 0
+            competing_set: set[str] = set()
+            for _ in range(trials_per_task):
+                run_result = adapter_instance.run(task.prompt)
+                tool_calls_per_trial.append(list(run_result.tool_calls))
+                cost_per_trial.append(run_result.cost_usd)
+                total_cost += run_result.cost_usd
+                called_names = {tc.name for tc in run_result.tool_calls}
+                # Story 4.4 code-review 3-way MED-A fix 2026-05-20 (Edge-cases
+                # M1 + Codex MED + Blind LOW-1): when expected_tools is empty,
+                # wildcard-success mode is active — ANY tool call counts AND
+                # ALL called names go into competing_tools_picked so the
+                # verdict matrix retains visibility into what the model
+                # picked. Pre-edit the `competing_set.update(...)` line was
+                # only reachable in the `if task.expected_tools` branch,
+                # leaving wildcard-mode tasks with permanently-empty
+                # competing_tools_picked.
+                if task.expected_tools:
+                    expected_set = set(task.expected_tools)
+                    if called_names & expected_set:
+                        success_count += 1
+                    competing_set.update(called_names - expected_set)
+                else:
+                    if called_names:
+                        success_count += 1
+                    competing_set.update(called_names)
+            lower, upper = wilson_score_interval(success_count, trials_per_task)
+            per_task.append(
+                TaskResult(
+                    task_id=task.id,
+                    task_prompt=task.prompt,
+                    trials_run=trials_per_task,
+                    success_count=success_count,
+                    tool_calls_per_trial=tool_calls_per_trial,
+                    competing_tools_picked=sorted(competing_set),
+                    cost_per_trial_usd=cost_per_trial,
+                    wilson_ci_lower=lower,
+                    wilson_ci_upper=upper,
+                )
+            )
+        total_runtime = time.monotonic() - t_start
+
+        # Overall pass rate: weighted by trials.
+        total_trials = sum(t.trials_run for t in per_task)
+        total_successes = sum(t.success_count for t in per_task)
+        overall_pass_rate = (total_successes / total_trials) if total_trials else 0.0
+
+        # Phase-1: mcp_coverage hardcoded to "hosted_in_process" since
+        # Phase-1 doesn't yet attach real MCP via the adapter (DF-4.4-S3
+        # carry-over: Epic 5 hosted-MCP observer wires real coverage detection).
+        _ = max_cost_usd
+        _ = max_runtime_seconds
+        # Story 4.4 code-review HIGH-B fix 2026-05-20 (Auditor citation-drift
+        # catch): PRD FR10a L1499 ratifies `summary` nesting for the aggregate
+        # roll-up; pre-edit shape flattened the 3 summary fields into
+        # top-level result attributes. "Fix-the-losing-source-NOW" pattern
+        # per feedback_citation_drift_first_class — implementation realigned.
+        return DiscoverabilityResult(
+            per_task_results=per_task,
+            summary=DiscoverabilitySummary(
+                overall_pass_rate=overall_pass_rate,
+                total_cost_usd=total_cost,
+                total_runtime_seconds=total_runtime,
+            ),
+            mcp_coverage="hosted_in_process",
+        )
