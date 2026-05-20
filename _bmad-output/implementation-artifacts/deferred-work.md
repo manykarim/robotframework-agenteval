@@ -242,6 +242,22 @@ Added by Story 4.3 (Orchestration Keywords — Epic 4 Story 3). Pre-create-story
 
 - **DF-4.3-S8 (dead `prompt` filter in Send Prompt — CLOSED)** — Story 4.3 code-review Blind M3 noted pre-edit `adapter_kwargs = {k: v for k, v in kwargs.items() if k != "prompt"}` was unreachable (prompt is a named param, never in **kwargs). The HIGH-D `_split_adapter_kwargs` refactor obsoleted this filter — no longer present in code. NOT a Phase-1.5 carry-over.
 
+## Story 5.3 (Evidence Block + Redaction Wiring + RunManifest)
+
+- **DF-5.3-S1 (UserWarning → DegradedTraceWarning upgrade)** — Story 5.3 ships `UserWarning` placeholders in `telemetry/run_manifest.py:127` (write-failure path) + `telemetry/listener.py` (sidecar emit broad-except). Story 5.4 lands the `DegradedTraceWarning` class; at that point every `UserWarning` site in `telemetry/` upgrades. Effort: XS (mechanical replace). Phase-1.5 cleanup once Story 5.4 ratifies the warning class.
+
+- **DF-5.3-S2 (mcp_servers `version_or_sha` introspection)** — Story 5.3 `RunManifest.mcp_servers[*].version_or_sha = "<TBD Phase-1.5>"` because Phase-1 has no canonical SDK introspection path. PRD FR39 mandates "MCP server versions/SHAs". Phase-1.5 lifts to real introspection (mcp SDK protocol field OR `.mcp.json` metadata); schema's `version_or_sha` then becomes `required`. Effort: M.
+
+- **DF-5.3-S3 (multi-turn prompt_hashes for tool-dispatch loops)** — Story 5.3 `RunManifest.prompt_hashes` carries SHA-256 of the user prompt only. PRD FR39 plural form ("prompt hashes") + DF-5.2-S3's multi-turn dispatch require per-turn hashing. Depends on DF-5.2-S3 landing. Effort: S.
+
+- **DF-5.3-S4 (per-pattern RedactionReport attribution)** — Story 5.3 `EvidenceBlock.redaction_report` populates `["redaction_applied"]` sentinel only; contract example claims per-pattern attribution (`["openai_api_key", ...]`). `_kernel/redaction.redact()` would need to return `(redacted_text, list[str])` of fired-pattern-names. Phase-1.5 lifts. Effort: M.
+
+- **DF-5.3-S6 (AC-SIMPLICITY-01 threshold + observed_value fields)** — Story 5.3 code-review Auditor 1-way HIGH-F: PRD AC-SIMPLICITY-01 (L88-92) verbatim mandates `(a) exact threshold compared, (b) observed value, (c) raw agent artifact` for every assertion keyword. Story 5.3 EvidenceBlock ships (c) only. Phase-1 trace-based family doesn't have a natural threshold-vs-observed shape; deferred to Story 6.x metric/judge families. Effort: S.
+
+- **DF-5.3-S7 (FR34b verbatim box-drawing visual format)** — Story 5.3 code-review Auditor 1-way HIGH-G: PRD L1551 FR34b mandates `┌─ EVIDENCE ─┐` header + `Compared:`/`Observed:`/`Raw:` sub-sections + 1000-char truncation. Story 5.3 ships ASCII `===` format. Decision deferred to Phase-2 visual rendering work. Effort: M.
+
+- **DF-5.3-S8 (FR38b `Get Effective Config` redaction)** — Story 5.3 code-review Auditor 1-way HIGH-H: PRD L1557 FR38b mandates redaction through `AgentEval.get_effective_config*` output. Story 5.3 wired FR38a (evidence block + manifest) but NOT FR38b. Phase-1.5 fix is small: pipe the returned dict through `redact_dict` before returning. Effort: XS.
+
 ## Story 5.2 (Hosted-MCP Observer + Adapter mcp_servers Integration)
 
 - **DF-5.2-S1 (upstream `mcp` SDK FastMCP observer hook)** — Story 5.2 observer accesses `FastMCP._mcp_server` (private attribute the mcp SDK itself uses internally per `mcp/shared/memory.py:64`). ADR-004 Consequences mandate filing an upstream issue with the mcp project requesting a stable public hook on `FastMCP`. Story 5.2 ships `AdapterVersionDriftWarning` as mitigation. Effort: S (file upstream issue + link in ADR-004 References + observer.py docstring). Phase-1.5 cleanup once upstream lands a stable hook.

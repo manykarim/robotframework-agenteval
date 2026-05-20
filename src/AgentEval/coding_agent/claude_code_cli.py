@@ -74,6 +74,7 @@ from pathlib import Path
 from typing import Any
 
 from AgentEval.coding_agent.base import SubprocessAdapter
+from AgentEval.coding_agent.generic import _hash_prompt, _manifest_entries_from_servers
 from AgentEval.mcp.observer import HostedMcpObserver
 from AgentEval.types import (
     AgentRunMetadata,
@@ -228,12 +229,29 @@ class ClaudeCodeCLIAdapter(SubprocessAdapter):
         # Story 5.2 code-review 1-way HIGH-C fix 2026-05-20 (Blind H2):
         # register the observer with the active RF Listener so `end_test`
         # calls `observer.clear()` for per-test cleanup per ADR-009.
-        from AgentEval.telemetry.listener import register_active_observer
+        from AgentEval.telemetry.listener import (
+            record_active_run_metadata,
+            register_active_observer,
+        )
 
         register_active_observer(self._current_observer)
         self._detect_external_configs(mcp_servers)
         try:
-            return super().run(prompt, tools=tools, mcp_servers=mcp_servers, **kwargs)
+            result = super().run(prompt, tools=tools, mcp_servers=mcp_servers, **kwargs)
+            # Story 5.3: record run metadata for the RunManifest sidecar.
+            # `_finalize` already populated the result fields; we record
+            # them post-run via the module-level helper.
+            record_active_run_metadata(
+                adapter_name=self.name,
+                adapter_version=self.version,
+                model=None,  # Claude Code CLI Phase-1: model is implicit in the binary; no per-call selection
+                mcp_servers=_manifest_entries_from_servers(mcp_servers),
+                total_cost_usd=result.cost_usd,
+                completeness=result.metadata.completeness,
+                mcp_coverage=result.metadata.mcp_coverage,
+                prompt_hashes=[_hash_prompt(prompt)],
+            )
+            return result
         finally:
             self._current_observer = None
 

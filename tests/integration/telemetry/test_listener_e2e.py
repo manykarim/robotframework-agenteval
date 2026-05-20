@@ -107,9 +107,12 @@ def test_e2e_jsonl_artifact_created_and_contains_invoke_agent_span(
     assert invoke["attributes"][AGENTEVAL_TEST_ID] == "MySuite.test_one"
 
 
-def test_e2e_memory_backend_cleared_after_end_test(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_e2e_memory_backend_cleared_after_end_test(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Memory backend isolation — after end_test, the test's spans are cleared."""
     monkeypatch.delenv("AGENTEVAL_TRACE_BACKEND", raising=False)
+    # Story 5.3: manifest sidecar emission falls back to Path.cwd() when no
+    # AGENTEVAL_TRACE_PATH is set, polluting the repo root. Isolate to tmp_path.
+    monkeypatch.setenv("AGENTEVAL_TRACE_PATH", str(tmp_path))
     listener = Listener()
     suite = _MockData(full_name="S")
     test = _MockData(full_name="S.test_memory_clear", parent=suite)

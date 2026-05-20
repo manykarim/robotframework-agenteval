@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/anthropics/robotframework-agenteval/docs/contracts/run-manifest-schema.json",
+  "title": "AgentEval RunManifest",
+  "description": "Per-test reproducibility manifest per PRD FR39 + architecture L669/L896. Story 5.3 (2026-05-20) extended the ratified 7-field shape to a union of FR39 + epics.md L1502 + architecture L896. Phase-1 stability label: provisional.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "library_version",
+    "test_id",
+    "suite_id",
+    "redaction_policy_hash",
+    "started_at",
+    "ended_at",
+    "agenteval_tier_breakdown"
+  ],
+  "properties": {
+    "library_version": {
+      "type": "string",
+      "description": "agenteval version pinned to AgentEval.__version__ at run time."
+    },
+    "test_id": {
+      "type": "string",
+      "description": "RF Listener v3 test identifier (full_name)."
+    },
+    "suite_id": {
+      "type": "string",
+      "description": "RF Listener v3 suite identifier (full_name of root suite)."
+    },
+    "redaction_policy_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 hex of the active credential redaction pattern set at run time. Consumers verify the redaction policy in effect via this hash."
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the run's first span (per FR39)."
+    },
+    "ended_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the run's last span (per FR39 + architecture L896; epics.md L1502 used `completed_at` — D-2 drift fix renamed to `ended_at` for ratified consistency)."
+    },
+    "agenteval_tier_breakdown": {
+      "type": "object",
+      "description": "Count of spans per `_agenteval_tier` value (e.g., {\"1\": 12, \"2\": 3, \"3\": 1}) per Story 1b.2 M_R5 ratification.",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "adapter_name": {
+      "type": ["string", "null"],
+      "description": "Name of the CodingAgentAdapter that drove the run (e.g., \"GenericAdapter\")."
+    },
+    "adapter_version": {
+      "type": ["string", "null"],
+      "description": "Version of the adapter at run time (typically the package version)."
+    },
+    "model": {
+      "type": ["string", "null"],
+      "description": "Model identifier passed to the provider (e.g., \"anthropic/claude-sonnet-4-6\")."
+    },
+    "mcp_servers": {
+      "type": "array",
+      "description": "List of MCP servers the run was configured with (per FR39 \"MCP server versions/SHAs\"). Phase-1 carve: `version_or_sha` is \"<TBD Phase-1.5>\" pending DF-5.3-S2.",
+      "items": {
+        "type": "object",
+        "required": ["name", "transport"],
+        "properties": {
+          "name": {"type": "string"},
+          "transport": {
+            "type": "string",
+            "enum": ["in_memory", "stdio", "streamable_http"]
+          },
+          "version_or_sha": {"type": "string"}
+        }
+      }
+    },
+    "trace_backend": {
+      "type": ["string", "null"],
+      "enum": ["memory", "jsonl", null],
+      "description": "Story 5.1 trace backend in effect."
+    },
+    "total_cost_usd": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "Sum of provider-reported cost across the run (USD)."
+    },
+    "completeness": {
+      "type": ["string", "null"],
+      "enum": ["complete", "truncated", "partial", null],
+      "description": "AgentRunResult.metadata.completeness projection per FR36a."
+    },
+    "mcp_coverage": {
+      "type": ["string", "null"],
+      "enum": ["hosted_in_process", "subprocess_with_observer", "external_mixed", null],
+      "description": "AgentRunResult.metadata.mcp_coverage projection per FR36b + ADR-016 D1 3-value Literal."
+    },
+    "warnings": {
+      "type": "array",
+      "description": "DegradedTraceWarning messages collected during the run (Story 5.4 populates).",
+      "items": {"type": "string"}
+    },
+    "seed": {
+      "type": ["integer", "null"],
+      "description": "RNG seed if explicitly seeded for reproducibility (per FR39)."
+    },
+    "prompt_hashes": {
+      "type": "array",
+      "description": "SHA-256 hex of each prompt the agent saw during the run (per FR39 \"prompt hashes\"). Phase-1: hashes the user prompt only; multi-turn full sequence is DF-5.3-S3.",
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    }
+  }
+}

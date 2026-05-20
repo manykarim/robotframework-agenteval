@@ -262,8 +262,12 @@ def test_start_test_with_missing_full_name_warns_and_skips_bind() -> None:
     assert _kernel_context.current_context() is None
 
 
-def test_end_test_clears_spans_and_unbinds_context_in_memory_mode() -> None:
+def test_end_test_clears_spans_and_unbinds_context_in_memory_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """end_test → clear_spans(test_id) + unbind_context() in memory mode."""
+    # Story 5.3: isolate manifest sidecar emission to tmp_path so CWD isn't polluted.
+    monkeypatch.setenv("AGENTEVAL_TRACE_PATH", str(tmp_path))
     listener = Listener()
     suite = _MockData(full_name="suite")
     listener.start_suite(suite, None)

@@ -80,7 +80,12 @@ from AgentEval._kernel.redaction import RedactionProcessor
 from AgentEval.telemetry.backends import JSONLBackend, MemoryBackend
 from AgentEval.telemetry.semconv import AGENTEVAL_TEST_ID
 
-__all__ = ["Listener", "TestIdContextSpanProcessor", "register_active_observer"]
+__all__ = [
+    "Listener",
+    "TestIdContextSpanProcessor",
+    "register_active_observer",
+    "record_active_run_metadata",
+]
 
 # Story 5.2 code-review 1-way HIGH-C fix 2026-05-20 (Blind H2): pre-edit
 # `Listener.register_observer` was dead code — neither the Generic adapter
@@ -113,6 +118,27 @@ def register_active_observer(observer: Any) -> None:
         if callable(register_fn):
             with contextlib.suppress(Exception):
                 register_fn(observer)
+
+
+def record_active_run_metadata(**metadata: Any) -> None:
+    """Record per-run operational metadata for the RunManifest sidecar (Story 5.3).
+
+    Adapters call this from their `run()` post-completion path with the
+    operational fields the Story 5.3 RunManifest needs (adapter_name,
+    adapter_version, model, mcp_servers, total_cost_usd, completeness,
+    mcp_coverage, seed, prompt_hashes). The Listener accumulates these
+    via `Listener.record_run_metadata` + emits the JSON sidecar on
+    `end_test`.
+
+    Helper parallels `register_active_observer` from Story 5.2 — finds
+    active listeners + dispatches to each. No-op when no Listener is
+    active (direct Python invocation outside RF).
+    """
+    for listener in _active_listeners:
+        record_fn = getattr(listener, "record_run_metadata", None)
+        if callable(record_fn):
+            with contextlib.suppress(Exception):
+                record_fn(**metadata)
 
 
 _log = logging.getLogger(__name__)
@@ -178,8 +204,14 @@ class Listener:
         # `end_test` calls `observer.clear()` on every registered observer
         # for per-test cleanup per ADR-009.
         self._observers: list[Any] = []
+        # Story 5.3: per-test operational-metadata accumulator. Adapters
+        # call `record_active_run_metadata(...)` from `run()` post-completion;
+        # Listener's `end_test` uses this to populate the extended
+        # RunManifest's Optional fields per FR39 + epics.md L1502.
+        self._current_run_metadata: dict[str, Any] = {}
         # Register this Listener with the module-level active-listeners
-        # list so `register_active_observer()` can find it.
+        # list so `register_active_observer()` + `record_active_run_metadata()`
+        # can find it.
         _active_listeners.append(self)
 
     # --------------------------------------------------------------- #
@@ -300,6 +332,10 @@ class Listener:
         # also degraded (missing full_name), the prior context can stay
         # bound across the boundary and pollute the next test's spans.
         _kernel_context.unbind_context()
+        # Story 5.3: reset per-test operational metadata accumulator so a
+        # prior test's adapter calls don't leak into the next test's
+        # RunManifest sidecar.
+        self._current_run_metadata = {}
         test_id = self._extract_longname(data)
         suite_id = self._extract_suite_id(data)
         if not test_id:
@@ -332,35 +368,33 @@ class Listener:
         provider = trace.get_tracer_provider()
         if isinstance(provider, TracerProvider):
             provider.force_flush(timeout_millis=5000)
-        flush_result: Path | None = None
+        # Story 5.3 code-review 3-way HIGH-B fix 2026-05-20 (Codex empirical
+        # probe + Edge-cases H2 + Blind MED-2): pre-edit treated JSONLBackend
+        # `flush_test() is None` as a write failure + early-returned BEFORE
+        # observer cleanup + sidecar emit. But the JSONLBackend ALSO returns
+        # None for the legitimate "no spans captured" path (Story 5.1
+        # Edge-cases M3 fix). Codex empirically reproduced: `memory exists True;
+        # jsonl exists False` for a real `GenericAdapter.run()` under the
+        # listener — Story 5.3 was effectively broken on the jsonl backend.
+        # Fix: NEVER skip observer cleanup + sidecar emit. JSONL flush failure
+        # is independent of run-manifest emit; the manifest's `warnings` field
+        # (Story 5.4) is the right surface for surfacing JSONL failures.
         if isinstance(self._backend, JSONLBackend):
-            flush_result = self._backend.flush_test(test_id, suite_id=suite_id, output_dir=self._output_dir)
-            # On JSONL write failure: preserve spans in memory for next attempt
-            # (the failure was already warned about in JSONLBackend.flush_test).
-            if flush_result is None:
-                # JSONL write failed (warning already emitted by backend).
-                # Drop the test_id binding but PRESERVE the spans in memory
-                # — the next-test query filters by test_id so they stay out
-                # of subsequent tests' projection-accessor results. Story 5.1
-                # code-review Blind LOW-2 fix 2026-05-20: pre-edit comment
-                # claimed "operator can re-attempt via a custom hook" but
-                # no such hook exists; the spans simply persist until the
-                # exporter is reset (next provider configuration OR test
-                # process exit).
-                _kernel_context.unbind_context()
-                return
+            self._backend.flush_test(test_id, suite_id=suite_id, output_dir=self._output_dir)
         # Story 5.2 code-review 1-way Auditor HIGH-F fix 2026-05-20: clear
-        # observers BEFORE clearing the trace_store spans per AC-5.2.5
-        # ("observer's `clear()` method is called by Story 5.1's Listener on
-        # `end_test` BEFORE `trace_store.clear_spans(test_id)`"). Pre-edit
-        # order was reversed — if a hosted observer downstream queried
-        # trace_store during its own clear (none does today, but the
-        # contract callers rely on), the spans would already be gone.
+        # observers BEFORE clearing the trace_store spans per AC-5.2.5.
         for observer in self._observers:
             clear_fn = getattr(observer, "clear", None)
             if callable(clear_fn):
                 with contextlib.suppress(Exception):
                     clear_fn()
+        # Story 5.3: emit the RunManifest JSON sidecar BEFORE clearing
+        # trace_store spans — `get_run_manifest(test_id)` reads from the
+        # exporter, so the spans must still be present. Broad except so
+        # sidecar-emit failure doesn't mask test outcomes (consistent with
+        # Story 5.1 JSONLBackend pattern).
+        with contextlib.suppress(Exception):
+            self._emit_run_manifest_sidecar(test_id=test_id, suite_id=suite_id)
         # Successful flush (or memory-only backend): clear spans for per-test
         # isolation per Story 1b.2 trace_store.clear_spans contract.
         trace_store.clear_spans(test_id)
@@ -407,6 +441,120 @@ class Listener:
         """
         if observer not in self._observers:
             self._observers.append(observer)
+
+    def _emit_run_manifest_sidecar(self, *, test_id: str, suite_id: str) -> None:
+        """Build the extended `RunManifest` + emit the JSON sidecar (Story 5.3).
+
+        Combines the 7 ratified fields from `_kernel/trace_store.get_run_manifest(test_id)`
+        (the projection accessor — library_version, test_id, suite_id,
+        redaction_policy_hash, started_at, ended_at, agenteval_tier_breakdown)
+        with the accumulated operational metadata from `self._current_run_metadata`
+        (the new Story 5.3 Optional fields populated by adapters via
+        `record_active_run_metadata()` during `run()`).
+
+        Failure-mode contract per AC-5.3.2: failures don't mask test outcomes.
+        Outer `contextlib.suppress(Exception)` at the call site handles any
+        unexpected raise here; this helper also handles its own failures
+        via the `RunManifestEmitter.emit()` warning-and-return-None pattern.
+        """
+        # Lazy import to avoid circular dependency (run_manifest.py imports
+        # from backends.py which is in the same package).
+        from AgentEval.telemetry.run_manifest import RunManifestEmitter
+
+        try:
+            base_manifest = trace_store.get_run_manifest(test_id)
+        except Exception:  # noqa: BLE001
+            # No spans recorded for this test (or projection accessor failed);
+            # skip the manifest emit. Don't emit a phantom sidecar.
+            return
+        # Story 5.3: merge the operational metadata into the ratified
+        # manifest. `dataclasses.replace` returns a new frozen instance
+        # with the additional fields populated.
+        import dataclasses
+
+        accumulated = dict(self._current_run_metadata)
+        if isinstance(self._backend, JSONLBackend):
+            accumulated.setdefault("trace_backend", "jsonl")
+        else:
+            accumulated.setdefault("trace_backend", "memory")
+        # Filter to fields that actually exist on RunManifest; ignore any
+        # adapter-provided kwargs not in the dataclass schema.
+        manifest_fields = {f.name for f in dataclasses.fields(base_manifest)}
+        filtered = {k: v for k, v in accumulated.items() if k in manifest_fields}
+        # Story 5.3 code-review 1-way HIGH-J fix 2026-05-20 (Blind H2 empirical):
+        # `dataclasses.replace` does NOT validate field types — it accepts ANY
+        # value + constructs a new frozen instance. Without coercion, an
+        # adapter passing `total_cost_usd=Decimal("0.01")` flowed through to
+        # `json.dump(default=str)` and produced a string in JSON, failing
+        # schema validation `["number", "null"]` at consumer time. The
+        # `except TypeError` was dead code. Now: coerce known numeric fields
+        # to `float` BEFORE replace; coerce `seed` to `int`.
+        if "total_cost_usd" in filtered and filtered["total_cost_usd"] is not None:
+            try:
+                filtered["total_cost_usd"] = float(filtered["total_cost_usd"])
+            except (TypeError, ValueError):
+                del filtered["total_cost_usd"]
+        if "seed" in filtered and filtered["seed"] is not None:
+            try:
+                filtered["seed"] = int(filtered["seed"])
+            except (TypeError, ValueError):
+                del filtered["seed"]
+        try:
+            extended_manifest = dataclasses.replace(base_manifest, **filtered)
+        except TypeError:
+            # Field type mismatch — skip the operational fields, emit
+            # the base manifest only.
+            extended_manifest = base_manifest
+        RunManifestEmitter().emit(
+            extended_manifest,
+            output_dir=self._output_dir,
+            suite_id=suite_id,
+            test_id=test_id,
+        )
+
+    def record_run_metadata(self, **metadata: Any) -> None:
+        """Accumulate per-run operational metadata for the RunManifest sidecar.
+
+        Story 5.3: adapters call `record_active_run_metadata(adapter_name=...,
+        adapter_version=..., model=..., mcp_servers=..., total_cost_usd=...,
+        completeness=..., mcp_coverage=..., seed=..., prompt_hashes=...)`
+        from `run()` post-completion. The Listener accumulates the kwargs in
+        `_current_run_metadata`; `end_test` builds an extended `RunManifest`
+        from the projection accessor + these accumulated fields + emits the
+        JSON sidecar via `RunManifestEmitter`.
+
+        Merge semantics (Story 5.3 code-review 2-way HIGH-D fix 2026-05-20 —
+        Blind H4 + Codex empirical probe: pre-edit last-wins clobbered
+        `adapter_name`/`model` under multi-adapter runs):
+        - **List fields** (mcp_servers, prompt_hashes, warnings): concat.
+        - **`total_cost_usd`**: SUM across calls (was last-wins; clobbered cost).
+        - **Other scalar fields** (adapter_name, adapter_version, model,
+          trace_backend, completeness, mcp_coverage, seed): skip None
+          updates so a second adapter passing `model=None` doesn't clobber
+          a real value from the first; otherwise last-wins. Multi-adapter
+          tests should still emit DF-5.3-S5 carry-over notes about identity
+          provenance (the Phase-1 manifest can't honestly attribute mixed
+          adapters; future per-run-entry array shape).
+        """
+        for key, value in metadata.items():
+            if key in ("mcp_servers", "prompt_hashes", "warnings"):
+                existing = self._current_run_metadata.get(key, [])
+                if isinstance(existing, list) and isinstance(value, list):
+                    self._current_run_metadata[key] = [*existing, *value]
+                else:
+                    self._current_run_metadata[key] = value
+            elif key == "total_cost_usd":
+                # SUM cost across multi-adapter calls (HIGH-D fix).
+                existing_cost = self._current_run_metadata.get(key)
+                if isinstance(existing_cost, int | float) and isinstance(value, int | float):
+                    self._current_run_metadata[key] = float(existing_cost) + float(value)
+                elif value is not None:
+                    self._current_run_metadata[key] = value
+            else:
+                # Scalar fields: skip None updates so second adapter doesn't
+                # clobber a real value with its own None (HIGH-D fix).
+                if value is not None:
+                    self._current_run_metadata[key] = value
 
     # --------------------------------------------------------------- #
     # Helpers

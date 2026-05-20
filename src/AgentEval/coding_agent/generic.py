@@ -52,6 +52,49 @@ from AgentEval.providers.base import LLMProviderAdapter, Message
 from AgentEval.providers.factory import get_provider
 from AgentEval.types import AgentRunMetadata, AgentRunResult, Usage
 
+
+def _hash_prompt(prompt: str) -> str:
+    """SHA-256 hex of a prompt string for RunManifest.prompt_hashes (PRD FR39)."""
+    import hashlib
+
+    return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
+
+def _manifest_entries_from_servers(
+    mcp_servers: dict[str, Any] | None,
+) -> list[dict[str, str]]:
+    """Build mcp_servers entries for RunManifest from the adapter's `mcp_servers=` kwarg.
+
+    Phase-1 carve (DF-5.3-S2): `version_or_sha` is `"<TBD Phase-1.5>"` —
+    no canonical way to introspect a third-party MCP server's version yet.
+    """
+    if not mcp_servers:
+        return []
+    entries: list[dict[str, str]] = []
+    for name, handle in mcp_servers.items():
+        transport = getattr(handle, "transport", "<unknown>")
+        entries.append(
+            {
+                "name": name,
+                "transport": str(transport),
+                "version_or_sha": "<TBD Phase-1.5>",  # DF-5.3-S2
+            }
+        )
+    return entries
+
+
+def _record_run_metadata(**metadata: Any) -> None:
+    """Thin wrapper around `telemetry.listener.record_active_run_metadata`.
+
+    Lazy-imports to avoid circular dependency between coding_agent and
+    telemetry. No-op when no Listener is active (direct Python invocation
+    outside RF).
+    """
+    from AgentEval.telemetry.listener import record_active_run_metadata
+
+    record_active_run_metadata(**metadata)
+
+
 __all__ = ["GenericAdapter"]
 
 
@@ -173,7 +216,7 @@ class GenericAdapter(InProcessAdapter):
         mcp_coverage = observer.compute_coverage() if observer is not None else "hosted_in_process"
         observed_tool_calls = list(observer.tool_calls()) if observer is not None else []
 
-        return AgentRunResult(
+        result = AgentRunResult(
             response_text=response.text,
             tool_calls=observed_tool_calls,
             usage=Usage(
@@ -189,6 +232,19 @@ class GenericAdapter(InProcessAdapter):
             latency_seconds=latency_seconds,
             trace_id=uuid.uuid4().hex,
         )
+        # Story 5.3: record run metadata for the RunManifest sidecar. No-op
+        # when no Listener is active (direct Python invocation outside RF).
+        _record_run_metadata(
+            adapter_name=self.name,
+            adapter_version=self.version,
+            model=self._model,
+            mcp_servers=_manifest_entries_from_servers(mcp_servers),
+            total_cost_usd=result.cost_usd,
+            completeness=result.metadata.completeness,
+            mcp_coverage=result.metadata.mcp_coverage,
+            prompt_hashes=[_hash_prompt(prompt)],
+        )
+        return result
 
 
 def _attach_handle_to_observer(observer: HostedMcpObserver, name: str, handle: Any) -> None:

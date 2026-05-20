@@ -168,15 +168,38 @@ class RunManifest:
     Per architecture L669: assembled from resource attributes + library version
     + redaction-policy hash. Provides a reproducibility record for each run.
 
-    Fields:
+    Story 5.3 expansion (per spec D-2 drift fix 2026-05-20): the original 7
+    fields (per architecture L896) are preserved verbatim as required fields;
+    new operational fields per epics.md L1502 + PRD FR39 are added with
+    ``Optional[...] = None`` defaults so the existing projection accessor at
+    ``_kernel/trace_store.get_run_manifest()`` keeps building backward-compat
+    manifests. Story 5.3's ``RunManifestEmitter`` populates the new fields
+    via the Listener's ``record_run_metadata`` API.
+
+    Fields (existing 7 — required):
         - `library_version`: pinned to `AgentEval.__version__`
         - `test_id` / `suite_id`: Listener v3 identifiers from `current_context()`
         - `redaction_policy_hash`: SHA-256 hex of the active pattern set; lets
           consumers verify the redaction policy in effect at run time
         - `started_at` / `ended_at`: min/max span timestamps for the run
         - `agenteval_tier_breakdown`: count of spans per `_agenteval_tier`
-          value (e.g., `{1: 12, 2: 3, 3: 1}` for a run that exercised 12
-          Tier-1, 3 Tier-2, and 1 Tier-3 keywords)
+
+    New Story 5.3 fields (all Optional with safe defaults):
+        - `adapter_name` / `adapter_version`: identifies the coding-agent
+          adapter that drove the run (Story 4.1+4.2 surface)
+        - `model`: model identifier passed to the provider (e.g., "claude-sonnet-4-6")
+        - `mcp_servers`: list of `{name, transport, version_or_sha}` dicts —
+          one entry per MCP server the run was configured with. Phase-1
+          carve: `version_or_sha` is "<TBD Phase-1.5>" pending DF-5.3-S2.
+        - `trace_backend`: which Story 5.1 backend ran (`"memory"` / `"jsonl"`)
+        - `total_cost_usd`: sum of provider-reported cost across the run
+        - `completeness` / `mcp_coverage`: AgentRunMetadata projection per FR36a/b
+        - `warnings`: list[str] — populated by Story 5.4's `DegradedTraceWarning` collector
+        - `seed`: int | None — RNG seed for reproducibility (Phase-1 carve:
+          populated only when caller explicitly seeded; defaults None)
+        - `prompt_hashes`: list[str] — SHA-256 hex of each prompt the agent
+          saw (Phase-1: hashes the user prompt only; multi-turn full sequence
+          is DF-5.3-S3)
 
     Frozen + immutable; serialize via `dataclasses.asdict()`.
     """
@@ -188,15 +211,34 @@ class RunManifest:
     started_at: datetime
     ended_at: datetime
     agenteval_tier_breakdown: Mapping[int, int] = field(default_factory=dict)
+    # Story 5.3 expansion (D-2 drift fix 2026-05-20): operational fields per
+    # epics.md L1502 + PRD FR39. All Optional with safe defaults so the
+    # existing _kernel/trace_store.get_run_manifest() projection keeps
+    # building backward-compatible manifests; new fields populated by
+    # Story 5.3's RunManifestEmitter via Listener.record_run_metadata.
+    adapter_name: str | None = None
+    adapter_version: str | None = None
+    model: str | None = None
+    mcp_servers: list[dict[str, str]] = field(default_factory=list)
+    trace_backend: str | None = None
+    total_cost_usd: float | None = None
+    completeness: str | None = None
+    mcp_coverage: str | None = None
+    warnings: list[str] = field(default_factory=list)
+    seed: int | None = None
+    prompt_hashes: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        # M_R6: defensively copy agenteval_tier_breakdown so caller mutations
-        # to the source dict don't leak (same rationale as ToolCallTrace.args).
+        # M_R6: defensively copy mutable fields so caller mutations to the
+        # source containers don't leak (same rationale as ToolCallTrace.args).
         object.__setattr__(
             self,
             "agenteval_tier_breakdown",
             dict(self.agenteval_tier_breakdown),
         )
+        object.__setattr__(self, "mcp_servers", [dict(entry) for entry in self.mcp_servers])
+        object.__setattr__(self, "warnings", list(self.warnings))
+        object.__setattr__(self, "prompt_hashes", list(self.prompt_hashes))
 
 
 # --------------------------------------------------------------------------- #

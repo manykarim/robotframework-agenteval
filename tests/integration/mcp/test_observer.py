@@ -123,9 +123,12 @@ def test_observer_captures_tool_calls_through_wrapped_handler() -> None:
     assert traces[0].source == "hosted_mcp"
 
 
-def test_listener_register_observer_calls_clear_on_end_test() -> None:
+def test_listener_register_observer_calls_clear_on_end_test(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
     """Listener.register_observer + end_test → observer.clear() is invoked."""
     from AgentEval.telemetry.listener import Listener
+
+    # Story 5.3: isolate manifest sidecar emission to tmp_path so CWD isn't polluted.
+    monkeypatch.setenv("AGENTEVAL_TRACE_PATH", str(tmp_path))
 
     class _CountingObserver:
         def __init__(self) -> None:
@@ -218,13 +221,16 @@ def test_claude_code_cli_external_config_detection_opt_in_only(monkeypatch: pyte
     )
 
 
-def test_listener_clears_observers_before_clearing_trace_store() -> None:
+def test_listener_clears_observers_before_clearing_trace_store(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
     """Story 5.2 code-review 1-way Auditor HIGH-F fix 2026-05-20: spec AC-5.2.5
     says observer.clear() must fire BEFORE trace_store.clear_spans(test_id).
     Pre-edit the order was reversed.
     """
     from AgentEval._kernel import trace_store as _trace_store
     from AgentEval.telemetry.listener import Listener
+
+    # Story 5.3: isolate manifest sidecar emission to tmp_path so CWD isn't polluted.
+    monkeypatch.setenv("AGENTEVAL_TRACE_PATH", str(tmp_path))
 
     order: list[str] = []
 
