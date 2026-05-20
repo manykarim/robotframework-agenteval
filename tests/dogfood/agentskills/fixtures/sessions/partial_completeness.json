@@ -1,0 +1,20 @@
+{
+  "response_text": "I couldn't complete the task.",
+  "tool_calls": [
+    {
+      "name": "search",
+      "args": {"query": "x"},
+      "result": null,
+      "error": "timeout",
+      "latency_ms": 5000.0,
+      "source": "hosted_mcp",
+      "gen_ai_tool_call_id": "tc-200"
+    }
+  ],
+  "usage": {"input_tokens": 75, "output_tokens": 20, "cached_input_tokens": 0},
+  "cost_usd": 0.0028,
+  "latency_seconds": 5.1,
+  "completeness": "partial",
+  "mcp_coverage": "hosted_in_process",
+  "trace_id": "tFIXTURE-partial-completeness-0003"
+}

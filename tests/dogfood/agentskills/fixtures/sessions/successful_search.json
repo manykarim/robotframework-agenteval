@@ -1,0 +1,20 @@
+{
+  "response_text": "Found 3 results for 'paris'.",
+  "tool_calls": [
+    {
+      "name": "search",
+      "args": {"query": "paris", "limit": 3},
+      "result": "OK: 3 results",
+      "error": null,
+      "latency_ms": 120.5,
+      "source": "hosted_mcp",
+      "gen_ai_tool_call_id": "tc-001"
+    }
+  ],
+  "usage": {"input_tokens": 50, "output_tokens": 30, "cached_input_tokens": 0},
+  "cost_usd": 0.0042,
+  "latency_seconds": 0.85,
+  "completeness": "complete",
+  "mcp_coverage": "hosted_in_process",
+  "trace_id": "tFIXTURE-successful-search-0001"
+}

@@ -1643,7 +1643,7 @@ So that non-deterministic agent flows are characterized statistically + the tier
 **Then** the wrapper runs the keyword 10 independent times with proper test-id sub-scoping (each trial gets its own trace scope), accumulates results, returns a `list[KeywordRun]` of 10 instances (per FR26 verbatim return type + `docs/contracts/determinism-contract.md` L55 ratified by Story 1b.6 Codex STAR catch; pre-edit "10 `AgentRunResult` instances" was a doc-doc drift — `KeywordRun` is the FR26 type, NOT `AgentRunResult` — amended Story 6.3 pre-create-story drift check 2026-05-20 / 29th use of `feedback_spec_vs_ratified_doc_precheck`).
 
 **And Given** the 10 results + a success predicate,
-**When** I call `${pass_at_3}=    Stat.Get Pass At K    ${results}    k=3    predicate=lambda r: r.completeness == "full"`,
+**When** I call `${pass_at_3}=    Stat.Get Pass At K    ${results}    k=3    predicate=lambda r: r.completeness == "complete"`,
 **Then** the variable receives the unbiased Pass@k estimate per HumanEval methodology (FR27), with confidence interval per Wilson CI.
 
 **And Given** the kernel `tier.py` from Story 1b.1 + `_assertions/adapter.py` newly minted by Story 6.3 per architecture L647 (agentguard `_assertions/adapter.py:101-105` pattern),
@@ -1674,13 +1674,13 @@ So that AC-DOGFOOD-01 advances + Raj's primary journey evidence loop closes.
 
 **Acceptance Criteria:**
 
-**Given** `robotframework-agentskills` existing custom Python tests for tool-call metrics + statistical assertions,
+**Given** `robotframework-agentskills` existing custom Python tests for evaluation scoring (deterministic verdict + session-based + Pass@k batch),
 **When** I author equivalent `.robot` suites using Epic 6 keywords (`Metric.*`, `Trajectory Should Match`, `Stat.*`),
-**Then** parity coverage achieved + tracked via `tests/dogfood/parity-checklist-agentskills-metrics.md`.
+**Then** parity coverage achieved + tracked via `tests/dogfood/agentskills/parity-checklist-agentskills-metrics.md` (path amended per Story 6.4 pre-create-story drift D-3 / 30th use of `feedback_spec_vs_ratified_doc_precheck` — matches Story 3.3 + 5.5 `tests/dogfood/<repo>/parity-checklist-<repo>-<surface>.md` subdir convention; pre-edit `tests/dogfood/parity-checklist-...` at the root predated the organic Story 3.3 subdir norm).
 
-**And** `dogfood-integration.yml` runs the new suites in `robotframework-agentskills` head on every PR touching Epic 6 code.
+**And** the new `.robot` suites are VENDORED INTO agenteval at `tests/dogfood/agentskills/` (NOT pushed to upstream `robotframework-agentskills`) per Story 3.3 D-A + Story 5.5 D-1 ratified pattern; cross-repo CI dispatch via `dogfood-integration.yml` STAYS smoke-only per Story 1a.2 ratified norm — full cross-repo CI integration is **deferred to Story 9.1+9.2** per architecture L1718 AC traceability + epic L1564 Epic 6 closing-block framing. (Story 6.4 in-flight amendment 2026-05-20 / 30th use of `feedback_spec_vs_ratified_doc_precheck` D-1.)
 
-**And** ≥1 actionable agenteval improvement filed as `dogfood-finding`.
+**And** ≥1 actionable agenteval improvement filed as `dogfood-finding` (catalogued in `_bmad-output/implementation-artifacts/deferred-work.md` + `docs/phase-1-5-carry-overs.md` per project norm — pre-edit framing implied a `dogfood-finding` GitHub label that doesn't exist; ratified Story 3.3 D-F + Story 5.5 follow-on).
 
 ---
 

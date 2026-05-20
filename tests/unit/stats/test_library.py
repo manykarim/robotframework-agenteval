@@ -34,7 +34,7 @@ class _FakeAgentRunResult:
         def __init__(self, completeness: str) -> None:
             self.completeness = completeness
 
-    def __init__(self, completeness: str = "full", payload: str = "ok") -> None:
+    def __init__(self, completeness: str = "complete", payload: str = "ok") -> None:
         self.metadata = self._Meta(completeness)
         self.payload = payload
 
@@ -46,7 +46,7 @@ def test_run_n_times_n_equals_1_returns_single_keyword_run() -> None:
     assert len(runs) == 1
     assert isinstance(runs[0], KeywordRun)
     assert runs[0].trial_index == 0
-    assert runs[0].completeness == "full"
+    assert runs[0].completeness == "complete"
 
 
 def test_run_n_times_n_equals_10_returns_ten_keyword_runs() -> None:
@@ -177,7 +177,7 @@ def _runs(completenesses: list[str]) -> list[KeywordRun]:
 
 def test_get_pass_at_k_all_pass() -> None:
     lib = StatsLibrary()
-    runs = _runs(["full"] * 10)
+    runs = _runs(["complete"] * 10)
     assert lib.get_pass_at_k(runs, k=1) == 1.0
 
 
@@ -190,47 +190,50 @@ def test_get_pass_at_k_all_fail() -> None:
 def test_get_pass_at_k_half_pass_k1() -> None:
     """5 of 10 pass; pass@1 = 5/10 = 0.5."""
     lib = StatsLibrary()
-    runs = _runs(["full"] * 5 + ["partial"] * 5)
+    runs = _runs(["complete"] * 5 + ["partial"] * 5)
     assert lib.get_pass_at_k(runs, k=1) == 0.5
 
 
 def test_get_pass_at_k_half_pass_k3() -> None:
     """5/10 pass, k=3: 1 - C(5,3)/C(10,3) = 1 - 10/120 ≈ 0.9166..."""
     lib = StatsLibrary()
-    runs = _runs(["full"] * 5 + ["partial"] * 5)
+    runs = _runs(["complete"] * 5 + ["partial"] * 5)
     expected = 1.0 - 10 / 120
     assert lib.get_pass_at_k(runs, k=3) == pytest.approx(expected)
 
 
 def test_get_pass_at_k_invalid_k_greater_than_n() -> None:
     lib = StatsLibrary()
-    runs = _runs(["full"] * 5)
+    runs = _runs(["complete"] * 5)
     with pytest.raises(ValueError, match=r"k must be <= n"):
         lib.get_pass_at_k(runs, k=10)
 
 
 def test_get_pass_at_k_invalid_k_zero_or_negative() -> None:
     lib = StatsLibrary()
-    runs = _runs(["full"] * 5)
+    runs = _runs(["complete"] * 5)
     with pytest.raises(ValueError, match=r"k must be positive"):
         lib.get_pass_at_k(runs, k=0)
     with pytest.raises(ValueError, match=r"k must be positive"):
         lib.get_pass_at_k(runs, k=-1)
 
 
-def test_get_pass_at_k_default_predicate_matches_completeness_full() -> None:
-    """D-5 default predicate: `r.completeness == "full"`."""
+def test_get_pass_at_k_default_predicate_matches_completeness_complete() -> None:
+    """D-5 default predicate per Story 6.4 DOGFOOD-FINDING-1 fix-NOW 2026-05-20:
+    `r.completeness == "complete"` (pre-edit `"full"` was fake-green vs
+    `AgentRunMetadata._VALID_COMPLETENESS = ('complete', 'truncated', 'partial')`).
+    """
     lib = StatsLibrary()
-    runs = _runs(["full", "partial", "full", "incomplete"])
-    # 2 of 4 pass with default predicate.
+    runs = _runs(["complete", "partial", "complete", "truncated"])
+    # 2 of 4 pass with default predicate (only "complete" matches).
     assert lib.get_pass_at_k(runs, k=1) == 0.5
 
 
 def test_get_pass_at_k_custom_predicate() -> None:
     lib = StatsLibrary()
-    runs = _runs(["full", "partial", "partial", "incomplete"])
+    runs = _runs(["complete", "partial", "partial", "truncated"])
     # Custom predicate: include "partial" as passing.
-    custom = lambda r: r.completeness in ("full", "partial")  # noqa: E731
+    custom = lambda r: r.completeness in ("complete", "partial")  # noqa: E731
     assert lib.get_pass_at_k(runs, k=1, predicate=custom) == 0.75
 
 
@@ -244,7 +247,7 @@ def test_get_pass_at_k_n_minus_c_lt_k_returns_one() -> None:
     """When n-c < k (cannot fail k consecutive trials), returns 1.0 per HumanEval."""
     lib = StatsLibrary()
     # 9 of 10 pass; k=2 means n-c=1 < k → 1.0.
-    runs = _runs(["full"] * 9 + ["partial"])
+    runs = _runs(["complete"] * 9 + ["partial"])
     assert lib.get_pass_at_k(runs, k=2) == 1.0
 
 
@@ -256,7 +259,7 @@ def test_get_pass_at_k_n_minus_c_lt_k_returns_one() -> None:
 def test_get_pass_at_k_ci_reference_computation() -> None:
     """c=8/n=10/confidence=0.95: Wilson interval ~ (0.4901, 0.9430)."""
     lib = StatsLibrary()
-    runs = _runs(["full"] * 8 + ["partial"] * 2)
+    runs = _runs(["complete"] * 8 + ["partial"] * 2)
     lo, hi = lib.get_pass_at_k_confidence_interval(runs, k=1, confidence=0.95)
     # Reference: Wilson(0.8, 10, 95%) ≈ (0.4901, 0.9430). Allow ~1e-3 tolerance for
     # the inverse-normal-CDF approximation.
@@ -274,7 +277,7 @@ def test_get_pass_at_k_ci_empty_runs_returns_uniform() -> None:
 
 def test_get_pass_at_k_ci_higher_confidence_is_wider() -> None:
     lib = StatsLibrary()
-    runs = _runs(["full"] * 7 + ["partial"] * 3)
+    runs = _runs(["complete"] * 7 + ["partial"] * 3)
     lo_95, hi_95 = lib.get_pass_at_k_confidence_interval(runs, k=1, confidence=0.95)
     lo_99, hi_99 = lib.get_pass_at_k_confidence_interval(runs, k=1, confidence=0.99)
     assert lo_99 < lo_95
@@ -284,7 +287,7 @@ def test_get_pass_at_k_ci_higher_confidence_is_wider() -> None:
 def test_get_pass_at_k_ci_default_predicate() -> None:
     """Same default predicate as Stat.Get Pass At K."""
     lib = StatsLibrary()
-    runs = _runs(["full"] * 5 + ["partial"] * 5)
+    runs = _runs(["complete"] * 5 + ["partial"] * 5)
     lo, hi = lib.get_pass_at_k_confidence_interval(runs, k=1)
     # 5/10 = 0.5 should center the Wilson interval roughly around 0.5.
     assert 0.0 < lo < 0.5

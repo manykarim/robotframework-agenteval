@@ -1,0 +1,29 @@
+{
+  "response_text": "Operation complete.",
+  "tool_calls": [
+    {
+      "name": "search",
+      "args": {"query": "x"},
+      "result": "OK",
+      "error": null,
+      "latency_ms": 100.0,
+      "source": "hosted_mcp",
+      "gen_ai_tool_call_id": "tc-100"
+    },
+    {
+      "name": "delete",
+      "args": {"id": "x"},
+      "result": "OK",
+      "error": null,
+      "latency_ms": 80.0,
+      "source": "hosted_mcp",
+      "gen_ai_tool_call_id": "tc-101"
+    }
+  ],
+  "usage": {"input_tokens": 100, "output_tokens": 50, "cached_input_tokens": 10},
+  "cost_usd": 0.0091,
+  "latency_seconds": 1.2,
+  "completeness": "complete",
+  "mcp_coverage": "hosted_in_process",
+  "trace_id": "tFIXTURE-unnecessary-call-0002"
+}

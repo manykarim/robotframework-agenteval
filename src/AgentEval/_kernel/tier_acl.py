@@ -183,9 +183,7 @@ def build_polling_disallowed_message(
     # `{"prompt": "Hi"}` dict was previously rendered as `{'prompt': 'Hi'}`
     # which RF parses as a single string. The list-of-strings form is RF's
     # canonical named-arg syntax + works as copy-paste into `.robot` tests.
-    args_repr = (
-        "[" + ", ".join(f"{k}={v}" for k, v in keyword_args.items()) + "]" if keyword_args else "[]"
-    )
+    args_repr = "[" + ", ".join(f"{k}={v}" for k, v in keyword_args.items()) + "]" if keyword_args else "[]"
     return (
         f"PollingDisallowedError: keyword {keyword_name!r} received a `polling=` "
         f"argument{location}, but polling is not allowed on Tier-2/Tier-3 "

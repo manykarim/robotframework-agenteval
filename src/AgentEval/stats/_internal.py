@@ -232,8 +232,19 @@ def _compute_wilson_ci(c: int, n: int, confidence: float = 0.95) -> tuple[float,
 def _default_pass_predicate(run: KeywordRun) -> bool:
     """Default predicate for `Stat.Get Pass At K` per D-5 resolution.
 
-    Per epic AC-2 (epics.md:1646) verbatim: `predicate=lambda r: r.completeness == "full"`.
-    Operator-facing convenience so the PRD-verbatim 2-arg call form
-    `Stat.Get Pass At K ${runs} k=${k}` works without an explicit predicate.
+    Story 6.4 code-review DOGFOOD-FINDING-1 fix 2026-05-20 (4-way Blind + Edge +
+    Auditor + Codex empirical): pre-edit returned `run.completeness == "full"`
+    per epic AC-2 verbatim wording at `epics.md:1646`, but `AgentRunMetadata._VALID_COMPLETENESS`
+    at `src/AgentEval/types.py:317` is `frozenset(("complete", "truncated", "partial"))` —
+    `"full"` is NEVER a valid value. The default predicate was therefore silently
+    fake-green: any operator using the PRD-verbatim 2-arg call form
+    `Stat.Get Pass At K ${runs} k=${k}` (no explicit predicate) received `0.0`
+    regardless of how many trials actually passed. Empirically confirmed via
+    Codex Probe 4 on Story 6.4 dogfood loop.
+
+    Fix-NOW per `feedback_citation_drift_first_class` "fix-the-losing-source-NOW"
+    pattern: epic AC-2 verbatim is amended in lockstep below; the canonical
+    valid value is `"complete"` (run finished without errors / hit token limit
+    truncation).
     """
-    return run.completeness == "full"
+    return run.completeness == "complete"

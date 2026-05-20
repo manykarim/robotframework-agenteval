@@ -135,9 +135,7 @@ class StatsLibrary:
             # Story 6.3 code-review LOW-9 fix (Codex): prefer `robot_name`
             # over Python `__name__` for operator-facing telemetry consistency.
             target = getattr(keyword, "__func__", keyword)
-            kw_name = str(
-                getattr(target, "robot_name", None) or getattr(keyword, "__name__", repr(keyword))
-            )
+            kw_name = str(getattr(target, "robot_name", None) or getattr(keyword, "__name__", repr(keyword)))
 
         ctx = current_context()
         parent_test_id = ctx.test_id if ctx is not None else ""
@@ -175,8 +173,10 @@ class StatsLibrary:
             k: Top-k parameter for the unbiased estimator. Must satisfy
                 `1 <= k <= len(runs)`.
             predicate: Optional `Callable[[KeywordRun], bool]` for pass/fail
-                classification. Default (when `None`): `lambda r: r.completeness == "full"`
-                per epic AC-2 (D-5 resolution).
+                classification. Default (when `None`): `lambda r: r.completeness == "complete"`
+                per epic AC-2 (D-5 resolution + Story 6.4 DOGFOOD-FINDING-1
+                fix-NOW 2026-05-20: pre-edit `"full"` was fake-green because
+                `AgentRunMetadata.completeness` valid values are `complete/partial/truncated`).
 
         Returns:
             `float ∈ [0, 1]` Pass@k estimate via the HumanEval unbiased estimator
@@ -307,9 +307,7 @@ class StatsLibrary:
             from AgentEval._kernel.tier import find_tier_through_wrappers
 
             target = getattr(keyword, "__func__", keyword)
-            kw_name = str(
-                getattr(target, "robot_name", None) or getattr(keyword, "__name__", repr(keyword))
-            )
+            kw_name = str(getattr(target, "robot_name", None) or getattr(keyword, "__name__", repr(keyword)))
             kw_tier = find_tier_through_wrappers(target)
             # Story 6.3 code-review HIGH-α fix (4-way): callable-form likewise
             # raises on unresolved tier (was silent bypass pre-edit).
