@@ -70,9 +70,11 @@ import json
 import subprocess
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from AgentEval.coding_agent.base import SubprocessAdapter
+from AgentEval.mcp.observer import HostedMcpObserver
 from AgentEval.types import (
     AgentRunMetadata,
     AgentRunResult,
@@ -180,12 +182,112 @@ class ClaudeCodeEvent:
 class ClaudeCodeCLIAdapter(SubprocessAdapter):
     """`SubprocessAdapter` for the `claude` CLI (PRD FR13b)."""
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, *, discover_external_configs: bool = False, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         # Story 1b.4 ratified helper validates the binary version at
         # construction. Raises `UnsupportedBinaryVersionError` on out-
         # of-range per FR47.
         self._assert_binary_version(CLAUDE_BINARY, min=MIN_VERSION, max=MAX_VERSION)
+        # Story 5.2 DF-4.2-S1 absorption: per-run observer instance, set by
+        # `run()` before delegating to base.run() so `_finalize` can read it.
+        self._current_observer: HostedMcpObserver | None = None
+        # Story 5.2 code-review 3-angle HIGH-D fix 2026-05-20 (Blind H4 +
+        # Edge-cases H3 + H4): pre-edit `_detect_external_configs` read
+        # `~/.claude.json` + `./.mcp.json` unconditionally → false-positive
+        # external_mixed for any test running where the user happens to
+        # have invoked Claude Code OR a CWD that contains `.mcp.json` (the
+        # agenteval dogfood targets like rf-mcp + robotframework-agentskills
+        # both ship `.mcp.json`). Detection is now OPT-IN via the
+        # `discover_external_configs=True` constructor flag. Operators who
+        # want the ambient-config scan must explicitly enable it; default
+        # is False so in-repo testing isn't poisoned. Caller-provided
+        # `mcp_servers=` handles still flow through normally — non-in_memory
+        # handles still call `mark_external_mixed(reason)` for the
+        # DF-5.2-S3 carry-over honesty.
+        self._discover_external_configs = discover_external_configs
+
+    def run(
+        self,
+        prompt: str,
+        tools: list[str] | None = None,
+        mcp_servers: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AgentRunResult:
+        """Wraps `SubprocessAdapter.run` with per-call observer + external-config detection.
+
+        Story 5.2 DF-4.2-S1 absorption (per Epic 4 retro Action #5):
+        construct a `HostedMcpObserver` per run, detect external Claude
+        configs (`~/.claude.json` + caller-provided `mcp_servers` handles),
+        call `observer.mark_external_mixed(reason)` for each external
+        source, then delegate to `SubprocessAdapter.run` which runs the
+        template-method orchestration. `_finalize` reads the observer to
+        resolve `metadata.mcp_coverage` honestly (instead of hardcoding
+        `"external_mixed"` as pre-Story-5.2).
+        """
+        self._current_observer = HostedMcpObserver()
+        # Story 5.2 code-review 1-way HIGH-C fix 2026-05-20 (Blind H2):
+        # register the observer with the active RF Listener so `end_test`
+        # calls `observer.clear()` for per-test cleanup per ADR-009.
+        from AgentEval.telemetry.listener import register_active_observer
+
+        register_active_observer(self._current_observer)
+        self._detect_external_configs(mcp_servers)
+        try:
+            return super().run(prompt, tools=tools, mcp_servers=mcp_servers, **kwargs)
+        finally:
+            self._current_observer = None
+
+    def _detect_external_configs(self, mcp_servers: dict[str, Any] | None) -> None:
+        """Detect external MCP configs + signal observer per ADR-016 D4.
+
+        Sources scanned:
+
+        - ``~/.claude.json`` — Claude Code CLI's user-level MCP config.
+        - ``./.mcp.json`` — project-level MCP config.
+        - Caller-provided ``mcp_servers`` handles whose transport is NOT
+          ``"in_memory"`` (the only path Story 5.2 wires through). stdio +
+          streamable_http transports defer to the subprocess wrapper +
+          HTTP observer paths in Story 5.5 (DF-5.2-S3).
+
+        Each detected external source produces one ``mark_external_mixed``
+        signal with a human-readable reason. ``compute_coverage()`` will
+        then resolve to ``"external_mixed"`` per ADR-016 D1.
+        """
+        if self._current_observer is None:
+            return  # defensive — should never happen in the run() flow
+        # Story 5.2 code-review HIGH-D fix 2026-05-20: ambient-config scan
+        # is OPT-IN only — operators must pass `discover_external_configs=True`
+        # to ClaudeCodeCLIAdapter.__init__ to enable. Avoids false-positive
+        # `external_mixed` when the test happens to run in a CWD with
+        # `.mcp.json` (agenteval's own dogfood targets ship one) or with
+        # an unrelated `~/.claude.json` from a different Claude Code session.
+        if self._discover_external_configs:
+            # On-disk Claude Code configs — wrap each `expanduser()` call in
+            # a try/except per Edge-cases H4 (HOME unset can raise on systems
+            # without /etc/passwd entries for the current uid).
+            for path_attr in ("~/.claude.json", "./.mcp.json"):
+                try:
+                    cfg_path = Path(path_attr).expanduser()
+                except RuntimeError:
+                    # `expanduser()` raises when $HOME is unset and the uid
+                    # has no /etc/passwd entry; treat as "no config detected".
+                    continue
+                if cfg_path.exists():
+                    self._current_observer.mark_external_mixed(
+                        f"Claude Code CLI detected external MCP config at {cfg_path}"
+                    )
+        # Caller-provided handles whose transport doesn't get observer
+        # attachment in Phase-1 (only in_memory does today via Story 5.5).
+        if mcp_servers:
+            for name, handle in mcp_servers.items():
+                transport = getattr(handle, "transport", None)
+                if transport != "in_memory":
+                    self._current_observer.mark_external_mixed(
+                        f"ClaudeCodeCLIAdapter handle {name!r} (transport="
+                        f"{transport!r}) requires the subprocess wrapper "
+                        "integration deferred to DF-5.2-S3 (Story 5.5 dogfood "
+                        "port lands this); Phase-1 reports external_mixed"
+                    )
 
     @property
     def name(self) -> str:
@@ -357,17 +459,23 @@ class ClaudeCodeCLIAdapter(SubprocessAdapter):
             "complete" if terminal is not None and not terminal.is_error and exit_code == 0 else "truncated"
         )
 
+        # Story 5.2 DF-4.2-S1 absorption: mcp_coverage now resolved from the
+        # per-run observer (set by `run()` before delegating to base.run()).
+        # When ANY external config was detected (`.mcp.json`, `~/.claude.json`,
+        # or non-in_memory handles), observer.compute_coverage() → "external_mixed"
+        # per ADR-016 D1. Phase-1 fallback when observer is None (direct
+        # `_finalize` invocation outside `run()`): "external_mixed" — safer
+        # default per ADR-016 detection-failure semantics.
+        mcp_coverage = (
+            self._current_observer.compute_coverage() if self._current_observer is not None else "external_mixed"
+        )
         return AgentRunResult(
             response_text=response_text,
             tool_calls=tool_calls,
             usage=usage,
             metadata=AgentRunMetadata(
                 completeness=completeness,  # type: ignore[arg-type]
-                # Per `docs/contracts/mcp-coverage-detection.md` ratified
-                # Claude Code contract: external observation via
-                # stream-json parsing. Epic 5 hosted-MCP observer
-                # promotes to a stronger value when applicable.
-                mcp_coverage="external_mixed",
+                mcp_coverage=mcp_coverage,
             ),
             cost_usd=cost_usd,
             latency_seconds=latency_seconds,

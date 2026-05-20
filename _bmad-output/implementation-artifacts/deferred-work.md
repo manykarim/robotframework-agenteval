@@ -242,6 +242,14 @@ Added by Story 4.3 (Orchestration Keywords — Epic 4 Story 3). Pre-create-story
 
 - **DF-4.3-S8 (dead `prompt` filter in Send Prompt — CLOSED)** — Story 4.3 code-review Blind M3 noted pre-edit `adapter_kwargs = {k: v for k, v in kwargs.items() if k != "prompt"}` was unreachable (prompt is a named param, never in **kwargs). The HIGH-D `_split_adapter_kwargs` refactor obsoleted this filter — no longer present in code. NOT a Phase-1.5 carry-over.
 
+## Story 5.2 (Hosted-MCP Observer + Adapter mcp_servers Integration)
+
+- **DF-5.2-S1 (upstream `mcp` SDK FastMCP observer hook)** — Story 5.2 observer accesses `FastMCP._mcp_server` (private attribute the mcp SDK itself uses internally per `mcp/shared/memory.py:64`). ADR-004 Consequences mandate filing an upstream issue with the mcp project requesting a stable public hook on `FastMCP`. Story 5.2 ships `AdapterVersionDriftWarning` as mitigation. Effort: S (file upstream issue + link in ADR-004 References + observer.py docstring). Phase-1.5 cleanup once upstream lands a stable hook.
+
+- **DF-5.2-S2 (streamable_http transport observation)** — Spike findings §Pattern that works validated handler-wrapping for in-memory + stdio + streamable_http transports, but Story 5.2 Phase-1 only wires in_memory through the Generic adapter. Stories 5.5 (interleaved dogfood port) + Phase-2 OTLP backend will surface real HTTP traffic patterns first. Effort: M. Phase-1.5: extend `_attach_handle_to_observer` to recognize `transport="streamable_http"` + spawn a FastMCP HTTP host with the observer attached.
+
+- **DF-5.2-S3 (subprocess-wrapper full lifecycle + multi-turn tool dispatch loop)** — Two related Phase-1.5 follow-ups: (a) `src/AgentEval/mcp/_observer_subprocess_wrapper.py` is Phase-1 shape-only — the real `MCPLifecycleManager.acquire(transport="stdio")` integration that spawns the wrapper as a subprocess + pipes the trace JSONL back is deferred; (b) Generic adapter `mcp_servers=` integration ships ONLY the observer attachment + `mcp_coverage` resolution — the multi-turn tool-dispatch loop (model returns tool_calls → library dispatches via observer-wrapped server → result fed back to model → next round-trip) is Phase-2 scope. Story 5.5 dogfood port surfaces both. Effort: L (subprocess plumbing + agent-loop orchestration). Phase-1.5/Phase-2.
+
 ---
 
 *Update this file as new deferred items emerge from future reviews.*

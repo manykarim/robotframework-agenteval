@@ -21,19 +21,23 @@ LiteLLM) and returns a normalized `AgentRunResult`.
 Per ADR-003 L22-23 (direct method-override pattern; NO abstract hooks)
 and PRD FR12 (single `run()` method).
 
-Phase-1 carve-out (Story 4.1 DF-4.1-S2): `mcp_servers=` kwarg is
-accepted on `run()` but a non-empty dict raises `NotImplementedError`
-pointing at Story 4.3 (orchestration keywords) + Epic 5 (hosted-MCP
-observer) where the actual integration lands. Phase-1 Generic adapter
-exercises the LLMProvider surface only; MCP tool-call dispatch via
-adapters is the next-story scope.
+Story 5.2 DF-4.1-S2 absorption (per Epic 4 retro Action #5): `mcp_servers=`
+non-empty NOW wires through `HostedMcpObserver` per ADR-004 + the per-
+adapter detection contract at `docs/contracts/mcp-coverage-detection.md`.
+The multi-turn tool-dispatch loop (model issues tool_call → dispatched
+via observer-wrapped server → result returned to model) is still
+Phase-2 scope (DF-5.2-S3); Story 5.2 lands the observer attachment +
+mcp_coverage resolution so Story 5.5's dogfood port has the plumbing it
+needs.
 
 References:
     - PRD FR12 (single `run()` Protocol method)
     - PRD FR13a (Generic LiteLLM-backed adapter)
+    - PRD FR36b (mcp_coverage field per ADR-016 3-value Literal)
     - ADR-003 (InProcessAdapter base; direct override)
+    - ADR-004 (Hosted-MCP Observer — Story 5.2 ratified API)
+    - ADR-016 (mcp_coverage detection default + D4 per-adapter contract)
     - Story 1b.4 `coding_agent/base.py:InProcessAdapter` + `_default_version`
-    - Story 1b.2 `_kernel/coverage.compute_mcp_coverage` (mcp_coverage field)
 """
 
 from __future__ import annotations
@@ -43,6 +47,7 @@ import uuid
 from typing import Any
 
 from AgentEval.coding_agent.base import InProcessAdapter, _default_version
+from AgentEval.mcp.observer import HostedMcpObserver
 from AgentEval.providers.base import LLMProviderAdapter, Message
 from AgentEval.providers.factory import get_provider
 from AgentEval.types import AgentRunMetadata, AgentRunResult, Usage
@@ -54,9 +59,9 @@ class GenericAdapter(InProcessAdapter):
     """`InProcessAdapter` routing `run()` through a configurable `LLMProviderAdapter`.
 
     Phase-1 default: `provider="litellm"`, model selectable per-instance.
-    Phase-1 carve-out: `mcp_servers=` is accepted but a non-empty dict
-    raises `NotImplementedError` (DF-4.1-S2) — Story 4.3 lands the
-    MCP-tool-surface integration.
+    Story 5.2 DF-4.1-S2 absorption: `mcp_servers=` non-empty now wires
+    through `HostedMcpObserver` per ADR-004 + the per-adapter detection
+    contract. Multi-turn tool-dispatch loop is still Phase-2 (DF-5.2-S3).
     """
 
     def __init__(
@@ -104,70 +109,127 @@ class GenericAdapter(InProcessAdapter):
     ) -> AgentRunResult:
         """Execute a single-shot prompt through the configured provider.
 
-        Phase-1 scope:
-        - `tools` is ignored — Phase-1 Generic adapter calls the
-          provider WITHOUT advertising tools. Tool-call surface
-          integration is Story 4.3 + Epic 5 scope (DF-4.1-S2).
-        - `mcp_servers` non-empty raises `NotImplementedError` (DF-4.1-S2).
-          Empty dict OR None is allowed (pass-through).
+        Phase-1 scope (Story 5.2 absorbed DF-4.1-S2 per Epic 4 retro Action #5):
+        - `tools` is still a Phase-1 carve-out — the multi-turn tool-dispatch
+          loop is Phase-2 (DF-5.2-S3); Story 5.2 lands the observer wiring +
+          mcp_coverage detection ONLY. Non-empty `tools` continues to raise.
+        - `mcp_servers` non-empty NOW WIRES the HostedMcpObserver instead of
+          raising. For each `(name, MCPServerHandle)`:
+            - Attach `HostedMcpObserver.attach(server, "hosted_in_process")`
+              when the handle's `transport="in_memory"` (call `server_factory()`
+              to build the FastMCP/Server). Non-in_memory transports degrade
+              to `mark_external_mixed(reason)` for Phase-1 since DF-5.2-S3
+              defers the subprocess-wrapper hookup to Story 5.5.
+            - `mcp_coverage` resolved via `observer.compute_coverage()`.
+            - `tool_calls` populated from `observer.tool_calls()` (Phase-1
+              they'll be empty without the multi-turn loop, but the observer
+              chain is plumbed so Story 5.5's dogfood port + Phase-2's
+              multi-turn tool dispatch can land without re-touching this
+              method's surface).
         - Remaining `**kwargs` forwarded to the provider's `chat()` call.
 
         Returns:
             `AgentRunResult` with the Story 1b.4 ratified frozen-dataclass
-            shape: `response_text` from `ChatResponse.text`; `tool_calls=[]`
-            (Phase-1 carve-out); `usage` mapped from `ChatResponse.usage`;
-            `metadata` with `completeness="full"` + `mcp_coverage="none"`;
-            `cost_usd` from `ChatResponse.cost_usd` coerced to float
-            (`None` → `0.0`); `latency_seconds` from `time.monotonic()`
-            delta; `trace_id` per-run `uuid4().hex`.
-
-        Raises:
-            NotImplementedError: when `mcp_servers` is non-empty
-                (Phase-1 DF-4.1-S2).
+            shape. `metadata.mcp_coverage` is now resolved from the observer
+            when `mcp_servers` is non-empty; falls back to the trivially-
+            ``hosted_in_process`` default (Generic LiteLLM has no
+            external-config surface) when `mcp_servers` is None/empty.
         """
-        if mcp_servers:
-            raise NotImplementedError(
-                "GenericAdapter.run does not integrate MCP tool surfaces in Phase-1 "
-                "(DF-4.1-S2); Story 4.3 (orchestration keywords) + Epic 5 (hosted-MCP "
-                "observer) land the MCP-tool-call dispatch + trace correlation. "
-                "Use `mcp_servers=None` for Phase-1 single-shot prompts."
-            )
-        # Story 4.1 code-review Edge-cases M-3 fix 2026-05-20: pre-edit
-        # `tools` was silently dropped (`_ = tools`) — asymmetric to
-        # `mcp_servers` which raises Phase-1 stub. Now raise symmetrically
-        # so a non-empty tools list fails loud rather than silently no-op
-        # producing AgentRunResult(tool_calls=[]) when the caller asked
-        # for tool advertising. None or empty list still allowed.
         if tools:
             raise NotImplementedError(
                 "GenericAdapter.run does not advertise tools to the provider in "
-                "Phase-1 (DF-4.1-S2); the tool-dispatch surface lands in Story 4.3 + "
-                "Epic 5. Use `tools=None` for Phase-1 single-shot prompts."
+                "Phase-1 (DF-5.2-S3); the multi-turn tool-dispatch loop is Phase-2 "
+                "scope. Use `tools=None` for Phase-1 single-shot prompts."
             )
+
+        # Story 5.2 DF-4.1-S2 absorption: wire mcp_servers through the
+        # HostedMcpObserver instead of raising NotImplementedError.
+        observer: HostedMcpObserver | None = None
+        if mcp_servers:
+            observer = HostedMcpObserver()
+            for name, handle in mcp_servers.items():
+                _attach_handle_to_observer(observer, name, handle)
+            # Story 5.2 code-review 1-way HIGH-C fix 2026-05-20 (Blind H2):
+            # register the observer with the active RF Listener so
+            # `end_test` calls `observer.clear()` for per-test cleanup per
+            # ADR-009. Pre-edit the observer was constructed + used + then
+            # garbage-collected at run() exit; the Listener's `register_observer`
+            # API was dead code because no caller wired it.
+            from AgentEval.telemetry.listener import register_active_observer
+
+            register_active_observer(observer)
 
         messages = [Message(role="user", content=prompt)]
         t0 = time.monotonic()
         response = self._provider.chat(messages=messages, model=self._model, **kwargs)
         latency_seconds = time.monotonic() - t0
 
+        # Resolve mcp_coverage:
+        # - With observer (mcp_servers non-empty): use observer.compute_coverage()
+        #   so trust-floor + adapter-signaled external_mixed flows through.
+        # - Without observer: trivially ``hosted_in_process`` per
+        #   ``docs/contracts/mcp-coverage-detection.md`` D4 table (Generic
+        #   LiteLLM has no external-config surface to detect).
+        mcp_coverage = observer.compute_coverage() if observer is not None else "hosted_in_process"
+        observed_tool_calls = list(observer.tool_calls()) if observer is not None else []
+
         return AgentRunResult(
             response_text=response.text,
-            tool_calls=[],
+            tool_calls=observed_tool_calls,
             usage=Usage(
                 input_tokens=response.usage.input_tokens,
                 output_tokens=response.usage.output_tokens,
                 cached_input_tokens=response.usage.cached_input_tokens,
             ),
-            # `mcp_coverage="hosted_in_process"` per ratified
-            # `docs/contracts/mcp-coverage-detection.md:18` ("Generic
-            # LiteLLM: trivially hosted_in_process"). `completeness="complete"`
-            # per Story 1b.4 ratified Literal — see DF-4.1-S4 for the
-            # FR36b-vs-AgentRunMetadata required-vs-conditional drift.
             metadata=AgentRunMetadata(
                 completeness="complete",
-                mcp_coverage="hosted_in_process",
+                mcp_coverage=mcp_coverage,
             ),
             cost_usd=float(response.cost_usd) if response.cost_usd is not None else 0.0,
             latency_seconds=latency_seconds,
             trace_id=uuid.uuid4().hex,
         )
+
+
+def _attach_handle_to_observer(observer: HostedMcpObserver, name: str, handle: Any) -> None:
+    """Attach the observer to the server backing an `MCPServerHandle`.
+
+    Phase-1 scope (DF-5.2-S3 carve-out): only `transport="in_memory"`
+    handles are wired through; subprocess + streamable_http transports
+    fall through to `mark_external_mixed(reason)` since the subprocess
+    wrapper + HTTP observer paths are deferred to Story 5.5 dogfood port.
+    """
+    transport = getattr(handle, "transport", None)
+    if transport == "in_memory":
+        factory = getattr(handle, "server_factory", None)
+        if callable(factory):
+            try:
+                server = factory()
+            except Exception as exc:  # noqa: BLE001
+                observer.mark_external_mixed(
+                    f"GenericAdapter could not build in-memory server "
+                    f"{name!r} via handle.server_factory(): {type(exc).__name__}: {exc}"
+                )
+                return
+            observer.attach(server, observation_path="hosted_in_process")
+            return
+        observer.mark_external_mixed(
+            f"GenericAdapter handle {name!r} (transport='in_memory') has no "
+            "callable `server_factory`; cannot attach observer in-process"
+        )
+        return
+    if transport in ("stdio", "streamable_http"):
+        # DF-5.2-S3: subprocess wrapper + HTTP observer paths deferred to
+        # Story 5.5 dogfood port. Phase-1 degrades to external_mixed so
+        # the run honestly reports the observation gap.
+        observer.mark_external_mixed(
+            f"GenericAdapter handle {name!r} (transport={transport!r}) requires "
+            "the subprocess wrapper / HTTP observer integration deferred to "
+            "DF-5.2-S3 (Story 5.5 dogfood port lands this); Phase-1 reports "
+            "external_mixed for honesty"
+        )
+        return
+    observer.mark_external_mixed(
+        f"GenericAdapter handle {name!r} has unknown transport={transport!r}; "
+        "expected one of 'in_memory', 'stdio', 'streamable_http'"
+    )

@@ -1254,7 +1254,8 @@ robotframework-agenteval/
 │       │   ├── __init__.py
 │       │   ├── library.py                  # MCP keywords: Get Server Config, Start/Connect/Stop Server, Get Tools, Call Tool, Get Tool Discoverability per FR5-11 + FR11b
 │       │   ├── _internal.py                # _negotiate_version, _parse_server_config, _spawn_server, etc.
-│       │   ├── observer.py                 # Hosted-MCP universal trace observer per FR35 + ADR-A7 (post-spike Decision-3 may move/refactor)
+│       │   ├── observer.py                 # Hosted-MCP universal trace observer per FR35 + ADR-004 (Story 5.2; ratified spike Decision-3 = request_handlers dict-wrap pattern)
+      │   ├── _observer_subprocess_wrapper.py  # Subprocess-bootstrap wrapper injecting observer at stdio subprocess startup per ADR-004 Consequences (Story 5.2 pre-create-story drift D-3 fix 2026-05-20: spike findings + ADR-004 mandated this file; pre-edit project tree didn't list it)
 │       │   ├── transport.py                # stdio / streamable_http / in-memory transport adapters per NFR-COMPAT-04
 │       │   ├── version_gate.py             # UnsupportedMCPVersionError per FR8/FR46 + ADR-011 from PRD sidecar
 │       │   └── types.py                    # MCPToolSchema, MCPServerConfig, MCPToolResult

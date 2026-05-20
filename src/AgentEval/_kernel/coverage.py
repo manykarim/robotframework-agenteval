@@ -61,6 +61,7 @@ def _check_mcp_coverage(
     run: AgentRunResult,
     *,
     allow_external_mcp_blind: bool = False,
+    metric_keyword: str = "metric keyword",
 ) -> None:
     """Enforce FR37: raise `IncompleteTraceError` on uninstrumented runs.
 
@@ -106,10 +107,16 @@ def _check_mcp_coverage(
             "docs/contracts/mcp-coverage-detection.md)."
         )
     if coverage == "external_mixed" and not allow_external_mcp_blind:
+        # Story 5.2 code-review 1-way Auditor HIGH-G fix 2026-05-20:
+        # PRD L1555 FR37 mandates the verbatim message:
+        # "metric keyword <name> called on AgentRunResult with
+        # mcp_coverage=external_mixed; opt in via allow_external_mcp_blind=True
+        # or ensure all MCP traffic flows through library-hosted servers".
+        # Pre-edit the kernel emitted a different message that drifted from
+        # the consumer-facing PRD contract. `metric_keyword` kwarg threads
+        # the caller's keyword name into the verbatim FR37 message.
         raise IncompleteTraceError(
-            "Run reports mcp_coverage='external_mixed' (uninstrumented MCP usage "
-            "detected); pass allow_external_mcp_blind=True at Library "
-            "construction time to opt into a blind run, OR fix the adapter to "
-            "populate full coverage (see docs/contracts/mcp-coverage-detection.md "
-            "for the per-adapter detection contract per ADR-016 §D4)."
+            f"{metric_keyword} called on AgentRunResult with "
+            "mcp_coverage=external_mixed; opt in via allow_external_mcp_blind=True "
+            "or ensure all MCP traffic flows through library-hosted servers"
         )

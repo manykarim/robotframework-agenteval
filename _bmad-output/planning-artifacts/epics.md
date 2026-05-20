@@ -1467,7 +1467,7 @@ So that consumers get truthful evidence about what was observed vs assumed — n
 
 **And Given** an agent run via the Generic adapter (Story 4.1) where the MCP server is hosted in-process,
 **When** `AgentRunResult` is produced,
-**Then** `completeness="full"` + `mcp_coverage="hosted_in_process"` (per Story 1b.2's `compute_mcp_coverage`), and the trace contains tool-execution spans observed via the hosted-MCP observer (not just inferred from the adapter's response).
+**Then** `completeness="full"` + `mcp_coverage="hosted_in_process"` (per the per-adapter detection contract at `docs/contracts/mcp-coverage-detection.md` — Story 5.2 pre-create-story drift D-1 fix 2026-05-20: pre-edit cited Story 1b.2's `compute_mcp_coverage` which doesn't exist; Story 1b.2 only ships `_check_mcp_coverage` enforcement gate, detection is per-adapter per ADR-016 D4), and the trace contains tool-execution spans observed via the hosted-MCP observer (not just inferred from the adapter's response).
 
 **And Given** an agent run via the CC CLI adapter (Story 4.2) where MCP server tool calls happen inside the `claude` subprocess and observation is post-hoc from stream-json,
 **When** `AgentRunResult` is produced,

@@ -89,12 +89,20 @@ def test_send_prompt_non_empty_string_mcp_servers_raises_not_implemented(
 def test_send_prompt_non_empty_dict_mcp_servers_forwarded_to_adapter(
     lib: OrchestrationLibrary,
 ) -> None:
-    """Phase-1: dict[name → handle] is forwarded directly. Generic adapter then
-    raises NotImplementedError per DF-4.1-S2 — but the forwarding contract is
-    verified by the raise location.
+    """Phase-1: dict[name → handle] is forwarded directly to the adapter.
+    Story 5.2 DF-4.1-S2 absorption: Generic adapter no longer raises
+    NotImplementedError; it now wires through HostedMcpObserver. The
+    forwarding contract is verified by observing the run completes + the
+    result reports `mcp_coverage` resolved from the observer (external_mixed
+    for the bare-object handle which has no transport attr).
     """
-    with pytest.raises(NotImplementedError, match="DF-4.1-S2"):
-        lib.send_prompt(adapter="generic", prompt="hi", mcp_servers={"echo": object()})
+    result = lib.send_prompt(
+        adapter="generic",
+        provider="mock",
+        prompt="hi",
+        mcp_servers={"echo": object()},
+    )
+    assert result.metadata.mcp_coverage == "external_mixed"
 
 
 # --------------------------------------------------------------------------- #

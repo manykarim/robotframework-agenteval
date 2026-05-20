@@ -139,12 +139,20 @@ def test_generic_adapter_run_empty_mcp_servers_allowed() -> None:
     assert isinstance(result2, AgentRunResult)
 
 
-def test_generic_adapter_run_non_empty_mcp_servers_raises_not_implemented() -> None:
-    """DF-4.1-S2 Phase-1 carve-out: non-empty `mcp_servers` raises NotImplementedError."""
+def test_generic_adapter_run_non_empty_mcp_servers_wires_observer_not_raises() -> None:
+    """Story 5.2 DF-4.1-S2 absorption (per Epic 4 retro Action #5): pre-edit the
+    GenericAdapter raised NotImplementedError on non-empty `mcp_servers`. NOW it
+    wires through `HostedMcpObserver` per ADR-004 + the per-adapter detection
+    contract. Non-in_memory handles degrade to `external_mixed` (DF-5.2-S3
+    deferred until Story 5.5 dogfood port wires the subprocess wrapper).
+    """
     adapter = GenericAdapter(provider_instance=_scripted_mock())
+    # Bare-object handle (no transport attr) → observer marks external_mixed.
     fake_handle = object()
-    with pytest.raises(NotImplementedError, match="DF-4.1-S2"):
-        adapter.run("hi", mcp_servers={"echo": fake_handle})
+    result = adapter.run("hi", mcp_servers={"echo": fake_handle})
+    # Observer's compute_coverage() resolves to external_mixed because the
+    # handle has no recognized transport — ADR-016 D1 detection-failure default.
+    assert result.metadata.mcp_coverage == "external_mixed"
 
 
 def test_generic_adapter_run_non_empty_tools_raises_not_implemented() -> None:

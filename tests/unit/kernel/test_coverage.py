@@ -51,15 +51,25 @@ def test_subprocess_with_observer_returns_none_with_allow_blind_true() -> None:
 
 
 def test_external_mixed_raises_incomplete_trace_error_default() -> None:
-    """Per FR37 + ADR-016 L44: default-deny is the loud-refusal posture."""
+    """Per FR37 + ADR-016 L44: default-deny is the loud-refusal posture.
+
+    Story 5.2 code-review 1-way Auditor HIGH-G fix 2026-05-20: pre-edit
+    message drifted from PRD FR37's mandated verbatim wording. Kernel
+    message now matches PRD L1555 exactly:
+        "metric keyword <name> called on AgentRunResult with mcp_coverage=external_mixed;
+         opt in via allow_external_mcp_blind=True or ensure all MCP traffic
+         flows through library-hosted servers"
+    """
     run = _FakeRun(metadata=_FakeMetadata(mcp_coverage="external_mixed"))
     with pytest.raises(IncompleteTraceError) as exc_info:
-        _check_mcp_coverage(run)
-    # error_code attribute is on the class (and instance).
+        _check_mcp_coverage(run, metric_keyword="Get Tool Call Count")
     assert exc_info.value.error_code == "INCOMPLETE_TRACE"
-    # Message mentions the remediation path.
-    assert "allow_external_mcp_blind=True" in str(exc_info.value)
-    assert "mcp-coverage-detection.md" in str(exc_info.value)
+    # Verbatim FR37 message components per PRD L1555.
+    msg = str(exc_info.value)
+    assert "Get Tool Call Count called on AgentRunResult" in msg
+    assert "mcp_coverage=external_mixed" in msg
+    assert "allow_external_mcp_blind=True" in msg
+    assert "MCP traffic flows through library-hosted servers" in msg
 
 
 def test_external_mixed_returns_none_with_allow_blind_true() -> None:

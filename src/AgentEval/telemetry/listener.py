@@ -61,6 +61,7 @@ References:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import warnings
 from pathlib import Path
@@ -79,7 +80,40 @@ from AgentEval._kernel.redaction import RedactionProcessor
 from AgentEval.telemetry.backends import JSONLBackend, MemoryBackend
 from AgentEval.telemetry.semconv import AGENTEVAL_TEST_ID
 
-__all__ = ["Listener", "TestIdContextSpanProcessor"]
+__all__ = ["Listener", "TestIdContextSpanProcessor", "register_active_observer"]
+
+# Story 5.2 code-review 1-way HIGH-C fix 2026-05-20 (Blind H2): pre-edit
+# `Listener.register_observer` was dead code — neither the Generic adapter
+# nor the Claude Code CLI adapter wired its per-call observer into the
+# Listener registry, so `end_test → observer.clear()` never fired in
+# production. The Listener is a process singleton (registered by RF when
+# `--listener AgentEval.telemetry.listener` is passed); adapters need a
+# weak coupling that finds the active Listener without importing it
+# directly (which would create a kernel-vs-telemetry layering violation).
+# We use a module-level WeakRef set + `register_active_observer()` helper
+# that adapters call from `run()`. The Listener registers itself with
+# this module on instantiation; if no Listener is active (direct Python
+# invocation outside RF), `register_active_observer` is a no-op.
+_active_listeners: list[Any] = []
+
+
+def register_active_observer(observer: Any) -> None:
+    """Register an observer with every active `Listener` instance.
+
+    Adapters call this from their `run()` method when they construct a
+    per-call `HostedMcpObserver`; the Listener's `end_test` hook then
+    calls `observer.clear()` on each registered observer for per-test
+    cleanup per ADR-009.
+
+    No-op when no Listener is active (direct Python invocation outside
+    RF). Story 5.2 code-review 1-way HIGH-C fix 2026-05-20 (Blind H2).
+    """
+    for listener in _active_listeners:
+        register_fn = getattr(listener, "register_observer", None)
+        if callable(register_fn):
+            with contextlib.suppress(Exception):
+                register_fn(observer)
+
 
 _log = logging.getLogger(__name__)
 
@@ -138,6 +172,15 @@ class Listener:
         self._backend: MemoryBackend | JSONLBackend = MemoryBackend()
         self._output_dir: Path | None = None
         self._mcp_per_test: bool | str = True
+        # Story 5.2: per-test observer registry. Adapters register their
+        # `HostedMcpObserver` instance via the module-level
+        # `register_active_observer()` helper during `run()`; Listener's
+        # `end_test` calls `observer.clear()` on every registered observer
+        # for per-test cleanup per ADR-009.
+        self._observers: list[Any] = []
+        # Register this Listener with the module-level active-listeners
+        # list so `register_active_observer()` can find it.
+        _active_listeners.append(self)
 
     # --------------------------------------------------------------- #
     # Tracer setup (idempotent)
@@ -306,6 +349,18 @@ class Listener:
                 # process exit).
                 _kernel_context.unbind_context()
                 return
+        # Story 5.2 code-review 1-way Auditor HIGH-F fix 2026-05-20: clear
+        # observers BEFORE clearing the trace_store spans per AC-5.2.5
+        # ("observer's `clear()` method is called by Story 5.1's Listener on
+        # `end_test` BEFORE `trace_store.clear_spans(test_id)`"). Pre-edit
+        # order was reversed — if a hosted observer downstream queried
+        # trace_store during its own clear (none does today, but the
+        # contract callers rely on), the spans would already be gone.
+        for observer in self._observers:
+            clear_fn = getattr(observer, "clear", None)
+            if callable(clear_fn):
+                with contextlib.suppress(Exception):
+                    clear_fn()
         # Successful flush (or memory-only backend): clear spans for per-test
         # isolation per Story 1b.2 trace_store.clear_spans contract.
         trace_store.clear_spans(test_id)
@@ -340,6 +395,18 @@ class Listener:
         """RF Listener v3 ``close`` hook — final cleanup; idempotent."""
         # `_tracer_configured` stays True across close (cross-suite re-use
         # is correct under pabot worker reuse).
+
+    def register_observer(self, observer: Any) -> None:
+        """Register a `HostedMcpObserver` for per-test `clear()` cleanup.
+
+        Story 5.2 / ADR-009 per-test scope: adapters that construct a
+        `HostedMcpObserver` per run should register it with the Listener so
+        `end_test` calls `observer.clear()` after the JSONL flush. Duck-typed
+        (any object with a `clear()` method); avoids a hard import dependency
+        from `telemetry` on `mcp.observer`.
+        """
+        if observer not in self._observers:
+            self._observers.append(observer)
 
     # --------------------------------------------------------------- #
     # Helpers
