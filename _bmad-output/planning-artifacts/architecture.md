@@ -208,7 +208,7 @@ reconciliationMatrix:
     agentguard_code: "src/AgentGuard/telemetry/{otel_listener.py,spans.py}"
     agenteval_action: "inherit"
     grounded: true
-    note: "agenteval `telemetry/otel_listener.py` (FR32-33) is this. PRD uncaptured."
+    note: "agenteval `telemetry/listener.py` (FR32-33) is this. PRD uncaptured. (Story 5.1 pre-create-story drift fix 2026-05-20: pre-edit said `otel_listener.py` borrowing agentguard's filename; ratified `docs/contracts/listener-integration.md` L17 + epics.md L1437 say `listener.py` — fix-the-losing-source-NOW pattern per `feedback_spec_vs_ratified_doc_precheck`. agentguard's file remains `otel_listener.py` per the reference row L208; agenteval diverges to `listener.py`.)"
 
   - agenteval_concept: "Sandbox Policy (default-deny + Inspect AI)"
     agentguard_source: "ADR-013 Sandbox Policy"
@@ -349,7 +349,7 @@ The PRD's 65 FRs split into ~56 Phase 1 + ~9 Phase 2, organized into 11 capabili
 - Per Step-1 decision (reframed 2026-05-17): agenteval does NOT import from or depend on agentguard. The reconciliation matrix in frontmatter identifies ~14 reviewed agentguard patterns that agenteval evaluates on merit. Concrete patterns reviewed (agenteval implements its own, may borrow shape, may diverge):
   - `_assertions/adapter.py` — pattern borrowed from agentguard's `assert_value()` free function with tier+polling+validate gates; agenteval may refine the gating shape.
   - `providers/base.py` + `providers/litellm_adapter.py` + `providers/mock.py` — pattern borrowed from agentguard's `LLMProviderAdapter` Protocol + LiteLLM impl + Mock impl + factory.
-  - `telemetry/otel_listener.py` + `telemetry/spans.py` — pattern borrowed from agentguard's RF Listener v3 entry-point + span emission helpers.
+  - `telemetry/listener.py` + `telemetry/spans.py` — pattern borrowed from agentguard's RF Listener v3 entry-point (`telemetry/otel_listener.py`) + span emission helpers. (Story 5.1 pre-create-story drift fix 2026-05-20: agenteval filename diverges from agentguard's `otel_listener.py` to `listener.py` per ratified `docs/contracts/listener-integration.md` L17 + epics.md L1437.)
   - `stats/{pass_at_k.py, mannwhitney.py, cliffs_delta.py, bootstrap.py, _helpers.py, library.py}` — pattern borrowed from agentguard's statistical primitives.
   - `library.py` top-level — pattern borrowed from agentguard's `DynamicCore` composition with lazy-import loop (silent `ImportError` swallowing per agentguard `library.py:82-93`).
 
@@ -660,7 +660,7 @@ def get_keyword_tier(fn: Callable) -> Tier | None:
 
 **Implementation surface (~120 LoC kernel module):**
 
-- `TracerProvider` configured at library `__init__(telemetry=True)` (default on per FR33a). Per-test scope: TracerProvider configured with custom resource attributes including `agenteval.test_id` (read from Listener v3 `start_test` context).
+- `TracerProvider` configured at library `__init__(telemetry=True)` (default on per FR33a). Per-test scope: a `TestIdContextSpanProcessor` (added by Story 5.1's Listener at `src/AgentEval/telemetry/listener.py`) stamps `agenteval.test_id` on every span at `on_start` by reading `_kernel/context.current_context().test_id`. (Story 5.1 code-review Auditor M1 fix 2026-05-20: pre-edit said "TracerProvider configured with custom resource attributes" but OTel SDK Resource attributes are IMMUTABLE per-provider; the SpanProcessor-stamping path is the canonical Phase-1 design + `_kernel/trace_store._span_test_id` falls back to span attributes per Story 1b.2 H_R2.)
 - `_kernel/trace_store.py` exposes:
   - `get_run_spans(test_id: str) -> list[ReadableSpan]` — all spans tagged with the given test_id.
   - `get_tool_calls(test_id: str, source: Literal["adapter", "hosted_mcp", None] = None) -> list[ToolCallTrace]` — projection of `execute_tool` spans into `ToolCallTrace` Pydantic dataclasses (per FR35); `source` filter optional.
@@ -1245,7 +1245,7 @@ robotframework-agenteval/
 │       │
 │       ├── telemetry/                      # Per agentguard ADR-012 pattern (borrowed, evaluated on merit) + Decision-2
 │       │   ├── __init__.py
-│       │   ├── otel_listener.py            # RF Listener v3 entry point (registered via [project.entry-points."robot.listener"]) per FR33a
+│       │   ├── listener.py                 # RF Listener v3 entry point (registered via [project.entry-points."robot.listener"]) per FR33a. (Story 5.1 pre-create-story drift fix 2026-05-20: was `otel_listener.py` borrowing agentguard's name; ratified `docs/contracts/listener-integration.md` L17 + epics.md L1437 say `listener.py`.)
 │       │   ├── spans.py                    # OTel span emission helpers (invoke_agent → chat → execute_tool) per FR32 + Step-5 semconv convention
 │       │   ├── backends.py                 # memory / jsonl backends Phase 1; otlp dispatch Phase 2 per FR33b
 │       │   └── semconv.py                  # Internal facade for gen_ai.* attribute names per NFR-COMPAT-06

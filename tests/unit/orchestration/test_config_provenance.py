@@ -111,11 +111,12 @@ def test_get_effective_config_with_provenance_returns_full_dict() -> None:
     config = agent.get_effective_config_with_provenance()
     assert isinstance(config, dict)
     assert all(isinstance(v, ConfigValue) for v in config.values())
-    # All 9 FR42+FR11b keys present.
+    # All FR42+FR11b keys present (10 after Story 5.1 added `trace_path`).
     expected_keys = {
         "provider",
         "telemetry",
         "trace_backend",
+        "trace_path",
         "allow_validate_operator",
         "default_temperature",
         "mcp_per_test",

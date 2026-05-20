@@ -34,8 +34,12 @@ dependencies = [
   "robotframework-pythonlibcore>=4.5",  # No upper bound per architecture L495 (Story 2.1 code-review A4 fix; pre-edit `<5.0` ceiling was unauthorized).
   "anyio==4.13.0",
   "litellm>=1.50,<2.0",
-  "opentelemetry-api>=1.20,<2.0",
-  "opentelemetry-sdk>=1.20,<2.0",
+  # Story 5.1 code-review Auditor H2 fix 2026-05-20: floor bumped 1.20 → 1.27
+  # to match PRD NFR-COMPAT-06 + architecture L337/L1638 ratified floors. The
+  # 1.20 floor was a draft holdover; ratified docs say 1.27. Resolved env
+  # ships 1.41.1 so the bump has no resolver impact.
+  "opentelemetry-api>=1.27,<2.0",
+  "opentelemetry-sdk>=1.27,<2.0",
   "pyyaml>=6.0,<7.0",
   "jsonschema>=4.0,<5.0",
 ]
@@ -105,7 +109,12 @@ mock = "AgentEval.providers.mock:MockProvider"
 # Empty — Phase 3 (real sandbox backends ship; ADR-018 §Cross-cutting forward references).
 
 [project.entry-points."robot.listener"]
-# Empty — populated by Epic 5 Story 5.1 (OTel listener).
+# Populated by Epic 5 Story 5.1 (OTel listener). Canonical user-facing
+# invocation remains `robot --listener AgentEval.telemetry.listener tests/`
+# per `docs/contracts/listener-integration.md` L20 — RF does NOT auto-discover
+# from PyPA entry-points (empirically verified 2026-05-17). The entry-point
+# is provided for Phase-2 tooling that explicitly walks the listener group.
+agenteval = "AgentEval.telemetry.listener:Listener"
 
 [project.entry-points."robotframework_agenteval.adapters"]
 # Empty — FR17a registration mechanism; populated by Epic 4 adapter implementations.

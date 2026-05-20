@@ -469,11 +469,17 @@ def test_build_minimized_env_overlays_spec_env(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_resolve_config_returns_all_9_fr42_fr11b_keys() -> None:
+    """Story 5.1 added `trace_path` (10th key) to support the JSONL backend.
+
+    Test name preserved for git-blame continuity; the key count is now 10
+    after Story 5.1's `trace_path` addition (PRD FR33b JSONL backend + AC-5.1.6).
+    """
     cfg = resolve_config({}, dotenv_path=Path("/nonexistent/.env"))
     expected_keys = {
         "provider",
         "telemetry",
         "trace_backend",
+        "trace_path",
         "allow_validate_operator",
         "default_temperature",
         "mcp_per_test",
@@ -490,6 +496,7 @@ def test_resolve_config_layer4_defaults_match_fr42(monkeypatch: pytest.MonkeyPat
         "AGENTEVAL_PROVIDER",
         "AGENTEVAL_TELEMETRY",
         "AGENTEVAL_TRACE_BACKEND",
+        "AGENTEVAL_TRACE_PATH",
         "AGENTEVAL_ALLOW_VALIDATE_OPERATOR",
         "AGENTEVAL_DEFAULT_TEMPERATURE",
         "AGENTEVAL_MCP_PER_TEST",
@@ -504,6 +511,7 @@ def test_resolve_config_layer4_defaults_match_fr42(monkeypatch: pytest.MonkeyPat
         "provider": "litellm",
         "telemetry": True,
         "trace_backend": "memory",
+        "trace_path": None,
         "allow_validate_operator": False,
         "default_temperature": 0.0,
         "mcp_per_test": True,

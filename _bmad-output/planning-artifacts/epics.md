@@ -1434,7 +1434,7 @@ So that every agent run captures auditable trace data with per-test scope from D
 **Acceptance Criteria:**
 
 **Given** the `_kernel/trace_store.py` from Story 1b.2 and the `_kernel/context.py` from Story 1b.1,
-**When** I implement `src/AgentEval/telemetry/listener.py` (Listener v3) + `src/AgentEval/telemetry/spans.py` (OTel GenAI span generation) + `src/AgentEval/telemetry/backends.py` (Memory + JSONL backends),
+**When** I implement `src/AgentEval/telemetry/listener.py` (Listener v3) + `src/AgentEval/telemetry/spans.py` (OTel GenAI span generation) + `src/AgentEval/telemetry/backends.py` (Memory + JSONL backends) + `src/AgentEval/telemetry/semconv.py` (Internal facade for `gen_ai.*` attribute names per NFR-COMPAT-06; Story 5.1 pre-create-story drift fix 2026-05-20 added — was missing from pre-edit epics.md L1437 despite being mandated by architecture L1251),
 **Then** a `.robot` test invoked via `robot --listener AgentEval.telemetry.listener tests/` (the `--listener` flag is **required** — RF does NOT auto-discover listeners from PyPA entry-points; this was empirically verified 2026-05-17 and documented at `docs/contracts/listener-integration.md`) automatically captures `invoke_agent` spans (one per Send Prompt / Run Scenario / Discoverability call), `chat` child spans (one per LLM round-trip), `execute_tool` child spans (one per tool call), each with `gen_ai.*` attributes per OTel GenAI semconv (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, etc.).
 
 **And Given** the empirically established constraint from 2026-05-17 — RF Library Listeners do NOT receive `xunit_file` / `output_file` hooks (their `close()` fires BEFORE RF writes those files; verified via /tmp/rf-lib-listener-experiment),
