@@ -37,6 +37,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from AgentEval._kernel import trace_store
+from AgentEval._kernel import warnings as _agenteval_warnings
+from AgentEval.errors import DegradedTraceWarning
 
 if TYPE_CHECKING:
     from opentelemetry.sdk.trace import ReadableSpan
@@ -158,15 +160,32 @@ class JSONLBackend:
             # flush_test → end_test → into RF Listener machinery, violating
             # AC-5.1.6's "backend failures must not mask test outcomes"
             # guarantee. Now widened to the full JSON-serialization failure
-            # surface. Story 5.4 forward-ref (DF-5.1-S1): replace
-            # `UserWarning` with `DegradedTraceWarning` once Story 5.4 lands.
-            warnings.warn(
+            # surface. Story 5.4 dual-channel emit: warnings.warn fires the
+            # Python channel (preserves `-W error::DegradedTraceWarning`
+            # filter behavior) AND record_warning captures the structured
+            # record for the per-test buffer + RunManifest.warnings field.
+            _msg = (
                 f"AgentEval JSONL backend write failed at {target_path}: {exc}; "
-                "spans preserved in memory backend for next attempt "
-                "(DF-5.1-S1 upgrade to DegradedTraceWarning when Story 5.4 lands)",
-                UserWarning,
-                stacklevel=2,
+                "spans preserved in memory backend for next attempt"
             )
+            # Story 5.4 code-review 1-way Blind HIGH-C fix 2026-05-20:
+            # record THEN warn so `-W error::DegradedTraceWarning` filter
+            # (which raises on warnings.warn) does NOT drop the structured
+            # buffer record. Operators most interested in surfacing
+            # degraded-trace events are exactly the ones running with
+            # `-W error` — the pre-edit order silently lost the
+            # structured channel for them.
+            _agenteval_warnings.record_warning(
+                warning_type="AgentEval.errors.DegradedTraceWarning",
+                message=_msg,
+                source="telemetry.backends.jsonl",
+                remediation=(
+                    "Inspect filesystem permissions + disk space at the trace "
+                    "output directory; re-run with AGENTEVAL_TRACE_BACKEND=memory "
+                    "to bypass JSONL persistence if the failure is transient"
+                ),
+            )
+            warnings.warn(_msg, DegradedTraceWarning, stacklevel=2)
             return None
         return target_path
 

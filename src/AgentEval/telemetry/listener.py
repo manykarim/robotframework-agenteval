@@ -64,6 +64,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import warnings
+from datetime import UTC
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -76,7 +77,9 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
 from AgentEval._kernel import context as _kernel_context
 from AgentEval._kernel import trace_store
+from AgentEval._kernel import warnings as _agenteval_warnings
 from AgentEval._kernel.redaction import RedactionProcessor
+from AgentEval.errors import DegradedTraceWarning
 from AgentEval.telemetry.backends import JSONLBackend, MemoryBackend
 from AgentEval.telemetry.semconv import AGENTEVAL_TEST_ID
 
@@ -339,18 +342,34 @@ class Listener:
         test_id = self._extract_longname(data)
         suite_id = self._extract_suite_id(data)
         if not test_id:
-            warnings.warn(
+            _msg = (
                 "AgentEval Listener: missing test full_name on start_test; "
-                "spans will carry an empty agenteval.test_id span attribute "
-                "(DF-5.1-S1 upgrade to DegradedTraceWarning when Story 5.4 lands)",
-                UserWarning,
-                stacklevel=2,
+                "spans will carry an empty agenteval.test_id span attribute"
             )
+            # Story 5.4 code-review HIGH-C: record THEN warn so `-W error`
+            # filter doesn't drop the structured channel.
+            _agenteval_warnings.record_warning(
+                warning_type="AgentEval.errors.DegradedTraceWarning",
+                message=_msg,
+                source="telemetry.listener",
+                remediation=(
+                    "Verify RF emits a non-empty `full_name` on TestCase; "
+                    "check listener data-object shape if running outside RF runtime"
+                ),
+            )
+            warnings.warn(_msg, DegradedTraceWarning, stacklevel=2)
             return
         scope = _kernel_context._resolve_scope(  # noqa: SLF001
             cast("bool | Literal['suite']", self._mcp_per_test)
         )
         _kernel_context.set_current_test_id(test_id, suite_id=suite_id, scope=scope)
+        # Story 5.4 AC-5.4.6: merge any pre-test (suite-level) warnings
+        # captured before this `start_test` into the first bound test's
+        # buffer so library-bootstrap warnings surface in the first
+        # test's `Get Last Warnings` output. One-way merge; sentinel is
+        # cleared post-flush so subsequent start_test calls do not see
+        # the same records again.
+        _agenteval_warnings.flush_pre_test_buffer(test_id)
 
     def end_test(self, data: Any, result: Any) -> None:  # noqa: ARG002
         """RF Listener v3 ``end_test`` hook — flush JSONL + clear per-test spans.
@@ -395,6 +414,11 @@ class Listener:
         # Story 5.1 JSONLBackend pattern).
         with contextlib.suppress(Exception):
             self._emit_run_manifest_sidecar(test_id=test_id, suite_id=suite_id)
+        # Story 5.4 AC-5.4.6: clear the per-test warning buffer AFTER the
+        # manifest sidecar has captured its serialized form. Sequence:
+        # sidecar emit → clear_warnings(test_id) → trace_store.clear_spans
+        # → unbind_context. clear_warnings is best-effort + cannot raise.
+        _agenteval_warnings.clear_warnings(test_id)
         # Successful flush (or memory-only backend): clear spans for per-test
         # isolation per Story 1b.2 trace_store.clear_spans contract.
         trace_store.clear_spans(test_id)
@@ -464,9 +488,42 @@ class Listener:
         try:
             base_manifest = trace_store.get_run_manifest(test_id)
         except Exception:  # noqa: BLE001
-            # No spans recorded for this test (or projection accessor failed);
-            # skip the manifest emit. Don't emit a phantom sidecar.
-            return
+            # Story 5.4 code-review 1-way Edge-cases HIGH-4 fix 2026-05-20:
+            # pre-edit the no-spans branch dropped any pending
+            # `DegradedTraceWarning` records because `end_test` calls
+            # `clear_warnings(test_id)` AFTER this helper returns. If
+            # the test recorded a warning (e.g., unknown_trace_backend
+            # during start_suite → flushed into the first test) but
+            # produced zero spans (config-only test), the structured
+            # record was silently lost. Synthesize a minimal manifest
+            # carrying just the warnings + identity fields so the
+            # sidecar still captures the degradation signal.
+            warning_records = _agenteval_warnings.get_warnings(test_id)
+            if not warning_records:
+                return
+            from datetime import datetime
+
+            from AgentEval._kernel.redaction import redaction_policy_hash
+            from AgentEval.types import RunManifest
+
+            try:
+                from AgentEval import __version__ as _library_version
+            except Exception:  # noqa: BLE001
+                _library_version = "0.0.0"
+            now = datetime.now(UTC)
+            try:
+                base_manifest = RunManifest(
+                    library_version=_library_version,
+                    test_id=test_id,
+                    suite_id=suite_id,
+                    redaction_policy_hash=redaction_policy_hash(),
+                    started_at=now,
+                    ended_at=now,
+                )
+            except Exception:  # noqa: BLE001
+                # If even the minimal construction fails, give up
+                # silently — outer `contextlib.suppress` will catch.
+                return
         # Story 5.3: merge the operational metadata into the ratified
         # manifest. `dataclasses.replace` returns a new frozen instance
         # with the additional fields populated.
@@ -477,6 +534,17 @@ class Listener:
             accumulated.setdefault("trace_backend", "jsonl")
         else:
             accumulated.setdefault("trace_backend", "memory")
+        # Story 5.4 AC-5.4.4: pull the structured warning records for this
+        # test out of the per-test buffer + serialize them to the 5-key
+        # dict shape that RunManifest.warnings now expects. Read happens
+        # BEFORE clear_warnings (which runs in end_test after this helper).
+        # Best-effort; failure leaves accumulated["warnings"] as the
+        # Story 5.3 default empty list.
+        try:
+            warning_records = _agenteval_warnings.get_warnings(test_id)
+            accumulated["warnings"] = [_agenteval_warnings.warning_record_to_dict(r) for r in warning_records]
+        except Exception:  # noqa: BLE001
+            accumulated.setdefault("warnings", [])
         # Filter to fields that actually exist on RunManifest; ignore any
         # adapter-provided kwargs not in the dataclass schema.
         manifest_fields = {f.name for f in dataclasses.fields(base_manifest)}
@@ -582,13 +650,22 @@ class Listener:
             # trace_backend silently fell back to memory pre-edit — operators
             # typoing `jsnol` or `jsonl1` would lose JSONL artifacts without
             # any signal. Warn loud + fall back to memory for safety.
-            warnings.warn(
+            _msg = (
                 f"AgentEval Listener: unknown trace_backend={backend_name!r}; "
-                "falling back to 'memory'. Valid values: {'memory', 'jsonl'}. "
-                "(DF-5.1-S1 upgrade to DegradedTraceWarning when Story 5.4 lands)",
-                UserWarning,
-                stacklevel=2,
+                "falling back to 'memory'. Valid values: {'memory', 'jsonl'}."
             )
+            # Story 5.4 code-review HIGH-C: record THEN warn so `-W error`
+            # filter doesn't drop the structured channel.
+            _agenteval_warnings.record_warning(
+                warning_type="AgentEval.errors.DegradedTraceWarning",
+                message=_msg,
+                source="telemetry.listener",
+                remediation=(
+                    "Set AGENTEVAL_TRACE_BACKEND to one of {'memory', 'jsonl'}; "
+                    "the misspelled value silently falls back to memory backend"
+                ),
+            )
+            warnings.warn(_msg, DegradedTraceWarning, stacklevel=2)
             self._backend = MemoryBackend()
         # Story 5.1 code-review Auditor H3 fix 2026-05-20: read mcp_per_test
         # config so start_test can wire FR40 scope through set_current_test_id.

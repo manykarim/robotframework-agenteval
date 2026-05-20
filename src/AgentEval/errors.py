@@ -788,7 +788,13 @@ class MCPConnectionLostError(AgentEvalCompatError):
 
 
 class DegradedTraceWarning(UserWarning):
-    """Emitted when trace data is recoverable-but-incomplete (architecture L997).
+    """Emitted when trace data is recoverable-but-incomplete.
+
+    Story 5.4 code-review 1-way Auditor HIGH-2 fix 2026-05-20 (citation
+    drift): pre-edit cited "architecture L997" which is unrelated (OTel
+    semconv anti-pattern guidance). The actual contract source is PRD
+    FR61 + architecture L384 (honesty-fields propagation section). The
+    re-derived citation is now correct.
 
     Distinct from `AgentEvalError`-hierarchy errors: this is a Python `Warning`
     subclass that integrates with `warnings.warn()`. Callers can opt into
@@ -803,8 +809,16 @@ class DegradedTraceWarning(UserWarning):
     FR61 (Phase-1.5 scope; Story 1b.2 ships the warning class only).
 
     Future code paths that emit this warning:
-        - `mcp_coverage="partial"` runs (FR61, Epic 5)
+        - Mid-run trace-quality degradation events (FR61, Epic 5 Story 5.4):
+          hosted-MCP observer connection drop, JSONL backend write failure,
+          RunManifest sidecar emit failure, novel redaction pattern. The
+          affected run's `mcp_coverage` falls to `"external_mixed"` per
+          ADR-016 degradation rules when the event invalidates server-side
+          observation coverage (NOTE: ADR-016 D1 ratification 2026-05-17
+          superseded the original `partial` value with a 3-state Literal
+          `{"hosted_in_process", "subprocess_with_observer", "external_mixed"}`
+          that admits NO `"partial"` value — see ADR-016).
         - Adapter version drift detected (separate `AdapterVersionDriftWarning`
-          class, Epic 4 Story 4.2)
-        - Span data missing required `agenteval.*` attributes
+          class, Epic 4 Story 4.2).
+        - Span data missing required `agenteval.*` attributes.
     """

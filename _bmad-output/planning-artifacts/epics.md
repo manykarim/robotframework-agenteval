@@ -1519,13 +1519,13 @@ So that I get loud, structured signals when trace quality degrades — instead o
 
 **And Given** the `Get Last Warnings` keyword from FR62,
 **When** I call `${warnings}=    Get Last Warnings    test_id=current` in a `.robot` test,
-**Then** the variable receives a list of warning objects emitted during the current test scope (each with `warning_type`, `message`, `timestamp`, `severity`); calling with `test_id=all` returns warnings across the whole suite.
+**Then** the variable receives a list of `WarningRecord` instances emitted during the current test scope (each with `warning_type`, `message`, `source`, `timestamp`, `remediation` per FR62 ratified shape 2026-05-20 unifying PRD `source + message + remediation` with the test-author-required `warning_type + timestamp`); calling with `test_id=all` returns warnings across the whole suite.
 
 **And Given** AC-MCP-OBSERVE-03 (per-test MCP scope via Listener v3 `test_id`),
 **When** I run a `.robot` test suite under `pabot --processes 4` with multiple tests that each start their own MCP servers,
 **Then** each test's MCP servers + spans + warnings + RunManifest are scoped to that test's `test_id` only (no cross-test pollution), and cleanup runs at test-end per the `mcp_per_test` setting (per Story 3.1).
 
-**And Given** all 4 `mcp_coverage` values can be reached + reported correctly,
+**And Given** all 3 `mcp_coverage` values (`hosted_in_process`, `subprocess_with_observer`, `external_mixed`) can be reached + reported correctly per ADR-016 D1 ratification (NOT 4 — the original 2026-05-15 draft's `partial` value was superseded by the 3-state Literal at 2026-05-17 ratification),
 **When** I run integration tests at `tests/integration/telemetry/test_warnings.py`,
 **Then** each coverage value triggers the appropriate warning behavior + the `Get Last Warnings` keyword returns the expected warning list for each scenario.
 

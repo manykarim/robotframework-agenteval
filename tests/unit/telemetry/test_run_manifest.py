@@ -67,7 +67,15 @@ def test_run_manifest_extended_fields_populated() -> None:
         total_cost_usd=0.01,
         completeness="complete",
         mcp_coverage="hosted_in_process",
-        warnings=["DegradedTraceWarning: stale span"],
+        warnings=[
+            {
+                "warning_type": "AgentEval.errors.DegradedTraceWarning",
+                "message": "stale span",
+                "source": "telemetry.listener",
+                "timestamp": "2026-05-20T00:00:00+00:00",
+                "remediation": None,
+            }
+        ],
         seed=42,
         prompt_hashes=["a" * 64],
     )
@@ -78,14 +86,26 @@ def test_run_manifest_extended_fields_populated() -> None:
     assert m.total_cost_usd == 0.01
     assert m.completeness == "complete"
     assert m.mcp_coverage == "hosted_in_process"
-    assert m.warnings == ["DegradedTraceWarning: stale span"]
+    # Story 5.4: warnings now list[dict] not list[str]; verify the WarningRecord shape.
+    assert len(m.warnings) == 1
+    assert m.warnings[0]["message"] == "stale span"
+    assert m.warnings[0]["warning_type"] == "AgentEval.errors.DegradedTraceWarning"
     assert m.seed == 42
 
 
 def test_run_manifest_defensive_copy_on_construction() -> None:
     """`__post_init__` defensively copies mutable fields per M_R6 pattern."""
     source_mcp_servers = [{"name": "x", "transport": "in_memory"}]
-    source_warnings = ["w1"]
+    # Story 5.4: warnings is now list[dict[str, Any]] per AC-5.4.10.
+    source_warnings = [
+        {
+            "warning_type": "X",
+            "message": "w1",
+            "source": "s",
+            "timestamp": "2026-05-20T00:00:00+00:00",
+            "remediation": None,
+        }
+    ]
     source_prompt_hashes = ["a"]
     m = _make_manifest(
         mcp_servers=source_mcp_servers,
@@ -94,11 +114,37 @@ def test_run_manifest_defensive_copy_on_construction() -> None:
     )
     # Mutate sources — manifest's copies unaffected.
     source_mcp_servers.append({"name": "y", "transport": "in_memory"})
-    source_warnings.append("w2")
+    source_warnings.append(
+        {
+            "warning_type": "Y",
+            "message": "w2",
+            "source": "s",
+            "timestamp": "2026-05-20T00:00:01+00:00",
+            "remediation": None,
+        }
+    )
     source_prompt_hashes.append("b")
     assert len(m.mcp_servers) == 1
-    assert m.warnings == ["w1"]
+    assert len(m.warnings) == 1
+    assert m.warnings[0]["message"] == "w1"
     assert m.prompt_hashes == ["a"]
+
+
+def test_run_manifest_backward_compat_list_str_warnings_coerced() -> None:
+    """Story 5.4 code-review 1-way Blind HIGH-D regression: stale fixtures
+    passing `list[str]` warnings (Story 5.3 placeholder shape) must NOT
+    crash `RunManifest()` construction. The `__post_init__` shim coerces
+    each str → 5-key dict with the str as the `message` field.
+    """
+    m = _make_manifest(warnings=["legacy-DegradedTraceWarning-string"])  # type: ignore[list-item]
+    # The str entry coerced into a 5-key dict.
+    assert len(m.warnings) == 1
+    record = m.warnings[0]
+    assert record["message"] == "legacy-DegradedTraceWarning-string"
+    assert record["warning_type"] == "AgentEval.errors.DegradedTraceWarning"
+    assert record["source"] == "<legacy-str-warning>"
+    assert record["timestamp"] == ""
+    assert record["remediation"] is None
 
 
 def test_emitter_writes_json_sidecar_at_canonical_path(tmp_path: Path) -> None:

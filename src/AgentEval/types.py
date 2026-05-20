@@ -194,7 +194,13 @@ class RunManifest:
         - `trace_backend`: which Story 5.1 backend ran (`"memory"` / `"jsonl"`)
         - `total_cost_usd`: sum of provider-reported cost across the run
         - `completeness` / `mcp_coverage`: AgentRunMetadata projection per FR36a/b
-        - `warnings`: list[str] — populated by Story 5.4's `DegradedTraceWarning` collector
+        - `warnings`: list[dict[str, Any]] — populated by Story 5.4's
+          `DegradedTraceWarning` collector. Each entry is the 5-key
+          `WarningRecord` shape (see `_kernel/warnings.WarningRecord`):
+          `{warning_type: str, message: str, source: str, timestamp: str
+          (RFC 3339), remediation: str | None}`. Story 5.3 placeholder
+          was `list[str]`; the structured shape lands with the
+          `Get Last Warnings` keyword surface.
         - `seed`: int | None — RNG seed for reproducibility (Phase-1 carve:
           populated only when caller explicitly seeded; defaults None)
         - `prompt_hashes`: list[str] — SHA-256 hex of each prompt the agent
@@ -224,7 +230,7 @@ class RunManifest:
     total_cost_usd: float | None = None
     completeness: str | None = None
     mcp_coverage: str | None = None
-    warnings: list[str] = field(default_factory=list)
+    warnings: list[dict[str, Any]] = field(default_factory=list)
     seed: int | None = None
     prompt_hashes: list[str] = field(default_factory=list)
 
@@ -237,7 +243,37 @@ class RunManifest:
             dict(self.agenteval_tier_breakdown),
         )
         object.__setattr__(self, "mcp_servers", [dict(entry) for entry in self.mcp_servers])
-        object.__setattr__(self, "warnings", list(self.warnings))
+        # Story 5.4 code-review 1-way Blind HIGH-D fix 2026-05-20: per
+        # AC-5.4.10, the field type widened from list[str] (Story 5.3
+        # placeholder) to list[dict[str, Any]] (5-key WarningRecord).
+        # A stale fixture passing a raw `str` would crash `dict(entry)`
+        # with `ValueError: dictionary update sequence element #0 has
+        # length 1; 2 is required`. Coerce stale strings into a single-
+        # field dict so backward-compat consumers don't break — the
+        # missing structured fields are filled defensively + the
+        # construction does not raise. New emitters always pass dicts.
+        _coerced_warnings: list[dict[str, Any]] = []
+        for entry in self.warnings:
+            # mypy thinks `isinstance(entry, str)` is unreachable per the
+            # dataclass field annotation `list[dict[str, Any]]`, but the
+            # runtime check is load-bearing for backward-compat with
+            # Story 5.3's `list[str]` placeholder shape — callers that
+            # never updated their fixtures still construct against the
+            # dataclass via untyped JSON/dict ingest. The ignore comment
+            # documents the deliberate runtime widening.
+            if isinstance(entry, str):  # type: ignore[unreachable]
+                _coerced_warnings.append(  # type: ignore[unreachable]
+                    {
+                        "warning_type": "AgentEval.errors.DegradedTraceWarning",
+                        "message": entry,
+                        "source": "<legacy-str-warning>",
+                        "timestamp": "",
+                        "remediation": None,
+                    }
+                )
+            else:
+                _coerced_warnings.append(dict(entry))
+        object.__setattr__(self, "warnings", _coerced_warnings)
         object.__setattr__(self, "prompt_hashes", list(self.prompt_hashes))
 
 

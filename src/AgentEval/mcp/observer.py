@@ -60,6 +60,8 @@ from dataclasses import dataclass, field
 from threading import RLock
 from typing import TYPE_CHECKING, Any, Literal
 
+from AgentEval._kernel import warnings as _agenteval_warnings
+from AgentEval.errors import DegradedTraceWarning
 from AgentEval.types import ToolCallTrace
 
 if TYPE_CHECKING:
@@ -121,6 +123,15 @@ class _ObserverState:
     attached_servers: list[Any] = field(default_factory=list)
     version_drift_warned: bool = False
     sequence_counter: int = 0
+    # Story 5.4 code-review 3-way HIGH-B fix 2026-05-20 (Blind + Edge-cases +
+    # Codex Probe 4 empirical 2/2 emits): pre-edit `mark_external_mixed`
+    # fired both warning channels on EVERY call after the first prior
+    # observation. Adapters that defensively re-signal (pre-flight +
+    # post-flight) produced duplicate `WarningRecord`s in the run's
+    # buffer + duplicate Python warnings. Mirrors `version_drift_warned`
+    # which already implements the dedupe-sentinel pattern for the
+    # parallel `AdapterVersionDriftWarning` class.
+    external_mixed_warned: bool = False
 
 
 class HostedMcpObserver:
@@ -226,12 +237,55 @@ class HostedMcpObserver:
         to ``"external_mixed"`` regardless of whether hosted observation
         also fired.
 
+        Story 5.4 AC-5.4.3: when prior hosted observation existed (≥1
+        tool call had been intercepted before the degradation), this is
+        the canonical FR61 trigger — a `DegradedTraceWarning` is emitted
+        through both the Python `warnings.warn` channel AND the
+        structured `_kernel/warnings.record_warning` buffer so the
+        downstream `Get Last Warnings` keyword surfaces the event. When
+        no observation existed yet (e.g., adapter pre-flight detects
+        external configs before any agent activity), the call is
+        silent — no observation to degrade.
+
         Args:
             reason: Operator-facing explanation of WHY the run degraded.
-                Surfaces in ``IncompleteTraceError.fix_suggestion`` per FR37.
+                Surfaces in ``IncompleteTraceError.fix_suggestion`` per FR37
+                AND in the emitted DegradedTraceWarning message + the
+                structured WarningRecord.
         """
+        # Story 5.4 code-review 3-way HIGH-B fix 2026-05-20: capture
+        # whether we should emit (prior observation existed AND we have
+        # not warned yet) INSIDE the lock; flip the dedupe sentinel
+        # atomically; emit OUTSIDE the lock to avoid holding it during
+        # consumer-defined warning filters. forensic-trail `reason`
+        # accumulation still fires every call (ADR-016 preserves the
+        # list of reasons even after the first emit).
+        should_emit = False
         with self._lock:
             self._state.external_mixed_reasons.append(reason)
+            prior_observation = len(self._state.tool_calls) >= 1
+            if prior_observation and not self._state.external_mixed_warned:
+                self._state.external_mixed_warned = True
+                should_emit = True
+        if should_emit:
+            _msg = (
+                f"hosted-MCP observation degraded mid-run: {reason}; "
+                "mcp_coverage falls to external_mixed per ADR-016 degradation rules"
+            )
+            # Story 5.4 code-review HIGH-C: record THEN warn so
+            # `-W error::DegradedTraceWarning` doesn't drop the structured
+            # buffer record.
+            _agenteval_warnings.record_warning(
+                warning_type="AgentEval.errors.DegradedTraceWarning",
+                message=_msg,
+                source="mcp.observer",
+                remediation=(
+                    "Inspect AgentRunResult.metadata.observed_paths to identify "
+                    "the failing MCP path; verify the external MCP server is "
+                    "reachable + hosted-in-process attachment still holds"
+                ),
+            )
+            warnings.warn(_msg, DegradedTraceWarning, stacklevel=2)
 
     def compute_coverage(self) -> MCPCoverage:
         """Resolve the 3-value `mcp_coverage` per ADR-016 D1 trust-floor.

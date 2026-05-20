@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/anthropics/robotframework-agenteval/docs/contracts/run-manifest-schema.json",
   "title": "AgentEval RunManifest",
-  "description": "Per-test reproducibility manifest per PRD FR39 + architecture L669/L896. Story 5.3 (2026-05-20) extended the ratified 7-field shape to a union of FR39 + epics.md L1502 + architecture L896. Phase-1 stability label: provisional.",
+  "description": "Per-test reproducibility manifest per PRD FR39 + architecture L669/L896. v1.0 (Story 5.3, 2026-05-20): extended the ratified 7-field shape to a union of FR39 + epics.md L1502 + architecture L896. v1.1 (Story 5.4, 2026-05-20): `warnings` field shape ratified — was list[string] placeholder, now list[WarningRecord-object] with 5 keys (warning_type, message, source, timestamp, remediation) per FR62 unified shape. Phase-1 stability label: provisional.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -100,8 +100,19 @@
     },
     "warnings": {
       "type": "array",
-      "description": "DegradedTraceWarning messages collected during the run (Story 5.4 populates).",
-      "items": {"type": "string"}
+      "description": "DegradedTraceWarning records collected during the run per Story 5.4 AC-5.4.4. v1.1 (2026-05-20): each entry is a 5-key WarningRecord object (was list[string] placeholder in Story 5.3); shape ratified per FR62 unification of PRD `source + message + remediation` with `warning_type + timestamp`. `remediation` is null when no actionable advice is known.",
+      "items": {
+        "type": "object",
+        "required": ["warning_type", "message", "source", "timestamp"],
+        "properties": {
+          "warning_type": {"type": "string", "minLength": 1, "description": "Fully-qualified Python warning class name (e.g., 'AgentEval.errors.DegradedTraceWarning')."},
+          "message": {"type": "string", "minLength": 1, "description": "Human-readable warning text passed to `warnings.warn()`."},
+          "source": {"type": "string", "minLength": 1, "description": "Emitting subsystem identifier (e.g., 'telemetry.listener', 'mcp.observer')."},
+          "timestamp": {"type": "string", "format": "date-time", "description": "UTC RFC 3339 set at record_warning() call time."},
+          "remediation": {"type": ["string", "null"], "description": "Actionable advice for the test author; null when no remediation is known."}
+        },
+        "additionalProperties": false
+      }
     },
     "seed": {
       "type": ["integer", "null"],

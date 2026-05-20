@@ -54,7 +54,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from AgentEval._kernel import warnings as _agenteval_warnings
 from AgentEval._kernel.redaction import redact_dict
+from AgentEval.errors import DegradedTraceWarning
 from AgentEval.telemetry.backends import _sanitize_path_segment
 
 if TYPE_CHECKING:
@@ -129,16 +131,28 @@ class RunManifestEmitter:
         except (OSError, ValueError, TypeError, RecursionError) as exc:
             # Story 5.3: same widened-except pattern as Story 5.1
             # `JSONLBackend.flush_test` (Story 5.1 code-review Edge-cases H2
-            # widening — catch JSON-serialization failures too). DF-5.3-S1
-            # forward-ref: replace `UserWarning` with `DegradedTraceWarning`
-            # once Story 5.4 lands the class.
-            warnings.warn(
+            # widening — catch JSON-serialization failures too). Story 5.4
+            # dual-channel emit: warnings.warn fires the Python channel
+            # (preserves `-W error::DegradedTraceWarning` filter behavior)
+            # AND record_warning captures the structured record for the
+            # per-test buffer + RunManifest.warnings field.
+            _msg = (
                 f"AgentEval RunManifest JSON sidecar write failed at {target_path}: {exc}; "
-                "test outcome NOT masked — sidecar artifact missing for this run only "
-                "(DF-5.3-S1 upgrade to DegradedTraceWarning when Story 5.4 lands)",
-                UserWarning,
-                stacklevel=2,
+                "test outcome NOT masked — sidecar artifact missing for this run only"
             )
+            # Story 5.4 code-review HIGH-C: record THEN warn so `-W error`
+            # filter doesn't drop the structured channel.
+            _agenteval_warnings.record_warning(
+                warning_type="AgentEval.errors.DegradedTraceWarning",
+                message=_msg,
+                source="telemetry.run_manifest",
+                remediation=(
+                    "Inspect filesystem permissions + disk space at the trace "
+                    "output directory; manifest data is reconstructable from "
+                    "trace JSONL + span resource attributes if persisted elsewhere"
+                ),
+            )
+            warnings.warn(_msg, DegradedTraceWarning, stacklevel=2)
             return None
         return target_path
 

@@ -106,6 +106,7 @@ _logger = logging.getLogger("AgentEval.library")
 _SUB_LIBRARIES: tuple[tuple[str, str], ...] = (
     ("AgentEval.hooks.library", "HooksLibrary"),
     ("AgentEval.orchestration.library", "OrchestrationLibrary"),
+    ("AgentEval.telemetry.library", "TelemetryLibrary"),
 )
 
 
