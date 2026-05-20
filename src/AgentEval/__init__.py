@@ -107,6 +107,7 @@ _SUB_LIBRARIES: tuple[tuple[str, str], ...] = (
     ("AgentEval.hooks.library", "HooksLibrary"),
     ("AgentEval.orchestration.library", "OrchestrationLibrary"),
     ("AgentEval.telemetry.library", "TelemetryLibrary"),
+    ("AgentEval.metrics.library", "MetricsLibrary"),
 )
 
 
@@ -315,6 +316,11 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
             # PRD FR41 precedence at the orchestration boundary.
             if cls_name == "OrchestrationLibrary":
                 components.append(cls(default_provider=self._provider))
+            elif cls_name == "MetricsLibrary":
+                # Story 6.1 AC-6.1.2: propagate library-level
+                # `allow_external_mcp_blind` to MetricsLibrary so the
+                # FR37 default-deny gate respects PRD FR42 precedence.
+                components.append(cls(allow_external_mcp_blind=self._allow_external_mcp_blind))
             else:
                 components.append(cls())
 

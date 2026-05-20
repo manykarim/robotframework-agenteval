@@ -89,7 +89,7 @@ The PRD specifies **65 distinct FR IDs** across 11 capability areas. Phase tags:
 - **FR19 [P1]:** Agent Developer can call `Metric.Get Tool Call Count <run>` returning `int`; `Metric.Get Tool Call Names <run>` returning `list[str]`; both accept AssertionEngine matchers.
 - **FR20 [P1]:** Agent Developer can call `Metric.Get Tool Hit Rate <run> <expected_tools>` returning `float` and `Metric.Get Tool Success Rate <run>` returning `float`.
 - **FR21 [P1]:** Agent Developer can call `Metric.Get Unnecessary Call Rate <run> <expected_tools>` returning `float`.
-- **FR22 [P1]:** Agent Developer can call `Metric.Get Token Usage <run>` returning `Usage(input, output, total)`; `Metric.Get Latency <run>` + `Metric.Get Latency P95 <run>` + `Metric.Get Cost Total <run>` returning USD float.
+- **FR22 [P1]:** Agent Developer can call `Metric.Get Token Usage <run>` returning `Usage(input_tokens, output_tokens, cached_input_tokens)` per Story 1b.2 ratified dataclass (epics amendment 2026-05-20 per Story 6.1 code-review Auditor HIGH-A drift fix); `Metric.Get Latency <run>` + `Metric.Get Latency P95 <run>` + `Metric.Get Cost Total <run>` returning USD float.
 - **FR23a [P1]:** Agent Developer can call `Trajectory Should Match <run> <expected_sequence>` with three documented match modes: `mode=exact` (default), `mode=subsequence`, `mode=set`.
 - **FR23b [P1]:** Agent Developer can pass `mode=regex` to `Trajectory Should Match` to match each step against a regex pattern over the tool-call name + serialized args.
 - **FR24 [P1]:** QA Engineer can call `Tool Call Should Have Occurred <run> tool=<name> [args=<dict>]`.
@@ -892,7 +892,7 @@ Internal `InMemorySpanExporter` lifecycle: TracerProvider configured with `agent
 
 **And** `src/AgentEval/types.py` is **co-created in Story 1b.2** with the 3 Pydantic dataclasses needed by `trace_store.py`'s projection accessors per architecture L853:
 - `ToolCallTrace(name: str, args: dict, result: Any, error: str | None, latency_ms: float, source: Literal["adapter", "hosted_mcp"], gen_ai_tool_call_id: str)` per FR35 + architecture L975-985.
-- `Usage(input_tokens: int, output_tokens: int, cached_input_tokens: int = 0)` summing `gen_ai.usage.*` per architecture L967.
+- `Usage(input_tokens: int, output_tokens: int, cached_input_tokens: int = 0)` summing `gen_ai.usage.*` per architecture L984 (`gen_ai.usage.*` attribute namespace) + L667 (`get_usage(test_id) -> Usage` projection accessor) — corrected via Story 6.1 code-review 1-way Auditor HIGH-B 2026-05-20 (pre-edit `L967` was an asyncio anti-pattern code block, citation drift).
 - `RunManifest(library_version: str, test_id: str, suite_id: str, redaction_policy_hash: str, started_at: datetime, ended_at: datetime, agenteval_tier_breakdown: dict[int, int])` per FR39 + architecture L669.
 Subsequent stories (1b.4 CodingAgentAdapter; 1b.5 conformance harness) add `AgentRunResult` + related types to the same `types.py`.
 
@@ -995,7 +995,7 @@ The base class implements `run()` itself as a template method that orchestrates 
 **AC-1b.4.5** **And** `AgentRunResult` dataclass is added to `src/AgentEval/types.py` (the top-level types module per architecture L853) with these fields (all `@dataclass(frozen=True)` per Story 1b.2's stdlib-dataclass pattern):
 - `response_text: str` — primary text output from the agent.
 - `tool_calls: list[ToolCallTrace]` — tool invocations observed during the run; reuses Story 1b.2's `ToolCallTrace` type per architecture L885 (NOT a new `ToolCall` type).
-- `usage: Usage` — token usage; reuses Story 1b.2's `Usage` type per architecture L967 (NOT a new `TokenUsage` alias).
+- `usage: Usage` — token usage; reuses Story 1b.2's `Usage` type per architecture L984 (`gen_ai.usage.*` attribute namespace) + L667 (`get_usage(test_id) -> Usage` projection accessor) — corrected via Story 6.1 code-review 1-way Auditor HIGH-B 2026-05-20 (pre-edit `L967` was an asyncio anti-pattern code block, citation drift) (NOT a new `TokenUsage` alias).
 - `metadata: AgentRunMetadata` — sub-dataclass containing the `.metadata.completeness` + `.metadata.mcp_coverage` fields per ADR-006 L15 + PRD FR36a/b L1553-1554 (nested, NOT flat). The nesting is REQUIRED by ADR-006.
 - `cost_usd: float` — total USD cost reported by the provider (or 0.0 for Phase-1 stubs).
 - `latency_seconds: float` — wall-clock duration of the `run()` call.
@@ -1570,20 +1570,35 @@ So that AC-DOGFOOD-01 advances toward Phase 1 completion — `rf-mcp` is dogfood
 #### Story 6.1: Tool-Call Metrics Library
 
 As **Raj (Agent Developer)** or **Priya (QA Engineer)**,
-I want `Metric.Get Tool Call Count`, `Metric.Get Tool Names`, `Metric.Get Tool Hit Rate`, `Metric.Get Tool Success Rate`, `Metric.Get Unnecessary Call Rate`, `Metric.Get Token Usage`, `Metric.Get Latency`, `Metric.Get Cost` keywords reading from any captured `AgentRunResult` or trace,
+I want **9 `Metric.*` keywords** — `Get Tool Call Count`, `Get Tool Call Names`, `Get Tool Hit Rate`, `Get Tool Success Rate`, `Get Unnecessary Call Rate`, `Get Token Usage`, `Get Latency`, `Get Latency P95`, `Get Cost Total` — reading from any captured `AgentRunResult` (Phase-1 source; future Phase-1.5+ trace-store-projection-accessor path tracked per architecture L677),
 So that I can compute headline agent-performance metrics in a `.robot` test from the trace data already captured by Epic 5.
+
+**Story 6.1 epic-spec amendment 2026-05-20 pre-create-story drift check (27th use of `feedback_spec_vs_ratified_doc_precheck`):** original draft had 7 drifts vs PRD FR19-22 + architecture L1290: (D-1) `Get Tool Names` → `Get Tool Call Names` (PRD verbatim); (D-2) single `Get Latency` → split into `Get Latency` (mean) + `Get Latency P95` (P95) per PRD FR22 + architecture L1290; (D-3) `LatencyStats with mean+P95+max` is a TYPE in `metrics/types.py`, NOT a keyword return — each latency keyword returns a scalar float per PRD FR22; (D-4) `Get Cost` → `Get Cost Total` (PRD verbatim + architecture L1290); (D-5) `Get Tool Call Names` returns the chronological list "preserving order" per PRD FR19 (NOT a unique set — duplicates preserved when an agent calls the same tool multiple times); (D-6) keyword count "8" → "9" (PRD enumerates 9: 2 in FR19 + 2 in FR20 + 1 in FR21 + 4 in FR22); (D-7) Phase-1 data source is `AgentRunResult` fields (populated by adapter/observer) NOT trace_store spans (which adapters don't yet emit per DF-5.5-DOGFOOD-2 / C44). All 7 drifts amended pre-authoring.
 
 **Acceptance Criteria:**
 
 **Given** an `AgentRunResult` from `Send Prompt` / `Run Scenario` / Discoverability,
-**When** I call any of the 8 metrics keywords against it (e.g., `${count}=    Metric.Get Tool Call Count    ${result}`),
-**Then** the variable receives the metric value per FR19-22 semantics (count=int, names=list of str unique tools called, hit_rate=expected_tools_hit / total_expected, success_rate=non_error_calls / total_calls, unnecessary_rate=calls_not_expected / total_calls, token_usage=TokenUsage dataclass, latency=LatencyStats with mean+P95+max, cost=float USD).
+**When** I call any of the 9 metrics keywords against it (e.g., `${count}=    Metric.Get Tool Call Count    ${result}`),
+**Then** the variable receives the metric value per PRD FR19-22 verbatim semantics:
+- `Get Tool Call Count` → `int` — `len(result.tool_calls)`
+- `Get Tool Call Names` → `list[str]` preserving chronological order — `[tc.name for tc in result.tool_calls]` (duplicates preserved when an agent invokes the same tool multiple times)
+- `Get Tool Hit Rate <expected_tools>` → `float` — `|{name ∈ expected ∩ observed}| / |expected|` (fraction of expected tools that appeared at least once)
+- `Get Tool Success Rate` → `float` — `count(tc.error is None) / len(result.tool_calls)` (zero-len → 0.0)
+- `Get Unnecessary Call Rate <expected_tools>` → `float` — `count(tc.name ∉ expected) / len(result.tool_calls)` (zero-len → 0.0)
+- `Get Token Usage` → `Usage(input_tokens, output_tokens, cached_input_tokens)` — `result.usage` projection (Story 1b.2 ratified dataclass at `src/AgentEval/types.py:132`; no `total` field — consumers compute `total = input_tokens + output_tokens` at call site when needed)
+- `Get Latency` → `float` — mean turn-level latency in **ms** (from `result.tool_calls[*].latency_ms` mean, with fallback to `result.latency_seconds * 1000` when tool_calls is empty)
+- `Get Latency P95` → `float` — P95 of `result.tool_calls[*].latency_ms` (with same scalar-fallback when fewer than 2 tool_calls)
+- `Get Cost Total` → `float` — `result.cost_usd` (USD)
 
-**And Given** the same metrics keywords accepting a list of `AgentRunResult` (multi-trial aggregation),
-**When** I call `${cost_total}=    Metric.Get Cost    ${results_list}`,
-**Then** the result aggregates across the trials (sum for cost, mean+P95 for latency, mean for rates) — supporting Pass@k post-hoc analysis from Story 6.3.
+**And Given** the same metrics keywords accepting a `list[AgentRunResult]` (multi-trial aggregation),
+**When** I call `${cost_total}=    Metric.Get Cost Total    ${results_list}`,
+**Then** the result aggregates across the trials (**sum** for `Cost Total` + `Tool Call Count`; **mean** for `Hit Rate` + `Success Rate` + `Unnecessary Call Rate` + `Latency`; **P95** computed across the union of tool_calls for `Latency P95`; **set-union preserving order-of-first-appearance** for `Tool Call Names`; **sum-per-field** for `Token Usage`) — supporting Pass@k post-hoc analysis from Story 6.3. Single-`AgentRunResult` callers pass `result`; multi-trial callers pass `[result_1, result_2, ...]`. Keyword dispatch on input type.
 
-**And** all 8 keywords ship Tier-1 badges (deterministic — reading from already-captured data); P95 latency <50ms per invocation; conventions tests pass; unit tests cover the aggregation paths against recorded fixture `AgentRunResult` data.
+**And Given** Phase-1's `IncompleteTraceError` gate (Story 5.2),
+**When** a metric keyword is called on an `AgentRunResult` with `metadata.mcp_coverage == "external_mixed"` AND tool-call-bearing metric (count, names, hit_rate, success_rate, unnecessary_rate),
+**Then** `_kernel/coverage._check_mcp_coverage(run)` raises `IncompleteTraceError` per FR37 unless caller opts in via `allow_external_mcp_blind=True` Library kwarg. Token usage + latency + cost metrics do NOT trigger the gate (they're observer-independent provider-reported scalars).
+
+**And** all 9 keywords ship Tier-1 badges (`@tier(1)` + `[Tier 1 — Deterministic]` docstring per `feedback_dogfood_fake_green_precheck`-related conventions); P95 latency <50ms per invocation; conventions tests pass; unit tests cover the aggregation paths against recorded fixture `AgentRunResult` data. **Phase-1 data source carve-out**: keywords read from `AgentRunResult` fields (populated by adapter/observer), NOT from `_kernel/trace_store` spans (per architecture L677's idealized design). Architecture L677 drift filed as DF-6.1-S1 carry-over for Phase-1.5 closure (when DF-5.5-DOGFOOD-2 adapter span instrumentation lands).
 
 ---
 

@@ -286,6 +286,10 @@ Added by Story 4.3 (Orchestration Keywords — Epic 4 Story 3). Pre-create-story
 
 - **DF-5.2-S3 (subprocess-wrapper full lifecycle + multi-turn tool dispatch loop)** — Two related Phase-1.5 follow-ups: (a) `src/AgentEval/mcp/_observer_subprocess_wrapper.py` is Phase-1 shape-only — the real `MCPLifecycleManager.acquire(transport="stdio")` integration that spawns the wrapper as a subprocess + pipes the trace JSONL back is deferred; (b) Generic adapter `mcp_servers=` integration ships ONLY the observer attachment + `mcp_coverage` resolution — the multi-turn tool-dispatch loop (model returns tool_calls → library dispatches via observer-wrapped server → result fed back to model → next round-trip) is Phase-2 scope. Story 5.5 dogfood port surfaces both. Effort: L (subprocess plumbing + agent-loop orchestration). Phase-1.5/Phase-2.
 
+## Deferred from: story-6.1 pre-create-story drift check (2026-05-20)
+
+- **DF-6.1-S1 (`Metric.*` keywords read from `AgentRunResult` fields not `_kernel/trace_store` per architecture L677)** — Story 6.1 D-7 drift: architecture L677 says "All `Metric.*` keywords (FR19-22) read from `_kernel/trace_store` via the projection accessors — no direct span access by sub-libraries." Phase-1 reality: adapter span instrumentation deferred per DF-5.5-DOGFOOD-2 / C44; if metrics read from spans they'd return `[]`. **Resolution**: Phase-1 metrics read from `AgentRunResult` fields directly (which IS the projection layer above the trace). When DF-5.5-DOGFOOD-2 / C44 lands span emission, helpers in `src/AgentEval/metrics/_internal.py` re-point at `_kernel/trace_store.get_run_spans` / `get_tool_calls` projection accessors WITHOUT changing the keyword surface contract. Effort: M (re-point 18 helpers + update unit-test fixtures to populate trace_store instead of AgentRunResult directly). Phase-1.5.
+
 ---
 
 *Update this file as new deferred items emerge from future reviews.*
