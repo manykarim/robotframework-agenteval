@@ -125,16 +125,18 @@ def record_warning(
 def get_warnings(test_id: str = "current") -> list[WarningRecord]:
     """Return a defensive copy of the per-test warning buffer.
 
-    Three lookup modes per AC-5.4.5:
+    Four lookup modes per AC-5.4.5 + Story 5.5 code-review HIGH-C closure:
 
     - `test_id="current"` (default): resolves to `current_context().test_id`
       via the same accessor `record_warning` uses; returns `[]` if no test
       is bound.
     - `test_id="all"`: returns the union across all per-test buffers
       (EXCLUDING the pre-test sentinel), sorted by `timestamp` ascending.
+    - `test_id="__suite__"`: explicit accessor for the pre-test sentinel
+      buffer. Story 5.5 code-review 3-way HIGH-C fix 2026-05-20: required
+      for Listener-less invocation contexts where `record_warning` routes
+      to the sentinel (DF-5.5-DOGFOOD-4 closure / C45).
     - `test_id="<specific>"`: returns the named buffer (or `[]` if absent).
-      The sentinel key `_PRE_TEST_BUFFER_KEY` is addressable here too for
-      test-fixture verification.
 
     Returns a defensive copy per Story 1b.2 M_R6 — callers mutating the
     returned list cannot poison the internal buffer.
@@ -161,6 +163,19 @@ def get_warnings(test_id: str = "current") -> list[WarningRecord]:
                     collected.extend(list(records))
             collected.sort(key=lambda r: r.timestamp)
             return collected
+        elif test_id == "__suite__":
+            # Story 5.5 code-review 3-way HIGH-C fix 2026-05-20 (Blind HIGH-5 +
+            # Edge-cases HIGH-EC-4 + Auditor HIGH-3): the `_PRE_TEST_BUFFER_KEY`
+            # sentinel buffer is reachable for the Listener-less dogfood case
+            # (DF-5.5-DOGFOOD-4). Pre-edit: `.robot` suites running without
+            # `--listener AgentEval.telemetry.listener` had `current_context()`
+            # return None → records routed to sentinel → `current` lookup
+            # returns `[]` + `all` lookup EXCLUDES sentinel → records
+            # unreachable via the public keyword surface. Now `test_id="__suite__"`
+            # explicitly returns the sentinel records (closes C45 from
+            # `feedback_carry_over_catalog_gate` catalog).
+            with _buffer_lock:
+                return list(_warning_buffers.get(_PRE_TEST_BUFFER_KEY, []))
         else:
             key = test_id
         with _buffer_lock:

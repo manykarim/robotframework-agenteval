@@ -1533,25 +1533,35 @@ So that I get loud, structured signals when trace quality degrades — instead o
 
 ---
 
-#### Story 5.5: Interleaved Dogfood — Port `rf-mcp` Trace Assertions
+#### Story 5.5: Interleaved Dogfood — Trace Observability Against `rf-mcp`
 
 As a **dogfood validator** (Raj's downstream consumer perspective),
-I want the trace-assertion portion of `rf-mcp`'s custom end-to-end tests replaced by `.robot` suites using Epic 5's trace + warning keywords,
-So that AC-DOGFOOD-01 advances further toward Phase 1 completion — `rf-mcp`'s trace observability tests now run via agenteval rather than custom Python.
+I want a `.robot` suite that exercises `rf-mcp`'s `robotmcp` MCP server through agenteval's Epic 5 trace pipeline (hosted-MCP observer + spans + RunManifest sidecar + DegradedTraceWarning collector + `Get Last Warnings` keyword) + asserts every trace artifact populates correctly,
+So that AC-DOGFOOD-01 advances toward Phase 1 completion — `rf-mcp` is dogfooded as the MCP-under-test through agenteval's trace observability layer, surfacing real-world gaps before downstream consumers hit them.
+
+**Story 5.5 epic-spec amendment 2026-05-20 pre-create-story drift check (26th use of `feedback_spec_vs_ratified_doc_precheck`):** the original draft framed Story 5.5 as "port rf-mcp's existing trace-observability tests" — but `rf-mcp`'s `test_mcp_*.py` corpus tests the MCP-server surface (call_tool, list_tools, error scenarios), NOT agent-side trace observability against rf-mcp. There are NO existing trace tests in rf-mcp to port. The honest framing: Story 5.5 dogfoods agenteval's trace pipeline against rf-mcp's `robotmcp` server as the MCP under test — this is the first place rf-mcp is exercised through agenteval's observability layer. Similarly, the original draft said "the workflow runs the new .robot trace suites" but `.github/workflows/dogfood-integration.yml` is Phase-1-smoke-only by design (Story 1a.2 HIGH-1 fake-green lesson); real cross-repo CI integration is deferred to Story 9.1/9.2. Story 5.5 ships a locally-runnable `.robot` suite matching the Story 3.3 dogfood pattern (`uv run robot tests/dogfood/rf-mcp/...` with `RF_MCP_REPO_ROOT` env override).
 
 **Acceptance Criteria:**
 
-**Given** `rf-mcp`'s existing custom tests covering trace recording, span shape, tool-call observation, and warning surfaces,
-**When** I author equivalent `.robot` suites using Epic 5 keywords (`Get Spans`, `Get Last Warnings`, RunManifest inspection),
-**Then** the new `.robot` suites achieve parity with the custom Python tests on the trace-assertion subset — verified via `tests/dogfood/parity-checklist-rf-mcp-trace.md`.
+**Given** rf-mcp's `robotmcp` MCP server exposed via the `.mcp.json` vendored at `tests/dogfood/rf-mcp/.mcp.json` (Story 3.3),
+**When** a `.robot` test starts the server via Story 3.1's `MCP.Start Server`, wires it through `GenericAdapter(mcp_servers={...})` (Story 5.2 hosted-observer path), and triggers a tool call,
+**Then** agenteval's hosted-MCP observer intercepts the tool call + populates: (a) the OTel span store (`_kernel/trace_store.get_run_spans`); (b) the tool-call list (`_kernel/trace_store.get_tool_calls`); (c) `AgentRunResult.metadata.mcp_coverage="hosted_in_process"` per ADR-016 D1; (d) the RunManifest JSON sidecar at `<output_dir>/agenteval/manifest__<suite>__<test>.json` (Story 5.3) — verified by reading the sidecar back + asserting on `warnings`, `mcp_coverage`, `completeness`, `total_cost_usd` fields.
 
-**And Given** the `dogfood-integration.yml` workflow from Story 1a.2,
-**When** a PR touches Epic 5 code paths,
-**Then** the workflow runs the new `.robot` trace suites in `rf-mcp` and reports per-suite pass/fail.
+**And Given** Story 5.5 ships a minimal extension to `TelemetryLibrary` (Story 5.4) — three new RF keywords (`Get Spans`, `Get Tool Calls`, `Get Run Manifest`) that wrap the `_kernel/trace_store` projection accessors with `@tier(1)` Tier-1 badges,
+**When** the dogfood `.robot` suite calls those keywords against the bound `test_id`,
+**Then** the suite reads spans + tool calls + manifest through the public keyword surface (not through Python `Evaluate`) — proving the public Epic 5 surface is usable from `.robot` tests.
 
-**And** the dogfood pass surfaces ≥1 actionable agenteval improvement — file as `dogfood-finding` tagged issue.
+**And Given** a forced degradation event (e.g., calling `observer.mark_external_mixed("simulated subprocess MCP")` after at least one tool call),
+**When** the `.robot` suite calls `Get Last Warnings    test_id=current`,
+**Then** the returned list contains ≥1 `WarningRecord` with `warning_type="AgentEval.errors.DegradedTraceWarning"` + `source="mcp.observer"` (per AC-5.4.3 canonical FR61 trigger) + `mcp_coverage` falls to `"external_mixed"`.
 
-**And** combined with Story 3.3's dogfood, `rf-mcp` now has 2 dogfood subset suites running cleanly; only metric assertions (Epic 6 dogfood story) remain for full `rf-mcp` parity.
+**And Given** the parity checklist at `tests/dogfood/rf-mcp/parity-checklist-rf-mcp-trace.md`,
+**When** Story 5.5 closes,
+**Then** the checklist documents: (a) what rf-mcp's pytest corpus actually covers (MCP-surface, NOT trace observability); (b) what this `.robot` suite NEWLY covers (the agent-side trace pipeline against rf-mcp as the MCP under test); (c) explicit honest framing of the Story 5.5 scope correction vs. the original epic draft (the D-3 drift fix per `feedback_spec_vs_ratified_doc_precheck`); (d) the local invocation command `uv run robot tests/dogfood/rf-mcp/test_trace_observability_parity.robot`.
+
+**And** the dogfood pass surfaces ≥1 actionable agenteval improvement — file as `dogfood-finding` tagged issue. **Likely candidate**: DF-5.2-S3 (Generic adapter multi-turn tool-dispatch loop) is Phase-2 scope; without it the dogfood `.robot` suite cannot drive a real model to invoke rf-mcp tools, so the dogfood must use a controlled fixture (direct `Call Tool` invocation) rather than agent-driven dispatch. This validates the OBSERVER + TRACE pipeline but not the AGENT-LOOP integration; the agent-loop integration follow-up is the dogfood-finding to file.
+
+**And** combined with Story 3.3's MCP-surface dogfood, rf-mcp now has 2 dogfood `.robot` suites at `tests/dogfood/rf-mcp/`. Metric-assertion dogfood (Epic 6 Story 6.4 candidate) remains for full `rf-mcp` parity per `AC-DOGFOOD-01`. **CI wiring deferred** per Phase-1 norm: `dogfood-integration.yml` stays smoke-only; real cross-repo CI integration is Story 9.1/9.2.
 
 ---
 

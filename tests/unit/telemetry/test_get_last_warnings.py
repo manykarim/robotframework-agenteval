@@ -88,3 +88,90 @@ def test_get_last_warnings_no_current_test_returns_empty_list() -> None:
     lib = TelemetryLibrary()
     out = lib.get_last_warnings("current")
     assert out == []
+
+
+# Story 5.5 AC-5.5.6: unit tests for Get Spans / Get Tool Calls / Get Run Manifest
+# wrappers. Each test verifies the keyword dispatches to the underlying
+# `_kernel/trace_store` accessor + propagates the result without modification.
+
+
+def test_get_spans_with_unknown_test_id_returns_empty_list() -> None:
+    """`Get Spans test_id=<unknown>` returns `[]` per the projection accessor's
+    documented "empty list is a valid state" contract.
+    """
+    lib = TelemetryLibrary()
+    out = lib.get_spans("S.never_ran")
+    assert out == []
+
+
+def test_get_tool_calls_with_unknown_test_id_returns_empty_list() -> None:
+    """`Get Tool Calls test_id=<unknown>` returns `[]` — no `execute_tool` spans
+    for a never-run test.
+    """
+    lib = TelemetryLibrary()
+    out = lib.get_tool_calls("S.never_ran")
+    assert out == []
+
+
+def test_get_run_manifest_with_no_current_test_returns_none() -> None:
+    """`Get Run Manifest test_id=current` with no test bound returns `None`
+    per AC-5.5.1 Tier-1 sibling-consistency contract (Story 5.5 code-review
+    2-way HIGH-F fix 2026-05-20 + 3-way HIGH-A defensive-current closure):
+    all 4 Tier-1 keywords (`Get Last Warnings`, `Get Spans`, `Get Tool Calls`,
+    `Get Run Manifest`) honor the same no-bound-test contract — return an
+    empty/None value rather than raising. The underlying
+    `trace_store.get_run_manifest()` accessor still raises `ValueError` for
+    callers who explicitly pass `test_id` that resolves to None, preserving
+    Story 1b.2 semantics for direct accessor consumers.
+    """
+    assert _kernel_context.current_context() is None
+    lib = TelemetryLibrary()
+    result = lib.get_run_manifest("current")
+    assert result is None
+
+
+def test_get_spans_with_no_current_test_returns_empty_list() -> None:
+    """`Get Spans test_id=current` with no test bound returns `[]` per
+    AC-5.5.1 contract (Story 5.5 code-review 3-way HIGH-A fix 2026-05-20).
+    Pre-edit the keyword dispatched to `trace_store.get_run_spans()` no-arg
+    which raises `ValueError` on missing context — diverging from the
+    docstring promise.
+    """
+    assert _kernel_context.current_context() is None
+    lib = TelemetryLibrary()
+    out = lib.get_spans("current")
+    assert out == []
+
+
+def test_get_tool_calls_with_no_current_test_returns_empty_list() -> None:
+    """`Get Tool Calls test_id=current` with no test bound returns `[]`
+    (Story 5.5 code-review 3-way HIGH-A fix 2026-05-20; sibling-consistency
+    with `Get Spans`).
+    """
+    assert _kernel_context.current_context() is None
+    lib = TelemetryLibrary()
+    out = lib.get_tool_calls("current")
+    assert out == []
+
+
+def test_get_last_warnings_test_id_suite_returns_sentinel_records() -> None:
+    """Story 5.5 code-review 3-way HIGH-C fix 2026-05-20 (Blind HIGH-5 +
+    Edge-cases HIGH-EC-4 + Auditor HIGH-3): `Get Last Warnings test_id="__suite__"`
+    explicitly returns the pre-test sentinel buffer (closes
+    DF-5.5-DOGFOOD-4 / C45). Listener-less `.robot` invocation routes
+    records to the sentinel; this lookup-mode makes them reachable via
+    the public RF surface rather than `_warning_buffers["__suite__"]`
+    private access.
+    """
+    # No test bound — record routes to sentinel.
+    assert _kernel_context.current_context() is None
+    _agenteval_warnings.record_warning(
+        warning_type="AgentEval.errors.DegradedTraceWarning",
+        message="suite-bootstrap event",
+        source="probe",
+    )
+    lib = TelemetryLibrary()
+    records = lib.get_last_warnings("__suite__")
+    assert len(records) == 1
+    assert records[0]["message"] == "suite-bootstrap event"
+    assert records[0]["source"] == "probe"
