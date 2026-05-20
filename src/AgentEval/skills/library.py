@@ -62,8 +62,13 @@ from typing import Any
 
 from robot.api.deco import keyword
 
+from AgentEval._kernel.discovery import get_adapter
+from AgentEval._kernel.guardrails import guarded_fanout
 from AgentEval._kernel.tier import tier
+from AgentEval._kernel.tier_acl import build_polling_disallowed_message
+from AgentEval.errors import PollingDisallowedError
 from AgentEval.skills._parser import parse_frontmatter, validate_frontmatter_structure
+from AgentEval.skills.types import ActivationDecision
 
 __all__ = ["SkillsLibrary"]
 
@@ -224,3 +229,66 @@ class SkillsLibrary:
             Phase-2 ADR-022 adoption.
         """
         validate_frontmatter_structure(frontmatter)
+
+    @keyword(name="Get Activation Decision")
+    @tier(3)
+    @guarded_fanout()
+    def get_activation_decision(
+        self,
+        skill: str | Path,
+        prompt: str,
+        adapter: str = "generic",
+        model: str | None = None,
+        polling: float | None = None,
+        **kwargs: Any,
+    ) -> ActivationDecision:
+        """Query an agent and infer whether the given skill was activated.
+
+        [Tier 3 — Stochastic Fan-Out] — sends `prompt` to the LLM adapter
+        and returns an `ActivationDecision` indicating whether the skill's
+        `name` appeared in the agent's response text.
+
+        Phase-1 activation heuristic (AC-7.1.4): case-insensitive substring
+        check of the skill `name` field in `result.response_text`. Phase-2
+        will adopt a more robust classifier (DF-7.1-S1 / C55).
+
+        Args:
+            skill: Filesystem path to the skill `.md` file.
+            prompt: Prompt to send to the agent.
+            adapter: Adapter identifier (default ``"generic"``).
+            model: Optional model override forwarded to the adapter.
+            polling: Must NOT be provided — raises `PollingDisallowedError`
+                per FR28 / AC-7.1.5. Use `Stat.Run N Times` instead.
+            **kwargs: Additional kwargs forwarded to the adapter constructor.
+
+        Returns:
+            `ActivationDecision` with `activated`, `reasoning`, `cost_usd`,
+            `latency_seconds`.
+
+        Raises:
+            PollingDisallowedError: If `polling` is provided (FR28).
+            InvalidSkillFrontmatterError: If the skill `.md` frontmatter
+                is structurally invalid.
+        """
+        if polling is not None:
+            raise PollingDisallowedError(
+                build_polling_disallowed_message(
+                    "Get Activation Decision",
+                    {"skill": str(skill), "prompt": prompt, "adapter": adapter},
+                )
+            )
+        fm = parse_frontmatter(skill)
+        skill_name = str(fm.get("name", ""))
+        adapter_cls = get_adapter(adapter)
+        ctor_kwargs: dict[str, Any] = dict(kwargs)
+        if model is not None:
+            ctor_kwargs["model"] = model
+        adapter_instance = adapter_cls(**ctor_kwargs)
+        result = adapter_instance.run(prompt)
+        activated = bool(skill_name) and skill_name.lower() in result.response_text.lower()
+        return ActivationDecision(
+            activated=activated,
+            reasoning=result.response_text,
+            cost_usd=result.cost_usd,
+            latency_seconds=result.latency_seconds,
+        )

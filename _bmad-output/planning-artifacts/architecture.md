@@ -1271,7 +1271,7 @@ robotframework-agenteval/
 │       │   ├── __init__.py
 │       │   ├── library.py                  # Skill keywords: Get Frontmatter, Get Allowed Tools, Get Description, Get Activation Decision per FR1-2 + FR4 + Devon's Journey 4
 │       │   ├── _internal.py
-│       │   └── types.py                    # SkillFrontmatter, SkillActivationResult
+│       │   └── types.py                    # SkillFrontmatter, ActivationDecision  # D-1 amended 2026-05-21: SkillActivationResult → ActivationDecision per Epic 7 Story 7.1 AC verbatim (fix-the-losing-source-NOW)
 │       │
 │       ├── hooks/                          # Hook sub-library (Tier 1)
 │       │   ├── __init__.py
