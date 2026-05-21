@@ -1,0 +1,40 @@
+# Skill discoverability task set for `rf-results` (robotframework-results).
+#
+# Story 7.4: Interleaved Dogfood — Skill Discoverability Against robotframework-agentskills.
+# skill: tests/dogfood/agentskills/skills/rf-results-skill.md (name: rf-results)
+#
+# 5 should_activate: true  — output.xml parsing / pass-fail stats / results analysis prompts
+# 3 should_activate: false — decoy prompts (web testing / keyword creation / Appium)
+
+tasks:
+  - id: results_pass_fail_summary
+    prompt: "Parse my Robot Framework output.xml and give me the total pass/fail counts and overall pass rate."
+    should_activate: true
+
+  - id: results_failed_test_messages
+    prompt: "Show me which tests failed in my last test run and what error messages they produced."
+    should_activate: true
+
+  - id: results_tag_statistics
+    prompt: "Get tag statistics from output.xml to see which feature areas have the most failures."
+    should_activate: true
+
+  - id: results_slowest_tests
+    prompt: "Which tests took the longest to execute? Get timing information from my output.xml."
+    should_activate: true
+
+  - id: results_merge_outputs
+    prompt: "Combine three output.xml files from parallel runs and compute the overall pass rate with rebot."
+    should_activate: true
+
+  - id: decoy_browser_test
+    prompt: "Create a Browser Library test for the shopping cart checkout flow."
+    should_activate: false
+
+  - id: decoy_generate_keyword
+    prompt: "Generate a Robot Framework keyword that logs into the application using SeleniumLibrary."
+    should_activate: false
+
+  - id: decoy_search_libdoc
+    prompt: "Find Robot Framework keywords that can handle JSON files in the Collections library."
+    should_activate: false

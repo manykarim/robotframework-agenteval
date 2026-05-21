@@ -837,6 +837,7 @@ The CI enforcement conformance test `test_ac_simplicity_02_keyword_idiom.py` is 
 
 Carve-out registry (extend per story):
 - `Skill.Should Be Valid Frontmatter` (Story 2.1; Phase-2 conversion target: Epic 6 Story 6.x AssertionEngine adoption, OR retire if PRD FR2 is amended).
+- `Skill.Should Activate For` (Story 7.2; FR4d single-prompt activation assertion — Tier-2 single-shot; raises `SkillDidNotActivateError` per FR4d. Phase-2 target: AssertionEngine wrapper via DF-6.3-S2 wave; same target as AssertionsLibrary entries below).
 - `AssertionsLibrary.Trajectory Should Match` (Story 6.2; **Phase-1.5 conversion target: DF-6.3-S2 AssertionEngine wrap** — the gating engine `_assertions/adapter.py` + `robotframework-assertion-engine>=4.0,<5.0` dep ship Story 6.3 per AC-6.3.5; the actual 5-keyword + Skill wrapping was deferred per Story 6.3 in-flight amendment 2026-05-20 because all 5 are `@tier(1)` and the polling-ban + validate-gates are no-ops at that tier — wrapping adds new kwargs for no behavior change).
 - `AssertionsLibrary.Tool Call Should Have Occurred` (Story 6.2; same Phase-1.5 target).
 - `AssertionsLibrary.Agent Response Should Contain` (Story 6.2; same Phase-1.5 target).

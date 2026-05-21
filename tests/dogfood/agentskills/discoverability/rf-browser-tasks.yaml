@@ -1,0 +1,40 @@
+# Skill discoverability task set for `rf-browser` (robotframework-browser-skill).
+#
+# Story 7.4: Interleaved Dogfood — Skill Discoverability Against robotframework-agentskills.
+# skill: tests/dogfood/agentskills/skills/rf-browser-skill.md (name: rf-browser)
+#
+# 5 should_activate: true  — Browser Library / Playwright web testing prompts
+# 3 should_activate: false — decoy prompts (results parsing / Appium / keyword search)
+
+tasks:
+  - id: browser_create_test
+    prompt: "Write a Browser Library test to verify that the login page loads and the username field is visible."
+    should_activate: true
+
+  - id: browser_playwright_click
+    prompt: "Create a Playwright-based test that clicks a submit button and checks the success message appears."
+    should_activate: true
+
+  - id: browser_locator_strategy
+    prompt: "How do I use Browser Library's auto-waiting to reliably interact with dynamic content that loads after an AJAX call?"
+    should_activate: true
+
+  - id: browser_iframe
+    prompt: "I need to switch into an iframe and interact with a dropdown inside it using Browser Library keywords."
+    should_activate: true
+
+  - id: browser_assertion_engine
+    prompt: "Add assertions to verify that a form submission redirected the user to the dashboard page using Browser Library."
+    should_activate: true
+
+  - id: decoy_appium_mobile
+    prompt: "Write an Appium test to verify the login screen on an Android app."
+    should_activate: false
+
+  - id: decoy_parse_output_xml
+    prompt: "Parse my output.xml file and show me which tests failed with their error messages."
+    should_activate: false
+
+  - id: decoy_find_keywords
+    prompt: "Search the BuiltIn library documentation to find keywords for string manipulation."
+    should_activate: false

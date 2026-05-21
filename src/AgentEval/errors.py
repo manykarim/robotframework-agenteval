@@ -126,6 +126,8 @@ __all__ = [
     "UnsupportedBinaryVersionError",
     "UnsupportedMCPVersionError",
     "MCPConnectionLostError",
+    "SkillDidNotActivateError",
+    "InvalidSkillDiscoverabilityTasksError",
     # Warnings (1):
     "DegradedTraceWarning",
 ]
@@ -816,6 +818,103 @@ class MCPConnectionLostError(AgentEvalCompatError):
         self.server_name: str | None = server_name
         self.last_operation: str | None = last_operation
         self.fix_suggestion: str | None = fix_suggestion
+
+
+# --------------------------------------------------------------------------- #
+# Skill Discoverability errors (Story 7.2 — FR4b + FR4d)                      #
+# --------------------------------------------------------------------------- #
+
+
+class InvalidSkillDiscoverabilityTasksError(_FR59Tier1SetupFailureError):
+    """Raised when a skill-discoverability tasks YAML file fails parse or schema validation.
+
+    Story 7.2 Tier-1 setup-failure leaf (parallel to
+    `InvalidDiscoverabilityTasksError` for MCP tasks). Raised by
+    `skills/_internal.load_skill_discoverability_tasks()` when:
+        - YAML file fails `yaml.safe_load()` (malformed YAML)
+        - Required top-level `tasks: list[Task]` missing OR empty
+        - Per-task `id` or `prompt` missing / wrong-type
+        - Per-task `should_activate` missing or not bool
+        - Duplicate `id` values across tasks
+        - File extension is not `.yaml` / `.yml` or file does not exist
+
+    `field_name` JSON Pointer convention (parallel to
+    `InvalidDiscoverabilityTasksError`): RFC 6901 pointer into the offending
+    location, e.g., `/tasks/0/should_activate`. Root errors use `""` per
+    RFC 6901 §5.
+
+    `error_code = "INVALID_SKILL_DISCOVERABILITY_TASKS"`; exit code 65 (EX_DATAERR).
+    """
+
+    error_code: ClassVar[str] = "INVALID_SKILL_DISCOVERABILITY_TASKS"
+
+
+class SkillDidNotActivateError(AgentEvalIntegrityError):
+    """Raised when `Skill Should Activate For` asserts but the skill did not activate.
+
+    Story 7.2 / FR4d — assertion failure from the `Skill Should Activate For`
+    keyword (Tier-2 single-shot assertion). The error carries 5 structured
+    fields per the FR4d spec so consumers can diagnose whether to rephrase the
+    prompt or revise the skill description.
+
+    Structured attrs:
+        - `prompt` — verbatim prompt that was tested.
+        - `skill_path` — filesystem path passed to the keyword.
+        - `skill_name` — parsed `name` field from skill frontmatter
+          (empty string if null / missing).
+        - `competing_skill` — which skill the agent activated instead, or
+          `None` when the Phase-1 heuristic cannot determine it (always
+          `None` in Phase-1; Phase-2 will add competing-skill detection).
+        - `reasoning` — full adapter `response_text`, truncated in
+          `__str__` for readability (raw value available via attribute).
+        - `fix_suggestion` — operator-facing remediation hint.
+
+    `__str__` format (custom; NOT the FR59 5-line Tier-1 setup-failure layout
+    since this is a Tier-2 runtime assertion failure):
+        ``SKILL_DID_NOT_ACTIVATE: Skill '<name>' did not activate for prompt.``
+        ``  Prompt: <prompt>``
+        ``  Skill: <path> (name: <name>)``
+        ``  Competing: <competing_skill or 'none detected'>``
+        ``  Reasoning: <first 120 chars of reasoning or 'N/A'>``
+        ``  Fix: <fix_suggestion>``
+
+    `error_code = "SKILL_DID_NOT_ACTIVATE"`.
+    """
+
+    error_code: ClassVar[str] = "SKILL_DID_NOT_ACTIVATE"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        prompt: str,
+        skill_path: str,
+        skill_name: str,
+        competing_skill: str | None = None,
+        reasoning: str | None = None,
+        fix_suggestion: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.prompt: str = prompt
+        self.skill_path: str = skill_path
+        self.skill_name: str = skill_name
+        self.competing_skill: str | None = competing_skill
+        self.reasoning: str | None = reasoning
+        self.fix_suggestion: str = fix_suggestion
+
+    def __str__(self) -> str:
+        message = Exception.__str__(self)
+        reasoning_preview = (
+            self.reasoning[:120] + "..." if self.reasoning and len(self.reasoning) > 120 else (self.reasoning or "N/A")
+        )
+        return (
+            f"{self.error_code}: {message}\n"
+            f"  Prompt: {self.prompt}\n"
+            f"  Skill: {self.skill_path} (name: {self.skill_name or 'N/A'})\n"
+            f"  Competing: {self.competing_skill or 'none detected'}\n"
+            f"  Reasoning: {reasoning_preview}\n"
+            f"  Fix: {self.fix_suggestion or 'N/A'}"
+        )
 
 
 # --------------------------------------------------------------------------- #

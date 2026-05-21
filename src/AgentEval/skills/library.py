@@ -57,6 +57,7 @@ Phase-1 limitations explicitly documented:
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -66,9 +67,15 @@ from AgentEval._kernel.discovery import get_adapter
 from AgentEval._kernel.guardrails import guarded_fanout
 from AgentEval._kernel.tier import tier
 from AgentEval._kernel.tier_acl import build_polling_disallowed_message
-from AgentEval.errors import PollingDisallowedError
+from AgentEval.errors import PollingDisallowedError, SkillDidNotActivateError
+from AgentEval.skills._internal import load_skill_discoverability_tasks
 from AgentEval.skills._parser import parse_frontmatter, validate_frontmatter_structure
-from AgentEval.skills.types import ActivationDecision
+from AgentEval.skills.types import (
+    ActivationDecision,
+    SkillDiscoverabilityResult,
+    SkillDiscoverabilityTaskSummary,
+    SkillTaskResult,
+)
 
 __all__ = ["SkillsLibrary"]
 
@@ -295,4 +302,216 @@ class SkillsLibrary:
             reasoning=result.response_text,
             cost_usd=result.cost_usd,
             latency_seconds=result.latency_seconds,
+        )
+
+    @keyword(name="Get Discoverability")
+    @tier(3)
+    @guarded_fanout()
+    def get_discoverability(
+        self,
+        skill: str | Path,
+        tasks: str | Path,
+        adapter: str = "generic",
+        model: str | None = None,
+        trials_per_task: int = 3,
+        polling: float | None = None,
+        **kwargs: Any,
+    ) -> SkillDiscoverabilityResult:
+        """Run a cohort discoverability evaluation for a skill (FR4b).
+
+        [Tier 3 — Stochastic Fan-Out] — runs `trials_per_task` adapter calls
+        per task across all tasks in the YAML, returning per-task activation
+        rates + aggregate summary.
+
+        Phase-1 activation heuristic (AC-7.2.4): case-insensitive substring
+        check of the skill `name` field in each trial's `response_text`.
+        Phase-2 will add structured response schema or classifier for
+        competing-skills-picked detection (DF-7.2-S1 / C56).
+
+        Args:
+            skill: Filesystem path to the skill `.md` file.
+            tasks: Filesystem path to the skill-discoverability tasks YAML.
+            adapter: Adapter identifier (default ``"generic"``).
+            model: Optional model override forwarded to the adapter constructor.
+            trials_per_task: Number of adapter calls per task (default 3).
+            polling: Must NOT be provided — raises `PollingDisallowedError`
+                per FR28 / AC-7.2.6.
+            **kwargs: Additional kwargs forwarded to the adapter constructor.
+
+        Returns:
+            `SkillDiscoverabilityResult` with `per_task_results`,
+            `summary`, and `adapter_coverage`.
+
+        Raises:
+            PollingDisallowedError: If `polling` is provided (FR28).
+            ValueError: If `trials_per_task` is less than 1.
+            InvalidSkillFrontmatterError: If the skill file cannot be read
+                or parsed as valid YAML.
+            InvalidSkillDiscoverabilityTasksError: If the tasks YAML cannot
+                be read, parsed, or is structurally invalid.
+        """
+        if polling is not None:
+            raise PollingDisallowedError(
+                build_polling_disallowed_message(
+                    "Get Discoverability",
+                    {"skill": str(skill), "tasks": str(tasks), "adapter": adapter},
+                )
+            )
+        if trials_per_task < 1:
+            raise ValueError(f"trials_per_task must be >= 1, got {trials_per_task}")
+        fm = parse_frontmatter(skill)
+        name_raw = fm.get("name")
+        skill_name = name_raw if isinstance(name_raw, str) else ""
+
+        skill_tasks = load_skill_discoverability_tasks(tasks)
+
+        adapter_cls = get_adapter(adapter)
+        ctor_kwargs: dict[str, Any] = dict(kwargs)
+        if model is not None:
+            ctor_kwargs["model"] = model
+
+        t_start = time.perf_counter()
+        task_results: list[SkillTaskResult] = []
+        for task in skill_tasks:
+            activations = 0
+            trial_costs: list[float] = []
+            for _ in range(trials_per_task):
+                adapter_instance = adapter_cls(**ctor_kwargs)
+                result = adapter_instance.run(task.prompt)
+                activated = bool(skill_name) and skill_name.lower() in result.response_text.lower()
+                if activated:
+                    activations += 1
+                trial_costs.append(result.cost_usd)
+            pass_at_k = activations / trials_per_task if trials_per_task > 0 else 0.0
+            cost_per_trial = sum(trial_costs) / max(trials_per_task, 1)
+            task_results.append(
+                SkillTaskResult(
+                    task_id=task.id,
+                    task_prompt=task.prompt,
+                    should_activate=task.should_activate,
+                    trials_run=trials_per_task,
+                    activations_observed=activations,
+                    pass_at_k=pass_at_k,
+                    competing_skills_picked={},
+                    cost_per_trial_usd=cost_per_trial,
+                )
+            )
+        total_runtime = time.perf_counter() - t_start
+        summary = self._build_discoverability_summary(task_results, total_runtime)
+        return SkillDiscoverabilityResult(
+            per_task_results=tuple(task_results),
+            summary=summary,
+            adapter_coverage="in_process",
+        )
+
+    @keyword(name="Should Activate For")
+    @tier(2)
+    def should_activate_for(
+        self,
+        prompt: str,
+        skill: str | Path,
+        adapter: str = "generic",
+        model: str | None = None,
+        polling: float | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Assert that the given skill activates for the given prompt (FR4d).
+
+        [Tier 2 — Stochastic Single-Shot] — sends `prompt` to the adapter
+        once and asserts the skill name appears in the response. Raises
+        `SkillDidNotActivateError` with diagnostic fields if the skill
+        does not activate.
+
+        Phase-1 activation heuristic (AC-7.2.5): case-insensitive substring
+        check of the skill `name` field in `result.response_text` (same
+        heuristic as `Skill.Get Activation Decision`).
+
+        Args:
+            prompt: Natural-language prompt to test.
+            skill: Filesystem path to the skill `.md` file.
+            adapter: Adapter identifier (default ``"generic"``).
+            model: Optional model override forwarded to the adapter constructor.
+            polling: Must NOT be provided — raises `PollingDisallowedError`
+                per FR28 / AC-7.2.6.
+            **kwargs: Additional kwargs forwarded to the adapter constructor.
+
+        Returns:
+            None on success (skill activated).
+
+        Raises:
+            PollingDisallowedError: If `polling` is provided (FR28).
+            SkillDidNotActivateError: If the skill did not activate, carrying
+                `prompt`, `skill_path`, `skill_name`, `competing_skill` (None
+                in Phase-1), `reasoning` (full response text), and
+                `fix_suggestion`.
+            InvalidSkillFrontmatterError: If the skill file cannot be read
+                or parsed as valid YAML.
+
+        Note:
+            If the skill `name` field is absent, empty, or not a string, the
+            activation check always evaluates to False — this keyword will
+            raise `SkillDidNotActivateError` unconditionally (same behaviour
+            as `Skill.Get Activation Decision` for null name per AC-7.1.4).
+        """
+        if polling is not None:
+            raise PollingDisallowedError(
+                build_polling_disallowed_message(
+                    "Should Activate For",
+                    {"prompt": prompt, "skill": str(skill), "adapter": adapter},
+                )
+            )
+        fm = parse_frontmatter(skill)
+        name_raw = fm.get("name")
+        skill_name = name_raw if isinstance(name_raw, str) else ""
+
+        adapter_cls = get_adapter(adapter)
+        ctor_kwargs: dict[str, Any] = dict(kwargs)
+        if model is not None:
+            ctor_kwargs["model"] = model
+        adapter_instance = adapter_cls(**ctor_kwargs)
+        result = adapter_instance.run(prompt)
+        activated = bool(skill_name) and skill_name.lower() in result.response_text.lower()
+        if not activated:
+            raise SkillDidNotActivateError(
+                f"Skill '{skill_name}' did not activate for prompt.",
+                prompt=prompt,
+                skill_path=str(skill),
+                skill_name=skill_name,
+                competing_skill=None,
+                reasoning=result.response_text,
+                fix_suggestion=(
+                    "Rephrase prompt to match the skill description, or revise the skill "
+                    "description to better match this prompt pattern."
+                ),
+            )
+
+    def _build_discoverability_summary(
+        self, task_results: list[SkillTaskResult], total_runtime: float
+    ) -> SkillDiscoverabilityTaskSummary:
+        """Compute aggregate summary across all task results."""
+        total_trials = sum(r.trials_run for r in task_results)
+        total_correct = sum(
+            r.activations_observed if r.should_activate else (r.trials_run - r.activations_observed)
+            for r in task_results
+        )
+        activation_accuracy = total_correct / total_trials if total_trials > 0 else 0.0
+
+        decoy_results = [r for r in task_results if not r.should_activate]
+        false_act_obs = sum(r.activations_observed for r in decoy_results)
+        false_act_denom = sum(r.trials_run for r in decoy_results)
+        false_activation_rate = false_act_obs / false_act_denom if false_act_denom > 0 else 0.0
+
+        should_act_results = [r for r in task_results if r.should_activate]
+        missed_obs = sum(r.trials_run - r.activations_observed for r in should_act_results)
+        missed_denom = sum(r.trials_run for r in should_act_results)
+        missed_activation_rate = missed_obs / missed_denom if missed_denom > 0 else 0.0
+
+        total_cost = sum(r.cost_per_trial_usd * r.trials_run for r in task_results)
+
+        return SkillDiscoverabilityTaskSummary(
+            activation_accuracy=activation_accuracy,
+            false_activation_rate=false_activation_rate,
+            missed_activation_rate=missed_activation_rate,
+            total_cost_usd=total_cost,
+            total_runtime_seconds=total_runtime,
         )

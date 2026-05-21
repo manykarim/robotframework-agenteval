@@ -1,0 +1,40 @@
+# Skill discoverability task set for `rf-libdoc-search` (robotframework-libdoc-search).
+#
+# Story 7.4: Interleaved Dogfood — Skill Discoverability Against robotframework-agentskills.
+# skill: tests/dogfood/agentskills/skills/rf-libdoc-search-skill.md (name: rf-libdoc-search)
+#
+# 5 should_activate: true  — find keywords / search libdoc / match use-case to keywords prompts
+# 3 should_activate: false — decoy prompts (run tests / parse results / create test cases)
+
+tasks:
+  - id: libdoc_find_click_keyword
+    prompt: "Find Robot Framework keywords from Browser Library and SeleniumLibrary that can click a button."
+    should_activate: true
+
+  - id: libdoc_match_dropdown
+    prompt: "Search the SeleniumLibrary documentation to find keywords that handle dropdown selection."
+    should_activate: true
+
+  - id: libdoc_scan_multiple_libraries
+    prompt: "Scan BuiltIn and OperatingSystem libraries to find keywords that read and write files."
+    should_activate: true
+
+  - id: libdoc_text_verification
+    prompt: "Which keywords can I use to verify that specific text appears on a web page? Search available libraries."
+    should_activate: true
+
+  - id: libdoc_custom_resource
+    prompt: "Search my custom resource file for keywords that handle user authentication steps."
+    should_activate: true
+
+  - id: decoy_run_tests
+    prompt: "Run all tests tagged with 'smoke' and show me the results."
+    should_activate: false
+
+  - id: decoy_parse_xml
+    prompt: "Parse the output.xml from my last test run and show me failed tests."
+    should_activate: false
+
+  - id: decoy_create_testcase
+    prompt: "Create a new test case for user registration that verifies the confirmation email is sent."
+    should_activate: false

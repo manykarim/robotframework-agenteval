@@ -1,0 +1,31 @@
+# Skill discoverability tasks fixture for Story 7.2 unit tests.
+# Tests the example-search-skill (name: example-search-skill).
+#
+# Schema (Story 7.2 / FR4b):
+#   tasks: list of task entries
+#   each task:
+#     id: unique string identifier
+#     prompt: natural-language prompt sent to the agent
+#     should_activate: bool — true when example-search-skill SHOULD be
+#                     chosen; false for decoy prompts (false-activation test)
+
+tasks:
+  - id: search_simple
+    prompt: "Help me search for information about Python performance benchmarks."
+    should_activate: true
+
+  - id: search_knowledge_base
+    prompt: "Look up the latest research on neural networks in your knowledge base."
+    should_activate: true
+
+  - id: search_web_query
+    prompt: "Search the web for recent news about AI developments in 2026."
+    should_activate: true
+
+  - id: decoy_greeting
+    prompt: "Hello, how are you doing today?"
+    should_activate: false
+
+  - id: decoy_calculation
+    prompt: "What is 42 multiplied by 17?"
+    should_activate: false
