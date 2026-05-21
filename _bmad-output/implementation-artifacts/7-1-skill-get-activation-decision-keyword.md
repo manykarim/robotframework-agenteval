@@ -1,6 +1,6 @@
 # Story 7.1: Skill.Get Activation Decision Keyword
 
-Status: review
+Status: done
 
 ## Story
 
@@ -136,7 +136,7 @@ Any mid-dev divergences from AC text amended in same commit (test count, helper 
 - [x] Task 7: `feedback_caller_count_check` — verify `ActivationDecision` has ≥ 2 callers (library.py + test file)
 - [x] Task 8: `feedback_in_flight_spec_amendment` — amend AC-7.1.6 budget-enforcement test rationale (see amended AC text)
 - [x] Task 9: All-gates green verification (pytest + ruff + mypy)
-- [ ] Task 10: Update sprint-status.yaml story status → done after code-review passes
+- [x] Task 10: Update sprint-status.yaml story status → done after code-review passes
 
 ## Dev Notes
 

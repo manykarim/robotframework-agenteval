@@ -110,7 +110,7 @@ development_status:
   epic-6-retrospective: optional
 
   epic-7: in-progress  # Started 2026-05-21 with Story 7.1 create-story.
-  7-1-skill-get-activation-decision-keyword: review
+  7-1-skill-get-activation-decision-keyword: done
   7-2-skill-get-discoverability-cohort-keyword-skill-should-activate-for-assertion: backlog
   7-3-devons-stacked-validation-recipe-integration-test: backlog
   7-4-interleaved-dogfood-skill-discoverability-against-robotframework-agentskills: backlog
