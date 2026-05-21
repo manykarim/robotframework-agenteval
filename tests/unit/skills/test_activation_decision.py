@@ -14,14 +14,15 @@
 
 """Unit tests for `Skill.Get Activation Decision` (Story 7.1).
 
-Covers AC-7.1.1 through AC-7.1.7:
+Covers AC-7.1.1 through AC-7.1.7 (14 tests):
   - AC-7.1.1: ActivationDecision dataclass shape
   - AC-7.1.2: keyword registered on SkillsLibrary
   - AC-7.1.3: @tier(3) + @guarded_fanout() decoration
   - AC-7.1.4: activated inference via skill name in response_text (case-insensitive)
+  - AC-7.1.4 edge: null name in YAML → activated=False (not str(None) = "None")
   - AC-7.1.5: polling= raises PollingDisallowedError (FR28)
   - AC-7.1.6: __agenteval_test_budget__ sentinel consumed by @guarded_fanout()
-  - AC-7.1.7: 10 unit tests
+  - AC-7.1.7: 14 unit tests (exceeds minimum of 10; includes AC item 7 + 10)
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ import pytest
 from AgentEval._kernel.discovery import register_adapter
 from AgentEval._kernel.tier import get_keyword_tier
 from AgentEval.coding_agent.base import InProcessAdapter
-from AgentEval.errors import InvalidSkillFrontmatterError, PollingDisallowedError
+from AgentEval.errors import AdapterDiscoveryError, InvalidSkillFrontmatterError, PollingDisallowedError
 from AgentEval.skills.library import SkillsLibrary
 from AgentEval.skills.types import ActivationDecision
 from AgentEval.types import AgentRunMetadata, AgentRunResult, Usage
@@ -142,12 +143,34 @@ def test_case_insensitive_activation_match(lib: SkillsLibrary) -> None:
     assert result.activated is True
 
 
+def test_null_skill_name_in_yaml_gives_activated_false(lib: SkillsLibrary, tmp_path: Path) -> None:
+    """name: null in YAML must yield activated=False (HIGH-1 fix: not str(None)='None').
+
+    Without the isinstance guard, str(None)='None' → bool('None')=True, so any
+    response containing the word 'none' would spuriously activate. The fix uses
+    `name_raw if isinstance(name_raw, str) else ''` so null/missing → ''.
+    """
+    skill_file = tmp_path / "null-name.md"
+    skill_file.write_text(
+        "---\n"
+        "name: null\n"
+        "description: A skill with null name.\n"
+        "allowed-tools: []\n"
+        "disable-model-invocation: false\n"
+        "---\n\n# body\n"
+    )
+    stub = _make_stub(response_text="I found none of the expected tools.")
+    register_adapter("stub_act_null_name", stub)
+    result = lib.get_activation_decision(skill_file, "prompt", adapter="stub_act_null_name")
+    assert result.activated is False
+
+
 def test_empty_skill_name_gives_activated_false(lib: SkillsLibrary, tmp_path: Path) -> None:
     """When skill frontmatter has name='', activated=False regardless of response."""
     skill_file = tmp_path / "empty-name.md"
     skill_file.write_text(
         "---\n"
-        "name: \"\"\n"
+        'name: ""\n'
         "description: A skill with an empty name.\n"
         "allowed-tools: []\n"
         "disable-model-invocation: false\n"
@@ -282,3 +305,14 @@ def test_model_kwarg_forwarded_to_adapter_ctor(lib: SkillsLibrary) -> None:
     )
     assert ctor_kwargs_seen.get("model") == "anthropic/claude-sonnet-4-6"
     assert "model" not in run_kwargs_seen
+
+
+# --------------------------------------------------------------------------- #
+# AC-7.1.7 item 7: unknown adapter raises AdapterDiscoveryError               #
+# --------------------------------------------------------------------------- #
+
+
+def test_unknown_adapter_raises_adapter_discovery_error(lib: SkillsLibrary) -> None:
+    """adapter= that is not registered raises AdapterDiscoveryError."""
+    with pytest.raises(AdapterDiscoveryError):
+        lib.get_activation_decision(VALID_FIXTURE, "prompt", adapter="__nonexistent_7_1__")

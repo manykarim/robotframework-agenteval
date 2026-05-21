@@ -267,8 +267,11 @@ class SkillsLibrary:
 
         Raises:
             PollingDisallowedError: If `polling` is provided (FR28).
-            InvalidSkillFrontmatterError: If the skill `.md` frontmatter
-                is structurally invalid.
+            InvalidSkillFrontmatterError: If the skill file cannot be read
+                or parsed as valid YAML (missing delimiters, broken YAML,
+                wrong extension, file not found). Structurally invalid
+                frontmatter (missing required fields) does NOT raise here —
+                `name` absence / null silently yields `activated=False`.
         """
         if polling is not None:
             raise PollingDisallowedError(
@@ -278,7 +281,8 @@ class SkillsLibrary:
                 )
             )
         fm = parse_frontmatter(skill)
-        skill_name = str(fm.get("name", ""))
+        name_raw = fm.get("name")
+        skill_name = name_raw if isinstance(name_raw, str) else ""
         adapter_cls = get_adapter(adapter)
         ctor_kwargs: dict[str, Any] = dict(kwargs)
         if model is not None:

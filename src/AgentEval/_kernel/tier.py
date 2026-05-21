@@ -18,7 +18,7 @@ Every public keyword in `src/AgentEval/*/library.py` is annotated with
 `@tier(N)` where N is 1, 2, or 3:
 
 - **Tier 1 — Deterministic.** Static-inspection, ACL-gated determinism is
-  enforced by the conformance suite; e.g., `Skill Get Activation Decision`.
+  enforced by the conformance suite; e.g., `Skill Get Description`.
 - **Tier 2 — Stochastic Single-Shot.** Single LLM round-trip per keyword
   invocation; e.g., `Agent Run`.
 - **Tier 3 — Stochastic Fan-Out.** Multi-trial fan-out via the
