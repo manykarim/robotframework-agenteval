@@ -2,7 +2,21 @@
 
 **Persona:** Devon (Agent Surface Author)
 **Epic:** Epic 7 — Skill Author Validation Flow + Skill Discoverability
-**Status:** Stub — drafted Story 7.3; content polish deferred to Epic 8b.
+**Status:** Polished — Story 7.3 stub + Story 8b.3 polish (2026-05-25).
+
+## Listener invocation (REQUIRED)
+
+```bash
+robot --listener AgentEval.telemetry.listener.Listener \
+      --xunit junit.xml \
+      tests/
+```
+
+Use the **explicit `Module.Class` listener path**. The shorter
+`--listener AgentEval.telemetry.listener` (module-path-only) form is
+accepted by RF 7.x but the `Listener` class hooks do NOT fire (Story 8a.2
+D-6 empirical finding). The listener is required for trace capture +
+xunit enrichment — see Recipes #1 + #8.
 
 ## Overview
 

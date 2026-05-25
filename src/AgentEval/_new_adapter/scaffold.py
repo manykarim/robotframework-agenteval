@@ -72,13 +72,8 @@ def scaffold_new_adapter(
     package_dir = output_dir / package_name
     package_dir.mkdir(parents=True, exist_ok=True)
 
-    # Template selection.
-    if adapter_type == "subprocess":
-        adapter_template = "adapter_subprocess.py.tmpl"
-    else:
-        # argparse limits values to subprocess|inprocess, but accept either
-        # variant defensively.
-        adapter_template = "adapter_inprocess.py.tmpl"
+    # Template selection. argparse limits `adapter_type` to subprocess|inprocess.
+    adapter_template = "adapter_subprocess.py.tmpl" if adapter_type == "subprocess" else "adapter_inprocess.py.tmpl"
 
     files: dict[Path, str] = {
         package_dir / "pyproject.toml": _render(
