@@ -1,0 +1,16 @@
+# Sample scenario YAML scaffolded by `agenteval init`.
+#
+# Drives a multi-evaluation run via `Orchestration.Run Scenario`. See PRD FR15
+# + ADR-016 for the full schema; this file is a starter sketch.
+
+model: mock/test
+provider: mock
+agent: generic
+mcp_servers:
+  - name: bundled-echo
+    config: tests/fixtures/.mcp.json
+evals:
+  - prompt: Say hello to the world
+    repeat: 1
+    expect:
+      response_text_contains: hello

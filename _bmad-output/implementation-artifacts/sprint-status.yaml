@@ -121,8 +121,8 @@ development_status:
   8a-2-trace-id-surfacing-in-output-xml-polling-ban-error-testability-conformance-report: done  # Story 8a.2 implementation complete 2026-05-25. 9 new + 7 modified files. All 13 ACs. 2 in-flight empirical fixes per `feedback_in_flight_spec_amendment`: D-5 `data.tags` → `result.tags` (RF Listener v3 only surfaces result-side tags in output.xml); D-6 `--listener AgentEval.telemetry.listener.Listener` explicit class path required on RF 7.x. 1323 pytest pass (+20 net); ruff/format/mypy clean (86 src files). DF-8a.2-S1/C63 catalogued. Awaiting cross-LLM code review.  # Story 8a.2 created 2026-05-25; 36th use of `feedback_spec_vs_ratified_doc_precheck` (100% catch rate intact) caught 4 drifts: D-1 HIGH-decision listener-variable trigger deferred Phase-1.5 (DF-8a.2-S1/C63) via standalone CLI path-of-least; D-2 MED trace_id uses canonical RF full_name; D-3 MED FR56 regex split into primary + 4 sub-regexes; D-4 LOW conformance fixture top-level. 13 ACs (FR51+FR56+FR57+FR64). Applies Epic 7 retro norms.
   epic-8a-retrospective: optional
 
-  epic-8b: backlog
-  8b-1-agenteval-init-scaffolding-command: backlog
+  epic-8b: in-progress
+  8b-1-agenteval-init-scaffolding-command: done  # Story 8b.1 complete 2026-05-25. 13 new files + 2 modified. All 12 ACs. 3 in-flight empirical findings (D-6/D-7/D-8). 1334 pytest pass (+11 net); ruff/format/mypy clean (88 src files). Cross-LLM review degraded (Codex rate-limited, Claude unresponsive); self-review caught all in-flight issues empirically via end-to-end integration test.  # Story 8b.1 created + dev started 2026-05-25; 37th use of `feedback_spec_vs_ratified_doc_precheck` (100% catch rate intact) caught 5 drifts; key D-1 propagates Story 8a.2 D-6 explicit class path to scaffolded README + recipes. 12 ACs (FR52 + FR18 + NFR-UX-01).
   8b-2-agenteval-new-adapter-scaffolding-terminal-run-summary-cohort-heatmap-ascii-dict: backlog
   8b-3-8-recipe-gallery-entries-otel-trace-visual-doc: backlog
   epic-8b-retrospective: optional

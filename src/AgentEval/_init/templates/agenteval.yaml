@@ -1,0 +1,30 @@
+# agenteval starter config (scaffolded by `agenteval init`).
+#
+# These values control Tier-3 fan-out budgets, default model, and trace
+# backplane behavior. The library reads them via the Story 4.3 ConfigValue
+# precedence (CLI args → env vars → this file → defaults).
+#
+# CRITICAL: the canonical invocation MUST use the explicit `Module.Class`
+# listener path so RF Listener v3 hooks fire correctly on RF 7.x:
+#
+#   robot --listener AgentEval.telemetry.listener.Listener \
+#         --xunit junit.xml \
+#         tests/
+#
+# The shorter `--listener AgentEval.telemetry.listener` form is accepted by
+# RF but the Listener class hooks do NOT fire (Story 8a.2 empirical finding).
+
+# Default model used by `Send Prompt` when not overridden by the keyword call.
+model: mock/test
+
+# Tier-3 fan-out cost budget per test (USD). `CostExceededError` raises if
+# exceeded — exit code 66 per FR50.
+max_cost_usd: 5.0
+
+# Tier-3 fan-out runtime budget per test (seconds). `RuntimeBudgetExceededError`
+# raises if exceeded — exit code 75 per FR50.
+max_runtime_seconds: 300
+
+# Trace backend: `memory` (default; in-process only) or `jsonl` (writes per-test
+# JSONL files to `${OUTPUTDIR}/agenteval/trace__<suite>__<test>.jsonl`).
+trace_backend: memory
