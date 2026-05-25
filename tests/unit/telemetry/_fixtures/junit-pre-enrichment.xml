@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="Sample" tests="3" failures="0" errors="0" skipped="0" time="1.5">
+  <testcase classname="Sample" name="Test Alpha" time="0.4"/>
+  <testcase classname="Sample" name="Test Beta" time="0.6"/>
+  <testcase classname="Sample.Nested" name="Test Gamma" time="0.5">
+    <failure type="AssertionError" message="assert 1 == 2">Traceback...</failure>
+  </testcase>
+</testsuite>

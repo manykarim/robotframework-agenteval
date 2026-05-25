@@ -91,6 +91,16 @@ def test_all_exports_are_documented_in_dunder_all() -> None:
         "AGENTEVAL_TOOL_RESULT",
         "AGENTEVAL_TOOL_ERROR",
         "AGENTEVAL_TIER",
+        # agenteval.* JUnit XML enrichment property names (Story 8a.1)
+        "XUNIT_PROP_ADAPTER",
+        "XUNIT_PROP_COMPLETENESS",
+        "XUNIT_PROP_COST_USD",
+        "XUNIT_PROP_LATENCY_SECONDS",
+        "XUNIT_PROP_MCP_COVERAGE",
+        "XUNIT_PROP_MODEL",
+        "XUNIT_PROP_TIER_BREAKDOWN",
+        "XUNIT_PROP_TOTAL_TOKENS",
+        "XUNIT_PROP_TRACE_ID",
         # Span names
         "SPAN_INVOKE_AGENT",
         "SPAN_CHAT",

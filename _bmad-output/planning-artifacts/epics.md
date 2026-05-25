@@ -1815,7 +1815,7 @@ So that mainstream CI tooling that already consumes JUnit XML automatically disp
         <property name="agenteval.total_tokens" value="3421" />
         <property name="agenteval.latency_p95_ms" value="2800" />
         <property name="agenteval.mcp_coverage" value="hosted_in_process" />
-        <property name="agenteval.completeness" value="full" />
+        <property name="agenteval.completeness" value="complete" />
         <property name="agenteval.trace_id" value="01HRMK..." />
         <property name="agenteval.adapter" value="generic" />
         <property name="agenteval.model" value="anthropic/claude-sonnet-4-6" />

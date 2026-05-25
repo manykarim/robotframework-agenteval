@@ -212,6 +212,14 @@ class Listener:
         # Listener's `end_test` uses this to populate the extended
         # RunManifest's Optional fields per FR39 + epics.md L1502.
         self._current_run_metadata: dict[str, Any] = {}
+        # Story 8a.1: per-test frozen snapshot of all data needed by the
+        # `xunit_file` hook (which runs AFTER `end_test` cleared spans).
+        # Keyed by `test_id` (RF `full_name`); snapshot built in `end_test`
+        # BEFORE `trace_store.clear_spans` so trace projections are still
+        # readable. Values are dicts with keys: adapter, model, cost_usd,
+        # completeness, mcp_coverage, total_tokens, latency_seconds,
+        # trace_id, tier_breakdown, evidence_block, warnings.
+        self._completed_run_metadata: dict[str, dict[str, Any]] = {}
         # Register this Listener with the module-level active-listeners
         # list so `register_active_observer()` + `record_active_run_metadata()`
         # can find it.
@@ -414,10 +422,18 @@ class Listener:
         # Story 5.1 JSONLBackend pattern).
         with contextlib.suppress(Exception):
             self._emit_run_manifest_sidecar(test_id=test_id, suite_id=suite_id)
+        # Story 8a.1: snapshot per-test data into `_completed_run_metadata`
+        # BEFORE `clear_warnings` + `clear_spans` so the `xunit_file` hook
+        # (which runs after `end_suite`) can read the data. Broad-catch
+        # mirrors the sidecar pattern: snapshot failure must not mask test
+        # outcomes.
+        with contextlib.suppress(Exception):
+            self._snapshot_completed_run_metadata(test_id=test_id)
         # Story 5.4 AC-5.4.6: clear the per-test warning buffer AFTER the
         # manifest sidecar has captured its serialized form. Sequence:
-        # sidecar emit → clear_warnings(test_id) → trace_store.clear_spans
-        # → unbind_context. clear_warnings is best-effort + cannot raise.
+        # sidecar emit → snapshot completed metadata → clear_warnings(test_id)
+        # → trace_store.clear_spans → unbind_context. clear_warnings is
+        # best-effort + cannot raise.
         _agenteval_warnings.clear_warnings(test_id)
         # Successful flush (or memory-only backend): clear spans for per-test
         # isolation per Story 1b.2 trace_store.clear_spans contract.
@@ -432,14 +448,42 @@ class Listener:
         """
 
     def xunit_file(self, path: str) -> None:
-        """RF Listener v3 ``xunit_file`` hook — reserved for Story 8a.1 enrichment.
+        """RF Listener v3 ``xunit_file`` hook — enrich JUnit XML (Story 8a.1).
 
-        Phase-1 no-op. Story 8a.1 will populate this with per-testcase
-        ``<properties>`` enrichment (cost, tokens, latency, coverage,
-        completeness, trace_id, adapter, model, tier, error_code) per
-        ``docs/contracts/junit-xml-enrichment.md``.
+        Reads ``self._completed_run_metadata`` (snapshot built in
+        ``end_test`` BEFORE ``clear_spans``) and injects per-testcase
+        ``<properties>`` + ``<system-out>`` + ``<system-err>`` per
+        ``docs/contracts/junit-xml-enrichment.md`` via the
+        ``_xunit_enrichment.enrich_xunit_file`` helper.
+
+        Failure-mode contract: any enrichment failure is logged at WARN
+        level by the helper; the original xunit file is preserved via the
+        helper's atomic-write pattern. No exceptions propagate.
         """
-        _ = path
+        if not self._completed_run_metadata:
+            return
+        # Lazy import to avoid pulling xml.etree at listener-import time.
+        # `enrich_xunit_file` has its own broad-except + WARN-log + returns
+        # False on failure — it does not raise. The outer try/except covers
+        # ONLY the lazy import itself (e.g., SyntaxError discovered at first
+        # call) so the listener still satisfies its no-raise contract.
+        # Story 8a.1 code-review LOW-3 (Claude CLI 2026-05-25): the return
+        # value is now logged so a False result does not pass silently.
+        try:
+            from AgentEval.telemetry import _xunit_enrichment
+        except Exception as exc:  # noqa: BLE001 — listener must never propagate.
+            _log.warning(
+                "xunit_file: failed to import _xunit_enrichment; skipping enrichment for %s: %s",
+                path,
+                exc,
+            )
+            return
+        ok = _xunit_enrichment.enrich_xunit_file(Path(path), self._completed_run_metadata)
+        if not ok:
+            _log.warning(
+                "xunit_file: enrichment returned False for %s (original file preserved per failure-mode contract)",
+                path,
+            )
 
     def output_file(self, path: str) -> None:
         """RF Listener v3 ``output_file`` hook — reserved for future use.
@@ -465,6 +509,73 @@ class Listener:
         """
         if observer not in self._observers:
             self._observers.append(observer)
+
+    def _snapshot_completed_run_metadata(self, *, test_id: str) -> None:
+        """Snapshot per-test data into ``self._completed_run_metadata[test_id]``.
+
+        Called from ``end_test`` BEFORE ``clear_spans`` so trace_store
+        projections are still readable. The snapshot is consumed later
+        by ``xunit_file`` for JUnit XML enrichment (Story 8a.1 AC-8a.1.5).
+
+        Snapshot keys:
+
+        - ``adapter``, ``model``, ``cost_usd``, ``completeness``,
+          ``mcp_coverage``: from ``self._current_run_metadata`` (populated
+          via Story 5.3 ``record_active_run_metadata()`` callback).
+        - ``total_tokens``: from ``trace_store.get_usage(test_id).total_tokens``.
+        - ``latency_seconds``: from ``trace_store.get_latency(test_id)``.
+        - ``trace_id``: from ``trace_store.get_run_manifest(test_id).test_id``
+          (canonical test_id, mirrors RF ``full_name``).
+        - ``tier_breakdown``: from
+          ``trace_store.get_run_manifest(test_id).agenteval_tier_breakdown``.
+        - ``evidence_block`` (Optional[str]): Story 5.3 evidence-block
+          string for ``<system-out>``; reserved for future wiring (Phase-1
+          ships ``None`` here pending evidence-block API exposure).
+        - ``warnings`` (Optional[str]): joined ``DegradedTraceWarning``
+          messages for ``<system-err>``; ``None`` if no warnings fired.
+        """
+        meta_in = dict(self._current_run_metadata)
+        # Real adapters (`coding_agent/generic.py` L253 + `claude_code_cli.py`
+        # L249) call `record_active_run_metadata(total_cost_usd=result.cost_usd)`
+        # — the metadata key is `total_cost_usd`, NOT `cost_usd`. Story 8a.1
+        # code-review HIGH-1 (Claude CLI 2026-05-25): pre-edit `meta_in.get(
+        # "cost_usd")` returned None in production. Fix: prefer
+        # `total_cost_usd`, fall back to `cost_usd` for forward-compat.
+        snapshot: dict[str, Any] = {
+            "adapter": meta_in.get("adapter_name") or meta_in.get("adapter"),
+            "model": meta_in.get("model"),
+            "cost_usd": meta_in.get("total_cost_usd") or meta_in.get("cost_usd"),
+            "completeness": meta_in.get("completeness"),
+            "mcp_coverage": meta_in.get("mcp_coverage"),
+        }
+        # trace_store projections (read BEFORE clear_spans).
+        # Story 8a.1 code-review MED-1 (Claude CLI 2026-05-25): pre-edit
+        # `total if total else None` collapsed legitimate `total_tokens=0`
+        # (adapter ran but used no tokens) to None — contradicted the
+        # `_format_value` docstring contract. Fix: gate on `usage is not
+        # None`, not on truthy `total`.
+        with contextlib.suppress(Exception):
+            # `get_usage` always returns a `Usage` per
+            # `_kernel/trace_store.py:365`; total is 0 when no `chat` spans
+            # exist. Preserve 0 as emittable per `_format_value` contract.
+            usage = trace_store.get_usage(test_id)
+            snapshot["total_tokens"] = usage.input_tokens + usage.output_tokens + usage.cached_input_tokens
+        with contextlib.suppress(Exception):
+            latency = trace_store.get_latency(test_id)
+            snapshot["latency_seconds"] = latency if latency else None
+        with contextlib.suppress(Exception):
+            manifest = trace_store.get_run_manifest(test_id)
+            snapshot["trace_id"] = manifest.test_id if manifest else None
+            snapshot["tier_breakdown"] = (
+                dict(manifest.agenteval_tier_breakdown) if manifest and manifest.agenteval_tier_breakdown else None
+            )
+        # Warnings: read from the per-test warning buffer BEFORE clear_warnings.
+        # WarningRecord is a frozen dataclass; access via attributes, not .get().
+        with contextlib.suppress(Exception):
+            warns = _agenteval_warnings.get_warnings(test_id)
+            if warns:
+                snapshot["warnings"] = "\n".join(f"[{w.warning_type}] {w.message}" for w in warns)
+        self._completed_run_metadata[test_id] = snapshot
 
     def _emit_run_manifest_sidecar(self, *, test_id: str, suite_id: str) -> None:
         """Build the extended `RunManifest` + emit the JSON sidecar (Story 5.3).

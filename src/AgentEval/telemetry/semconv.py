@@ -67,6 +67,16 @@ __all__ = [
     "AGENTEVAL_TOOL_RESULT",
     "AGENTEVAL_TOOL_ERROR",
     "AGENTEVAL_TIER",
+    # agenteval.* JUnit XML enrichment property names (Story 8a.1)
+    "XUNIT_PROP_ADAPTER",
+    "XUNIT_PROP_COMPLETENESS",
+    "XUNIT_PROP_COST_USD",
+    "XUNIT_PROP_LATENCY_SECONDS",
+    "XUNIT_PROP_MCP_COVERAGE",
+    "XUNIT_PROP_MODEL",
+    "XUNIT_PROP_TIER_BREAKDOWN",
+    "XUNIT_PROP_TOTAL_TOKENS",
+    "XUNIT_PROP_TRACE_ID",
     # Span names (per architecture L980-982 OTel GenAI semconv hierarchy)
     "SPAN_INVOKE_AGENT",
     "SPAN_CHAT",
@@ -140,6 +150,42 @@ Story 1b.2 M_R5 ratification: producers emit this on every ``@tier``-annotated
 keyword's spans (Listener propagates from ``_agenteval_tier`` decorator
 attribute → span attribute). Counted by ``RunManifest.agenteval_tier_breakdown``.
 """
+
+
+# --------------------------------------------------------------------------- #
+# agenteval.* — JUnit XML enrichment property names (Story 8a.1)              #
+# --------------------------------------------------------------------------- #
+#
+# The 9 ratified `<property name="agenteval.X" value="..."/>` names injected
+# by `telemetry/_xunit_enrichment.py` per `docs/contracts/junit-xml-enrichment.md`.
+# Alphabetical for diff stability per the contract.
+
+XUNIT_PROP_ADAPTER = "agenteval.adapter"
+"""Adapter name (``"generic"`` / ``"claude_code"`` etc.) on the enriched ``<testcase>``."""
+
+XUNIT_PROP_COMPLETENESS = "agenteval.completeness"
+"""``Literal["complete", "truncated", "partial"]`` — ``AgentRunMetadata.completeness``."""
+
+XUNIT_PROP_COST_USD = "agenteval.cost_usd"
+"""Per-test cost in USD (4-decimal-place string per contract value-type rules)."""
+
+XUNIT_PROP_LATENCY_SECONDS = "agenteval.latency_seconds"
+"""Wall-clock latency in seconds (3-decimal-place string)."""
+
+XUNIT_PROP_MCP_COVERAGE = "agenteval.mcp_coverage"
+"""``mcp_coverage`` literal: ``"hosted_in_process"`` / ``"external_pure"`` / ``"external_mixed"`` / ``"none"``."""
+
+XUNIT_PROP_MODEL = "agenteval.model"
+"""Model identifier as configured by the adapter (e.g., ``"anthropic/claude-sonnet-4-6"``)."""
+
+XUNIT_PROP_TIER_BREAKDOWN = "agenteval.tier_breakdown"
+"""JSON string of tier→count map (e.g., ``'{"1": 2, "3": 5}'``) — keys sorted."""
+
+XUNIT_PROP_TOTAL_TOKENS = "agenteval.total_tokens"
+"""Total tokens (input + output + cached) per ``Usage.total_tokens``."""
+
+XUNIT_PROP_TRACE_ID = "agenteval.trace_id"
+"""Canonical test trace_id from ``RunManifest.test_id`` (mirrors RF ``full_name``)."""
 
 
 # --------------------------------------------------------------------------- #
