@@ -101,6 +101,45 @@ PRs without DCO sign-off will be asked to amend their commits during review. A C
 
 DCO sign-off is the project standard chosen on merit for agenteval's contribution model (solo + AI-agent-assisted maintainership per [MAINTAINERS.md](MAINTAINERS.md)). It is lighter-weight than a CLA — no separate document to sign; the sign-off lives in the commit message.
 
+## Cross-LLM Code Review (project standard)
+
+agenteval mandates **cross-LLM adversarial review** for every Tier-2 / Tier-3 keyword PR + every architecture-touching change. Per `feedback_review_methodology_norms` (Epic 0 retro ratification, 2026-05-17), reviews come from ≥2 different LLM families to catch single-model blind spots. 30+ load-bearing catches across Epics 2-7 prove this is not theatre.
+
+### Three supported reviewer CLIs
+
+| CLI | Invocation | When to use |
+|---|---|---|
+| Claude CLI | `claude -p --dangerously-skip-permissions --model opus "$(cat /tmp/review-prompt.md)"` | Primary reviewer for code + spec reviews. |
+| Codex CLI | `codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check "$(cat /tmp/review-prompt.md)"` | Second-LLM-family adversarial. Catches behavioral edges the type-system review misses (`feedback_codex_probe_fitness`). |
+| kilocode CLI (preconfigured minimax) | `~/.kilo/bin/kilo run --auto --model minimax/MiniMax-M2.7 "$(cat /tmp/review-prompt.md)"` | **Third-LLM-family fallback** per `feedback_third_llm_family_fallback` (Epic 10 retro candidate). 9 consecutive substantive reviews across Epic 8 + 9 + 10 retro-batch. Operationally proven when Claude + Codex CLIs degrade. |
+
+### What a review prompt should contain
+
+- **Story spec path** — `_bmad-output/implementation-artifacts/X-Y-*.md`
+- **New + modified files** list
+- **Project conventions to verify** — ADR references, ratified `feedback_*` norms, specific empirical claims to re-derive
+- **Specific shape probes** — e.g., "Does the real SDK expose attribute X?" (`feedback_listener_hook_api_surface_empirical_check`)
+- **Output shape ask** — HIGH/MED/LOW ranked critiques + line numbers + concrete patches
+- End with: `Overall: ratify-as-is / ratify-with-patches / reject-and-revise`
+
+A canonical prompt template lives at `/tmp/kilo-batch-prompt-template.md` — written during the Epic 8 + 9 retro-batch.
+
+### When to escalate to the third-LLM fallback
+
+If Claude CLI returns 0-byte output (silent degradation pattern) OR Codex CLI returns the usage-limit error after a single retry, **switch to kilocode/minimax** rather than ship without cross-LLM review. The 8-story degraded-review streak documented in Epic 8 retro Action #1 represented real lost quality signal — the third-LLM fallback was operationally validated in the Epic 8 + 9 kilo/minimax retro-batch (commit `16ee936`, 8 HIGH patches across 7 stories).
+
+For the canonical pattern + the 8 load-bearing catches the third-LLM delivered, see [`_bmad-output/implementation-artifacts/epic-8-9-kilo-minimax-cross-review-2026-05-26.md`](_bmad-output/implementation-artifacts/epic-8-9-kilo-minimax-cross-review-2026-05-26.md).
+
+### Recording the review in the story spec
+
+Append a `## Senior Developer Review (AI)` section to the story spec with:
+- Reviewer CLI invocation
+- Outcome (`ratify-as-is` / `ratify-with-patches` / `reject-and-revise` / `degraded`)
+- Per-finding bullets (severity, file:line, problem, patch applied or deferred)
+- A Significance note explaining what the review caught that the dev would have missed
+
+Then increment the story's Change Log table with a new version row (e.g., `v0.4.0`) crediting the review. See `_bmad-output/implementation-artifacts/10-1-claude-agent-sdk-adapter.md` for an end-to-end example.
+
 ## Code Style & Conventions
 
 All Python code follows the conventions documented in [`docs/contracts/coding-conventions.md`](docs/contracts/coding-conventions.md). Highlights:
@@ -121,7 +160,7 @@ This is the "fidelity oracle" mechanism per [ADR-005](docs/adr/ADR-005-conforman
 
 ## Architecture Decisions
 
-agenteval documents architectural decisions in [`docs/adr/`](docs/adr/README.md). 18 ADRs are ratified as of Phase 1. Read the index + [`ADR-001` Architectural Influences Catalog](docs/adr/ADR-001-architectural-influences-catalog.md) before proposing structural changes — agenteval inherits patterns from `robotframework-agentguard` (one of several reviewed references) but is **INSPIRATION ONLY**, not a dependency, and free to diverge anywhere.
+agenteval documents architectural decisions in [`docs/adr/`](docs/adr/README.md). 19 ADRs are ratified as of Phase 1 close (ADR-001 catalog + ADR-002 → ADR-019). Read the index + [`ADR-001` Architectural Influences Catalog](docs/adr/ADR-001-architectural-influences-catalog.md) before proposing structural changes — agenteval inherits patterns from `robotframework-agentguard` (one of several reviewed references) but is **INSPIRATION ONLY**, not a dependency, and free to diverge anywhere.
 
 New architectural decisions follow the [MADR](https://adr.github.io/madr/) template (Context / Decision / Consequences / Alternatives). Propose new ADRs via PR.
 

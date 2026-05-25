@@ -1,6 +1,8 @@
 # Documentation Contracts
 
-This directory holds **11 first-class doc contracts** per NFR-MAINT-04. Each contract governs a specific public surface of agenteval: API behavior, on-the-wire format, listener integration, JUnit emission, stability guarantees. Per the PRD's editorial-moat principle + architecture's §Project Tree (L1419-1430, ratified 2026-05-18), these docs are Phase-1 deliverables — not "after MVP" polish.
+This directory holds **12 first-class doc contracts** per NFR-MAINT-04 (11 ratified at Story 1a.4 + 1 added 2026-05-18: `junit-xml-enrichment.md`). Each contract governs a specific public surface of agenteval: API behavior, on-the-wire format, listener integration, JUnit emission, stability guarantees. Per the PRD's editorial-moat principle + architecture's §Project Tree (L1419-1430, ratified 2026-05-18), these docs are Phase-1 deliverables — not "after MVP" polish.
+
+**Phase-1 status (2026-05-25 close):** all 12 contracts exist with **substantive content**. `exit-criteria-0x-to-1x.md` was rewritten from Phase-1 stub to `accepted` status with 6 ratified promotion criteria per Story 9.3. `otel-trace-visual.md` shipped with substantive content per Story 8b.3 (was Phase-2-deferred at Story 1a.4). `error-class-hierarchy.md` gained FR56 polling-ban regex contract section per Story 8a.2. `listener-integration.md` L38 canonical invocation amended per Story 8a.2 D-6 (explicit `Module.Class` path required for RF Listener v3 hooks to fire).
 
 ## Convention
 
@@ -39,7 +41,7 @@ The `docs-build.yml` workflow (Story 1a.2) runs a per-file grep assertion (`^## 
 
 ## Index
 
-11 contracts (sorted alphabetically by slug).
+12 contracts (sorted alphabetically by slug).
 
 | Contract | One-line description | Owning epic / story |
 | --- | --- | --- |
@@ -55,9 +57,23 @@ The `docs-build.yml` workflow (Story 1a.2) runs a per-file grep assertion (`^## 
 | [otel-trace-visual](otel-trace-visual.md) | Visual representation of OTel traces; OTel GenAI semconv mapping. | Phase 2 |
 | [stability-surface](stability-surface.md) | Per-API-element stability labels (`stable`/`provisional`/`experimental`); `### Sandbox Protocol Surface` subsection. | Story 1a.6 + Epic 6 |
 
-## Phase-1 status
+## Phase-1 status (2026-05-25 close)
 
-All 11 contracts exist as **skeletons** as of 2026-05-18 (Story 1a.4 ratification). One contract — `error-class-hierarchy.md` — was authored with **substantive content** per AC-1a.4.2 (FR59 + the 11-leaf ADR-014 table). The other 10 carry `**Status:** Phase-1 skeleton — content to be filled by <Epic N>` banners. The owning epic for each contract is documented in the Status banner + cross-referenced in the Index table above.
+All 12 contracts carry substantive content at Phase-1 close. Per-contract status:
+
+| Contract | Status at Phase-1 close | Notes |
+| --- | --- | --- |
+| `coding-conventions.md` | accepted (Story 1a.5) | substantive |
+| `conformance-fixture-format.md` | accepted (Story 1b.5) | substantive; 6 reference fixtures shipped |
+| `determinism-contract.md` | accepted (Story 1b.6) | substantive; 5 CI-enforcement conventions tests wired |
+| `error-class-hierarchy.md` | accepted (Story 1a.4 baseline + Story 8a.1 21-leaf amendment + Story 8a.2 FR56 polling-ban section) | substantive; renamed contract version to track FR56 + FR59 amendments |
+| `evidence-block-format.md` | accepted (Epic 5) | substantive |
+| `exit-criteria-0x-to-1x.md` | accepted (Story 9.3) | rewritten from Phase-1 stub to 6 ratified criteria with concrete numeric bars |
+| `junit-xml-enrichment.md` | accepted (Story 8a.1) | 9 ratified `agenteval.*` properties; atomic-write enrichment |
+| `listener-integration.md` | accepted (Story 5.1 baseline + Story 8a.2 D-6 amendment) | canonical invocation = explicit `Module.Class` path |
+| `mcp-coverage-detection.md` | accepted (Story 5.2 + ADR-016 ratification) | trust-floor + adapter-contract D4 |
+| `otel-trace-visual.md` | accepted (Story 8b.3) | promoted from Phase-2 deferred per Epic 8b dev scope |
+| `stability-surface.md` | accepted (Story 1a.6 baseline + per-epic amendments) | 4 Epic 10 adapter rows added; `experimental` Phase-2 SDKs |
 
 ## Retired
 
