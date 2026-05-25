@@ -80,11 +80,22 @@ class CohortHeatmap:
             return "(empty heatmap)"
 
         data = self.as_dict()
+        # Story 8b.2 v0.2.0 kilo/minimax cross-LLM review HIGH-1 patch
+        # (2026-05-26): missing cells render as " — " sentinel (em-dash with
+        # spaces) instead of silently substituting 0.0, which was
+        # indistinguishable from a genuine 0% pass-rate. Operators can now
+        # tell missing-from-data apart from real-zero.
+        _missing = " — "
+
+        def _fmt(task: str, model: str) -> str:
+            value = data.get(task, {}).get(model)
+            return _missing if value is None else f"{value:.2f}"
+
         # Compute column widths.
         task_col_width = max(len("Task"), *(len(t) for t in self.tasks))
         model_widths: dict[str, int] = {}
         for model in self.models:
-            cells = [f"{data.get(task, {}).get(model, 0.0):.2f}" for task in self.tasks]
+            cells = [_fmt(task, model) for task in self.tasks]
             model_widths[model] = max(len(model), *(len(c) for c in cells))
 
         # Render header row.
@@ -108,8 +119,7 @@ class CohortHeatmap:
         for task in self.tasks:
             cells = [task.ljust(task_col_width)]
             for model in self.models:
-                value = data.get(task, {}).get(model, 0.0)
-                cells.append(f"{value:.2f}".ljust(model_widths[model]))
+                cells.append(_fmt(task, model).ljust(model_widths[model]))
             body_lines.append("│ " + " │ ".join(cells) + " │")
 
         return "\n".join([top_line, header_line, mid_line, *body_lines, bot_line])

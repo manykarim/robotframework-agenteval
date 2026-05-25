@@ -44,7 +44,12 @@ class KeywordRun:
             post-mortem analysis when callers wrap in `Run Keyword And Ignore Error`.
         completeness: Mirrors `result.metadata.completeness` if `result` is an
             `AgentRunResult`; otherwise `"n/a"`. Operator-facing pass-predicate
-            convenience (default predicate matches `completeness == "full"`).
+            convenience (default predicate matches `completeness == "complete"`
+            — amended 2026-05-26 per kilo/minimax cross-LLM review FINDING-1;
+            pre-Story-6.4 docstring incorrectly cited `"full"`, but the
+            `AgentRunMetadata._VALID_COMPLETENESS` literal set is
+            `{"complete", "truncated", "partial"}` and Story 6.4 fix-NOW at
+            `stats/_internal.py:250` flipped the default predicate to match).
         latency_seconds: Wall-clock duration for this single trial.
         seed: The `int` seed value forwarded to the trial (or `None` if
             OS-entropy seeding was requested).

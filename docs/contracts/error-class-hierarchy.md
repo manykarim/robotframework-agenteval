@@ -121,7 +121,7 @@ Exit codes are **sysexits.h-aligned per-leaf** (ratified 2026-05-18 per Story 1a
 
 **Stability:** the primary regex + the 3 mandatory sub-regexes (a, c, d) are `stable` from Phase-1 onward (label per `stability-surface.md`). Changes require ADR amendment per ADR-014 + a documented migration path for tooling consumers depending on the message shape. Element (b) is `internal` — present-when-available, no stability guarantee on the `at <path>:<line>` exact format.
 
-**Conformance verification:** `tests/conformance/fixtures/fix-polling-ban-error-format.json` exercises the regex against 5 representative invocation contexts (Story 7.1 `Skill.Get Activation Decision`, Story 7.2 `Skill.Get Discoverability`, Story 6.3 `Stat.Run N Times`, Story 6.3 ADR-019 `validate` operator, and a placeholder MCP future-polling context).
+**Conformance verification:** `tests/conformance/fixtures/_fr56_polling_ban_regex_contract.json` (renamed from `fix-polling-ban-error-format.json` 2026-05-26 per kilo/minimax review — underscore-prefix excludes from `load_fixture()` discovery since the file is a FR56 regex-contract artifact, not a `ConformanceFixture`) exercises the regex against 5 representative invocation contexts (Story 7.1 `Skill.Get Activation Decision`, Story 7.2 `Skill.Get Discoverability`, Story 6.3 `Stat.Run N Times`, Story 6.3 ADR-019 `validate` operator, and a placeholder MCP future-polling context). The live verification is `tests/integration/ci/test_polling_ban_regex_stability.py` which exercises the regex against `build_polling_disallowed_message()` output.
 
 ---
 

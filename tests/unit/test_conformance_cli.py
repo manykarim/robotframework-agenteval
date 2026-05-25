@@ -89,28 +89,41 @@ def test_exit_zero_when_all_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert rc == 0
 
 
-def test_exit_70_when_failures_present(tmp_path: Path) -> None:
-    """AC-8a.2.6 #6: exit EXIT_CODE_FALLBACK (70) when ≥1 fixture fails."""
-    failed = FixtureResult(
-        fixture_id="dummy",
-        fixture_path="dummy.json",
+def test_exit_70_when_failures_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """AC-8a.2.6 #6: exit EXIT_CODE_FALLBACK (70) when ≥1 fixture fails.
+
+    Story 8a.2 v0.2.0 kilo/minimax cross-LLM review HIGH-2 patch
+    (2026-05-26): the previous implementation computed the expected
+    exit-code formula inline + asserted on the formula instead of
+    invoking ``main()`` — fake-green per ``feedback_test_name_assertion_match``
+    Epic 3 retro norm. Now monkey-patches ``_execute_fixture`` to return
+    a synthetic ``FixtureResult(status="failed")``, then drives ``main()``
+    end-to-end + asserts the actual returned exit code is 70.
+    """
+    monkeypatch.chdir(tmp_path)
+    # Seed a stub fixture file so the discovery loop has something to find.
+    (tmp_path / "tests" / "conformance" / "fixtures").mkdir(parents=True)
+    stub_path = tmp_path / "tests" / "conformance" / "fixtures" / "stub_failed.json"
+    stub_path.write_text('{"_schema_version": "1.0.0"}', encoding="utf-8")
+
+    failed_result = FixtureResult(
+        fixture_id="stub-failed",
+        fixture_path=str(stub_path),
         status="failed",
         duration_seconds=0.0,
-        error={"type": "Synthetic", "message": "synthetic failure"},
+        error={"type": "Synthetic", "message": "synthetic failure for AC-8a.2.6 #6"},
     )
-    write_json_report(
-        tmp_path / "report.json",
-        agenteval_version="0.0.1",
-        adapter="mock",
-        executed_at="2026-05-25T00:00:00+00:00",
-        results=[failed],
+
+    def _stub_execute(fixture_path: Path, *, adapter: str) -> FixtureResult:
+        return failed_result
+
+    monkeypatch.setattr(
+        "AgentEval.conformance.cli._execute_fixture",
+        _stub_execute,
     )
-    summary = ReportSummary.from_results([failed])
-    # Verify the would-be exit logic inline (`main` requires real fixtures
-    # discovery; we exercise the summary-derived branch here directly).
-    assert summary.failed == 1
-    expected_rc = EXIT_CODE_FALLBACK if (summary.failed or summary.errored) else 0
-    assert expected_rc == 70
+
+    rc = main(["--adapter", "mock", "--output-dir", str(tmp_path / "out")])
+    assert rc == EXIT_CODE_FALLBACK == 70
 
 
 def test_atomic_write_failure_preserves_no_partial(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

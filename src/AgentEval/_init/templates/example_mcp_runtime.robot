@@ -15,7 +15,14 @@ Echo Tool Roundtrips A Message
 
 *** Keywords ***
 Setup Bundled Echo
-    ${HANDLE}=    MCP.Start Server    ${CURDIR}/fixtures/.mcp.json    bundled-echo
+    # MCP.Start Server signature (mcp/library.py:195): keyword-only-style positional
+    # args mapped to (name, transport, command, args). Robot's keyword binding
+    # accepts either positional or `name=` form. The 2-step `Get Server Config`
+    # then `Start Server` was the original intent — corrected per Story 8b.1 v0.2.0
+    # kilo/minimax cross-LLM review FINDING-1 (the previous form passed the
+    # config path as `name` and "bundled-echo" as `transport`, which is not a
+    # valid Transport literal).
+    ${HANDLE}=    MCP.Start Server    bundled-echo    stdio    python    args=${{['-m','AgentEval.mcp.bundled.echo']}}
     Set Suite Variable    ${HANDLE}
 
 Teardown Bundled Echo

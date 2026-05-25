@@ -1,7 +1,7 @@
 {
-  "$schema": "../fixture-schema.json",
-  "fixture_id": "fix-polling-ban-error-format",
-  "description": "FR56 polling-ban error-message regex stability fixture. Story 8a.2 contract pinning at `docs/contracts/error-class-hierarchy.md` (FR56 section). Asserts the primary regex + 3 mandatory FR56 sub-regexes match across 5 representative `PollingDisallowedError`-raising contexts.",
+  "_note": "NOT a ConformanceFixture per `fixture-schema.json` — this is a FR56 regex-contract reference artifact (underscore prefix excludes from loader.load_fixture() discovery). Renamed from `fix-polling-ban-error-format.json` 2026-05-26 per kilo/minimax cross-LLM review HIGH-1 finding (schema mismatch: ConformanceFixture requires `_schema_version`+`adapter_name`+`scenario_name`+`agent_run_result`+`expected_tool_calls`+`expected_errors`+`reproducibility_footer`; this file has none of those — its `regex_contract` shape is FR56-specific). Consumed by `tests/integration/ci/test_polling_ban_regex_stability.py` as a regex source-of-truth.",
+  "fixture_id": "fr56-polling-ban-regex-contract",
+  "description": "FR56 polling-ban error-message regex stability contract. Story 8a.2 contract pinning at `docs/contracts/error-class-hierarchy.md` (FR56 section). Asserts the primary regex + 3 mandatory FR56 sub-regexes match across 5 representative `PollingDisallowedError`-raising contexts.",
   "owning_epic": "Epic 8a Story 8a.2",
   "regex_contract": {
     "primary": "^PollingDisallowedError: keyword '[^']+' received a `polling=` argument",

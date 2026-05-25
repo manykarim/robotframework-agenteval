@@ -17,7 +17,7 @@
 Asserts the primary regex + 3 mandatory FR56 sub-regexes match the actual
 `build_polling_disallowed_message` output across 4 representative
 keyword-name contexts (matching the fixture at
-`tests/conformance/fixtures/fix-polling-ban-error-format.json` contexts 1-4;
+`tests/conformance/fixtures/_fr56_polling_ban_regex_contract.json` contexts 1-4;
 context 5 is a Phase-2 placeholder per AC-8a.2.4).
 """
 

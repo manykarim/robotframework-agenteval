@@ -97,13 +97,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Story 9.1 / AC-9.1.3: extends the install-smoke job with a parity-suite
-    # smoke check. Runs ONLY on workflow_dispatch + release (NOT on every PR)
-    # because cloning rf-mcp + running its subprocess MCP server is heavier
-    # than the install-smoke + isn't on the per-PR critical path until
-    # rf-mcp adopts agenteval (per Story 9.1 D-2 path-of-least-amendment).
+    # smoke check. Runs on workflow_dispatch + release (heavy operation per
+    # Story 9.1 D-2) AND on PRs labeled `release-pending` (kilo/minimax
+    # cross-LLM review HIGH-2 patch 2026-05-26 — the domestic regression
+    # gate was previously untestable on PRs because the trigger excluded
+    # `pull_request` entirely; now matches the `dogfood` job's
+    # release-pending PR gating pattern).
     if: >
       github.event_name == 'release' ||
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'release-pending'))
 
     steps:
       - name: Checkout agenteval
@@ -162,9 +166,15 @@ jobs:
     # Story 7.4 vendored the necessary skill .md files + task YAMLs INTO this
     # repo (per agenteval's no-upstream-push vendor pattern). No external clone
     # required; the dogfood suites run directly against this repo's tree.
+    # Extended 2026-05-26 per kilo/minimax cross-LLM review HIGH-2 patch
+    # (Story 9.1 finding propagated to Story 9.2): add `release-pending`
+    # PR label trigger so the domestic regression gate is testable on
+    # development PRs (was previously workflow_dispatch + release only).
     if: >
       github.event_name == 'release' ||
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'release-pending'))
 
     steps:
       - name: Checkout agenteval

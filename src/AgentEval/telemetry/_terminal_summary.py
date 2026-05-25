@@ -38,17 +38,14 @@ def render_summary(*, completed_run_metadata: dict[str, dict[str, Any]]) -> str:
         Multi-line string with box-drawing borders.
     """
     total = len(completed_run_metadata)
-    passed = 0  # Story 8b.2 Phase-1: pass/fail tracking via metadata is
-    # not yet wired (Listener doesn't currently snapshot the RF
-    # `result.passed` flag into the metadata dict). Conservative
-    # placeholder: total - failed - errored. Future Phase-1.5 work
-    # would extend `_snapshot_completed_run_metadata` to capture
-    # the pass/fail state from the RF `result` arg.
-    failed = 0
-    # Phase-1 wiring: count tests with non-empty warnings as a proxy for
-    # "had degradation". Pass/fail count is approximate until the listener
-    # snapshots `result.passed` (DF-8b.2-S1 carry-over candidate).
-    passed = total  # Assume all passed in Phase-1.
+    # Story 8b.2 v0.2.0 kilo/minimax cross-LLM review HIGH-2 patch
+    # (2026-05-26): the previous code hard-coded `passed = total`, which
+    # falsified the FR54 visual contract — the displayed "N passed / N
+    # failed" was always "total / 0" regardless of actual test outcomes.
+    # Honest framing: until DF-8b.2-S1 (C71) wires `result.passed`
+    # snapshotting in the Listener, the per-test pass/fail state is NOT
+    # captured. Display "—" (unknown) instead of fabricating counts.
+    _passfail_unknown = "—"  # Phase-1.5 will replace once C71 lands.
 
     total_cost = sum(float(meta.get("cost_usd") or 0.0) for meta in completed_run_metadata.values())
     latencies = [
@@ -76,7 +73,12 @@ def render_summary(*, completed_run_metadata: dict[str, dict[str, Any]]) -> str:
     lines.append("╔" + "═" * inner_width + "╗")
     lines.append(_box_line("agenteval run summary".center(inner_width), inner_width))
     lines.append("╠" + "═" * inner_width + "╣")
-    lines.append(_box_line(f" Tests:    {total} total / {passed} passed / {failed} failed", inner_width))
+    lines.append(
+        _box_line(
+            f" Tests:    {total} total / {_passfail_unknown} passed / {_passfail_unknown} failed  [Phase-1.5 C71]",
+            inner_width,
+        )
+    )
     lines.append(_box_line(f" Cost:     ${total_cost:.2f}", inner_width))
     lines.append(_box_line(f" Latency:  {p95_latency:.2f}s p95", inner_width))
     lines.append(_box_line(f" Warnings: {warnings_count}", inner_width))
