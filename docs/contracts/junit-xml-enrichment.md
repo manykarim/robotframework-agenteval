@@ -22,10 +22,10 @@ This lets mainstream CI tooling that already consumes JUnit XML (GitHub Actions 
 Canonical invocation:
 
 ```bash
-robot --listener AgentEval.telemetry.listener --xunit junit.xml tests/
+robot --listener AgentEval.telemetry.listener.Listener --xunit junit.xml tests/
 ```
 
-`agenteval init` (Story 8b.1) generates a sample command-line that includes the flag. Smoke-test the listener wiring during local development with `robot --dryrun --listener AgentEval.telemetry.listener --xunit /tmp/junit.xml tests/<dir>/`.
+**Empirical RF resolution note (Story 8a.2 dev 2026-05-25):** the **explicit class path** (`AgentEval.telemetry.listener.Listener`) is required on RF 7.x — the shorter `AgentEval.telemetry.listener` (module-path-only) form is resolved by RF but the `Listener` class's hooks (`start_suite`, `start_test`, `end_test`, `xunit_file`) do NOT fire (the module has no top-level `ROBOT_LISTENER_API_VERSION`, so RF takes the module-as-listener path). `agenteval init` (Story 8b.1) generates a sample command-line using the explicit class path. Smoke-test wiring during local development with `robot --dryrun --listener AgentEval.telemetry.listener.Listener --xunit /tmp/junit.xml tests/<dir>/`.
 
 ## Property table (9 ratified `agenteval.*` properties)
 

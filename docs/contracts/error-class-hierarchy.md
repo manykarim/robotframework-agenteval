@@ -100,6 +100,31 @@ Exit codes are **sysexits.h-aligned per-leaf** (ratified 2026-05-18 per Story 1a
 | `InvalidSkillDiscoverabilityTasksError` | `INVALID_SKILL_DISCOVERABILITY_TASKS` | `65` (EX_DATAERR; same as other Tier-1 setup-failure errors) | A skill discoverability tasks YAML file passed to `Skill.Get Discoverability` (PRD FR4b) is malformed YAML, OR fails schema validation, OR a required per-task field is missing/wrong-type. Format per FR59 + L96-104. | **Story 7.2** (Skill.Get Discoverability cohort keyword); contract amendment by Story 8a.1 fix-the-losing-source-NOW 2026-05-25 (drift surfaced when building `cli._ERROR_EXIT_CODES`). 20th ratified leaf. |
 | `SkillDidNotActivateError` | `SKILL_DID_NOT_ACTIVATE` | `70` (EX_SOFTWARE; Integrity-family default, not setup-data drift) | Asserted skill did not activate for a given prompt per PRD FR4d. Carries `prompt`, `skill_path`, `skill_name`, `competing_skill`, `reasoning`, `fix_suggestion` attrs for diagnostic output. Format per FR59 + L96-104. | **Story 7.2** (Skill Should Activate For assertion); contract amendment by Story 8a.1 fix-the-losing-source-NOW 2026-05-25. 21st ratified leaf. |
 
+### FR56 polling-ban message contract (added Story 8a.2 2026-05-25)
+
+`PollingDisallowedError` raised by Story 6.3's `_assertions/adapter.assert_value` (per ADR-019 Gate 1) carries a multi-line message produced by `src/AgentEval/_kernel/tier_acl.build_polling_disallowed_message` (L164-L196). FR56 (prd.md L1584) requires the message to contain 4 testability elements; this section pins the contract regexes so downstream tooling (CI grep, automated diagnostics, IDE quick-fixes) can match across releases.
+
+**Primary regex** — matches the FIRST line of the raised message (start-anchored):
+
+```regex
+^PollingDisallowedError: keyword '[^']+' received a `polling=` argument
+```
+
+**FR56 element regexes** — line-agnostic; can be applied independently against the full message string:
+
+| Element | Regex | Required? |
+| --- | --- | --- |
+| (a) keyword name in repr quotes | `keyword '[^']+'` | YES |
+| (b) caller location | `at [^:]+:\d+` | OPTIONAL — only present when stack-frame inspection succeeds |
+| (c) verbatim `Stat.Run N Times` remediation snippet | `\$\{runs\}=\s+Stat\.Run N Times` | YES |
+| (d) ADR link | `See ADR-019` | YES |
+
+**Stability:** the primary regex + the 3 mandatory sub-regexes (a, c, d) are `stable` from Phase-1 onward (label per `stability-surface.md`). Changes require ADR amendment per ADR-014 + a documented migration path for tooling consumers depending on the message shape. Element (b) is `internal` — present-when-available, no stability guarantee on the `at <path>:<line>` exact format.
+
+**Conformance verification:** `tests/conformance/fixtures/fix-polling-ban-error-format.json` exercises the regex against 5 representative invocation contexts (Story 7.1 `Skill.Get Activation Decision`, Story 7.2 `Skill.Get Discoverability`, Story 6.3 `Stat.Run N Times`, Story 6.3 ADR-019 `validate` operator, and a placeholder MCP future-polling context).
+
+---
+
 ### FR59 error-format requirement (Tier-1 setup-failure errors)
 
 Every Tier-1 setup-failure error MUST format its message per FR59:

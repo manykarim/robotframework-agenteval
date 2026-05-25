@@ -379,3 +379,74 @@ def test_listener_end_test_writes_jsonl_when_jsonl_backend_active(
     # The JSONL file should exist at the configured path.
     expected_path = tmp_path / "agenteval" / "trace__suite__suite.test_jsonl.jsonl"
     assert expected_path.exists(), f"JSONL artifact missing at {expected_path}"
+
+
+# --------------------------------------------------------------------------- #
+# Story 8a.2 — `trace_id:<test_id>` tag injection (AC-8a.2.7)                  #
+# --------------------------------------------------------------------------- #
+
+
+class _MockTags:
+    """Stand-in for RF's ``robot.model.tags.Tags`` (supports ``.add(str)``)."""
+
+    def __init__(self) -> None:
+        self.added: list[str] = []
+
+    def add(self, tag: str) -> None:
+        self.added.append(tag)
+
+
+class _MockDataWithTags(_MockData):
+    """``_MockData`` extended with a ``.tags`` attribute for Story 8a.2 tests."""
+
+    def __init__(
+        self,
+        *,
+        full_name: str,
+        parent: Any | None = None,
+        output_directory: Any = None,
+        tags: Any | None = None,
+    ) -> None:
+        super().__init__(full_name=full_name, parent=parent, output_directory=output_directory)
+        self.tags = tags if tags is not None else _MockTags()
+
+
+def test_start_test_adds_trace_id_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AC-8a.2.7: `start_test` adds `trace_id:<full_name>` tag to `result.tags`.
+
+    Per FR51 — the tag surfaces in RF's `output.xml` as a `<tag>` element
+    on the test, linkable to the JSONL trace file. Empirical RF v3
+    behavior (Story 8a.2 dev probe 2026-05-25): tags must be added to
+    `result.tags`, NOT `data.tags`, to surface in `output.xml`.
+    """
+    listener = Listener()
+    suite = _MockDataWithTags(full_name="MySuite")
+    test_data = _MockDataWithTags(full_name="MySuite.Test Alpha", parent=suite)
+    result = _MockTags()  # Listener-API: result has a `tags` attribute.
+    result_obj = _MockDataWithTags(full_name="MySuite.Test Alpha", tags=result)
+    listener.start_suite(suite, None)
+    listener.start_test(test_data, result_obj)
+    assert "trace_id:MySuite.Test Alpha" in result.added
+
+
+def test_start_test_tolerates_missing_tags_attribute(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """AC-8a.2.7: missing/None `result.tags` does NOT raise (failure-mode contract).
+
+    Listener-API contract: any failure during tag addition is logged at
+    WARN level + the test outcome is NOT masked. Verifies the no-raise
+    branch in `start_test`.
+    """
+    listener = Listener()
+    suite = _MockData(full_name="MySuite")  # no `tags` attribute on _MockData.
+    test_data = _MockData(full_name="MySuite.Test Beta", parent=suite)
+    result = _MockData(full_name="MySuite.Test Beta")  # no tags attribute.
+    listener.start_suite(suite, None)
+    # Must not raise even though result.tags is absent.
+    listener.start_test(test_data, result)
+    # Listener still bound the test context (no early-return on the missing-tags path).
+    from AgentEval._kernel import context as kernel_context
+
+    ctx = kernel_context.current_context()
+    assert ctx is not None and ctx.test_id == "MySuite.Test Beta"

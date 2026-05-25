@@ -371,6 +371,28 @@ class Listener:
             cast("bool | Literal['suite']", self._mcp_per_test)
         )
         _kernel_context.set_current_test_id(test_id, suite_id=suite_id, scope=scope)
+        # Story 8a.2 AC-8a.2.1 (FR51): surface `trace_id` as a `<tag>` on the
+        # test in `output.xml` so CI log spelunking + observability dashboards
+        # can link RF reports to JSONL trace artifacts. The tag value is the
+        # canonical RF `full_name` (mirrors `RunManifest.test_id` + JSONL
+        # `trace__<suite>__<test>.jsonl` naming). Failure-mode contract:
+        # missing/None `result.tags` or `add()` raise must not mask the test —
+        # log WARN + continue.
+        #
+        # IMPORTANT (Story 8a.2 dev empirical finding 2026-05-25): tags must be
+        # added to `result.tags`, NOT `data.tags`. Empirical RF Listener v3
+        # behavior: `data.tags.add(...)` does NOT surface in `output.xml`;
+        # only `result.tags.add(...)` does. Verified via DebugListener probe.
+        tags = getattr(result, "tags", None)
+        if tags is not None:
+            try:
+                tags.add(f"trace_id:{test_id}")
+            except Exception as exc:  # noqa: BLE001 — listener must never raise.
+                _log.warning(
+                    "start_test: failed to add trace_id tag for %s: %s",
+                    test_id,
+                    exc,
+                )
         # Story 5.4 AC-5.4.6: merge any pre-test (suite-level) warnings
         # captured before this `start_test` into the first bound test's
         # buffer so library-bootstrap warnings surface in the first

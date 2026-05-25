@@ -98,9 +98,86 @@ This contract evolves per [`stability-surface.md`](stability-surface.md) labels.
 
 Phase-2 pre-release semver tags (e.g., `2.0.0-rc1`) are NOT yet supported by the schema's `_schema_version` regex per Story 1b.5 code-review finding F11; tracked as DF-1b.5-S1 in `deferred-work.md`.
 
+## Conformance Report Schema (Phase-1.5)
+
+**Added by Story 8a.2 (2026-05-25)** per PRD FR57. Schema for the report
+artifacts emitted by `python -m AgentEval.conformance --adapter <name>
+--output-dir <dir>`.
+
+### `<output_dir>/conformance-report.json`
+
+```json
+{
+  "agenteval_version": "<semver>",
+  "adapter": "<adapter-name>",
+  "executed_at": "<ISO 8601 UTC, seconds precision>",
+  "summary": {
+    "total": <integer>,
+    "passed": <integer>,
+    "failed": <integer>,
+    "errored": <integer>,
+    "skipped": <integer>
+  },
+  "fixtures": [
+    {
+      "fixture_id": "<string>",
+      "fixture_path": "<repo-relative path>",
+      "status": "passed" | "failed" | "errored" | "skipped",
+      "duration_seconds": <float>,
+      "oracle_evidence": { /* fixture-specific */ },
+      "error": null | {"type": "<exception class name>", "message": "<one-line>"}
+    }
+  ]
+}
+```
+
+All keys are REQUIRED. `fixtures[]` is permitted to be empty (e.g., when
+fixture discovery finds nothing); `summary.total` equals
+`len(fixtures)`.
+
+### `<output_dir>/conformance-report.md`
+
+```markdown
+# Conformance Report — <adapter> @ <executed_at>
+
+agenteval version: `<semver>`
+
+## Summary
+
+| Total | Passed | Failed | Errored | Skipped |
+| --- | --- | --- | --- | --- |
+| N | N | N | N | N |
+
+## First 5 failures   <!-- only present if total failures > 0 -->
+
+- **<fixture_id>** (`<fixture_path>`) — `<status>`: <truncated error message ≤200 chars>
+```
+
+### Stability surface
+
+Per FR64. The 4 required top-level keys + 5 summary keys + per-fixture key
+set are `stable` from Phase-1.5 onward. Adding new top-level keys (e.g., a
+future `environment` block recording git SHA / runner OS) is minor-version
+safe; removing or renaming any field requires major-version bump + a
+documented migration path for CI consumers.
+
+The 4 `status` values (`passed` / `failed` / `errored` / `skipped`) form a
+closed Literal — new values require ADR amendment.
+
+### Phase-1 Limitations (DF-8a.2-S1 / C63)
+
+- Phase-1 fixture execution records every fixture as `status="skipped"`
+  with a deferral rationale. Per-adapter fixture dispatch wires in
+  Phase-1.5 via the Story 1b.5 harness.
+- The listener-variable trigger path (`robot --listener ... --variable
+  conformance_report:json+human tests/` per epics.md Story 8a.2 L1862) is
+  deferred to Phase-1.5; Phase-1 ships the standalone CLI only.
+
 ## References
 
 - ADR-005: Conformance Suite Includes Fidelity Oracles
 - ADR-017: Conformance Suite Organization
 - Story 1a.2 `conformance.yml` workflow runs these fixtures per release
+- Story 8a.2: Conformance Report schema authoring
 - FR45 + AC-CONFORMANCE-01/02 (PRD)
+- FR57 (PRD): Conformance report shape

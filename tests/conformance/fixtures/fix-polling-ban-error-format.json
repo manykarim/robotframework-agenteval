@@ -1,0 +1,54 @@
+{
+  "$schema": "../fixture-schema.json",
+  "fixture_id": "fix-polling-ban-error-format",
+  "description": "FR56 polling-ban error-message regex stability fixture. Story 8a.2 contract pinning at `docs/contracts/error-class-hierarchy.md` (FR56 section). Asserts the primary regex + 3 mandatory FR56 sub-regexes match across 5 representative `PollingDisallowedError`-raising contexts.",
+  "owning_epic": "Epic 8a Story 8a.2",
+  "regex_contract": {
+    "primary": "^PollingDisallowedError: keyword '[^']+' received a `polling=` argument",
+    "elements": {
+      "a_keyword_name": "keyword '[^']+'",
+      "b_caller_location": "at [^:]+:\\d+",
+      "c_stat_run_n_times_snippet": "\\$\\{runs\\}=\\s+Stat\\.Run N Times",
+      "d_adr_link": "See ADR-019"
+    },
+    "mandatory_elements": ["a_keyword_name", "c_stat_run_n_times_snippet", "d_adr_link"],
+    "optional_elements": ["b_caller_location"]
+  },
+  "contexts": [
+    {
+      "name": "skill_get_activation_decision",
+      "expected_keyword": "Skill.Get Activation Decision",
+      "owning_story": "Story 7.1",
+      "tier": 3,
+      "trigger": "polling=5.0 kwarg on Tier-3 fan-out"
+    },
+    {
+      "name": "skill_get_discoverability",
+      "expected_keyword": "Skill.Get Discoverability",
+      "owning_story": "Story 7.2",
+      "tier": 3,
+      "trigger": "polling=10.0 kwarg on Tier-3 fan-out"
+    },
+    {
+      "name": "stat_run_n_times",
+      "expected_keyword": "Stat.Run N Times",
+      "owning_story": "Story 6.3",
+      "tier": 3,
+      "trigger": "polling=2.0 kwarg on Tier-3 statistical wrapper"
+    },
+    {
+      "name": "assertion_engine_validate_operator",
+      "expected_keyword": "validate",
+      "owning_story": "Story 6.3 (ADR-019)",
+      "tier": 2,
+      "trigger": "AssertionEngine validate operator without `allow_validate_operator=True` opt-in"
+    },
+    {
+      "name": "mcp_future_polling_placeholder",
+      "expected_keyword": "MCP.Call Tool",
+      "owning_story": "Phase-2 placeholder",
+      "tier": 2,
+      "trigger": "Hypothetical future polling kwarg on MCP keywords — message-format stability documentation only, not currently raisable"
+    }
+  ]
+}

@@ -35,9 +35,9 @@ Governs agenteval's **RF Listener v3 integration model** — specifically: **Reg
 
 - **Regular RF Listener v3** registered via:
   ```
-  robot --listener AgentEval.telemetry.listener tests/
+  robot --listener AgentEval.telemetry.listener.Listener tests/
   ```
-  RF auto-resolves the module path to the `Listener` class within `src/AgentEval/telemetry/listener.py`. The `--listener` flag is REQUIRED — RF does NOT auto-discover listeners from PyPA entry-points (empirically verified 2026-05-17). The `[project.entry-points."robot.listener"]` registration in `pyproject.toml` (populated by Story 5.1 with `agenteval = "AgentEval.telemetry.listener:Listener"`) is provided for Phase-2 tooling that explicitly walks the listener group.
+  Use the **explicit `Module.Class` path**. **Story 8a.2 dev empirical finding (2026-05-25):** the short `--listener AgentEval.telemetry.listener` (module-path-only) form is *accepted* by RF 7.x without error but the `Listener` class hooks (`start_suite` / `start_test` / `xunit_file`) do NOT fire — RF takes the "module-as-listener" path which expects a top-level `ROBOT_LISTENER_API_VERSION` (not present at module scope). Verified empirically via probe + reproduction with a standalone DebugListener: `result.tags.add("from_result")` surfaces in `output.xml` only when the class-path form is used. The `--listener` flag is REQUIRED — RF does NOT auto-discover listeners from PyPA entry-points (empirically verified 2026-05-17). The `[project.entry-points."robot.listener"]` registration in `pyproject.toml` (populated by Story 5.1 with `agenteval = "AgentEval.telemetry.listener:Listener"`) is provided for Phase-2 tooling that explicitly walks the listener group.
 - The class exposes `ROBOT_LISTENER_API_VERSION = 3`.
 - NOT a Library Listener — the `ROBOT_LIBRARY_LISTENER` class attribute is NOT set on `AgentEval` itself. Library Listeners' `close()` fires BEFORE RF writes the xunit/output files, which would break Story 8a.1's `xunit_file(path)` enrichment hook.
 
