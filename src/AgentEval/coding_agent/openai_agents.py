@@ -29,7 +29,7 @@ Story 10.2 drift resolutions documented in
 - D-3: ``RunResult.usage`` shape is empirically unverified at write time;
   ``_extract_usage()`` defensively branches on ``isinstance(usage, dict)``
   per the Story 10.1 HIGH-1 regression-guard lesson.
-- D-4: ``mcp_coverage`` follows ADR-A6 L384 safer-default — non-empty
+- D-4: ``mcp_coverage`` follows ADR-016 L59 safer-default — non-empty
   ``mcp_servers`` returns ``external_mixed`` until ``HostedMcpObserver``
   wiring lands (``DF-10.2-S1``).
 - D-5: Uses ``Runner.run_sync()`` (sync API) — Robot Framework calls
@@ -75,12 +75,12 @@ class OpenAIAgentsSDKAdapter(InProcessAdapter):
             instructions="You are a helpful agent.",
         )
 
-    ``mcp_coverage`` detection contract per AC-10.2.2 + ADR-A6 L384:
+    ``mcp_coverage`` detection contract per AC-10.2.2 + ADR-016 L59:
 
     1. ``mcp_servers`` is None / empty → ``"hosted_in_process"`` (trivially
        honest; nothing to cover).
     2. ``mcp_servers`` is non-empty AND no verified hosted-attachment
-       signal exists → ``"external_mixed"`` per ADR-A6 safer-default rule.
+       signal exists → ``"external_mixed"`` per ADR-016 safer-default rule.
        The ``HostedMcpObserver`` wiring that would upgrade branch 2 to
        ``hosted_in_process`` empirically is **DF-10.2-S1** carry-over.
 
@@ -142,7 +142,7 @@ class OpenAIAgentsSDKAdapter(InProcessAdapter):
           the README excerpt didn't include the attachment signature.
           Phase-2 must verify the actual MCP-attachment API empirically
           before wiring; until then, non-empty ``mcp_servers`` falls back
-          to ``external_mixed`` per ADR-A6. Tracked at ``DF-10.2-S1``.
+          to ``external_mixed`` per ADR-016. Tracked at ``DF-10.2-S1``.
         - Tool-use ↔ tool-result pairing across multiple ``raw_responses``
           entries is deferred to Phase-2 if needed (``DF-10.2-S2`` if it
           surfaces during integration testing).
@@ -179,7 +179,7 @@ class OpenAIAgentsSDKAdapter(InProcessAdapter):
         try:
             sdk_result = Runner.run_sync(agent, prompt)
         except Exception:
-            # ADR-A6 detection-failure path — re-raise so callers see the
+            # ADR-016 detection-failure path — re-raise so callers see the
             # underlying SDK error.
             raise
         finally:
@@ -219,10 +219,10 @@ class OpenAIAgentsSDKAdapter(InProcessAdapter):
     def _detect_mcp_coverage(
         mcp_servers: Mapping[str, Any] | None,
     ) -> str:
-        """Honest 2-branch detection per AC-10.2.2 + ADR-A6 L384.
+        """Honest 2-branch detection per AC-10.2.2 + ADR-016 L59.
 
         Mirrors the Story 10.1 patched contract (post-HIGH-2 review). The
-        ADR-A6 ratified rule: detection-failure defaults to
+        ADR-016 ratified rule: detection-failure defaults to
         ``external_mixed``, NOT ``hosted_in_process``. Until the SDK's MCP
         attachment surface is empirically verified + the
         ``HostedMcpObserver`` wired (``DF-10.2-S1``), non-empty

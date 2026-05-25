@@ -30,9 +30,9 @@ Story 10.1 drift resolutions documented in
 - D-3: Uses ``claude-agent-sdk`` package, NOT ``anthropic``. The Agent SDK
   exposes the hosted-MCP path the spec's ``mcp_coverage="hosted_in_process"``
   claim requires; the bare ``anthropic`` LLM client does not.
-- D-4: ``mcp_coverage`` follows ADR-A6 L384 honesty contract — defaults
+- D-4: ``mcp_coverage`` follows ADR-016 L59 honesty contract — defaults
   to ``hosted_in_process`` only when MCP attachment is verified or absent;
-  falls back to ``external_mixed`` on detection failure (safer per ADR-A6).
+  falls back to ``external_mixed`` on detection failure (safer per ADR-016).
 """
 
 from __future__ import annotations
@@ -66,13 +66,13 @@ class ClaudeAgentSDKAdapter(InProcessAdapter):
 
         ClaudeAgentSDKAdapter(model="claude-sonnet-4-5", max_turns=5, system_prompt="You are a helpful agent.")
 
-    ``mcp_coverage`` detection contract per AC-10.1.2 + ADR-A6 L384
+    ``mcp_coverage`` detection contract per AC-10.1.2 + ADR-016 L59
     (post-cross-LLM-review HIGH-2 patch):
 
     1. ``mcp_servers`` is None / empty → ``"hosted_in_process"`` (nothing
        to cover; trivially honest).
     2. ``mcp_servers`` is non-empty AND no verified hosted-attachment
-       signal exists yet → ``"external_mixed"`` per ADR-A6 L384 safer-
+       signal exists yet → ``"external_mixed"`` per ADR-016 L59 safer-
        default rule. The ``HostedMcpObserver`` wiring that would upgrade
        branch 2 to ``"hosted_in_process"`` empirically is tracked at
        **C68** (``DF-10.1-S2``). Until C68 lands, claiming hosted
@@ -200,7 +200,7 @@ class ClaudeAgentSDKAdapter(InProcessAdapter):
         try:
             response_text, tool_use_blocks, result_msg = anyio.run(_drive)
         except Exception:
-            # Detection-failure path per ADR-A6 — degrade mcp_coverage
+            # Detection-failure path per ADR-016 — degrade mcp_coverage
             # honestly + re-raise so callers see the underlying error.
             mcp_coverage = "external_mixed"
             raise
@@ -240,11 +240,11 @@ class ClaudeAgentSDKAdapter(InProcessAdapter):
     def _detect_mcp_coverage(
         mcp_servers: Mapping[str, Any] | None,
     ) -> str:
-        """Honest detection per AC-10.1.2 + ADR-A6 L384 safer-default rule.
+        """Honest detection per AC-10.1.2 + ADR-016 L59 safer-default rule.
 
         Story 10.1 cross-LLM review HIGH-2 patch: the original implementation
         returned ``"hosted_in_process"`` from both branches, making the
-        3-branch contract a fake. ADR-A6 L384 ratified contract:
+        3-branch contract a fake. ADR-016 L59 ratified contract:
         **"Detection-failure defaults to ``external_mixed`` (NOT
         ``hosted_in_process``) — safer than silent partial truth."**
 
@@ -253,7 +253,7 @@ class ClaudeAgentSDKAdapter(InProcessAdapter):
         - ``mcp_servers`` is None / empty → ``"hosted_in_process"`` (no MCP
           to cover; trivially honest).
         - ``mcp_servers`` is non-empty AND no verified hosted-attachment
-          signal exists yet → ``"external_mixed"`` per ADR-A6 detection-
+          signal exists yet → ``"external_mixed"`` per ADR-016 detection-
           failure default. The ``HostedMcpObserver`` wiring that would
           upgrade this to ``"hosted_in_process"`` empirically is tracked
           at C68 (``DF-10.1-S2``). Until C68 lands, the SAFER default is
@@ -262,7 +262,7 @@ class ClaudeAgentSDKAdapter(InProcessAdapter):
         """
         if not mcp_servers:
             return "hosted_in_process"
-        # ADR-A6 L384 + Story 10.1 review HIGH-2: safer default until C68
+        # ADR-016 L59 + Story 10.1 review HIGH-2: safer default until C68
         # (HostedMcpObserver wiring) lands.
         return "external_mixed"
 
