@@ -1,7 +1,8 @@
 {
-  "_description": "Recorded OpenAI Agents SDK response shape for a single-shot 'hello' prompt. Story 10.2 AC-10.2.4. Mirrors the SDK's documented RunResult surface (final_output + usage). Shape is empirically unverified at write time per Story 10.2 D-3 — defensive _extract_usage handles both dict + attribute branches.",
+  "_description": "Recorded OpenAI Agents SDK response shape for a single-shot 'hello' prompt. Story 10.2 AC-10.2.4. Post-empirical-probe (2026-05-25 cross-LLM retry) — the real `agents.RunResult` exposes usage at `context_wrapper.usage`, NOT a top-level `usage` attribute. The JSON fixture's flat `usage` key here is convenience for the unit test's `_FakeRunResult` constructor; the adapter reads the canonical nested path via `context_wrapper.usage.input_tokens` + `.input_tokens_details.cached_tokens`.",
   "_recorded_at": "2026-05-25",
   "_sdk_version_pin": "openai-agents>=0.1.0,<1.0",
+  "_empirical_probe_note": "RunResult has NO cost attribute — total_cost_usd here is hypothetical / for symmetry with future SDK shapes. _extract_cost returns 0.0 on the real SDK; cost computation from priced(model) × tokens is Phase-2 work tracked at C70.",
   "final_output": "Hello! How can I help you today?",
   "total_cost_usd": 0.0008,
   "usage": {

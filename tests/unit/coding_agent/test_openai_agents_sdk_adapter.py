@@ -44,21 +44,71 @@ class _FakeAgent:
         self.kwargs = kwargs
 
 
+class _FakeInputTokensDetails:
+    """Mirrors `agents.usage.InputTokensDetails` (pydantic). The real SDK
+    keeps cached-token count nested here, NOT flat on Usage.
+    """
+
+    def __init__(self, cached_tokens: int = 0) -> None:
+        self.cached_tokens = cached_tokens
+
+
+class _FakeAgentsUsage:
+    """Mirrors the real `agents.usage.Usage` shape (post-empirical-probe).
+
+    Fields per `dataclasses.fields(agents.usage.Usage)`:
+        input_tokens, output_tokens, total_tokens, requests,
+        input_tokens_details (nested), output_tokens_details (nested),
+        request_usage_entries.
+    """
+
+    def __init__(
+        self,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        cached_tokens: int = 0,
+    ) -> None:
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
+        self.total_tokens = input_tokens + output_tokens
+        self.input_tokens_details = _FakeInputTokensDetails(cached_tokens=cached_tokens)
+
+
+class _FakeRunContextWrapper:
+    """Mirrors `agents.RunContextWrapper` — carries `usage` as an attribute."""
+
+    def __init__(self, usage: Any) -> None:
+        self.usage = usage
+
+
 class _FakeRunResult:
-    """Shape mirrors what the adapter reads. `usage` is a ``dict`` in this
-    fixture — matches the JSON fixture's recorded shape.
+    """Mirrors the real `agents.RunResult` shape (post cross-LLM retry
+    empirical probe 2026-05-25). The canonical usage path is
+    `context_wrapper.usage`, NOT a top-level `usage` attribute.
+
+    `_extract_cost` reads top-level cost attributes for symmetry with
+    hypothetical future SDK shapes (the real SDK exposes no cost field).
     """
 
     def __init__(
         self,
         final_output: str,
-        total_cost_usd: float = 0.0,
-        usage: dict[str, Any] | None = None,
+        total_cost_usd: float | None = None,
+        cached_tokens: int = 0,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
         raw_responses: list[Any] | None = None,
     ) -> None:
         self.final_output = final_output
-        self.total_cost_usd = total_cost_usd
-        self.usage = usage
+        if total_cost_usd is not None:
+            self.total_cost_usd = total_cost_usd
+        self.context_wrapper = _FakeRunContextWrapper(
+            usage=_FakeAgentsUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_tokens=cached_tokens,
+            )
+        )
         self.raw_responses = raw_responses or []
 
 
@@ -180,7 +230,9 @@ def test_run_no_mcp_no_tools_loads_fixture_and_returns_hosted_in_process(
     sdk_result = _FakeRunResult(
         final_output=fixture["final_output"],
         total_cost_usd=fixture["total_cost_usd"],
-        usage=fixture["usage"],
+        input_tokens=fixture["usage"]["input_tokens"],
+        output_tokens=fixture["usage"]["output_tokens"],
+        cached_tokens=fixture["usage"]["cached_input_tokens"],
     )
     _install_fake_sdk(monkeypatch, next_result=sdk_result)
 
@@ -190,7 +242,10 @@ def test_run_no_mcp_no_tools_loads_fixture_and_returns_hosted_in_process(
     result = adapter.run(prompt="hello")
 
     assert result.response_text == fixture["final_output"]
-    assert result.cost_usd == pytest.approx(fixture["total_cost_usd"])
+    # Cross-LLM review MED-2 patch: real SDK exposes no cost attribute;
+    # _extract_cost returns 0.0 unconditionally until C70 lands a priced
+    # lookup. Fixture's `total_cost_usd` is hypothetical / for symmetry.
+    assert result.cost_usd == 0.0
     assert result.usage.input_tokens == fixture["usage"]["input_tokens"]
     assert result.usage.output_tokens == fixture["usage"]["output_tokens"]
     assert result.metadata.mcp_coverage == "hosted_in_process"
@@ -211,7 +266,7 @@ def test_run_with_unverified_mcp_marks_external_mixed(
     fake 3-branch ``hosted_in_process``-twice version. Story 10.2 ships
     the corrected contract from the start.
     """
-    sdk_result = _FakeRunResult(final_output="ok", total_cost_usd=0.001, usage={})
+    sdk_result = _FakeRunResult(final_output="ok", total_cost_usd=0.001)
     _install_fake_sdk(monkeypatch, next_result=sdk_result)
 
     from AgentEval.coding_agent.openai_agents import OpenAIAgentsSDKAdapter
@@ -223,43 +278,129 @@ def test_run_with_unverified_mcp_marks_external_mixed(
     assert result.response_text == "ok"
 
 
-def test_extract_usage_handles_both_shapes(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Story 10.2 D-3 + Story 10.1 HIGH-1 regression-guard: ``_extract_usage``
-    works for BOTH dict-shaped and attribute-bearing ``usage`` fields.
+def test_extract_usage_canonical_context_wrapper_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**Empirical canonical path** (post cross-LLM retry probe 2026-05-25):
+    the real ``agents.RunResult`` exposes usage at
+    ``context_wrapper.usage`` — NOT a top-level ``usage`` attribute.
 
-    Without this defensive branching, the next SDK release that flips the
-    shape silently breaks usage reporting — exactly the bug Story 10.1's
-    cross-LLM empirical probe surfaced.
+    This test pins the canonical path. Without it, ``_extract_usage``
+    would silently return ``Usage(0, 0, 0)`` on every live run (the
+    same Story 10.1 HIGH-1 bug pattern that Claude CLI's empirical
+    probe surfaced for the Claude SDK).
+
+    The cached-token count lives at the nested
+    ``input_tokens_details.cached_tokens`` — also exercised here.
     """
-    _install_fake_sdk(monkeypatch)  # only for import path
+    _install_fake_sdk(monkeypatch)
     from AgentEval.coding_agent.openai_agents import _extract_usage
 
-    # Branch 1: dict-shaped usage
-    dict_result = _FakeRunResult(
+    sdk_result = _FakeRunResult(
         final_output="x",
-        usage={"input_tokens": 11, "output_tokens": 22, "cached_input_tokens": 3},
+        input_tokens=42,
+        output_tokens=17,
+        cached_tokens=5,
     )
-    u1 = _extract_usage(dict_result)
+    u = _extract_usage(sdk_result)
+    assert u.input_tokens == 42
+    assert u.output_tokens == 17
+    assert u.cached_input_tokens == 5
+
+
+def test_extract_usage_handles_both_shapes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Story 10.1 HIGH-1 regression-guard: ``_project_agents_usage``
+    works for BOTH dict-shaped and attribute-bearing usage objects.
+
+    The canonical real-SDK path goes through ``context_wrapper`` (see
+    ``test_extract_usage_canonical_context_wrapper_path``); this test
+    pins the hypothetical-future-shape branches via the helper directly.
+    """
+    _install_fake_sdk(monkeypatch)
+    from AgentEval.coding_agent.openai_agents import _project_agents_usage
+
+    # Branch 1: dict-shaped usage (hypothetical future SDK shape).
+    u1 = _project_agents_usage({"input_tokens": 11, "output_tokens": 22, "cached_input_tokens": 3})
     assert u1.input_tokens == 11
     assert u1.output_tokens == 22
     assert u1.cached_input_tokens == 3
 
-    # Branch 2: attribute-bearing usage
+    # Branch 2: flat-attribute usage (hypothetical legacy shape; no nested
+    # input_tokens_details — falls back to flat cached_input_tokens).
     class _AttrUsage:
         input_tokens = 7
         output_tokens = 14
         cached_input_tokens = 1
+        input_tokens_details = None  # No nested details — exercise fallback.
 
-    class _AttrResult:
-        final_output = "y"
-        total_cost_usd = 0.0
-        usage = _AttrUsage()
-        raw_responses: list[Any] = []
-
-    u2 = _extract_usage(_AttrResult())
+    u2 = _project_agents_usage(_AttrUsage())
     assert u2.input_tokens == 7
     assert u2.output_tokens == 14
     assert u2.cached_input_tokens == 1
+
+
+def test_project_tool_calls_extracts_from_raw_responses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cross-LLM review MED-1 patch (kilo/minimax 2026-05-25): without
+    this test, ``_project_tool_calls`` was unreached at unit-test level
+    because ``_FakeRunResult.raw_responses`` always defaulted to ``[]``.
+    Real-SDK responses populated with tool-use blocks would have gone
+    silently un-projected.
+
+    Exercises both the attribute-shape and dict-shape paths inside
+    ``_project_tool_calls`` — defensive against pre-1.0 SDK shape drift.
+    """
+    _install_fake_sdk(monkeypatch)
+    from AgentEval.coding_agent.openai_agents import _project_tool_calls
+
+    # Attribute-shaped tool-call objects (one plausible real-SDK shape).
+    class _AttrToolCall:
+        def __init__(self, name: str, arguments: dict, id: str) -> None:
+            self.name = name
+            self.arguments = arguments
+            self.id = id
+
+    class _AttrResp:
+        def __init__(self, tcs: list[_AttrToolCall]) -> None:
+            self.tool_calls = tcs
+
+    # Dict-shaped tool calls (alternative real-SDK shape).
+    dict_resp = {
+        "tool_calls": [
+            {"name": "lookup", "arguments": {"q": "weather"}, "id": "call_d1"},
+        ]
+    }
+
+    raw_responses = [
+        _AttrResp([_AttrToolCall("search", {"q": "agenteval"}, "call_a1")]),
+        dict_resp,
+    ]
+    traces = _project_tool_calls(raw_responses)
+
+    assert len(traces) == 2
+    assert traces[0].name == "search"
+    assert traces[0].args == {"q": "agenteval"}
+    assert traces[0].gen_ai_tool_call_id == "call_a1"
+    assert traces[0].sequence_index == 0
+    assert traces[1].name == "lookup"
+    assert traces[1].args == {"q": "weather"}
+    assert traces[1].gen_ai_tool_call_id == "call_d1"
+    assert traces[1].sequence_index == 1
+
+
+def test_project_tool_calls_handles_empty_or_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_project_tool_calls`` returns ``[]`` for None, non-list, and
+    empty inputs without raising. Pinned per cross-LLM review MED-1.
+    """
+    _install_fake_sdk(monkeypatch)
+    from AgentEval.coding_agent.openai_agents import _project_tool_calls
+
+    assert _project_tool_calls(None) == []
+    assert _project_tool_calls([]) == []
+    assert _project_tool_calls("not a list") == []
 
 
 def test_run_propagates_sdk_exceptions(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -326,7 +467,7 @@ def test_run_calls_enforce_tier1_no_llm(monkeypatch: pytest.MonkeyPatch) -> None
 
     adapter = OpenAIAgentsSDKAdapter()
     adapter.run(prompt="hello")
-    assert len(calls) == 1, "enforce_tier1_no_llm must be invoked exactly once per run()"
+    assert len(calls) == 1, "enforce_tier1_no_llm must be invoked once per run()"
 
 
 def test_run_calls_record_run_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -357,7 +498,8 @@ def test_run_calls_record_run_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
     kw = calls[0]
     assert kw["adapter_name"] == "OpenAIAgentsSDKAdapter"
     assert kw["model"] == "gpt-4o"
-    assert kw["total_cost_usd"] == pytest.approx(0.002)
+    # Cross-LLM review MED-2: cost is permanently 0.0 (real SDK exposes none).
+    assert kw["total_cost_usd"] == 0.0
     assert kw["completeness"] == "complete"
     assert kw["mcp_coverage"] == "hosted_in_process"
     assert len(kw["prompt_hashes"]) == 1

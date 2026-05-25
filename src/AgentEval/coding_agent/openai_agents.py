@@ -234,54 +234,73 @@ class OpenAIAgentsSDKAdapter(InProcessAdapter):
 
 
 def _extract_cost(sdk_result: Any) -> float:
-    """Read total cost from the SDK's ``RunResult``.
+    """The ``openai-agents`` SDK exposes NO cost attribute on any object
+    in the ``RunResult`` graph — verified empirically 2026-05-25.
 
-    Per ``feedback_codex_probe_fitness`` Epic 2 retro + Story 10.1 review
-    MED-2: prefer ``total_cost_usd``; fall back to ``cost_usd`` as a
-    defensive shim for pre-1.0 SDK shape variation. Default ``0.0``.
+    Returns ``0.0`` unconditionally. Phase-2 cost computation from a
+    priced(model) × (input_tokens, output_tokens) lookup table is tracked
+    at **C70** (``DF-10.2-S2``).
 
-    Note: unlike the ClaudeAgentSDKAdapter where Story 10.1 review MED-2
-    removed the ``cost_usd`` fallback after empirical probe, the
-    ``openai-agents`` SDK's ``RunResult`` shape is **not empirically
-    verified** at write time; the defensive fallback is kept and will be
-    removed once Story 10.2's integration test runs against the live SDK
-    + the exact attribute name is observed.
+    Cross-LLM review MED-2 patch (2026-05-25): the earlier docstring
+    framed the dead-code ``getattr(..., "total_cost_usd")`` fallbacks as
+    "defensive against future SDK shapes" — that was misleading. The
+    real SDK has no such field; the fallbacks were unreachable. Honest
+    framing here: cost is permanently 0.0 until C70 lands.
     """
-    if sdk_result is None:
-        return 0.0
-    cost = getattr(sdk_result, "total_cost_usd", None)
-    if cost is None:
-        cost = getattr(sdk_result, "cost_usd", None)
-    if cost is None:
-        # The `result.usage` object may carry cost — defensive read.
-        usage_obj = getattr(sdk_result, "usage", None)
-        if usage_obj is not None:
-            if isinstance(usage_obj, dict):
-                cost = usage_obj.get("total_cost_usd") or usage_obj.get("cost_usd")
-            else:
-                cost = getattr(usage_obj, "total_cost_usd", None) or getattr(usage_obj, "cost_usd", None)
-    return float(cost) if cost is not None else 0.0
+    _ = sdk_result  # API-stable signature; reserved for Phase-2 cost-lookup wiring.
+    return 0.0
 
 
 def _extract_usage(sdk_result: Any) -> Usage:
-    """Project ``RunResult.usage`` into the project's frozen ``Usage``.
+    """Project the SDK's usage stats into the project's frozen ``Usage``.
 
-    Story 10.2 D-3 + Story 10.1 HIGH-1 lesson: **shape is empirically
-    unverified** at write time. Defensive dual-branch:
+    **Empirical finding (post cross-LLM retry probe 2026-05-25):** the
+    real ``agents.RunResult`` does NOT have a top-level ``usage``
+    attribute. Token counts live at ``sdk_result.context_wrapper.usage``
+    (an attribute-bearing ``agents.usage.Usage`` instance with fields
+    ``input_tokens``, ``output_tokens``, ``total_tokens``, plus nested
+    ``input_tokens_details.cached_tokens`` for the cached count).
 
-    - If ``usage`` is a ``dict``: read keys via ``dict.get()``.
-    - Else: read attributes via ``getattr()``.
+    This is the same Story 10.1 HIGH-1 bug pattern: the pre-probe
+    implementation assumed a top-level ``usage`` attribute that doesn't
+    exist; every live run would silently report ``Usage(0, 0, 0)``.
 
-    Either branch returns the same ``Usage(input_tokens, output_tokens,
-    cached_input_tokens)`` shape. Pinned by a regression-guard test
+    Defensive resolution order:
+
+    1. ``sdk_result.context_wrapper.usage`` (real canonical path).
+    2. ``sdk_result.usage`` (hypothetical future top-level shape).
+    3. dict-shaped usage (also hypothetical; kept for symmetry with
+       Story 10.1 HIGH-1 regression-guard).
+
+    Pinned by ``test_extract_usage_canonical_context_wrapper_path`` +
     ``test_extract_usage_handles_both_shapes``.
     """
     if sdk_result is None:
         return Usage(input_tokens=0, output_tokens=0, cached_input_tokens=0)
+
+    # Branch 1 (canonical, empirically verified): context_wrapper.usage.
+    ctx_wrapper = getattr(sdk_result, "context_wrapper", None)
+    if ctx_wrapper is not None:
+        cw_usage = getattr(ctx_wrapper, "usage", None)
+        if cw_usage is not None:
+            return _project_agents_usage(cw_usage)
+
+    # Branch 2 (hypothetical): top-level usage attribute.
     usage = getattr(sdk_result, "usage", None)
     if usage is None:
         return Usage(input_tokens=0, output_tokens=0, cached_input_tokens=0)
+    return _project_agents_usage(usage)
 
+
+def _project_agents_usage(usage: Any) -> Usage:
+    """Project either an ``agents.usage.Usage`` instance OR a dict-shaped
+    usage into the project's frozen ``Usage``.
+
+    The real SDK's ``agents.usage.Usage`` carries cached-token count
+    inside the nested ``input_tokens_details.cached_tokens`` field
+    (pydantic nested model). The dict branch reads ``cached_input_tokens``
+    flat — both reduce to the same ``Usage`` shape.
+    """
     if isinstance(usage, dict):
         return Usage(
             input_tokens=int(usage.get("input_tokens", 0) or 0),
@@ -289,11 +308,23 @@ def _extract_usage(sdk_result: Any) -> Usage:
             cached_input_tokens=int(usage.get("cached_input_tokens", 0) or 0),
         )
 
-    # Attribute-bearing branch.
+    # Attribute-bearing (real SDK shape).
+    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+
+    # Cached tokens path on real SDK: usage.input_tokens_details.cached_tokens.
+    cached = 0
+    details = getattr(usage, "input_tokens_details", None)
+    if details is not None:
+        cached = int(getattr(details, "cached_tokens", 0) or 0)
+    else:
+        # Fallback to flat attribute (hypothetical legacy shape).
+        cached = int(getattr(usage, "cached_input_tokens", 0) or 0)
+
     return Usage(
-        input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
-        output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
-        cached_input_tokens=int(getattr(usage, "cached_input_tokens", 0) or 0),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cached_input_tokens=cached,
     )
 
 
