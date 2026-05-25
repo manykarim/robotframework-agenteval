@@ -1,5 +1,8 @@
 # Parity Checklist: `robotframework-agentskills` Metrics + Assertions + Stats
 
+**VALIDATION-CEILING (added 2026-05-25 per Epic 7 retro `feedback_dogfood_validation_ceiling` norm):** this dogfood VERIFIES that the Epic 6 keyword surface (`MetricsLibrary` + `AssertionsLibrary` + `StatsLibrary`) correctly drives parallel-derived `AgentRunResult` fixtures against vendored agentskills test scenarios — covers metric computation correctness + assertion gate behavior + statistical primitives; does NOT VERIFY live `robotframework-agentskills` upstream test execution (parallel-derived, not upstream-imported), nor cross-version compatibility against unreleased agentskills updates, nor real LLM-driven metric collection (deterministic-scoring scenarios; no LLM in the loop). Full agentskills adoption is `parity-checklist-agentskills-FULL.md` (Story 9.2) + Phase-2 work.
+
+
 Story 6.4 — Interleaved Dogfood port. Tracks coverage of `robotframework-agentskills`'
 scoring-test domain by `.robot` suites exercising agenteval's Epic 6 keyword surface
 (Story 6.1 `MetricsLibrary` + Story 6.2 `AssertionsLibrary` + Story 6.3 `StatsLibrary`

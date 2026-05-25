@@ -117,6 +117,35 @@ The MCP SDK's `stdio_client(server, errlog=sys.stderr)` default crashes under `r
 
 **Story 9.1 closure (2026-05-25):** the gap-analysis synthesis at `tests/dogfood/rf-mcp/parity-checklist-rf-mcp-FULL.md` documents the full 58-test classification (17 ported / 4 stays-custom / 38 Phase-2-batch). The agenteval-side cross-repo CI wiring ships in `.github/workflows/dogfood-integration.yml::parity-suite-smoke` job.
 
+## Worked example — robotframework-agentskills skill-discoverability port (Story 7.4 / 9.2)
+
+**Pattern variation:** unlike the rf-mcp port (which 1:1-ported upstream Python tests), the agentskills dogfood is **parallel-derived** — `robotframework-agentskills` uses internally-scored `AgentRunResult` fixtures rather than running real LLM-driven scoring; the `.robot` dogfood replicates this deterministic-scoring pattern. Per Story 6.4 D-2 reframe ("dogfood agenteval surface AGAINST parallel-derived AgentRunResult fixtures").
+
+**Sample `.robot` test** (excerpted from `tests/dogfood/agentskills/test_skill_discoverability.robot`):
+
+```robotframework
+*** Settings ***
+Library    AgentEval
+Library    AgentEval.skills.library.SkillsLibrary    WITH NAME    Skill
+Library    ${CURDIR}/fixtures/agentskills_discoverability.py
+
+*** Test Cases ***
+Rf-Browser Skill Cohort Discoverability
+    Register Skill Stubs
+    ${result}=    Skill.Get Discoverability
+    ...    skill=${CURDIR}/skills/rf-browser-skill.md
+    ...    tasks=${CURDIR}/discoverability/rf-browser-tasks.yaml
+    ...    adapter=stub_rf_browser    trials_per_task=1    max_cost_usd=1.0
+    Should Be Equal As Numbers    ${result.summary.activation_accuracy}    0.625
+    Should Be Equal As Numbers    ${result.summary.false_activation_rate}    1.0    # stub-limitation per DF-7.4-S1
+```
+
+**Dogfood-finding surfaced by the port** (DOGFOOD-FINDING-1, MED severity, accepted-as-Phase-1-validation-ceiling — see `tests/dogfood/agentskills/parity-checklist-agentskills-discoverability.md` VALIDATION-CEILING line):
+
+Stub adapters always embed the target skill name in `response_text`, making the Phase-1 activation heuristic (`skill_name.lower() in response_text.lower()`) fire for every trial regardless of prompt content → `false_activation_rate = 1.0` for all decoy tasks by design. The dogfood verifies **infrastructure correctness** (task YAML parsing, per-task aggregation, summary statistics) but does NOT verify real activation-quality discrimination — requires a live LLM provider run (Phase-2 / Epic 9+ live-provider dogfood per DF-7.4-S1 / C60). The VALIDATION-CEILING line on the parity-checklist file is the canonical documentation pattern (ratified Epic 7 retro NEW norm `feedback_dogfood_validation_ceiling`).
+
+**Story 9.2 closure (2026-05-25):** the gap-analysis synthesis at `tests/dogfood/agentskills/parity-checklist-agentskills-FULL.md` documents the full classification (Phase-1 surfaces 100% covered: metrics + assertions + stats + 3-of-11-skills discoverability; remaining 8 skills + live-provider quality deferred to Phase-2 per C60). The agenteval-side cross-repo CI wiring ships in `.github/workflows/dogfood-integration.yml::agentskills-parity-suite-smoke` job. Devon's Journey 4 Phase-1 portion is end-to-end-verified.
+
 ## Cross-references
 
 - `feedback_interleaved_dogfood_load_bearing.md` — Epic 3 retro norm.

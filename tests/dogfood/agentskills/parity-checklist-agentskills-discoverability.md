@@ -1,5 +1,8 @@
 # Parity Checklist: `robotframework-agentskills` Skill Discoverability
 
+**VALIDATION-CEILING (added 2026-05-25 per Epic 7 retro `feedback_dogfood_validation_ceiling` norm):** this dogfood VERIFIES infrastructure correctness for `Skill.Get Discoverability` (task YAML parsing + per-task aggregation + summary statistics) against 3 of 11 vendored `robotframework-agentskills` skills (rf-browser, rf-results, rf-libdoc-search); does NOT VERIFY real false-activation discrimination quality (stub adapters always embed target skill name → `false_activation_rate=1.0` by design per DF-7.4-S1/C60), nor live LLM provider behavior, nor the remaining 8 skills (rf-appium, rf-keyword-builder, rf-libdoc-explain, rf-requests, rf-resource-architect, rf-restinstance, rf-selenium, rf-testcase-builder — Phase-2 per DF-7.4-S1). Real activation-quality evidence requires Epic 9+ live-provider dogfood run.
+
+
 Story 7.4 — Interleaved Dogfood port. Tracks coverage of `robotframework-agentskills`'
 skill-discoverability domain by `.robot` suites exercising agenteval's Story 7.2
 `Skill.Get Discoverability` keyword (FR4b).

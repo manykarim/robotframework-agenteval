@@ -129,7 +129,7 @@ development_status:
 
   epic-9: in-progress
   9-1-verify-rf-mcp-full-parity-cross-repo-ci-workflow-stays-green: done  # Story 9.1 complete 2026-05-25. Verification/docs-only closure. 1 new file (parity-checklist-rf-mcp-FULL.md synthesis) + 6 modified files. 58 rf-mcp tests classified (17 ported / 4 stays-custom / 38 Phase-2-batch). dogfood-integration.yml extended with parity-suite-smoke job. DF-9.1-S1/C65 catalogued. 1353 pytest pass (unchanged); ruff/format/mypy clean (94 src files). Cross-LLM review degraded (Epic 8 retro Action #1 unresolved); self-review only.
-  9-2-verify-robotframework-agentskills-full-parity: backlog
+  9-2-verify-robotframework-agentskills-full-parity: done  # Story 9.2 complete 2026-05-25. Parallel to Story 9.1 (verification/docs-only closure). 1 new file (parity-checklist-agentskills-FULL.md synthesis) + 6 modified files. Phase-1 surface 100% covered (metrics+assertions+stats from Story 6.4 + 3-of-11-skills discoverability from Story 7.4); 8 remaining skills + live-provider quality remain at C60 (existing carry-over). agentskills-parity-suite-smoke job added. DF-9.2-S1/C66 catalogued. Devon's Journey 4 Phase-1 verified end-to-end. 1353 pytest pass (unchanged); ruff/format/mypy clean (94 src files). 20th consecutive `feedback_carry_over_catalog_gate` UPSTREAM. 41st use of `feedback_spec_vs_ratified_doc_precheck`.
   9-3-phase-1-retrospective-fr65-exit-criteria-doc-final-content: backlog
   epic-9-retrospective: optional
 
