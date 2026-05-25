@@ -71,6 +71,11 @@ claude-code = []
 # `anyio` is already a base hard dep at L35 — not duplicated here
 # (Story 10.1 review LOW-1 patch).
 claude-sdk = ["claude-agent-sdk>=0.1.0,<1.0"]
+# Story 10.2 (Epic 10) — OpenAI Agents SDK adapter (Phase 2, FR13d). Uses
+# the `openai-agents` PyPI package (import path: `from agents import ...`)
+# — distinct from the bare `openai` LLM client. Pre-1.0 SDK, so upper-bound
+# is strict per FR60 binary-drift pattern.
+openai-agents = ["openai-agents>=0.1.0,<1.0"]
 
 [project.urls]
 Homepage = "https://github.com/manykarim/robotframework-agenteval"
@@ -107,6 +112,8 @@ generic = "AgentEval.coding_agent.generic:GenericAdapter"
 claude-code-cli = "AgentEval.coding_agent.claude_code_cli:ClaudeCodeCLIAdapter"
 # Story 10.1 (Epic 10) — Claude Agent SDK adapter under [claude-sdk] extra.
 claude-agent-sdk = "AgentEval.coding_agent.claude_agent_sdk:ClaudeAgentSDKAdapter"
+# Story 10.2 (Epic 10) — OpenAI Agents SDK adapter under [openai-agents] extra.
+openai-agents-sdk = "AgentEval.coding_agent.openai_agents:OpenAIAgentsSDKAdapter"
 
 [project.entry-points."agenteval.providers"]
 # Story 4.1 (Epic 4) — LLMProviderAdapter implementations.
