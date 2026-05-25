@@ -1245,7 +1245,7 @@ robotframework-agenteval/
 │       │   ├── subprocess.py               # SubprocessAdapter ABC (CLI adapters with _spawn / _parse_event / _finalize hooks; contributor-facing API per ADR-A6)
 │       │   ├── generic.py                  # Generic adapter via LiteLLM (Phase 1, FR13a)
 │       │   ├── claude_code_cli.py          # Claude Code CLI adapter (Phase 1, FR13b; pinned binary)
-│       │   ├── claude_agent_sdk.py         # Phase 2 (FR13c, under [claude] extra)
+│       │   ├── claude_agent_sdk.py         # Phase 2 (FR13c, under [claude-sdk] extra; Story 10.1 D-1 fix-the-losing-source-NOW 2026-05-25)
 │       │   ├── openai_agents.py            # Phase 2 (FR13d, under [openai-agents] extra)
 │       │   ├── codex_cli.py                # Phase 2 (FR13e, under [codex] extra)
 │       │   ├── copilot_cli.py              # Phase 2 (FR13f, under [copilot] extra)

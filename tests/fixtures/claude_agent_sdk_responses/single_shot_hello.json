@@ -1,0 +1,20 @@
+{
+  "_description": "Recorded Claude Agent SDK response shape for a single-shot 'hello' prompt. Story 10.1 AC-10.1.4. Fields mirror the SDK's documented AssistantMessage + ResultMessage surfaces.",
+  "_recorded_at": "2026-05-25",
+  "_sdk_version_pin": "claude-agent-sdk>=0.1.0,<1.0",
+  "assistant_messages": [
+    {
+      "blocks": [
+        {"type": "text", "text": "Hello! How can I help you today?"}
+      ]
+    }
+  ],
+  "result_message": {
+    "total_cost_usd": 0.0012,
+    "usage": {
+      "input_tokens": 8,
+      "output_tokens": 9,
+      "cache_read_input_tokens": 0
+    }
+  }
+}

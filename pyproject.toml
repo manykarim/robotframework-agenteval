@@ -64,6 +64,13 @@ dev = [
 # @anthropic-ai/claude-code). The group exists per FR13b spec for
 # documentation + future-compat when CC-CLI-specific Python deps land.
 claude-code = []
+# Story 10.1 (Epic 10) — Claude Agent SDK adapter (Phase 2, FR13c). Uses
+# Anthropic's purpose-built `claude-agent-sdk` PyPI package (distinct from
+# the LLM-only `anthropic` client) for native Agent SDK semantics + MCP.
+# Pre-1.0 SDK, so upper-bound is strict per FR60 binary-drift pattern.
+# `anyio` is already a base hard dep at L35 — not duplicated here
+# (Story 10.1 review LOW-1 patch).
+claude-sdk = ["claude-agent-sdk>=0.1.0,<1.0"]
 
 [project.urls]
 Homepage = "https://github.com/manykarim/robotframework-agenteval"
@@ -98,6 +105,8 @@ agenteval = "AgentEval.cli:main"
 # Story 4.2 (Epic 4) — Claude Code CLI adapter (claude binary >=2.0.0,<3.0.0).
 generic = "AgentEval.coding_agent.generic:GenericAdapter"
 claude-code-cli = "AgentEval.coding_agent.claude_code_cli:ClaudeCodeCLIAdapter"
+# Story 10.1 (Epic 10) — Claude Agent SDK adapter under [claude-sdk] extra.
+claude-agent-sdk = "AgentEval.coding_agent.claude_agent_sdk:ClaudeAgentSDKAdapter"
 
 [project.entry-points."agenteval.providers"]
 # Story 4.1 (Epic 4) — LLMProviderAdapter implementations.
