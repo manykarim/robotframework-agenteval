@@ -123,11 +123,33 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Overwrite existing files (default: skip + warn).",
     )
 
-    # `new-adapter` is reserved for Story 8b.2 — register a stub now so
-    # `--help` displays it as planned.
-    subparsers.add_parser(
+    # `new-adapter` subcommand (Story 8b.2 / FR18).
+    new_adapter_parser = subparsers.add_parser(
         "new-adapter",
-        help="(Story 8b.2 — not yet implemented) Scaffold a custom adapter package.",
+        help="Scaffold a custom CodingAgentAdapter package (FR18).",
+    )
+    new_adapter_parser.add_argument(
+        "--name",
+        required=True,
+        help="Package name (e.g., `my-adapter` → module `my_adapter`).",
+    )
+    new_adapter_parser.add_argument(
+        "--type",
+        dest="adapter_type",
+        choices=["subprocess", "inprocess"],
+        default="subprocess",
+        help="Adapter base class: subprocess (CLI-driven, default) or inprocess (SDK-driven).",
+    )
+    new_adapter_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path.cwd(),
+        help="Parent directory for the new package (default: CWD).",
+    )
+    new_adapter_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing files.",
     )
 
     return parser
@@ -148,18 +170,20 @@ def main(argv: list[str] | None = None) -> int:
         return scaffold(output_dir=args.output_dir, force=args.force)
 
     if args.command == "new-adapter":
-        sys.stderr.write(
-            "agenteval new-adapter: not yet implemented (Story 8b.2). "
-            "See https://github.com/manykarim/robotframework-agenteval for roadmap.\n"
+        from AgentEval._new_adapter import scaffold_new_adapter
+
+        return scaffold_new_adapter(
+            name=args.name,
+            adapter_type=args.adapter_type,
+            output_dir=args.output_dir,
+            force=args.force,
         )
-        return 0
 
     # No subcommand → print help, matching Story 1a.1 placeholder behavior.
     sys.stderr.write(
         "agenteval CLI: no subcommand given. Available:\n"
         "    agenteval init           — scaffold a new agenteval test suite (FR52)\n"
-        "    agenteval new-adapter    — scaffold a new CodingAgentAdapter "
-        "(FR18, Story 8b.2 — not yet implemented)\n"
+        "    agenteval new-adapter    — scaffold a new CodingAgentAdapter (FR18)\n"
         "See https://github.com/manykarim/robotframework-agenteval for roadmap.\n"
     )
     return 0

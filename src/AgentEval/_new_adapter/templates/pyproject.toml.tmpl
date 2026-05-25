@@ -1,0 +1,18 @@
+[project]
+name = "{{name}}"
+version = "0.0.1"
+description = "Custom agenteval CodingAgentAdapter (scaffolded by `agenteval new-adapter`)."
+requires-python = ">=3.11"
+dependencies = [
+    "robotframework-agenteval>=0.1.0",
+]
+
+[project.entry-points."agenteval.coding_agents"]
+{{module}} = "{{module}}.adapter:Adapter"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["{{module}}"]

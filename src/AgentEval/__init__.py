@@ -111,6 +111,7 @@ _SUB_LIBRARIES: tuple[tuple[str, str], ...] = (
     ("AgentEval.metrics.library", "MetricsLibrary"),
     ("AgentEval._assertions.library", "AssertionsLibrary"),
     ("AgentEval.stats.library", "StatsLibrary"),  # NEW per Story 6.3 (PRD FR26-31a)
+    ("AgentEval._heatmap.library", "HeatmapLibrary"),  # NEW per Story 8b.2 (FR55-ASCII + dict)
 )
 
 

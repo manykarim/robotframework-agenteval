@@ -1,0 +1,67 @@
+"""{{name}} — SubprocessAdapter subclass (scaffolded by `agenteval new-adapter`).
+
+Subclass `SubprocessAdapter` (Story 1b.4 / ADR-003) and implement the three
+template-method hooks:
+
+- ``_spawn(prompt, **kwargs)`` — launch the CLI binary as a subprocess.
+- ``_parse_event(line)`` — parse one line of subprocess stdout into a
+  structured event (or return None to skip).
+- ``_finalize(events)`` — aggregate parsed events into an `AgentRunResult`.
+
+Reference implementation: see `AgentEval.coding_agent.claude_code_cli`
+(Story 4.2) for the canonical subprocess-adapter pattern.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+from typing import Any
+
+from AgentEval.coding_agent import SubprocessAdapter
+from AgentEval.types import AgentRunResult
+
+
+class Adapter(SubprocessAdapter):
+    """{{name}} CodingAgentAdapter implementation."""
+
+    @property
+    def name(self) -> str:
+        return "{{module}}"
+
+    @property
+    def version(self) -> str:
+        # TODO: read from the underlying CLI binary's --version output.
+        return "0.0.1"
+
+    def _spawn(self, prompt: str, **kwargs: Any) -> Any:
+        """TODO: launch your CLI binary with `prompt`. Return a `subprocess.Popen`
+        (or equivalent) handle.
+
+        See `AgentEval.coding_agent.claude_code_cli.ClaudeCodeCLIAdapter._spawn`
+        for the reference pattern (Story 4.2).
+        """
+        raise NotImplementedError(
+            "TODO: implement `_spawn` to launch your CLI subprocess. "
+            "Reference: AgentEval.coding_agent.claude_code_cli."
+        )
+
+    def _parse_event(self, line: str) -> Any:
+        """TODO: parse one line of subprocess stdout into a structured event.
+
+        Return None to skip the line (e.g., warmup / progress messages).
+        """
+        raise NotImplementedError(
+            "TODO: implement `_parse_event` per your CLI's stdout format. "
+            "Reference: AgentEval.coding_agent.claude_code_cli."
+        )
+
+    def _finalize(self, events: Iterable[Any]) -> AgentRunResult:
+        """TODO: aggregate parsed events into the final `AgentRunResult`.
+
+        Use the Story 1b.4 ratified shape: `response_text`, `tool_calls`,
+        `metadata` (cost / latency / completeness / mcp_coverage).
+        """
+        raise NotImplementedError(
+            "TODO: implement `_finalize` to produce `AgentRunResult`. "
+            "Reference: AgentEval.coding_agent.claude_code_cli."
+        )

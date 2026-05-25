@@ -63,6 +63,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
+import sys
 import warnings
 from datetime import UTC
 from pathlib import Path
@@ -463,11 +465,30 @@ class Listener:
         _kernel_context.unbind_context()
 
     def end_suite(self, data: Any, result: Any) -> None:  # noqa: ARG002
-        """RF Listener v3 ``end_suite`` hook — Phase-1 no-op.
+        """RF Listener v3 ``end_suite`` hook — FR54 terminal run summary (Story 8b.2).
 
-        Story 8a.1 may grow this into a JUnit XML enrichment hand-off;
-        Phase-1 the per-test work is already done in ``end_test``.
+        Writes a 1-block agenteval summary to stdout when the env var
+        ``AGENTEVAL_TERMINAL_SUMMARY=1`` is set. Default-off to avoid
+        disrupting non-CI consumers. Fires only at TOP-LEVEL suite end
+        (skips nested suites — distinguished by ``data.parent is None``).
+
+        Failure-mode contract: any exception during summary computation
+        is logged at WARN; the suite outcome is NOT masked.
         """
+        if os.environ.get("AGENTEVAL_TERMINAL_SUMMARY") != "1":
+            return
+        # Only fire at the top-level suite end (nested suites have parents).
+        if getattr(data, "parent", None) is not None:
+            return
+        try:
+            from AgentEval.telemetry._terminal_summary import render_summary
+
+            summary = render_summary(
+                completed_run_metadata=self._completed_run_metadata,
+            )
+            sys.stdout.write(summary + "\n")
+        except Exception as exc:  # noqa: BLE001 — must never raise.
+            _log.warning("end_suite: terminal summary render failed: %s", exc)
 
     def xunit_file(self, path: str) -> None:
         """RF Listener v3 ``xunit_file`` hook — enrich JUnit XML (Story 8a.1).

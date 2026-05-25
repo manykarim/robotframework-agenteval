@@ -121,9 +121,9 @@ def test_scaffolded_readme_documents_listener_requirement(tmp_path: Path) -> Non
     assert "REQUIRED" in readme.upper()
 
 
-def test_new_adapter_subcommand_stub(capsys: pytest.CaptureFixture[str]) -> None:
-    """`agenteval new-adapter` is registered as a stub (Story 8b.2 placeholder)."""
-    rc = main(["new-adapter"])
-    assert rc == 0
-    captured = capsys.readouterr()
-    assert "Story 8b.2" in captured.err
+def test_new_adapter_requires_name_argument(capsys: pytest.CaptureFixture[str]) -> None:
+    """`agenteval new-adapter` requires `--name` (Story 8b.2)."""
+    with pytest.raises(SystemExit) as excinfo:
+        main(["new-adapter"])
+    # argparse exits 2 when required args are missing.
+    assert excinfo.value.code == 2

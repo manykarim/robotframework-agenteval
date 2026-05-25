@@ -1,0 +1,33 @@
+"""Mock conformance test for {{name}} (scaffolded by `agenteval new-adapter`).
+
+This test uses the `MockProvider` (Story 4.1) so it runs without any real
+CLI binary or API keys. It validates the basic `AgentRunResult` contract.
+
+To run:
+
+    uv run pytest tests/
+
+For full conformance verification (across all `tests/conformance/fixtures/`),
+run `python -m AgentEval.conformance --adapter {{module}}` after publishing
+the package + ensuring the entry-point is registered.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from {{module}}.adapter import Adapter
+
+
+def test_adapter_has_required_protocol_attributes() -> None:
+    """Adapter exposes `name` + `version` per the CodingAgentAdapter Protocol."""
+    a = Adapter()
+    assert isinstance(a.name, str) and a.name
+    assert isinstance(a.version, str) and a.version
+
+
+def test_adapter_run_raises_until_implemented() -> None:
+    """Scaffolded adapter raises `NotImplementedError` until the TODOs are filled in."""
+    a = Adapter()
+    with pytest.raises(NotImplementedError):
+        a.run("test prompt") if hasattr(a, "run") else a._spawn("test")

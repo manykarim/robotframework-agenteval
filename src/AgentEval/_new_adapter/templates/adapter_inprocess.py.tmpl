@@ -1,0 +1,36 @@
+"""{{name}} — InProcessAdapter subclass (scaffolded by `agenteval new-adapter`).
+
+Subclass `InProcessAdapter` (Story 1b.4 / ADR-003) and implement `run(prompt, ...)`.
+Reference implementation: `AgentEval.coding_agent.generic` (Story 4.1) shows
+the canonical in-process (LiteLLM-backed) pattern.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from AgentEval.coding_agent import InProcessAdapter
+from AgentEval.types import AgentRunResult
+
+
+class Adapter(InProcessAdapter):
+    """{{name}} CodingAgentAdapter implementation."""
+
+    @property
+    def name(self) -> str:
+        return "{{module}}"
+
+    @property
+    def version(self) -> str:
+        return "0.0.1"
+
+    def run(self, prompt: str, **kwargs: Any) -> AgentRunResult:
+        """TODO: drive your in-process SDK and return an `AgentRunResult`.
+
+        See `AgentEval.coding_agent.generic.GenericAdapter.run` for the
+        reference pattern (Story 4.1).
+        """
+        raise NotImplementedError(
+            "TODO: implement `run` to drive your SDK. "
+            "Reference: AgentEval.coding_agent.generic."
+        )
