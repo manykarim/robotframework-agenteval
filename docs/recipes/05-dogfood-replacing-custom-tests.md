@@ -84,9 +84,43 @@ real downstream libraries are the highest-yield bug-finding surface.
 Story 3.3's dogfood caught DOGFOOD-FINDING-1 (stdio `errlog=sys.__stderr__`
 crash) that Story 3.1's own 4-reviewer code review missed.
 
+## Worked example — rf-mcp MCP-surface port (Story 3.3 / 9.1)
+
+**Original Python test** (excerpted from rf-mcp's `tests/test_mcp_simple.py`):
+
+```python
+@pytest.mark.asyncio
+async def test_echo_tool_roundtrip(mcp_session):
+    """Verify that the `echo` tool returns the input message."""
+    result = await mcp_session.call_tool("echo", {"message": "hello"})
+    assert result.isError is False
+    assert "hello" in str(result.content)
+```
+
+**Ported `.robot` equivalent** (`tests/dogfood/rf-mcp/test_mcp_surface_parity.robot`):
+
+```robotframework
+*** Settings ***
+Library    AgentEval.mcp.library.MCPLibrary    WITH NAME    MCP
+
+*** Test Cases ***
+Echo Tool Roundtrips A Message
+    [Documentation]    Calls the `echo` tool + asserts the response.
+    ${result}=    MCP.Call Tool    ${HANDLE}    echo    message=hello
+    Should Be True    ${result.success}
+    Should Contain    ${result.text_content}    hello
+```
+
+**Dogfood-finding surfaced by the port** (DOGFOOD-FINDING-1, HIGH severity, fixed in Story 3.3 — see `tests/dogfood/rf-mcp/parity-checklist-rf-mcp-mcp-surface.md` L58):
+
+The MCP SDK's `stdio_client(server, errlog=sys.stderr)` default crashes under `robot` execution because RF's listener replaces `sys.stderr` with a non-fd capture buffer + the SDK calls `.fileno()` on the errlog handle. Pre-fix: 11 of 15 parity tests failed at startup. Fix: pass `errlog=sys.__stderr__` (the un-wrapped real stderr that Python stashes at interpreter startup) at `src/AgentEval/mcp/transport.py::open_stdio_session`. **This bug existed since Story 3.1 ship + escaped Story 3.1's 4-reviewer cross-LLM code review** because the unit tests used the `in_memory` transport (which doesn't call `stdio_client`). The interleaved-dogfood port was the empirical surface that exposed it.
+
+**Story 9.1 closure (2026-05-25):** the gap-analysis synthesis at `tests/dogfood/rf-mcp/parity-checklist-rf-mcp-FULL.md` documents the full 58-test classification (17 ported / 4 stays-custom / 38 Phase-2-batch). The agenteval-side cross-repo CI wiring ships in `.github/workflows/dogfood-integration.yml::parity-suite-smoke` job.
+
 ## Cross-references
 
 - `feedback_interleaved_dogfood_load_bearing.md` — Epic 3 retro norm.
 - `feedback_dogfood_validation_ceiling.md` — Epic 7 retro norm.
 - `feedback_dogfood_finding_severity_differentiation.md` (Epic 5 retro #4).
 - `tests/dogfood/rf-mcp/parity-checklist*.md` — reference parity checklists.
+- `tests/dogfood/rf-mcp/parity-checklist-rf-mcp-FULL.md` (Story 9.1) — synthesis + closure status.

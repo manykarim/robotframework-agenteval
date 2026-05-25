@@ -1,5 +1,7 @@
 # `rf-mcp` Trace Observability Dogfood — Parity Checklist
 
+**VALIDATION-CEILING (added 2026-05-25 per Epic 7 retro `feedback_dogfood_validation_ceiling` norm):** this dogfood VERIFIES that the Epic 5 trace-observability surface (OTel spans, `mcp_coverage` 3-state enum per ADR-016, `DegradedTraceWarning` Story 5.4, RunManifest sidecar) wires through a real production stdio MCP server (rf-mcp's robotmcp); does NOT VERIFY full agent-driven multi-turn loop integration (Phase-1 ships observer + coverage pipeline only; agent loop is DF-5.5-DOGFOOD-1 / C43 Phase-2), nor adapter span instrumentation (DF-5.5-DOGFOOD-2 / C44 Phase-1.5), nor cross-version observer compatibility (single MCP SDK pin). Parallel-derived rather than 1:1 ported — `rf-mcp` had NO upstream trace-observability tests because the observability surface didn't exist there pre-agenteval.
+
 **Story:** 5.5 — Interleaved Dogfood: Trace Observability Against `rf-mcp`
 **Date:** 2026-05-20
 **Companion:** [`parity-checklist-rf-mcp-mcp-surface.md`](./parity-checklist-rf-mcp-mcp-surface.md) (Story 3.3 MCP-surface dogfood).

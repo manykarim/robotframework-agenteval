@@ -91,3 +91,65 @@ jobs:
           echo "::notice::Phase-1 dogfood-integration is install-smoke ONLY."
           echo "::notice::Real cross-repo testing (rf-mcp + robotframework-agentskills running their suites against the wheel) waits for Story 9.1 + 9.2, when those repos adopt agenteval as a dependency."
           echo "::notice::Until then, there's nothing meaningful to test — running their tests against ONLY the agenteval wheel (no downstream deps) yields ModuleNotFoundError, not a real signal."
+
+  parity-suite-smoke:
+    name: rf-mcp parity-suite smoke (Story 9.1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Story 9.1 / AC-9.1.3: extends the install-smoke job with a parity-suite
+    # smoke check. Runs ONLY on workflow_dispatch + release (NOT on every PR)
+    # because cloning rf-mcp + running its subprocess MCP server is heavier
+    # than the install-smoke + isn't on the per-PR critical path until
+    # rf-mcp adopts agenteval (per Story 9.1 D-2 path-of-least-amendment).
+    if: >
+      github.event_name == 'release' ||
+      github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout agenteval
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set Python version
+        run: echo "3.12" > .python-version
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Clone rf-mcp at pinned SHA
+        run: |
+          set -euo pipefail
+          # Pinned per parity-checklist-rf-mcp-mcp-surface.md L3.
+          RF_MCP_SHA="${{ vars.RF_MCP_PINNED_SHA || '235d679785fd4e5f647e9e760ec7da2a3d09b7ef' }}"
+          git clone --depth=50 https://github.com/manykarim/rf-mcp /tmp/rf-mcp
+          cd /tmp/rf-mcp
+          git checkout "$RF_MCP_SHA"
+          echo "RF_MCP_REPO_ROOT=/tmp/rf-mcp" >> "$GITHUB_ENV"
+
+      - name: Install rf-mcp dependencies
+        run: |
+          cd /tmp/rf-mcp
+          uv sync
+
+      - name: Run agenteval rf-mcp parity suite
+        env:
+          RF_MCP_REPO_ROOT: /tmp/rf-mcp
+        run: |
+          set -euo pipefail
+          uv run robot \
+            --listener AgentEval.telemetry.listener.Listener \
+            --output /tmp/rf-mcp-output.xml \
+            --report NONE \
+            --log NONE \
+            tests/dogfood/rf-mcp/test_mcp_surface_parity.robot \
+            tests/dogfood/rf-mcp/test_trace_observability_parity.robot
+
+      - name: Story 9.1 parity-suite smoke status notice
+        run: |
+          echo "::notice::Story 9.1 parity-suite-smoke job ran the rf-mcp dogfood parity suite against the locally-modified agenteval source."
+          echo "::notice::Cross-repo trigger (rf-mcp PRs blocking on agenteval regressions) requires rf-mcp adoption of agenteval — out of scope for this repo per Story 9.1 D-2."

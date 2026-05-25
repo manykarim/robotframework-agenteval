@@ -1,5 +1,7 @@
 # Parity Checklist — rf-mcp MCP-Surface Port (Story 3.3)
 
+**VALIDATION-CEILING (added 2026-05-25 per Epic 7 retro `feedback_dogfood_validation_ceiling` norm):** this dogfood VERIFIES that the agenteval keyword surface (Epic 3 MCP keywords) correctly drives a real production MCP server (rf-mcp's robotmcp) end-to-end: `MCP.Start Server` → `MCP.Call Tool` → assertion against the response shape + the 5 MCP-call dataclass fields + `MCPConnectionLostError` mapping under subprocess crash; does NOT VERIFY full 1:1 coverage of rf-mcp's 1128-LoC pytest corpus (15 of ~57 tests are ported per representative-subset scope), nor live activation quality (deterministic-MCP-tool scenarios; no LLM in the loop), nor cross-version compatibility (single MCP SDK version pinned). Full-coverage parity is Story 9.1 + Phase-1.5 scope. See `parity-checklist-rf-mcp-FULL.md` for the cross-suite gap-analysis.
+
 **Source corpus:** [rf-mcp](https://github.com/manykarim/rf-mcp) @ SHA `235d679785fd4e5f647e9e760ec7da2a3d09b7ef` (snapshot 2026-05-19).
 **Source files covered (representative subset):**
 - `tests/test_mcp_simple.py` (133 LoC)
