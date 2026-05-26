@@ -55,6 +55,31 @@ def mock_claude_version(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def mock_copilot_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Monkeypatch `subprocess.run` so `_assert_binary_version("copilot")` passes
+    without requiring the real `copilot` binary in CI.
+
+    Story 11.2 D-4 (cross-story UPSTREAM from Story 4.2 Edge-cases MED-1 +
+    Story 11.1 D-4): fixture hoisted to `conftest.py` directly from the
+    start so future cross-module Copilot CLI tests inherit the mock
+    automatically.
+
+    Default version: ``GitHub Copilot CLI 1.0.54.`` (local probe
+    2026-05-26; trailing period is intentional — the base
+    `_SEMVER_RE.search()` extracts the semver substring). Scope:
+    package-wide autouse across `tests/unit/coding_agent/`.
+    """
+    real_run = subprocess.run
+
+    def _fake_run(cmd: Any, **kwargs: Any) -> Any:
+        if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "copilot" and cmd[1] == "--version":
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="GitHub Copilot CLI 1.0.54.\n", stderr="")
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+
+@pytest.fixture(autouse=True)
 def mock_codex_version(monkeypatch: pytest.MonkeyPatch) -> None:
     """Monkeypatch `subprocess.run` so `_assert_binary_version("codex")` passes
     without requiring the real `codex` binary in CI.

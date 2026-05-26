@@ -1,0 +1,216 @@
+● Read story-11-2-review-prompt.md
+  │ _bmad-output/cross-llm-reviews/story-11-2-review-prompt.md
+  └ 105 lines read
+
+● Read copilot_cli.py
+  │ src/AgentEval/coding_agent/copilot_cli.py
+  └ 1 line read
+
+● Read base.py
+  │ src/AgentEval/coding_agent/base.py
+  └ 1 line read
+
+● Read codex_cli.py
+  │ src/AgentEval/coding_agent/codex_cli.py
+  └ 1 line read
+
+● Read copilot_cli.py
+  │ src/AgentEval/coding_agent/copilot_cli.py
+  └ L1:100 (98 lines read)
+
+● Read copilot_cli.py
+  │ src/AgentEval/coding_agent/copilot_cli.py
+  └ L100:200 (101 lines read)
+
+● Read copilot_cli.py
+  │ src/AgentEval/coding_agent/copilot_cli.py
+  └ L200:360 (161 lines read)
+
+● Read copilot_cli.py
+  │ src/AgentEval/coding_agent/copilot_cli.py
+  └ L360:450 (91 lines read)
+
+● Read test_copilot_cli.py
+  │ tests/unit/coding_agent/test_copilot_cli.py
+  └ L1:100 (100 lines read)
+
+● Read copilot_cli.py
+  │ src/AgentEval/coding_agent/copilot_cli.py
+  └ L450:500 (26 lines read)
+
+● Read test_copilot_cli.py
+  │ tests/unit/coding_agent/test_copilot_cli.py
+  └ L100:250 (150 lines read)
+
+● Read test_copilot_cli.py
+  │ tests/unit/coding_agent/test_copilot_cli.py
+  └ L250:400 (151 lines read)
+
+● Read conftest.py
+  │ tests/unit/coding_agent/conftest.py
+  └ 103 lines read
+
+● Read test_copilot_cli.py
+  │ tests/unit/coding_agent/test_copilot_cli.py
+  └ L400:550 (90 lines read)
+
+● Read phase-1-5-carry-overs.md
+  │ docs/phase-1-5-carry-overs.md
+  └ L1:80 (53 lines read)
+
+● Find C75 and C76 carry-over entries (shell)
+  │ grep -n "C75\|C76\|DF-11.2"
+  │ /home/many/workspace/robotframework-agenteval/docs/phase-1-5-carry-overs.md
+  │ | head -40
+  └ 4 lines...
+
+● Check ADR-016 citation (shell)
+  │ grep -n "ADR-016\|ADR016\|external_mixed\|hosted_in_process" /home/many/work
+  │ space/robotframework-agenteval/docs/contracts/stability-surface.md | head
+  │ -30
+  └ 7 lines...
+
+✗ Read empirical events.jsonl (shell)
+  │ cat /home/many/.copilot/session-state/391978f9-2453-418e-b611-4ab2bf354316/e
+  │ vents.jsonl 2>/dev/null | head -30
+  └ Permission denied and could not request permission from user
+
+● Find ADR-016 document (shell)
+  │ find /home/many/workspace/robotframework-agenteval -name "*.md" | xargs grep
+  │ -l "ADR-016" | head -5
+  └ 7 lines...
+
+● Read ADR-016-mcp-coverage-detection-default.md
+  │ docs/adr/ADR-016-mcp-coverage-detection-default.md
+  └ 72 lines read
+
+● Check Usage dataclass definition (shell)
+  │ grep -n "reasoning_output_tokens\|Usage"
+  │ /home/many/workspace/robotframework-agenteval/src/AgentEval/types.py | head
+  │ -20
+  └ 14 lines...
+
+Let me check the fixtures and spec files:
+
+● Read 11-2-copilot-cli-adapter.md
+  │ _bmad-output/implementation-artifacts/11-2-copilot-cli-adapter.md
+  └ L1:80 (80 lines read)
+
+● Read fixture files (shell)
+  │ ls -la
+  │ /home/many/workspace/robotframework-agenteval/tests/fixtures/copilot_cli/
+  │ && cat /home/many/workspace/robotframework-agenteval/tests/fixtures/copilo
+  │ t_cli/simple_prompt.jsonl && echo "---" && cat /home/many/workspace/robotf
+  │ ramework-agenteval/tests/fixtures/copilot_cli/nonzero_exit.jsonl && echo …
+  └ 29 lines...
+
+● Read 11-2-copilot-cli-adapter.md
+  │ _bmad-output/implementation-artifacts/11-2-copilot-cli-adapter.md
+  └ L80:160 (80 lines read)
+
+● Check DF references in copilot_cli.py (shell)
+  │ grep -n "DF-11.2\|reasoning_output_tokens\|C75\|C76\|input_tokens"
+  │ /home/many/workspace/robotframework-agenteval/src/AgentEval/coding_agent/cop
+  │ ilot_cli.py | head -30
+  └ 13 lines...
+
+● Check if DF-11.2-S3 is catalogued (shell)
+  │ grep -n "DF-11.2-S3\|C77\|reasoning"
+  │ /home/many/workspace/robotframework-agenteval/docs/phase-1-5-carry-overs.md
+  │ | head -20
+  └ 2 lines...
+
+● Find DF-11.2-S3 in source (shell)
+  │ grep -n "DF-11.2-S3\|session-state-dir-race" /home/many/workspace/robotframe
+  │ work-agenteval/src/AgentEval/coding_agent/copilot_cli.py
+  └ 2 lines...
+
+● Check spec for DF-11.2-S3 (shell)
+  │ grep -n "DF-11.2-S3\|S3\|session.dir\|session-state-dir"
+  │ /home/many/workspace/robotframework-agenteval/_bmad-output/implementation-ar
+  │ tifacts/11-2-copilot-cli-adapter.md
+  └ 1 line...
+
+● Find all DF-11.2-S3 references (shell)
+  │ grep -rn "DF-11.2-S3" /home/many/workspace/robotframework-agenteval/
+  └ 10 lines...
+
+● Check what review files exist (shell)
+  │ ls -la /home/many/workspace/robotframework-agenteval/_bmad-output/cross-llm-
+  │ reviews/ | grep "story-11-2"
+  └ 7 lines...
+
+● Read story-11-2-kilo-findings.md
+  │ _bmad-output/cross-llm-reviews/story-11-2-kilo-findings.md
+  └ L1:80 (80 lines read)
+
+● Read story-11-2-copilot-stdout.txt
+  │ _bmad-output/cross-llm-reviews/story-11-2-copilot-stdout.txt
+  └ 141 lines read
+
+● Read story-11-2-kilo-findings.md
+  │ _bmad-output/cross-llm-reviews/story-11-2-kilo-findings.md
+  └ L80:200 (98 lines read)
+
+● Count test functions (shell)
+  │ grep -n "^def test_" /home/many/workspace/robotframework-agenteval/tests/uni
+  │ t/coding_agent/test_copilot_cli.py | wc -l && grep -n "^def test_"
+  │ /home/many/workspace/robotframework-agenteval/tests/unit/coding_agent/test_c
+  │ opilot_cli.py
+  └ 34 lines...
+
+Let me verify the `trace_id` finding and check for the DF-11.2-S3 catalog gap:
+
+● Check trace_id in codex_cli (shell)
+  │ grep -n "trace_id" /home/many/workspace/robotframework-agenteval/src/AgentEv
+  │ al/coding_agent/codex_cli.py | head -10
+  └ 2 lines...
+
+● Check trace_id in claude_code and generic adapters (shell)
+  │ grep -n "trace_id" /home/many/workspace/robotframework-agenteval/src/AgentEv
+  │ al/coding_agent/claude_code_cli.py | head -10 && grep -n "trace_id" /home/ma
+  │ ny/workspace/robotframework-agenteval/src/AgentEval/coding_agent/generic.py
+  │ | head -5
+  └ 3 lines...
+
+● Check all trace_id usage across adapters (shell)
+  │ grep -rn "trace_id" /home/many/workspace/robotframework-agenteval/src/AgentE
+  │ val/coding_agent/*.py | grep -v "__pycache__" | grep -v "\.pyc"
+  └ 8 lines...
+
+● Check parse_event test coverage (shell)
+  │ grep -n "test_parse_event\|parse_event.*model_change\|parse_event.*user\|par
+  │ se_event.*turn\|parse_event.*execution_start" /home/many/workspace/robotfram
+  │ ework-agenteval/tests/unit/coding_agent/test_copilot_cli.py
+  └ 9 lines...
+
+Let me check two remaining correctness items:
+
+● Read copilot_cli.py
+  │ src/AgentEval/coding_agent/copilot_cli.py
+  └ L385:465 (81 lines read)
+
+● Check catalog gate compliance (shell)
+  │ grep -n "DF-11.2-S2\|DF-11.2-S1\|catalog\|carry.over"
+  │ /home/many/workspace/robotframework-agenteval/docs/phase-1-5-carry-overs.md
+  │ | tail -10
+  └ 11 lines...
+
+I now have enough information to write the findings. Let me compose the review:
+
+● Create story-11-2-copilot-findings.md +246
+  └ _bmad-output/cross-llm-reviews/story-11-2-copilot-findings.md
+
+Findings written to `_bmad-output/cross-llm-reviews/story-11-2-copilot-findings.md`.
+
+**Summary (1 HIGH, 3 MED, 3 LOW):**
+
+- **H-1:** `trace_id=""` at copilot_cli.py:462 with no placeholder comment — inconsistent with `codex_cli.py:472` which documents the same deferral inline.
+- **M-1 (unique — not in kilo):** `DF-11.2-S3` in class docstring has no C77 catalog entry — `feedback_carry_over_catalog_gate` violation.
+- **M-2:** `test_spawn_uses_start_new_session_true` standalone test absent per AC-11.2.4.
+- **M-3:** 5 of 11 AC-required `_parse_event` event-type tests missing.
+- **L-1/L-2:** `reasoningOpaque`/`reasoningText` not in CopilotEvent accessors; fixture minimal.
+- **L-3:** kilo M-1 (31 tests claim) is a **false positive** — 32 tests confirmed by grep.
+
+All 5 UPSTREAM Story 11.1 lessons correctly applied (5/5). ADR-016 §Decision L33 citation verified correct.
+

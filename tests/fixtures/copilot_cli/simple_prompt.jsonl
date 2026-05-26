@@ -1,0 +1,7 @@
+{"type":"session.start","data":{"sessionId":"test-simple-001","copilotVersion":"1.0.54","startTime":"2026-05-26T20:00:00.000Z"}}
+{"type":"session.model_change","data":{"newModel":"claude-sonnet-4.6"}}
+{"type":"user.message","data":{"content":"Say hi"}}
+{"type":"assistant.turn_start","data":{"turnId":"0"}}
+{"type":"assistant.message","data":{"messageId":"m1","content":"Hi","toolRequests":[],"outputTokens":1}}
+{"type":"assistant.turn_end","data":{"turnId":"0"}}
+{"type":"session.shutdown","data":{}}

@@ -82,6 +82,12 @@ openai-agents = ["openai-agents>=0.1.0,<1.0"]
 # Ceiling Rule), this is OpenAI's CLI-side ≤2-adapters slot; Codex SDK
 # adapter would be the in-process counterpart (`openai-agents`).
 codex = []
+# Story 11.2 (Epic 11) — Copilot CLI adapter (Phase-2, FR13d). The
+# `copilot` binary must be on `$PATH` (npm install -g @github/copilot).
+# No Python deps; mirrors the `codex` + `claude-code` pattern. Per
+# ADR-002 + ADR-010 (Copilot CLI version-pin original precedent), this
+# is GitHub Copilot's CLI-side ≤2-adapters slot.
+copilot = []
 
 [project.urls]
 Homepage = "https://github.com/manykarim/robotframework-agenteval"
@@ -122,6 +128,8 @@ claude-agent-sdk = "AgentEval.coding_agent.claude_agent_sdk:ClaudeAgentSDKAdapte
 openai-agents-sdk = "AgentEval.coding_agent.openai_agents:OpenAIAgentsSDKAdapter"
 # Story 11.1 (Epic 11) — Codex CLI adapter (codex binary >=0.100.0,<1.0).
 codex-cli = "AgentEval.coding_agent.codex_cli:CodexCLIAdapter"
+# Story 11.2 (Epic 11) — Copilot CLI adapter (copilot binary >=1.0.9,<2.0).
+copilot-cli = "AgentEval.coding_agent.copilot_cli:CopilotCLIAdapter"
 
 [project.entry-points."agenteval.providers"]
 # Story 4.1 (Epic 4) — LLMProviderAdapter implementations.

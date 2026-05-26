@@ -1,0 +1,9 @@
+{"type":"session.start","data":{"sessionId":"test-tool-001","copilotVersion":"1.0.54"}}
+{"type":"user.message","data":{"content":"Run echo hello"}}
+{"type":"assistant.turn_start","data":{"turnId":"0"}}
+{"type":"assistant.message","data":{"messageId":"m1","content":"Running echo command","toolRequests":[{"toolCallId":"call_001","name":"shell","arguments":{"command":"echo hello"},"type":"function"}],"outputTokens":15}}
+{"type":"tool.execution_start","data":{"toolCallId":"call_001","toolName":"shell","arguments":{"command":"echo hello"}}}
+{"type":"tool.execution_complete","data":{"toolCallId":"call_001","success":true,"result":{"content":"hello\n","exitCode":0},"model":"claude-sonnet-4.6"}}
+{"type":"assistant.message","data":{"messageId":"m2","content":"Output: `hello`","toolRequests":[],"outputTokens":8}}
+{"type":"assistant.turn_end","data":{"turnId":"0"}}
+{"type":"session.shutdown","data":{}}

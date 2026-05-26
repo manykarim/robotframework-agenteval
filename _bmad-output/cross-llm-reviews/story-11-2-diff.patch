@@ -1,0 +1,1363 @@
+diff --git a/_bmad-output/implementation-artifacts/11-2-copilot-cli-adapter.md b/_bmad-output/implementation-artifacts/11-2-copilot-cli-adapter.md
+new file mode 100644
+index 0000000..e65e4c4
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/11-2-copilot-cli-adapter.md
+@@ -0,0 +1,183 @@
++# Story 11.2: Copilot CLI Adapter
++
++Status: ready-for-dev
++
++## Story
++
++As **Raj (Agent Developer)** working with the GitHub Copilot ecosystem,
++I want a `CopilotCLIAdapter(SubprocessAdapter)` invoking the `copilot` binary in non-interactive autopilot mode + parsing the `~/.copilot/session-state/{uuid}/events.jsonl` trace post-hoc,
++so that I can run Copilot CLI agent workflows under the unified `CodingAgentAdapter` Protocol — completing the Epic 11 CLI-adapter triad before the Story 11.3 `AdapterVersionDriftWarning` fan-in.
++
++## Pre-create-story drift check (46th use of `feedback_spec_vs_ratified_doc_precheck`, 2026-05-26 — 2nd use of `feedback_cross_story_upstream_lesson_propagation`)
++
++12 drifts caught — 11 resolved via cross-story-upstream-lesson-propagation (Story 11.1 + Story 4.2 + Epic 10 lessons) + 1 fresh decision from empirical events.jsonl probe. **100% real-drift catch rate intact across 46 consecutive uses; `feedback_cross_story_upstream_lesson_propagation` validated 2nd-application UPSTREAM.**
++
++- **D-1 (HIGH — UPSTREAM Story 11.1 D-1 / Story 4.2 HIGH-A):** Spec L2059 silent on prompt-delivery mechanism. **Decision:** pass `prompt` to `copilot -p "<prompt>"` as the `-p`/`--prompt` flag argument (per `copilot --help`: "Execute a prompt in non-interactive mode"). Add `test_spawn_passes_prompt_via_prompt_flag` regression-guard.
++
++- **D-2 (HIGH — UPSTREAM Story 11.1 D-2 / Story 4.2 HIGH-B):** Spec L2059 silent on stderr handling. **Decision:** `stderr=subprocess.STDOUT` multiplex into stdout. `_parse_event` returns `None` on non-JSON lines.
++
++- **D-3 (HIGH — UPSTREAM Story 11.1 D-3 / Story 4.2 MED-3):** Spec silent on subprocess non-zero exit handling. **Decision:** `_finalize` surfaces `[SUBPROCESS_NONZERO_EXIT exit_code=<N>]` diagnostic when no terminal event AND no assistant text. M_R11 fail-loud.
++
++- **D-4 (HIGH — UPSTREAM Story 11.1 D-4 / Story 4.2 MED-1):** **Decision:** `mock_copilot_version` autouse fixture goes DIRECTLY into `tests/unit/coding_agent/conftest.py` from the start (mirrors `mock_codex_version` from Story 11.1).
++
++- **D-5 (HIGH — UPSTREAM Story 11.1 D-5 / Story 4.2 Auditor HIGH-1):** **Decision:** all ADR citations are ADR-002 (Tier-1 Adapter Ceiling Rule) + ADR-010 (Copilot CLI version-pinning precedent — original per-CLI pin source for the project). Inline citation hygiene from the start.
++
++- **D-6 (HIGH — UPSTREAM Epic 10 + Story 11.1 D-6 / kilo MED-2):** **Decision:** all `mcp_coverage` citations cite **ADR-016 §Decision L33** verbatim (NOT `ADR-A6 L384`, NOT `ADR-016 L59`). Inline citation discipline matching Story 11.1 post-copilot-MED-2 fix.
++
++- **D-7 (MED — UPSTREAM Story 11.1 D-7 / Stories 10.1 + 10.2 HIGH-2):** **Decision:** non-empty `mcp_servers` returns `mcp_coverage="external_mixed"` per ADR-016 §Decision L33. Observer wiring deferred to DF-11.2-S1 carry-over (mirrors C73).
++
++- **D-8 (HIGH — fresh from Story 11.1 kilo HIGH-1 lesson):** Copilot `assistant.message` events carry `outputTokens`; `session.shutdown` carries aggregate usage data. Empirical probe at `~/.copilot/session-state/391978f9-2453-418e-b611-4ab2bf354316/events.jsonl` confirmed. **Decision:** `Usage` dataclass already has `reasoning_output_tokens: int = 0` field (added Story 11.1 kilo HIGH-1 fix); if Copilot exposes a `reasoningTokens` field in `session.shutdown` or `assistant.message`, populate it. NO field drop. Pre-write empirical probe required per `feedback_listener_hook_api_surface_empirical_check`.
++
++- **D-9 (HIGH — Copilot-specific architectural decision):** Spec L2059-2060 says "parses `~/.copilot/session-state/{uuid}/events.jsonl` for trace data." Copilot CLI does NOT stream events to stdout — events are written to disk only. **Decision:** override `SubprocessAdapter.run()` to do `spawn → proc.wait() → read events.jsonl post-hoc → call _finalize(events, exit_code)`. The `_parse_event(line)` hook is still used for per-line parsing, but iteration happens AFTER subprocess exit (not on proc.stdout). Capture the session UUID from stdout (first `session.start` event written gives it) OR by globbing for the newest session-state directory created during the run window. Mirrors Story 4.2's `run()` override precedent. Document inline.
++
++- **D-10 (MED — fresh empirical probe):** Spec L2057 pins copilot binary at `v1.0.9+` (likely from the original epics.md L2057 ACR). Local probe at story-authoring: `GitHub Copilot CLI 1.0.54`. **Decision:** pin range `>=1.0.9,<2.0` (matches ADR-010 precedent + epics.md L2057). Below `1.0.9` predates the documented autopilot mode + events.jsonl trace format.
++
++- **D-11 (MED — UPSTREAM Story 11.1 MED-1):** **Decision:** NO module-level `_VERSION_RE` dead-code constant. The base `_assert_binary_version`'s default `_SEMVER_RE.search()` extracts `1.0.54` from `GitHub Copilot CLI 1.0.54.` (note trailing period after the version — the base regex `(\d+\.\d+(?:\.\d+)?)` handles it via substring search).
++
++- **D-12 (MED — UPSTREAM Story 11.1 MED-3):** **Decision:** add "Thread safety: NOT concurrent-safe" paragraph to `CopilotCLIAdapter` class docstring from the start. Same `_last_mcp_servers` stash pattern as Story 11.1.
++
++## Acceptance Criteria
++
++### AC-11.2.1 — Adapter implementation
++
++`src/AgentEval/coding_agent/copilot_cli.py` implements `CopilotCLIAdapter(SubprocessAdapter)` per `src/AgentEval/coding_agent/base.py:229` (ADR-003 L24-29). Implements EXACTLY the 3 abstract hooks PLUS overrides `run()` per D-9:
++
++- **`_spawn(prompt: str, **kwargs) -> subprocess.Popen[str]`** — launches `copilot --allow-all-tools -p "<prompt>"` (model defaults to copilot's selection) with `stderr=subprocess.STDOUT` multiplex (D-2), `stdout=subprocess.PIPE`, `text=True`, `start_new_session=True`.
++- **`_parse_event(line: str) -> CopilotEvent | None`** — parses one JSONL line into a `CopilotEvent` dataclass; returns `None` on non-JSON / empty / non-event-type lines.
++- **`_finalize(events: list[CopilotEvent], exit_code: int) -> AgentRunResult`** — folds events into `AgentRunResult` with: `response_text` (concatenation of `assistant.message.content` from non-`tool_request` events), `tool_calls` (projected from `assistant.message.toolRequests[]` + matching `tool.execution_complete` results), `usage` (Story 11.1 D-8 lesson: read from `session.shutdown` if present, else sum `assistant.message.outputTokens`), `cost_usd=0.0` (Copilot CLI doesn't surface cost in events — DF-11.2-S2 carry-over), `metadata.completeness` (`"complete"` on `session.shutdown` event present + `exit_code=0`), `metadata.mcp_coverage` per AC-11.2.2.
++- **`run(prompt, tools, mcp_servers, **kwargs) -> AgentRunResult`** — overrides base per D-9 (post-hoc events.jsonl parse): spawns subprocess + waits + locates new `~/.copilot/session-state/{uuid}/events.jsonl` (created during the run window) + reads lines through `_parse_event` + calls `_finalize`. Wires `_record_run_metadata` per Story 10.1 HIGH-4 lesson UPSTREAM.
++
++### AC-11.2.2 — `mcp_coverage` honesty per ADR-016 §Decision L33 (D-7)
++
++- Empty / `None` `mcp_servers`: `mcp_coverage = "hosted_in_process"`.
++- Non-empty `mcp_servers` without verified hosted-attachment: `mcp_coverage = "external_mixed"` per ADR-016 §Decision L33 safer-default rule.
++- `HostedMcpObserver` wiring is DF-11.2-S1 carry-over (mirrors Story 11.1's C73 + Story 10.1's C68 + Story 10.2's C69).
++
++Docstring documents the 2-branch detection contract inline, citing ADR-016 §Decision L33 verbatim.
++
++### AC-11.2.3 — Entry-point + pyproject extra + version gate
++
++`pyproject.toml` amended:
++- `[project.optional-dependencies]` entry: `copilot = []` (no Python deps; binary on `$PATH` — mirrors Story 4.2 + 11.1 pattern).
++- `[project.entry-points."agenteval.coding_agents"]` entry: `copilot-cli = "AgentEval.coding_agent.copilot_cli:CopilotCLIAdapter"`.
++
++`__init__` calls `_assert_binary_version("copilot", ">=1.0.9,<2.0")` via the existing helper. Raises `UnsupportedBinaryVersionError` when out of range or missing.
++
++### AC-11.2.4 — Unit tests (≥30 tests; mirror Story 11.1 patterns)
++
++`tests/unit/coding_agent/test_copilot_cli.py` MUST cover:
++
++- Construction + 4 version-gate tests (missing-binary + below-floor + above-ceiling + in-range) — via `mock_copilot_version` autouse fixture in `tests/unit/coding_agent/conftest.py` (D-4).
++- `_parse_event` per event type (`session.start`, `session.model_change`, `session.shutdown`, `user.message`, `assistant.turn_start`, `assistant.turn_end`, `assistant.message`, `tool.execution_start`, `tool.execution_complete`, `None` on non-JSON, `None` on unknown type).
++- `_finalize` against 3 fixtures: `simple_prompt.jsonl` (happy path), `tool_use.jsonl` (toolRequests + tool.execution events), `nonzero_exit.jsonl` (subprocess exit_code != 0).
++- **Cross-story UPSTREAM regression guards** (per `feedback_cross_story_upstream_lesson_propagation` 2nd application):
++  - `test_spawn_passes_prompt_via_prompt_flag` (D-1)
++  - `test_spawn_uses_stderr_stdout_multiplex` (D-2)
++  - `test_spawn_uses_start_new_session_true` + `--allow-all-tools` flag (D-1/Story 1b.4)
++  - `test_finalize_nonzero_exit_with_no_message_emits_diagnostic` (D-3)
++  - `test_finalize_nonzero_exit_with_response_text_does_not_emit_diagnostic` (Story 11.1 copilot MED-4 lesson — negative-path).
++  - `test_finalize_nonzero_exit_with_terminal_does_not_emit_diagnostic` (same).
++  - `test_run_end_to_end_against_faked_subprocess` — drives the full `run()` template-method chain end-to-end with a faked Popen + monkeypatched events.jsonl path.
++  - `test_run_with_unverified_mcp_marks_external_mixed` (D-7).
++  - `test_extract_usage_includes_reasoning_output_tokens` if Copilot surfaces a reasoning-tokens field anywhere in events (Story 11.1 kilo HIGH-1 lesson — empirical probe required).
++- Entry-point registration test.
++
++### AC-11.2.5 — Integration test gated behind env flag
++
++`tests/integration/test_copilot_cli_live.py` skipped unless `os.environ.get("AGENTEVAL_INTEGRATION_TESTS") == "1"` AND `copilot` binary is on `$PATH` AND a valid Copilot login session exists.
++
++### AC-11.2.6 — Conformance + stability surface
++
++- Conformance smoke via `test_entry_point_registration` in the unit suite.
++- `docs/contracts/stability-surface.md` amended: add `CopilotCLIAdapter` row at `experimental`.
++
++### AC-11.2.7 — All-gates pass
++
++- `uv run pytest tests/ -q --no-header` — expected `1641 + new tests` pass + 11 skipped (current HEAD: 1641 + 11).
++- `uv run ruff check src/ tests/` + `uv run ruff format --check src/ tests/` — clean.
++- `uv run mypy src/` — `Success: no issues found in 98 source files` (97 + new `copilot_cli.py`).
++
++### AC-11.2.8 — `feedback_carry_over_catalog_gate` UPSTREAM (27th consecutive)
++
++Surface DF-11.2-S1 (`HostedMcpObserver` wiring for Copilot MCP) + DF-11.2-S2 (cost-catalog integration for Copilot pricing) entries in `docs/phase-1-5-carry-overs.md` BEFORE invoking code-review. Catalog total after this story: 74 → 76.
++
++### AC-11.2.9 — Caller-count check
++
++The new public surface (`CopilotCLIAdapter`) has callers via the conformance smoke + unit-test suite + entry-point smoke + integration test. Zero 0-caller helpers added.
++
++### AC-11.2.10 — Cross-story UPSTREAM lesson propagation summary (2nd use of `feedback_cross_story_upstream_lesson_propagation`)
++
++This story applies **12 cross-story UPSTREAM lessons** (D-1 through D-12 above) from Stories 4.2 + 10.1 + 10.2 + **11.1 (NEW source — 1st N+1 follow-up story validating the norm)**:
++
++From Story 11.1 review record specifically (the UPSTREAM seed paragraph in 11.1's Senior Developer Review):
++- `Usage(reasoning_output_tokens=)` field populated if applicable (D-8 + Story 11.1 kilo HIGH-1)
++- NO module-level `_VERSION_RE` dead-code constant (D-11 + Story 11.1 MED-1)
++- Class-docstring thread-safety paragraph from start (D-12 + Story 11.1 MED-3)
++- Negative-path tests for diagnostic gate (AC-11.2.4 + Story 11.1 copilot MED-4)
++- ADR-016 §Decision L33 citation discipline (D-6 + Story 11.1 copilot MED-2)
++
++Per `feedback_cross_story_upstream_lesson_propagation` operational trigger: at `/bmad-create-story` time, grep prior same-surface story for `^### HIGH` + `^### MED` headings; fold each as AC requirement.
++
++## Tasks / Subtasks
++
++- [ ] **Task 1** — Add `[copilot] = []` extra + `copilot-cli` entry-point to `pyproject.toml`.
++- [ ] **Task 2** — Implement `src/AgentEval/coding_agent/copilot_cli.py`:
++  - [ ] `CopilotEvent` frozen dataclass mirroring the 10-event schema (D-8 empirical probe).
++  - [ ] `CopilotCLIAdapter(SubprocessAdapter)` with `__init__(*, model=None, **kwargs)` → `_assert_binary_version("copilot", ">=1.0.9,<2.0")`.
++  - [ ] `_spawn(prompt, tools, mcp_servers, **kwargs)` per AC-11.2.1 + D-1 + D-2.
++  - [ ] `_parse_event(line)` per AC-11.2.1.
++  - [ ] `_finalize(events, exit_code)` per AC-11.2.1 + D-3 + D-8 (reasoning_output_tokens populated if present).
++  - [ ] `_detect_mcp_coverage(mcp_servers)` per AC-11.2.2 + D-7.
++  - [ ] `run()` OVERRIDE per D-9 — post-hoc events.jsonl read.
++  - [ ] `_record_run_metadata` wiring per Story 10.1 HIGH-4 UPSTREAM.
++  - [ ] Class docstring includes "Thread safety: NOT concurrent-safe" paragraph from start (D-12).
++- [ ] **Task 3** — Add `mock_copilot_version` autouse fixture to `tests/unit/coding_agent/conftest.py` (D-4).
++- [ ] **Task 4** — Create 3 fixtures under `tests/fixtures/copilot_cli/` (`simple_prompt.jsonl`, `tool_use.jsonl`, `nonzero_exit.jsonl`).
++- [ ] **Task 5** — Implement `tests/unit/coding_agent/test_copilot_cli.py` per AC-11.2.4 (≥30 tests including all Story 11.1 cross-story regression guards).
++- [ ] **Task 6** — Implement `tests/integration/test_copilot_cli_live.py` per AC-11.2.5.
++- [ ] **Task 7** — Amend `docs/contracts/stability-surface.md` adding `CopilotCLIAdapter` at `experimental`.
++- [ ] **Task 8** — Pre-write fake-green precheck per `feedback_test_name_assertion_match`.
++- [ ] **Task 9** — Carry-over catalog gate UPSTREAM (27th consecutive): surface DF-11.2-S1 + DF-11.2-S2 in `docs/phase-1-5-carry-overs.md`.
++- [ ] **Task 10** — All-gates run.
++
++## Dev Notes
++
++### Empirical events.jsonl schema (probe 2026-05-26)
++
++Captured via behavioral probe BEFORE writing this adapter per
++`feedback_listener_hook_api_surface_empirical_check`. The 10 event types
++(probe at `~/.copilot/session-state/391978f9-2453-418e-b611-4ab2bf354316/events.jsonl`):
++
++- `session.start` — carries `sessionId`, `copilotVersion`, `context.cwd`, etc.
++- `session.model_change` — carries `newModel`.
++- `session.shutdown` — terminal event; carries aggregate usage if any.
++- `user.message` — carries `content`.
++- `assistant.turn_start` — carries `turnId`, `interactionId`.
++- `assistant.turn_end` — turn boundary.
++- `assistant.message` — model output; carries `content`, `toolRequests[]` (with `toolCallId`, `name`, `arguments`, `mcpServerName`, `mcpToolName`), `outputTokens`, optional `reasoningOpaque`/`reasoningText`.
++- `tool.execution_start` — carries `toolCallId`, `toolName`, `arguments`, optional `mcpServerName`/`mcpToolName`.
++- `tool.execution_complete` — carries `toolCallId`, `success`, `result`, `model`.
++
++### Story 11.1 lessons applied UPSTREAM (the explicit goal of `feedback_cross_story_upstream_lesson_propagation` 2nd use)
++
++This is the **2nd story to apply the UPSTREAM-lesson-propagation norm** (Story 11.1 was the first; this is the next same-surface SubprocessAdapter transition). All Story 11.1 patches are folded into Story 11.2's AC text BEFORE any code is written — see drift check D-8 through D-12 + AC-11.2.4 mandates.
++
++## Dev Agent Record
++
++### Agent Model Used
++
++claude-opus-4-7
++
++### Completion Notes List
++
++<!-- Filled by dev workflow -->
++
++### File List
++
++<!-- Filled by dev workflow -->
++
++## Change Log
++
++| Date | Version | Description | Author |
++| --- | --- | --- | --- |
++| 2026-05-26 | 0.1.0 | Initial story creation (ready-for-dev). **46th use of `feedback_spec_vs_ratified_doc_precheck`** (100% catch rate intact across 46 consecutive uses). **2nd use of `feedback_cross_story_upstream_lesson_propagation` post-Epic-10 ratification — validates norm at N=2.** 12 drifts caught (11 UPSTREAM from Stories 4.2 + 10.1 + 10.2 + 11.1 + 1 fresh from empirical events.jsonl probe). 10 ACs. Empirical Copilot events.jsonl 10-event schema probed pre-write at `~/.copilot/session-state/391978f9-*/events.jsonl`. | Bob |
+diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
+index f9a976e..f8240f7 100644
+--- a/_bmad-output/implementation-artifacts/sprint-status.yaml
++++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
+@@ -140,7 +140,7 @@ development_status:
+ 
+   epic-11: in-progress  # Epic 11 launched 2026-05-26 — CLI Adapters (Codex + Copilot) + AdapterVersionDriftWarning fan-in (FR60). Story 11.1 first.
+   11-1-codex-cli-adapter: done  # Story 11.1 complete 2026-05-26. **First story under ratified 3-tier cross-LLM review chain** (CLAUDE.md Epic 10 retro 2026-05-26): Tier-1 copilot (`--model claude-sonnet-4.6`) substantive 0 HIGH + 4 MED + 3 LOW; Tier-2 codex DEGRADED (rate-limit, retry 23:38); Tier-3 kilo/minimax-M2.7 substantive 2 HIGH + 5 MED + 2 LOW. **ORTHOGONAL coverage demonstrated** — kilo caught H-1 (Usage `reasoning_output_tokens` data loss) copilot missed; copilot caught MED-2 (L59→L33 ADR section) + MED-4 (negative-path tests) + LOW-1 (test name mismatch) kilo missed. All HIGH + 5 MED + 1 LOW patched inline (Usage 4-field extension; L59→§Decision L33 across 14 sites; thread-safety class docstring; 2 negative-path tests; test split). 1641 pytest pass + 11 skipped (was 1605 + 10; +36 + 1). ruff/format/mypy clean (97 src files). 26th `feedback_carry_over_catalog_gate` UPSTREAM. **First successful per-story validation of 3-tier chain at code-review level** (prior validations retro-level + retroactive-batch only). Story 11.1 dev complete 2026-05-26. CodexCLIAdapter(SubprocessAdapter) at `src/AgentEval/coding_agent/codex_cli.py` (~340 LoC). 33 unit tests + 1 env-gated integration test. 1638 pytest pass + 11 skipped (was 1605 + 10; +33 + 1). ruff/format/mypy clean (97 src files). 26th consecutive `feedback_carry_over_catalog_gate` UPSTREAM (added C73 + C74; catalog 72 → 74). **First use of `feedback_cross_story_upstream_lesson_propagation` — 9 cross-story UPSTREAM lessons applied** (D-1 prompt-argv + D-2 stderr-multiplex + D-3 nonzero-exit-diagnostic + D-4 mock_codex_version conftest hoist + D-5 ADR-002 + D-6 ADR-016 + D-7 mcp_coverage external_mixed + D-9 cost-zero + D-10 codex-cli prefix regex). Empirical JSONL schema probe pre-write (Story 4.2 + Epic 10 empirical-SDK-probe pattern UPSTREAM). Status → review; next: kilo+codex+copilot 3-tier cross-LLM review per CLAUDE.md ratified chain. Story 11.1 created 2026-05-26. 45th use of `feedback_spec_vs_ratified_doc_precheck` (100% catch rate intact). **First use of `feedback_cross_story_upstream_lesson_propagation` post-Epic-10 ratification** — 9 cross-story UPSTREAM lessons applied from Stories 4.2 + 10.1 + 10.2. 11 drifts total caught (9 UPSTREAM + 2 fresh from empirical codex JSONL schema probe). 10 ACs. CodexCLIAdapter(SubprocessAdapter) per Story 4.2 precedent + Epic 10 ADR-A6→ADR-016 + mcp_coverage external_mixed defaults.
+-  11-2-copilot-cli-adapter: backlog
++  11-2-copilot-cli-adapter: ready-for-dev  # Story 11.2 created 2026-05-26. 46th use of `feedback_spec_vs_ratified_doc_precheck` (100% catch rate intact). **2nd use of `feedback_cross_story_upstream_lesson_propagation` post-Epic-10 ratification — validates norm at N=2.** 12 drifts caught (11 UPSTREAM from Stories 4.2 + 10.1 + 10.2 + 11.1 + 1 fresh from empirical Copilot events.jsonl probe). 10 ACs. CopilotCLIAdapter(SubprocessAdapter) with post-hoc events.jsonl parsing (D-9: override `run()` because copilot writes to `~/.copilot/session-state/{uuid}/events.jsonl`, NOT to stdout). Empirical 10-event schema probed pre-write.
+   11-3-adapterversiondriftwarning-fully-wired: backlog
+   epic-11-retrospective: optional
+ 
+diff --git a/docs/contracts/stability-surface.md b/docs/contracts/stability-surface.md
+index dd2cdfc..c1990fb 100644
+--- a/docs/contracts/stability-surface.md
++++ b/docs/contracts/stability-surface.md
+@@ -110,6 +110,7 @@ Per ADR-003 (`docs/adr/ADR-003-coding-agent-adapter-protocol-internal-class-spli
+ - `agenteval.coding_agents` entry-points group — already registered as `stable` in the kernel-discovery section above (Story 1b.3 baseline).
+ - `AgentEval.coding_agent.claude_agent_sdk.ClaudeAgentSDKAdapter` (Story 10.1) — `experimental` label. Phase-2 native Agent SDK adapter wrapping the `claude-agent-sdk` PyPI package. Constructor signature (`model`, `max_turns`, `system_prompt`, `**kwargs`) is `experimental`; the pre-1.0 SDK's surface may force adapter changes. `run()` honors the FR12 signature contract per the `CodingAgentAdapter` Protocol (`stable`). `mcp_coverage` detection per the 3-branch contract in the class docstring is `experimental` (current static-branch logic upgrades to observer-based detection in DF-10.1-S2). Promotion to `stable` after the 3-month-no-break window per Epic 9 retro Action #3 + Exit Criterion #4.
+ - `AgentEval.coding_agent.openai_agents.OpenAIAgentsSDKAdapter` (Story 10.2) — `experimental` label. Phase-2 native Agent SDK adapter wrapping the `openai-agents` PyPI package (import path: `agents`). Constructor signature (`model`, `name`, `instructions`, `**kwargs`) is `experimental`; the pre-1.0 SDK's surface may force adapter changes. `run()` honors the FR12 signature contract per the `CodingAgentAdapter` Protocol (`stable`). `_extract_usage` defensively branches on `isinstance(usage, dict)` per Story 10.1 HIGH-1 lesson — `experimental` because the SDK's `RunResult.usage` shape is empirically unverified at write time. `mcp_coverage` detection mirrors Story 10.1's patched 2-branch contract (non-empty MCP → `external_mixed` until DF-10.2-S1 HostedMcpObserver wiring lands). Promotion to `stable` after the 3-month-no-break window per Epic 9 retro Action #3 + Exit Criterion #4.
++- `AgentEval.coding_agent.copilot_cli.CopilotCLIAdapter` (Story 11.2) — `experimental` label. Phase-2 SubprocessAdapter wrapping the GitHub Copilot CLI binary (pin range `>=1.0.9,<2.0`; local probe `GitHub Copilot CLI 1.0.54.`). Architecture wrinkle: `run()` is overridden because copilot writes events to `~/.copilot/session-state/{uuid}/events.jsonl` (NOT stdout) — adapter reads them post-hoc after `proc.wait()`. Constructor signature (`model`, `**kwargs`) is `experimental`; pre-1.0 binary's events.jsonl schema may force adapter changes. `run()` honors the FR12 signature contract per the `CodingAgentAdapter` Protocol (`stable`). Reads `usage` from `assistant.message.outputTokens` (summed); `input_tokens=0` placeholder pending events.jsonl exposing the field (DF-11.2-S2 carry-over). `reasoning_output_tokens` populated if `assistant.message.reasoningTokens` is present (Story 11.1 kilo HIGH-1 lesson UPSTREAM). `cost_usd=0.0` placeholder per the same carry-over. `mcp_coverage` detection mirrors Stories 10.1/10.2/11.1 post-HIGH-2 contract per ADR-016 §Decision L33 (non-empty MCP → `external_mixed` until DF-11.2-S1 / C75 HostedMcpObserver wiring). **Thread safety: NOT concurrent-safe** — `_last_mcp_servers` stash + the session-state-dir-race invariant (concurrent runs against the same `~/.copilot/session-state/` parent race for "newest dir" pick). Construct one adapter per concurrent run. Promotion to `stable` after the 3-month-no-break window per Epic 9 retro Action #3 + Exit Criterion #4.
+ - `AgentEval.coding_agent.codex_cli.CodexCLIAdapter` (Story 11.1) — `experimental` label. Phase-2 SubprocessAdapter wrapping the OpenAI `codex` CLI binary (pin range `>=0.100.0,<1.0`; local probe `codex-cli 0.133.0`). Constructor signature (`model`, `**kwargs`) is `experimental`; pre-1.0 binary's JSONL event surface may force adapter changes. `run()` honors the FR12 signature contract per the `CodingAgentAdapter` Protocol (`stable`). Reads `usage` from `turn.completed.usage` (full 4-field shape: `input_tokens`, `cached_input_tokens`, `output_tokens`, `reasoning_output_tokens` — the `Usage` dataclass was extended with `reasoning_output_tokens` at Story 11.1 kilo HIGH-1 catch 2026-05-26 so no field is silently dropped). `cost_usd` returns `0.0` because Codex events carry no cost field (DF-11.1-S2 / C74 tracks cost-catalog integration). `mcp_coverage` detection mirrors Story 10.1/10.2's patched 2-branch contract per ADR-016 §Decision L33 (non-empty MCP → `external_mixed` until DF-11.1-S1 / C73 HostedMcpObserver wiring lands). **Thread safety: NOT concurrent-safe** — instance-state `_last_mcp_servers` stash pattern means concurrent `run()` calls on one adapter instance corrupt `mcp_coverage`; construct one adapter per concurrent run. Promotion to `stable` after the 3-month-no-break window per Epic 9 retro Action #3 + Exit Criterion #4.
+ 
+ ### Sandbox Protocol Surface
+diff --git a/docs/phase-1-5-carry-overs.md b/docs/phase-1-5-carry-overs.md
+index 81c929f..1779797 100644
+--- a/docs/phase-1-5-carry-overs.md
++++ b/docs/phase-1-5-carry-overs.md
+@@ -95,11 +95,13 @@ The Phase-1.5 carry-over chain has been deferred via Epic 0 Action #6 → Epic 1
+ 
+ | **C71** | **Phase-1.5: terminal-summary pass/failed counts not populated (`DF-8b.2-S1`).** Story 8b.2 retrospective dev-decision 2026-05-26 (catalogued via kilo/minimax cross-LLM review HIGH-2 patch): Listener's `_snapshot_completed_run_metadata` does NOT capture the RF `result.passed` flag, so `_terminal_summary.render_summary` cannot compute real passed/failed counts. The HIGH-2 patch replaced the fake `passed=total` with `"—"` sentinel + `[Phase-1.5 C71]` marker so operators know the data is missing rather than fabricated. Phase-1.5: extend `_snapshot_completed_run_metadata` to capture `result.passed: bool` per test; thread it through to `render_summary`; remove the sentinel. | Story 8b.2 v0.2.0 — HIGH-2 honest-framing patch | correctness | S | TBD | Listener metadata capture + summary aggregation + sentinel removal. |
+ 
++| **C75** | **Phase-2: `HostedMcpObserver` wiring for Copilot CLI MCP-attachment (`DF-11.2-S1`).** Story 11.2 dev decision 2026-05-26 (parallel to C73 + C68 + C69). Copilot CLI's events.jsonl exposes `mcpServerName` + `mcpToolName` per `tool.execution_start` / `tool.execution_complete` events — a future observer could verify hosted MCP attachment by checking these fields match the requested `mcp_servers`. Phase-1 falls back to `external_mixed` per ADR-016 §Decision L33 for any non-empty `mcp_servers`. Phase-2: integration test against live binary to verify the `mcpServerName` correlation pattern + wire `HostedMcpObserver.attach()` per the copilot MCP server registration callback. | Story 11.2 D-7 decision — Phase-1 detection ceiling | correctness | M | TBD | Live-binary probe + attachment-surface wiring + observer-based detection + promote to `hosted_in_process` only on verified attachment per ADR-016. |
++| **C76** | **Phase-1.5: Copilot CLI input/output token + cost integration (`DF-11.2-S2`).** Story 11.2 D-8 / D-9 dev decision 2026-05-26: Copilot's events.jsonl carries `assistant.message.outputTokens` per turn but NO `inputTokens` field; no `cost_usd` surfaces in the empirical 10-event schema. Phase-1 ships `Usage(input_tokens=0, output_tokens=sum)` + `cost_usd=0.0` placeholders. Phase-1.5: probe `session.shutdown` / longer-running sessions for aggregate `inputTokens` field + extend cost catalog with Copilot CLI pricing (likely tracks the underlying model — claude-sonnet-4.x or gpt-5.x). | Story 11.2 D-8 + D-9 decisions — empirical-probe finding | correctness | S | TBD | Token+cost catalog rows added + `_extract_usage` populates `input_tokens` from the verified events.jsonl field + regression-guard unit test verifies the math. |
+ | **C73** | **Phase-2: `HostedMcpObserver` wiring for Codex CLI MCP-attachment (`DF-11.1-S1`).** Story 11.1 dev decision 2026-05-26 (parallel to C68 + C69 for Claude+OpenAI SDKs). Codex CLI's `--json` JSONL event surface (`thread.started` / `turn.started` / `item.*` / `turn.completed`) does NOT include any MCP-attachment confirmation event. Until empirical verification of the codex MCP attachment signal (likely via the `codex mcp` subcommand + `~/.codex/config.toml` inspection), non-empty `mcp_servers` falls back to `external_mixed` per ADR-016 §Decision L33. Phase-2: integration test against live binary to discover whether MCP-attachment manifests in stream events + wire `HostedMcpObserver.attach()` per the codex MCP server registration callback (mirrors C68's Claude resolution). | Story 11.1 D-7 decision — Phase-1 detection ceiling | correctness | M | TBD | Live-binary probe + attachment-surface wiring + observer-based detection + promote to `hosted_in_process` only on verified attachment per ADR-016. |
+ | **C74** | **Phase-1.5: Codex CLI cost-catalog integration (`DF-11.1-S2`).** Story 11.1 D-9 dev decision 2026-05-26: Codex `turn.completed` events carry usage tokens (`input_tokens`, `cached_input_tokens`, `output_tokens`, `reasoning_output_tokens`) but NO `cost_usd` field — Codex pricing is `gpt-5-codex`-tier which is not in Phase-1 cost catalog. Phase-1 ships `cost_usd=0.0` placeholder. **Prerequisite resolved 2026-05-26 (kilo M-4 catch):** the `Usage` dataclass was extended with `reasoning_output_tokens: int = 0` field at Story 11.1 kilo HIGH-1 fix; all 4 token fields now flow end-to-end. Phase-1.5: extend cost catalog with `gpt-5-codex` pricing rows; compute `cost_usd` from `(input_tokens, output_tokens, reasoning_output_tokens, cached_input_tokens)` per the published OpenAI Codex pricing table. | Story 11.1 D-9 decision — empirical-probe finding | correctness | S | TBD | Cost catalog row added + `_extract_cost` reads from catalog + removes the `0.0` placeholder + regression-guard unit test verifies the math for a representative usage tuple. |
+ | **C72** | **Phase-1.5: promote `MinimaxMcpOrchestrator` test-suite-local helper to `LiteLLMAdapter` MCP-bridge (`DF-RFMCP-E2E-01`).** 2026-05-26 dogfood E2E session: shipped `tests/dogfood/rf-mcp/_minimax_orchestrator.py` as a one-off RF library that drives `minimax/MiniMax-M2.7` through an MCP server's tool surface (list tools → call_tool → loop) to produce an `AgentRunResult` consumable by the standard metrics + assertions keywords. This closes DF-4.1-S2 NARROWLY for the rf-mcp E2E dogfood smoke test (`test_metrics_e2e_smoke.robot`), but the proper home for this logic is `src/AgentEval/providers/litellm_adapter.py` (or a sibling `mcp_bridge.py`) so other adapters / tests reuse it via `Send Prompt mcp_servers=[...]`. The orchestrator deliberately bypasses the LiteLLMAdapter to ship fast; Phase-1.5 lifts the loop into the adapter, deletes the helper, and wires the smoke test through `Send Prompt`. | DF-4.1-S2 + DF-4.2-S1 (Generic + Claude Code CLI adapters raise NotImplementedError on non-empty `mcp_servers`); 2026-05-26 dogfood E2E session | correctness | M | TBD | `LiteLLMAdapter.run(prompt, mcp_servers=[handle], ...)` returns an `AgentRunResult` with full tool trajectory; rf-mcp E2E smoke test rewires through `Send Prompt` keyword; `_minimax_orchestrator.py` deleted. |
+ 
+-**Total: 74 catalog items** (was 72 after rf-mcp E2E; Story 11.1 adds C73 + C74). `feedback_carry_over_catalog_gate` UPSTREAM applied (26th consecutive). 45th consecutive use of `feedback_spec_vs_ratified_doc_precheck` 100% real-drift catch rate intact. Effort breakdown: 14 XS, 21 S, 27 M, 6 L, 1 XL (split into C2a + C2b).
++**Total: 76 catalog items** (was 74 after Story 11.1; Story 11.2 adds C75 + C76). `feedback_carry_over_catalog_gate` UPSTREAM applied (27th consecutive). 46th consecutive use of `feedback_spec_vs_ratified_doc_precheck` 100% real-drift catch rate intact. Effort breakdown: 14 XS, 22 S, 28 M, 6 L, 1 XL (split into C2a + C2b).
+ 
+ ## Execution policy
+ 
+diff --git a/pyproject.toml b/pyproject.toml
+index bdad338..80709a1 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -82,6 +82,12 @@ openai-agents = ["openai-agents>=0.1.0,<1.0"]
+ # Ceiling Rule), this is OpenAI's CLI-side ≤2-adapters slot; Codex SDK
+ # adapter would be the in-process counterpart (`openai-agents`).
+ codex = []
++# Story 11.2 (Epic 11) — Copilot CLI adapter (Phase-2, FR13d). The
++# `copilot` binary must be on `$PATH` (npm install -g @github/copilot).
++# No Python deps; mirrors the `codex` + `claude-code` pattern. Per
++# ADR-002 + ADR-010 (Copilot CLI version-pin original precedent), this
++# is GitHub Copilot's CLI-side ≤2-adapters slot.
++copilot = []
+ 
+ [project.urls]
+ Homepage = "https://github.com/manykarim/robotframework-agenteval"
+@@ -122,6 +128,8 @@ claude-agent-sdk = "AgentEval.coding_agent.claude_agent_sdk:ClaudeAgentSDKAdapte
+ openai-agents-sdk = "AgentEval.coding_agent.openai_agents:OpenAIAgentsSDKAdapter"
+ # Story 11.1 (Epic 11) — Codex CLI adapter (codex binary >=0.100.0,<1.0).
+ codex-cli = "AgentEval.coding_agent.codex_cli:CodexCLIAdapter"
++# Story 11.2 (Epic 11) — Copilot CLI adapter (copilot binary >=1.0.9,<2.0).
++copilot-cli = "AgentEval.coding_agent.copilot_cli:CopilotCLIAdapter"
+ 
+ [project.entry-points."agenteval.providers"]
+ # Story 4.1 (Epic 4) — LLMProviderAdapter implementations.
+diff --git a/src/AgentEval/coding_agent/copilot_cli.py b/src/AgentEval/coding_agent/copilot_cli.py
+new file mode 100644
+index 0000000..73c799f
+--- /dev/null
++++ b/src/AgentEval/coding_agent/copilot_cli.py
+@@ -0,0 +1,475 @@
++# Copyright 2026 Many Kasiriha
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++"""`CopilotCLIAdapter` — `SubprocessAdapter` for the `copilot` CLI (Story 11.2 / PRD FR12 + FR13d).
++
++Wraps the GitHub Copilot CLI binary (`copilot` v1.0.9+) invoked with
++`copilot --allow-all-tools -p "<prompt>"` to produce a normalized
++`AgentRunResult`. Implements the Story 1b.4 ratified 3-hook
++`SubprocessAdapter` template-method pattern per ADR-003 **with one
++override**: `run()` is overridden to do post-hoc events.jsonl parsing
++because copilot does NOT stream events to stdout — events are written
++to `~/.copilot/session-state/{uuid}/events.jsonl` during the run.
++
++## Phase-1 pinned binary range
++
++Per PRD FR47 + ADR-010 (Copilot CLI version-pinning original source +
++precedent), this adapter pins the `copilot` binary to `>=1.0.9,<2.0`.
++Below `1.0.9` predates the documented `--allow-all-tools` autopilot
++mode + the events.jsonl trace format this adapter parses. Local probe
++at story-authoring: `GitHub Copilot CLI 1.0.54.` — in range.
++
++## Events.jsonl schema (empirical probe 2026-05-26)
++
++Captured via probe BEFORE writing this adapter per
++`feedback_listener_hook_api_surface_empirical_check` (Epic 8 retro NEW
++norm). 10 event types:
++
++- ``session.start`` — sessionId + copilotVersion + context (cwd, gitRoot, etc.)
++- ``session.model_change`` — newModel
++- ``session.shutdown`` — terminal event
++- ``user.message`` — content
++- ``assistant.turn_start`` / ``assistant.turn_end`` — turn boundaries
++- ``assistant.message`` — content + toolRequests[] + outputTokens
++- ``tool.execution_start`` / ``tool.execution_complete`` — tool dispatch
++
++## Phase-1 mcp_coverage
++
++Per ADR-016 §Decision L33 safer-default rule: empty `mcp_servers` →
++`hosted_in_process`; non-empty → `external_mixed` until observer wiring
++lands (DF-11.2-S1 / C75). Copilot's events.jsonl exposes
++`mcpServerName`/`mcpToolName` per `tool.execution_start` event — a
++future observer could verify hosted MCP attachment by checking these
++fields match the requested `mcp_servers`. Phase-2 carry-over.
++
++## Cross-story UPSTREAM lessons applied (2nd use of `feedback_cross_story_upstream_lesson_propagation`)
++
++This adapter ships with **12 cross-story lessons from Stories 4.2 +
++10.1 + 10.2 + 11.1 applied UPSTREAM** — see Story 11.2 spec drift-check
++D-1 through D-12. Most load-bearing:
++
++- D-1 (Story 11.1 D-1 / Story 4.2 HIGH-A): prompt via `-p` flag
++- D-2 (Story 11.1 D-2 / Story 4.2 HIGH-B): stderr multiplex
++- D-3 (Story 11.1 D-3 / Story 4.2 MED-3): nonzero-exit diagnostic
++- D-7 (Story 11.1 D-7 / Stories 10.1+10.2 HIGH-2): external_mixed default
++- D-8 (Story 11.1 kilo HIGH-1): `Usage.reasoning_output_tokens` populated if present
++- D-9 (Copilot-specific): override `run()` for post-hoc events.jsonl parse
++- D-11 (Story 11.1 MED-1): NO module-level `_VERSION_RE` dead-code constant
++- D-12 (Story 11.1 MED-3): class-docstring thread-safety from start
++
++References:
++    - PRD FR12, FR13d (Copilot CLI scope), FR17a, FR47.
++    - ADR-003 (SubprocessAdapter template-method).
++    - ADR-002 (Tier-1 Adapter Ceiling Rule).
++    - ADR-010 (Copilot CLI version-pin precedent — original source).
++    - ADR-016 §Decision L33 (external_mixed safer default).
++    - Story 1b.4 `coding_agent/base.py:SubprocessAdapter` + `_assert_binary_version`.
++    - Story 4.2 ClaudeCodeCLIAdapter + Story 11.1 CodexCLIAdapter precedents.
++"""
++
++from __future__ import annotations
++
++import json
++import subprocess
++from dataclasses import dataclass, field
++from pathlib import Path
++from typing import Any
++
++from AgentEval.coding_agent.base import SubprocessAdapter
++from AgentEval.coding_agent.generic import _hash_prompt, _manifest_entries_from_servers
++from AgentEval.types import (
++    AgentRunMetadata,
++    AgentRunResult,
++    ToolCallTrace,
++    Usage,
++)
++
++__all__ = ["CopilotCLIAdapter", "CopilotEvent"]
++
++
++COPILOT_BINARY = "copilot"
++MIN_VERSION = "1.0.9"
++MAX_VERSION = "2.0.0"
++
++# `copilot --version` prints e.g. ``GitHub Copilot CLI 1.0.54.`` (trailing
++# period). The base `_assert_binary_version`'s default `_SEMVER_RE.search()`
++# extracts `1.0.54` via substring search — no module-level constant needed
++# (Story 11.2 D-11; Story 11.1 MED-1 lesson UPSTREAM).
++
++# Default location where copilot writes session-state directories. Each
++# session creates a UUID-named subdirectory containing `events.jsonl`.
++DEFAULT_COPILOT_SESSION_STATE_DIR = Path.home() / ".copilot" / "session-state"
++
++
++@dataclass(frozen=True)
++class CopilotEvent:
++    """One parsed event from `copilot` CLI's events.jsonl trace (Story 11.2).
++
++    Phase-1 captures the union of Copilot CLI's 10 event types as a
++    single dataclass with a discriminator + raw payload. Convenience
++    accessors handle common nested paths.
++    """
++
++    event_type: str
++    raw: dict[str, Any] = field(default_factory=dict)
++
++    def __post_init__(self) -> None:
++        # M_R6 shallow-copy pattern.
++        object.__setattr__(self, "raw", dict(self.raw))
++
++    @property
++    def is_terminal(self) -> bool:
++        """``session.shutdown`` is the terminal event."""
++        return self.event_type == "session.shutdown"
++
++    @property
++    def assistant_text(self) -> str:
++        """Extract text from an `assistant.message` event (excluding tool_requests)."""
++        if self.event_type != "assistant.message":
++            return ""
++        data = self.raw.get("data") or {}
++        return str(data.get("content") or "")
++
++    @property
++    def assistant_output_tokens(self) -> int:
++        """Output-tokens count carried on `assistant.message` events."""
++        if self.event_type != "assistant.message":
++            return 0
++        data = self.raw.get("data") or {}
++        return int(data.get("outputTokens") or 0)
++
++    @property
++    def tool_requests(self) -> list[dict[str, Any]]:
++        """Tool requests embedded in an `assistant.message` event.
++
++        Each entry has: `toolCallId`, `name`, `arguments`, optional
++        `mcpServerName` + `mcpToolName` + `toolTitle`.
++        """
++        if self.event_type != "assistant.message":
++            return []
++        data = self.raw.get("data") or {}
++        requests = data.get("toolRequests") or []
++        return [dict(r) for r in requests if isinstance(r, dict)]
++
++    @property
++    def tool_execution_complete_payload(self) -> dict[str, Any] | None:
++        """Return the data dict for `tool.execution_complete`, else None."""
++        if self.event_type != "tool.execution_complete":
++            return None
++        data = self.raw.get("data") or {}
++        return dict(data)
++
++
++class CopilotCLIAdapter(SubprocessAdapter):
++    """`SubprocessAdapter` for the `copilot` CLI (Story 11.2 / PRD FR13d).
++
++    Implements the 3-hook template-method pattern per ADR-003 WITH a
++    `run()` override (D-9) because copilot writes events to disk
++    (`~/.copilot/session-state/{uuid}/events.jsonl`) rather than to
++    stdout. The override does `spawn → wait → glob newest session-state
++    directory → read events.jsonl → call _finalize`.
++
++    **Thread safety: NOT concurrent-safe.** ``run()`` uses
++    ``self._last_mcp_servers`` instance state to thread ``mcp_servers``
++    through to ``_finalize`` (Phase-1 single-threaded-per-instance
++    design; mirrors Story 11.1 / DF-11.2-S1 / C75). **Do not call
++    ``run()`` concurrently on the same ``CopilotCLIAdapter`` instance**
++    — the second thread's ``mcp_servers`` overwrites the first's before
++    ``_finalize`` reads it. Construct one adapter per concurrent run.
++    Inline from the start per Story 11.1 MED-3 UPSTREAM lesson.
++
++    Additionally: the post-hoc events.jsonl read pattern means the
++    `~/.copilot/session-state/` directory is scanned during `run()`. The
++    adapter records the directory's mtime snapshot before `_spawn` so
++    it can identify the run's session UUID by selecting the newest
++    directory created within the run window — concurrent runs against
++    the same `~/.copilot/session-state/` parent would race for the
++    "newest directory" pick. Documented; tracked DF-11.2-S3 carry-over
++    if a real consumer hits this.
++    """
++
++    def __init__(self, *, model: str | None = None, **kwargs: Any) -> None:
++        super().__init__(**kwargs)
++        # Story 1b.4 ratified helper validates binary version at construction.
++        # The default `_SEMVER_RE.search()` extracts `1.0.54` from
++        # `GitHub Copilot CLI 1.0.54.` (trailing period included; substring
++        # search is tolerant). No `_VERSION_RE` override needed (D-11
++        # UPSTREAM from Story 11.1 MED-1).
++        self._assert_binary_version(COPILOT_BINARY, min=MIN_VERSION, max=MAX_VERSION)
++        self._model = model
++        # See class docstring for thread-safety invariant.
++        self._last_mcp_servers: dict[str, Any] | None = None
++
++    @property
++    def name(self) -> str:
++        return "copilot-cli"
++
++    def run(
++        self,
++        prompt: str,
++        tools: list[str] | None = None,
++        mcp_servers: dict[str, Any] | None = None,
++        **kwargs: Any,
++    ) -> AgentRunResult:
++        """Override base `run()` for post-hoc events.jsonl parsing (Story 11.2 D-9).
++
++        Copilot writes events to ``~/.copilot/session-state/{uuid}/events.jsonl``
++        during the run — NOT to stdout. The base ``SubprocessAdapter.run()``
++        assumes events arrive on ``proc.stdout``; we bypass that
++        iteration pattern and do:
++
++        1. Snapshot existing session-state directory contents.
++        2. Spawn subprocess + wait for exit.
++        3. Identify the new session-state directory created during the run.
++        4. Read events.jsonl line-by-line through ``_parse_event``.
++        5. Call ``_finalize(events, exit_code)``.
++
++        Per Story 10.1 HIGH-4 + Story 11.1 D-6 UPSTREAM: wires
++        ``_record_run_metadata`` to capture per-run identity in the
++        Story 5.3 RunManifest sidecar.
++        """
++        from AgentEval.telemetry.listener import record_active_run_metadata
++
++        self._last_mcp_servers = mcp_servers
++        # Snapshot existing session-state directories BEFORE spawn so
++        # we can identify the new one created during the run.
++        session_root = DEFAULT_COPILOT_SESSION_STATE_DIR
++        pre_existing = self._snapshot_session_dirs(session_root)
++        events: list[CopilotEvent] = []
++        try:
++            proc = self._spawn(prompt, tools=tools, mcp_servers=mcp_servers, **kwargs)
++            # Drain stdout to avoid pipe-buffer deadlock under verbose
++            # output (per D-2 stderr=STDOUT multiplex + base ABC pattern).
++            if proc.stdout is not None:
++                # Discard stdout content; events come from events.jsonl on
++                # disk. We still iterate to drain the pipe.
++                for _line in proc.stdout:
++                    pass
++            exit_code = proc.wait()
++            # Identify newest session-state dir that did NOT exist before spawn.
++            events_jsonl = self._find_new_events_jsonl(session_root, pre_existing)
++            if events_jsonl is not None:
++                with events_jsonl.open() as fh:
++                    for line in fh:
++                        parsed = self._parse_event(line)
++                        if parsed is not None:
++                            events.append(parsed)
++            result = self._finalize(events, exit_code)
++        finally:
++            self._last_mcp_servers = None
++
++        record_active_run_metadata(
++            adapter_name=self.name,
++            adapter_version=self.version,
++            model=self._model,
++            mcp_servers=_manifest_entries_from_servers(mcp_servers),
++            total_cost_usd=result.cost_usd,
++            completeness=result.metadata.completeness,
++            mcp_coverage=result.metadata.mcp_coverage,
++            prompt_hashes=[_hash_prompt(prompt)],
++        )
++        return result
++
++    @staticmethod
++    def _snapshot_session_dirs(session_root: Path) -> set[str]:
++        """Return the set of session UUID directory names that exist now."""
++        if not session_root.exists():
++            return set()
++        try:
++            return {p.name for p in session_root.iterdir() if p.is_dir()}
++        except OSError:
++            # Permission / IO error — treat as empty snapshot.
++            return set()
++
++    def _find_new_events_jsonl(self, session_root: Path, pre_existing: set[str]) -> Path | None:
++        """Locate the events.jsonl for the session created during this run.
++
++        Strategy: list session-state directories, filter to ones not in
++        the pre-spawn snapshot, pick the one with the most recent mtime,
++        return its `events.jsonl` if present.
++        """
++        if not session_root.exists():
++            return None
++        try:
++            candidates = [
++                p for p in session_root.iterdir() if p.is_dir() and p.name not in pre_existing
++            ]
++        except OSError:
++            return None
++        if not candidates:
++            return None
++        # Pick the newest by mtime — defensive against concurrent
++        # sessions with overlapping timestamps (we documented the
++        # thread-safety + dir-race invariant in the class docstring).
++        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
++        events_path = candidates[0] / "events.jsonl"
++        return events_path if events_path.exists() else None
++
++    def _spawn(self, prompt: str, **kwargs: Any) -> subprocess.Popen[str]:
++        """Launch `copilot --allow-all-tools -p "<prompt>"` (Story 11.2 D-1 + D-2).
++
++        D-1 (Story 11.1 D-1 / Story 4.2 HIGH-A UPSTREAM): prompt is
++        passed via the ``-p``/``--prompt`` flag for non-interactive mode
++        (per `copilot --help`: "Execute a prompt in non-interactive mode").
++
++        D-2 (Story 11.1 D-2 / Story 4.2 HIGH-B UPSTREAM):
++        ``stderr=subprocess.STDOUT`` multiplex to avoid pipe-buffer
++        deadlock under verbose output.
++
++        ``--allow-all-tools`` is required for non-interactive mode (per
++        `copilot --help`: "required for non-interactive mode"). Without
++        it, copilot would prompt for permission on each tool dispatch.
++        """
++        # Phase-1: tools / mcp_servers forwarded but not acted upon at
++        # this layer (DF-11.2-S1 observer wiring carry-over).
++        _ = kwargs
++
++        cmd = [COPILOT_BINARY, "--allow-all-tools"]
++        if self._model is not None:
++            cmd.extend(["--model", self._model])
++        cmd.extend(["-p", prompt])
++        return subprocess.Popen(
++            cmd,
++            stdout=subprocess.PIPE,
++            stderr=subprocess.STDOUT,
++            text=True,
++            start_new_session=True,
++        )
++
++    def _parse_event(self, line: str) -> CopilotEvent | None:
++        """Parse one events.jsonl line into a `CopilotEvent`, or None to skip."""
++        stripped = line.strip()
++        if not stripped:
++            return None
++        try:
++            parsed = json.loads(stripped)
++        except json.JSONDecodeError:
++            return None
++        if not isinstance(parsed, dict):
++            return None
++        event_type = parsed.get("type")
++        if not isinstance(event_type, str):
++            return None
++        return CopilotEvent(event_type=event_type, raw=parsed)
++
++    def _finalize(self, events: list[CopilotEvent], exit_code: int) -> AgentRunResult:
++        """Fold the event stream into an `AgentRunResult`.
++
++        Story 11.2 D-3 (cross-story UPSTREAM from Story 11.1 D-3 +
++        Story 4.2 MED-3): when exit_code != 0 AND no terminal event AND
++        no assistant text, surface a ``[SUBPROCESS_NONZERO_EXIT
++        exit_code=<N>]`` diagnostic marker. M_R11 fail-loud.
++        """
++        terminal = next((e for e in reversed(events) if e.is_terminal), None)
++
++        # Response text: concatenate every `assistant.message` content
++        # (intermediate narration + final response).
++        assistant_texts = [e.assistant_text for e in events if e.assistant_text]
++        response_text = "\n".join(assistant_texts) if assistant_texts else ""
++
++        # D-3 diagnostic when subprocess failed silently.
++        if not response_text and exit_code != 0 and terminal is None:
++            response_text = f"[SUBPROCESS_NONZERO_EXIT exit_code={exit_code}]"
++
++        # Tool calls: project from `assistant.message.toolRequests[]` +
++        # matching `tool.execution_complete` payloads. Iterate
++        # chronologically; build a tool_call_id → completion map for O(N).
++        completion_by_id: dict[str, dict[str, Any]] = {}
++        for ev in events:
++            payload = ev.tool_execution_complete_payload
++            if payload is None:
++                continue
++            tcid = payload.get("toolCallId")
++            if isinstance(tcid, str):
++                completion_by_id[tcid] = payload
++
++        tool_calls: list[ToolCallTrace] = []
++        seq = 0
++        for ev in events:
++            for req in ev.tool_requests:
++                tc_id = str(req.get("toolCallId") or "")
++                completion = completion_by_id.get(tc_id, {})
++                success = completion.get("success", True)
++                error_marker: str | None = None
++                if completion and success is False:
++                    # Tool failed — surface as ToolCallTrace.error.
++                    error_marker = str(completion.get("result", {}).get("error") or "tool_failed")
++                tool_calls.append(
++                    ToolCallTrace(
++                        name=str(req.get("name") or ""),
++                        args=dict(req.get("arguments") or {}),
++                        result=completion.get("result") if completion else None,
++                        error=error_marker,
++                        latency_ms=0.0,  # Phase-1 placeholder; DF-11.2-S1 observer would correlate.
++                        source="adapter",
++                        gen_ai_tool_call_id=tc_id,
++                        sequence_index=seq,
++                    )
++                )
++                seq += 1
++
++        # Usage: sum `outputTokens` from `assistant.message` events.
++        # Copilot doesn't surface `inputTokens` directly in our probe — Phase-1
++        # placeholder 0. D-8 + Story 11.1 kilo HIGH-1 lesson UPSTREAM: if any
++        # event carries `reasoningTokens`, populate `reasoning_output_tokens`.
++        output_tokens = sum(e.assistant_output_tokens for e in events)
++        reasoning_tokens = 0
++        for ev in events:
++            if ev.event_type == "assistant.message":
++                data = ev.raw.get("data") or {}
++                rt = data.get("reasoningTokens")
++                if isinstance(rt, int):
++                    reasoning_tokens += rt
++        usage = Usage(
++            input_tokens=0,  # Copilot events.jsonl doesn't expose input tokens — DF-11.2-S2.
++            output_tokens=output_tokens,
++            cached_input_tokens=0,
++            reasoning_output_tokens=reasoning_tokens,
++        )
++
++        # Cost: Copilot events.jsonl doesn't surface cost_usd — DF-11.2-S2.
++        cost_usd = 0.0
++
++        # Latency: copilot events have per-event timestamps but no aggregate
++        # duration — Phase-1 placeholder.
++        latency_seconds = 0.0
++
++        completeness: str = "complete" if terminal is not None and exit_code == 0 else "truncated"
++
++        mcp_coverage = self._detect_mcp_coverage(self._last_mcp_servers)
++
++        return AgentRunResult(
++            response_text=response_text,
++            tool_calls=tool_calls,
++            usage=usage,
++            metadata=AgentRunMetadata(
++                completeness=completeness,  # type: ignore[arg-type]
++                mcp_coverage=mcp_coverage,  # type: ignore[arg-type]
++            ),
++            cost_usd=cost_usd,
++            latency_seconds=latency_seconds,
++            trace_id="",
++        )
++
++    def _detect_mcp_coverage(self, mcp_servers: dict[str, Any] | None) -> str:
++        """Detection-contract per ADR-016 §Decision L33 (Story 11.2 D-7).
++
++        - Empty / None ``mcp_servers``: ``"hosted_in_process"`` (trivially honest).
++        - Non-empty without verified hosted-attachment: ``"external_mixed"``
++          per ADR-016 §Decision L33 safer-default rule.
++        - DF-11.2-S1 / C75 tracks the `HostedMcpObserver` wiring upgrade path.
++        """
++        if not mcp_servers:
++            return "hosted_in_process"
++        return "external_mixed"
+diff --git a/tests/fixtures/copilot_cli/nonzero_exit.jsonl b/tests/fixtures/copilot_cli/nonzero_exit.jsonl
+new file mode 100644
+index 0000000..3dbd097
+--- /dev/null
++++ b/tests/fixtures/copilot_cli/nonzero_exit.jsonl
+@@ -0,0 +1,2 @@
++{"type":"session.start","data":{"sessionId":"test-fail-001"}}
++{"type":"user.message","data":{"content":"x"}}
+diff --git a/tests/fixtures/copilot_cli/simple_prompt.jsonl b/tests/fixtures/copilot_cli/simple_prompt.jsonl
+new file mode 100644
+index 0000000..04b4ae3
+--- /dev/null
++++ b/tests/fixtures/copilot_cli/simple_prompt.jsonl
+@@ -0,0 +1,7 @@
++{"type":"session.start","data":{"sessionId":"test-simple-001","copilotVersion":"1.0.54","startTime":"2026-05-26T20:00:00.000Z"}}
++{"type":"session.model_change","data":{"newModel":"claude-sonnet-4.6"}}
++{"type":"user.message","data":{"content":"Say hi"}}
++{"type":"assistant.turn_start","data":{"turnId":"0"}}
++{"type":"assistant.message","data":{"messageId":"m1","content":"Hi","toolRequests":[],"outputTokens":1}}
++{"type":"assistant.turn_end","data":{"turnId":"0"}}
++{"type":"session.shutdown","data":{}}
+diff --git a/tests/fixtures/copilot_cli/tool_use.jsonl b/tests/fixtures/copilot_cli/tool_use.jsonl
+new file mode 100644
+index 0000000..fb62913
+--- /dev/null
++++ b/tests/fixtures/copilot_cli/tool_use.jsonl
+@@ -0,0 +1,9 @@
++{"type":"session.start","data":{"sessionId":"test-tool-001","copilotVersion":"1.0.54"}}
++{"type":"user.message","data":{"content":"Run echo hello"}}
++{"type":"assistant.turn_start","data":{"turnId":"0"}}
++{"type":"assistant.message","data":{"messageId":"m1","content":"Running echo command","toolRequests":[{"toolCallId":"call_001","name":"shell","arguments":{"command":"echo hello"},"type":"function"}],"outputTokens":15}}
++{"type":"tool.execution_start","data":{"toolCallId":"call_001","toolName":"shell","arguments":{"command":"echo hello"}}}
++{"type":"tool.execution_complete","data":{"toolCallId":"call_001","success":true,"result":{"content":"hello\n","exitCode":0},"model":"claude-sonnet-4.6"}}
++{"type":"assistant.message","data":{"messageId":"m2","content":"Output: `hello`","toolRequests":[],"outputTokens":8}}
++{"type":"assistant.turn_end","data":{"turnId":"0"}}
++{"type":"session.shutdown","data":{}}
+diff --git a/tests/integration/test_copilot_cli_live.py b/tests/integration/test_copilot_cli_live.py
+new file mode 100644
+index 0000000..aa11739
+--- /dev/null
++++ b/tests/integration/test_copilot_cli_live.py
+@@ -0,0 +1,37 @@
++# Copyright 2026 Many Kasiriha
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++
++"""Env-gated live integration test for `CopilotCLIAdapter` (Story 11.2 AC-11.2.5)."""
++
++from __future__ import annotations
++
++import os
++import shutil
++
++import pytest
++
++from AgentEval.coding_agent.copilot_cli import CopilotCLIAdapter
++
++
++@pytest.mark.skipif(
++    os.environ.get("AGENTEVAL_INTEGRATION_TESTS") != "1",
++    reason="Live SDK integration tests gated behind AGENTEVAL_INTEGRATION_TESTS=1",
++)
++@pytest.mark.skipif(
++    shutil.which("copilot") is None,
++    reason="copilot binary not on $PATH",
++)
++def test_copilot_cli_live_say_hi() -> None:
++    """Drives ``copilot --allow-all-tools -p 'Say hi in one word'`` against
++    the real binary + asserts the AgentRunResult is non-empty."""
++    adapter = CopilotCLIAdapter(model="claude-sonnet-4.6")
++    result = adapter.run("Say hi in one word, no thinking.")
++    assert result.response_text, "Expected non-empty response_text from live copilot run"
++    assert result.usage.output_tokens > 0, "Expected positive output_tokens from live copilot run"
++    assert result.metadata.mcp_coverage == "hosted_in_process"
++    assert result.metadata.completeness == "complete"
+diff --git a/tests/unit/coding_agent/conftest.py b/tests/unit/coding_agent/conftest.py
+index 9ee61f5..c9ed189 100644
+--- a/tests/unit/coding_agent/conftest.py
++++ b/tests/unit/coding_agent/conftest.py
+@@ -54,6 +54,31 @@ def mock_claude_version(monkeypatch: pytest.MonkeyPatch) -> None:
+     monkeypatch.setattr(subprocess, "run", _fake_run)
+ 
+ 
++@pytest.fixture(autouse=True)
++def mock_copilot_version(monkeypatch: pytest.MonkeyPatch) -> None:
++    """Monkeypatch `subprocess.run` so `_assert_binary_version("copilot")` passes
++    without requiring the real `copilot` binary in CI.
++
++    Story 11.2 D-4 (cross-story UPSTREAM from Story 4.2 Edge-cases MED-1 +
++    Story 11.1 D-4): fixture hoisted to `conftest.py` directly from the
++    start so future cross-module Copilot CLI tests inherit the mock
++    automatically.
++
++    Default version: ``GitHub Copilot CLI 1.0.54.`` (local probe
++    2026-05-26; trailing period is intentional — the base
++    `_SEMVER_RE.search()` extracts the semver substring). Scope:
++    package-wide autouse across `tests/unit/coding_agent/`.
++    """
++    real_run = subprocess.run
++
++    def _fake_run(cmd: Any, **kwargs: Any) -> Any:
++        if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "copilot" and cmd[1] == "--version":
++            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="GitHub Copilot CLI 1.0.54.\n", stderr="")
++        return real_run(cmd, **kwargs)
++
++    monkeypatch.setattr(subprocess, "run", _fake_run)
++
++
+ @pytest.fixture(autouse=True)
+ def mock_codex_version(monkeypatch: pytest.MonkeyPatch) -> None:
+     """Monkeypatch `subprocess.run` so `_assert_binary_version("codex")` passes
+diff --git a/tests/unit/coding_agent/test_copilot_cli.py b/tests/unit/coding_agent/test_copilot_cli.py
+new file mode 100644
+index 0000000..051631b
+--- /dev/null
++++ b/tests/unit/coding_agent/test_copilot_cli.py
+@@ -0,0 +1,489 @@
++# Copyright 2026 Many Kasiriha
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++
++"""Unit tests for `CopilotCLIAdapter` (Story 11.2).
++
++Mirrors Story 11.1's `test_codex_cli.py` patterns + applies the
++UPSTREAM-seed lessons enumerated in Story 11.1's Senior Developer
++Review record per `feedback_cross_story_upstream_lesson_propagation`
++(2nd application).
++"""
++
++from __future__ import annotations
++
++import importlib.metadata
++import json
++import subprocess
++from pathlib import Path
++from typing import Any
++from unittest.mock import MagicMock
++
++import pytest
++
++from AgentEval.coding_agent.base import SubprocessAdapter
++from AgentEval.coding_agent.copilot_cli import (
++    CopilotCLIAdapter,
++    CopilotEvent,
++)
++from AgentEval.errors import UnsupportedBinaryVersionError
++from AgentEval.types import AgentRunResult, ToolCallTrace
++
++FIXTURE_DIR = Path(__file__).resolve().parent.parent.parent / "fixtures" / "copilot_cli"
++
++
++def _read_jsonl(name: str) -> list[dict[str, Any]]:
++    return [json.loads(line) for line in (FIXTURE_DIR / name).read_text().splitlines() if line.strip()]
++
++
++def _events_from_fixture(name: str) -> list[CopilotEvent]:
++    raw_events = _read_jsonl(name)
++    return [CopilotEvent(event_type=str(e.get("type") or "unknown"), raw=e) for e in raw_events]
++
++
++# --------------------------------------------------------------------------- #
++# Version gate                                                                  #
++# --------------------------------------------------------------------------- #
++
++
++def test_version_gate_passes_with_default_mock_version() -> None:
++    """Conftest's `mock_copilot_version` stubs ``copilot --version`` →
++    ``GitHub Copilot CLI 1.0.54.`` (in range). Construction succeeds.
++
++    Tests Story 11.2 D-11 lesson UPSTREAM: base `_SEMVER_RE.search()`
++    extracts `1.0.54` from the prefixed + period-suffixed output.
++    """
++    adapter = CopilotCLIAdapter()
++    assert adapter.name == "copilot-cli"
++
++
++def test_version_gate_raises_when_binary_missing(monkeypatch: pytest.MonkeyPatch) -> None:
++    def _missing(cmd: Any, **kwargs: Any) -> Any:
++        if isinstance(cmd, list) and cmd[:2] == ["copilot", "--version"]:
++            raise FileNotFoundError("copilot: command not found")
++        return subprocess.run(cmd, **kwargs)
++
++    monkeypatch.setattr(subprocess, "run", _missing)
++    with pytest.raises(UnsupportedBinaryVersionError):
++        CopilotCLIAdapter()
++
++
++def test_version_gate_raises_below_floor(monkeypatch: pytest.MonkeyPatch) -> None:
++    def _below(cmd: Any, **kwargs: Any) -> Any:
++        if isinstance(cmd, list) and cmd[:2] == ["copilot", "--version"]:
++            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="GitHub Copilot CLI 1.0.8\n", stderr="")
++        return subprocess.run(cmd, **kwargs)
++
++    monkeypatch.setattr(subprocess, "run", _below)
++    with pytest.raises(UnsupportedBinaryVersionError) as exc_info:
++        CopilotCLIAdapter()
++    assert "1.0.8" in str(exc_info.value)
++
++
++def test_version_gate_raises_above_ceiling(monkeypatch: pytest.MonkeyPatch) -> None:
++    def _above(cmd: Any, **kwargs: Any) -> Any:
++        if isinstance(cmd, list) and cmd[:2] == ["copilot", "--version"]:
++            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="GitHub Copilot CLI 2.0.0\n", stderr="")
++        return subprocess.run(cmd, **kwargs)
++
++    monkeypatch.setattr(subprocess, "run", _above)
++    with pytest.raises(UnsupportedBinaryVersionError):
++        CopilotCLIAdapter()
++
++
++# --------------------------------------------------------------------------- #
++# Constructor + ABC inheritance                                                 #
++# --------------------------------------------------------------------------- #
++
++
++def test_inherits_from_subprocess_adapter() -> None:
++    assert issubclass(CopilotCLIAdapter, SubprocessAdapter)
++
++
++def test_constructor_accepts_model_kwarg() -> None:
++    adapter = CopilotCLIAdapter(model="claude-sonnet-4.6", extra_key="extra_value")
++    assert adapter._model == "claude-sonnet-4.6"
++    assert adapter._adapter_config["extra_key"] == "extra_value"
++
++
++def test_constructor_model_defaults_to_none() -> None:
++    adapter = CopilotCLIAdapter()
++    assert adapter._model is None
++
++
++def test_name_property_returns_copilot_cli() -> None:
++    assert CopilotCLIAdapter().name == "copilot-cli"
++
++
++# --------------------------------------------------------------------------- #
++# `_parse_event` per event type                                                  #
++# --------------------------------------------------------------------------- #
++
++
++def test_parse_event_session_start() -> None:
++    event = CopilotCLIAdapter()._parse_event('{"type":"session.start","data":{"sessionId":"abc"}}')
++    assert event is not None
++    assert event.event_type == "session.start"
++    assert event.raw["data"]["sessionId"] == "abc"
++
++
++def test_parse_event_session_shutdown_is_terminal() -> None:
++    event = CopilotCLIAdapter()._parse_event('{"type":"session.shutdown","data":{}}')
++    assert event is not None
++    assert event.is_terminal
++
++
++def test_parse_event_assistant_message_text_and_output_tokens() -> None:
++    line = '{"type":"assistant.message","data":{"messageId":"m1","content":"Hello","toolRequests":[],"outputTokens":42}}'
++    event = CopilotCLIAdapter()._parse_event(line)
++    assert event is not None
++    assert event.assistant_text == "Hello"
++    assert event.assistant_output_tokens == 42
++
++
++def test_parse_event_assistant_message_tool_requests() -> None:
++    line = (
++        '{"type":"assistant.message","data":{"messageId":"m1","content":"",'
++        '"toolRequests":[{"toolCallId":"c1","name":"shell","arguments":{"cmd":"ls"}}],"outputTokens":5}}'
++    )
++    event = CopilotCLIAdapter()._parse_event(line)
++    assert event is not None
++    requests = event.tool_requests
++    assert len(requests) == 1
++    assert requests[0]["toolCallId"] == "c1"
++    assert requests[0]["name"] == "shell"
++
++
++def test_parse_event_tool_execution_complete_payload() -> None:
++    line = '{"type":"tool.execution_complete","data":{"toolCallId":"c1","success":true,"result":{"x":1}}}'
++    event = CopilotCLIAdapter()._parse_event(line)
++    assert event is not None
++    payload = event.tool_execution_complete_payload
++    assert payload is not None
++    assert payload["toolCallId"] == "c1"
++    assert payload["success"] is True
++
++
++def test_parse_event_returns_none_on_non_json() -> None:
++    assert CopilotCLIAdapter()._parse_event("Starting up...") is None
++    assert CopilotCLIAdapter()._parse_event("") is None
++
++
++def test_parse_event_returns_none_on_non_string_type() -> None:
++    """Forward-compat: non-string type discriminator → None.
++
++    Story 11.1 copilot LOW-1 lesson UPSTREAM (split from generic
++    'unknown_type' test per `feedback_test_name_assertion_match`).
++    """
++    assert CopilotCLIAdapter()._parse_event('{"type":42}') is None
++
++
++def test_parse_event_returns_none_on_non_dict_json() -> None:
++    """Forward-compat: top-level non-dict JSON → None."""
++    assert CopilotCLIAdapter()._parse_event("[1,2,3]") is None
++    assert CopilotCLIAdapter()._parse_event("42") is None
++
++
++# --------------------------------------------------------------------------- #
++# `_finalize` against fixtures                                                   #
++# --------------------------------------------------------------------------- #
++
++
++def test_finalize_simple_prompt_happy_path() -> None:
++    events = _events_from_fixture("simple_prompt.jsonl")
++    result = CopilotCLIAdapter()._finalize(events, exit_code=0)
++    assert isinstance(result, AgentRunResult)
++    assert result.response_text == "Hi"
++    assert result.tool_calls == []
++    assert result.usage.output_tokens == 1
++    assert result.metadata.completeness == "complete"
++    assert result.metadata.mcp_coverage == "hosted_in_process"
++    assert result.cost_usd == 0.0
++
++
++def test_finalize_tool_use_extracts_tool_requests() -> None:
++    events = _events_from_fixture("tool_use.jsonl")
++    result = CopilotCLIAdapter()._finalize(events, exit_code=0)
++    # Both narration + final answer concatenated
++    assert "Running echo command" in result.response_text
++    assert "Output:" in result.response_text
++    # One tool call with completion paired
++    assert len(result.tool_calls) == 1
++    tc = result.tool_calls[0]
++    assert isinstance(tc, ToolCallTrace)
++    assert tc.name == "shell"
++    assert tc.args == {"command": "echo hello"}
++    assert tc.gen_ai_tool_call_id == "call_001"
++    assert tc.source == "adapter"
++    assert tc.error is None
++    # Output tokens summed across both assistant.message events
++    assert result.usage.output_tokens == 23  # 15 + 8
++
++
++def test_finalize_nonzero_exit_with_no_message_emits_diagnostic() -> None:
++    """Story 11.2 D-3 (cross-story UPSTREAM from Story 11.1 D-3 +
++    Story 4.2 MED-3)."""
++    events = _events_from_fixture("nonzero_exit.jsonl")
++    result = CopilotCLIAdapter()._finalize(events, exit_code=2)
++    assert result.response_text == "[SUBPROCESS_NONZERO_EXIT exit_code=2]"
++    assert result.metadata.completeness == "truncated"
++
++
++def test_finalize_nonzero_exit_with_response_text_does_not_emit_diagnostic() -> None:
++    """Negative-path coverage from Story 11.1 copilot MED-4 UPSTREAM."""
++    events = _events_from_fixture("simple_prompt.jsonl")
++    result = CopilotCLIAdapter()._finalize(events, exit_code=1)
++    assert result.response_text == "Hi"
++    assert "[SUBPROCESS_NONZERO_EXIT" not in result.response_text
++
++
++def test_finalize_nonzero_exit_with_terminal_does_not_emit_diagnostic() -> None:
++    """Negative-path coverage from Story 11.1 copilot MED-4 UPSTREAM."""
++    terminal = CopilotEvent(event_type="session.shutdown", raw={"type": "session.shutdown", "data": {}})
++    result = CopilotCLIAdapter()._finalize([terminal], exit_code=1)
++    assert "[SUBPROCESS_NONZERO_EXIT" not in result.response_text
++    assert result.response_text == ""
++
++
++def test_finalize_reasoning_tokens_populated_if_present() -> None:
++    """Story 11.2 D-8 (cross-story UPSTREAM from Story 11.1 kilo HIGH-1):
++    if Copilot's assistant.message carries `reasoningTokens`,
++    `Usage.reasoning_output_tokens` MUST be populated — no silent drop."""
++    events = [
++        CopilotEvent(
++            event_type="assistant.message",
++            raw={"type": "assistant.message", "data": {"content": "x", "outputTokens": 10, "reasoningTokens": 5}},
++        ),
++        CopilotEvent(event_type="session.shutdown", raw={"type": "session.shutdown", "data": {}}),
++    ]
++    result = CopilotCLIAdapter()._finalize(events, exit_code=0)
++    assert result.usage.output_tokens == 10
++    assert result.usage.reasoning_output_tokens == 5
++
++
++# --------------------------------------------------------------------------- #
++# Cross-story UPSTREAM regression guards                                         #
++# --------------------------------------------------------------------------- #
++
++
++def test_spawn_passes_prompt_via_prompt_flag(monkeypatch: pytest.MonkeyPatch) -> None:
++    """Story 11.2 D-1 (cross-story UPSTREAM from Story 11.1 D-1 +
++    Story 4.2 HIGH-A): prompt passed via `-p` flag, not stdin."""
++    captured: dict[str, Any] = {}
++
++    def _fake_popen(cmd: list[str], **kwargs: Any) -> Any:
++        captured["cmd"] = cmd
++        m = MagicMock()
++        m.stdout = iter([])
++        m.wait.return_value = 0
++        return m
++
++    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
++    CopilotCLIAdapter()._spawn("Find the bug.")
++    assert captured["cmd"][0] == "copilot"
++    assert "-p" in captured["cmd"]
++    p_idx = captured["cmd"].index("-p")
++    assert captured["cmd"][p_idx + 1] == "Find the bug."
++
++
++def test_spawn_includes_allow_all_tools(monkeypatch: pytest.MonkeyPatch) -> None:
++    """`--allow-all-tools` is required for non-interactive mode per
++    `copilot --help`."""
++    captured: dict[str, Any] = {}
++
++    def _fake_popen(cmd: list[str], **kwargs: Any) -> Any:
++        captured["cmd"] = cmd
++        m = MagicMock()
++        m.stdout = iter([])
++        m.wait.return_value = 0
++        return m
++
++    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
++    CopilotCLIAdapter()._spawn("hi")
++    assert "--allow-all-tools" in captured["cmd"]
++
++
++def test_spawn_uses_stderr_stdout_multiplex(monkeypatch: pytest.MonkeyPatch) -> None:
++    """Story 11.2 D-2 (cross-story UPSTREAM from Story 11.1 D-2 + Story 4.2 HIGH-B)."""
++    captured: dict[str, Any] = {}
++
++    def _fake_popen(cmd: list[str], **kwargs: Any) -> Any:
++        captured["kwargs"] = kwargs
++        m = MagicMock()
++        m.stdout = iter([])
++        m.wait.return_value = 0
++        return m
++
++    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
++    CopilotCLIAdapter()._spawn("hi")
++    assert captured["kwargs"]["stderr"] == subprocess.STDOUT
++    assert captured["kwargs"]["start_new_session"] is True
++    assert captured["kwargs"]["text"] is True
++    assert captured["kwargs"]["stdout"] == subprocess.PIPE
++
++
++def test_spawn_includes_model_flag_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
++    """When `model=` is passed to the constructor, `_spawn` MUST include
++    `--model <model>` in the argv."""
++    captured: dict[str, Any] = {}
++
++    def _fake_popen(cmd: list[str], **kwargs: Any) -> Any:
++        captured["cmd"] = cmd
++        m = MagicMock()
++        m.stdout = iter([])
++        m.wait.return_value = 0
++        return m
++
++    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
++    CopilotCLIAdapter(model="claude-sonnet-4.6")._spawn("hi")
++    assert "--model" in captured["cmd"]
++    m_idx = captured["cmd"].index("--model")
++    assert captured["cmd"][m_idx + 1] == "claude-sonnet-4.6"
++
++
++def _make_fake_popen_class(returncode: int = 0) -> type:
++    """Fake Popen with empty stdout — used for `run()` e2e tests where
++    events come from events.jsonl on disk (not stdout)."""
++    import io
++
++    class _FakePopen:
++        def __init__(self, cmd: Any, **kwargs: Any) -> None:
++            self.cmd = cmd
++            self.stdout = io.StringIO("")  # Copilot writes to events.jsonl, not stdout
++            self.stderr = None
++            self.returncode = returncode
++            self.pid = 99999
++
++        def wait(self, timeout: float | None = None) -> int:
++            return self.returncode
++
++        def terminate(self) -> None:
++            pass
++
++    return _FakePopen
++
++
++def test_run_end_to_end_against_faked_subprocess_and_events_jsonl(
++    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
++) -> None:
++    """Story 11.2 D-9 (Copilot-specific): override `run()` reads
++    events.jsonl post-hoc from `~/.copilot/session-state/{uuid}/`.
++    Stub the path + fake the Popen + assert end-to-end."""
++    # Set up a fake session-state directory with a new session created
++    # AFTER the snapshot (simulating the spawn lifecycle).
++    fake_session_root = tmp_path / "session-state"
++    fake_session_root.mkdir()
++    # An old session exists pre-spawn (so the snapshot is non-empty).
++    old = fake_session_root / "old-session-uuid"
++    old.mkdir()
++    (old / "events.jsonl").write_text("{}")
++    # Patch the session-root constant to point at our tmp dir.
++    monkeypatch.setattr("AgentEval.coding_agent.copilot_cli.DEFAULT_COPILOT_SESSION_STATE_DIR", fake_session_root)
++    # Patch the listener helper so the test doesn't depend on RF Listener install.
++    monkeypatch.setattr("AgentEval.telemetry.listener.record_active_run_metadata", MagicMock())
++
++    # Fake Popen creates a NEW session directory + events.jsonl during "spawn".
++    new_session_uuid = "fresh-session-uuid"
++    fixture_text = (FIXTURE_DIR / "simple_prompt.jsonl").read_text()
++
++    class _FakePopen:
++        def __init__(self, cmd: Any, **kwargs: Any) -> None:
++            new_dir = fake_session_root / new_session_uuid
++            new_dir.mkdir()
++            (new_dir / "events.jsonl").write_text(fixture_text)
++            import io
++
++            self.cmd = cmd
++            self.stdout = io.StringIO("")
++            self.stderr = None
++            self.returncode = 0
++            self.pid = 12345
++
++        def wait(self, timeout: float | None = None) -> int:
++            return 0
++
++        def terminate(self) -> None:
++            pass
++
++    monkeypatch.setattr(subprocess, "Popen", _FakePopen)
++    adapter = CopilotCLIAdapter()
++    result = adapter.run("Say hi")
++    assert result.response_text == "Hi"
++    assert result.metadata.completeness == "complete"
++    assert result.metadata.mcp_coverage == "hosted_in_process"
++    assert result.usage.output_tokens == 1
++
++
++def test_run_with_unverified_mcp_marks_external_mixed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
++    """Story 11.2 D-7 (cross-story UPSTREAM from Stories 10.1 + 10.2 + 11.1)."""
++    fake_session_root = tmp_path / "session-state"
++    fake_session_root.mkdir()
++    monkeypatch.setattr("AgentEval.coding_agent.copilot_cli.DEFAULT_COPILOT_SESSION_STATE_DIR", fake_session_root)
++    monkeypatch.setattr("AgentEval.telemetry.listener.record_active_run_metadata", MagicMock())
++
++    fixture_text = (FIXTURE_DIR / "simple_prompt.jsonl").read_text()
++
++    class _FakePopen:
++        def __init__(self, cmd: Any, **kwargs: Any) -> None:
++            new_dir = fake_session_root / "fresh-session-mcp"
++            new_dir.mkdir()
++            (new_dir / "events.jsonl").write_text(fixture_text)
++            import io
++
++            self.cmd = cmd
++            self.stdout = io.StringIO("")
++            self.stderr = None
++            self.returncode = 0
++            self.pid = 12345
++
++        def wait(self, timeout: float | None = None) -> int:
++            return 0
++
++        def terminate(self) -> None:
++            pass
++
++    monkeypatch.setattr(subprocess, "Popen", _FakePopen)
++
++    fake_handle = MagicMock()
++    fake_handle.transport = "stdio"
++    adapter = CopilotCLIAdapter()
++    result = adapter.run("hi", mcp_servers={"echo": fake_handle})
++    assert result.metadata.mcp_coverage == "external_mixed"
++
++
++def test_detect_mcp_coverage_empty_returns_hosted_in_process() -> None:
++    assert CopilotCLIAdapter()._detect_mcp_coverage(None) == "hosted_in_process"
++    assert CopilotCLIAdapter()._detect_mcp_coverage({}) == "hosted_in_process"
++
++
++def test_detect_mcp_coverage_nonempty_returns_external_mixed() -> None:
++    assert CopilotCLIAdapter()._detect_mcp_coverage({"any": object()}) == "external_mixed"
++
++
++# --------------------------------------------------------------------------- #
++# `CopilotEvent` accessors                                                       #
++# --------------------------------------------------------------------------- #
++
++
++def test_copilot_event_post_init_defensive_copy() -> None:
++    raw = {"type": "session.start", "_marker": "original"}
++    event = CopilotEvent(event_type="session.start", raw=raw)
++    raw["_marker"] = "mutated"
++    assert event.raw["_marker"] == "original"
++
++
++# --------------------------------------------------------------------------- #
++# Entry-point registration                                                       #
++# --------------------------------------------------------------------------- #
++
++
++def test_entry_point_registration() -> None:
++    eps = importlib.metadata.entry_points(group="agenteval.coding_agents")
++    matching = [ep for ep in eps if ep.name == "copilot-cli"]
++    assert len(matching) == 1
++    loaded = matching[0].load()
++    assert loaded is CopilotCLIAdapter
+diff --git a/uv.lock b/uv.lock
+index 3ac6f1d..2514dde 100644
+--- a/uv.lock
++++ b/uv.lock
+@@ -1928,7 +1928,7 @@ requires-dist = [
+     { name = "robotframework-pythonlibcore", specifier = ">=4.5" },
+     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6,<1.0" },
+ ]
+-provides-extras = ["dev", "claude-code", "claude-sdk", "openai-agents", "codex"]
++provides-extras = ["dev", "claude-code", "claude-sdk", "openai-agents", "codex", "copilot"]
+ 
+ [[package]]
+ name = "robotframework-assertion-engine"

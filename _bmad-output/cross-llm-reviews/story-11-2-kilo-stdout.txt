@@ -1,0 +1,10 @@
+Findings written to `_bmad-output/cross-llm-reviews/story-11-2-kilo-findings.md`.
+
+**Summary:** 1 HIGH + 3 MED + 2 LOW.
+
+- **H-1:** `trace_id=""` hardcoded vs other4 Phase-2 adapters generating real UUIDs
+- **M-1:** docstring claims 32 tests, 31 exist (documentation mismatch)
+- **M-2:** `test_spawn_uses_start_new_session_true` regression guard missing (required by AC-11.2.4 line 76)
+- **M-3:** `_find_new_events_jsonl` has a race window if events.jsonl isn't flushed by the time `proc.wait()` returns — no retry/await guard
+
+All 5 Story11.1 UPSTREAM lessons verified present. Citation discipline (ADR-016 §Decision L33) is clean.
