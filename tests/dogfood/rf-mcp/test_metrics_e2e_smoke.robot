@@ -10,11 +10,17 @@ Documentation    DF-RFMCP-E2E-01 smoke suite — drives minimax M2.7 through
 ...              (TodoMVC) live in separate suites and are gated behind
 ...              browser-deps availability.
 ...
-...              Execution: ``uv run robot tests/dogfood/rf-mcp/test_metrics_e2e_smoke.robot``.
+...              Execution: ``uv run robot tests/dogfood/rf-mcp/test_metrics_e2e_smoke.robot``
+...              from the repo root. The orchestrator is imported by absolute
+...              path via ``${CURDIR}`` so no ``--pythonpath`` flag is needed;
+...              ``.env`` is auto-loaded by the orchestrator on import.
+...
 ...              Requires:
 ...              - rf-mcp repo at ``%{RF_MCP_REPO_ROOT=/home/many/workspace/rf-mcp}``
+...                with ``uv sync`` already run (robotmcp must be uv-runnable).
 ...              - ``MINIMAX_API_KEY`` + ``MINIMAX_BASE_URL`` + ``MINIMAX_MODEL``
-...                in ``.env`` at repo root (gitignored).
+...                in ``.env`` at repo root (gitignored). When the key is unset
+...                the test ``Skip``s cleanly rather than failing.
 ...
 ...              Skips cleanly when ``MINIMAX_API_KEY`` is unset so CI runs
 ...              without credentials don't false-fail.
@@ -23,7 +29,7 @@ Library          AgentEval.mcp.library.MCPLibrary    WITH NAME    MCP
 Library          AgentEval.metrics.library.MetricsLibrary    allow_external_mcp_blind=True    WITH NAME    Metrics
 Library          OperatingSystem
 Library          Collections
-Library          _minimax_orchestrator.MinimaxMcpOrchestrator    WITH NAME    Orchestrator
+Library          ${CURDIR}/_minimax_orchestrator.py    WITH NAME    Orchestrator
 
 Suite Setup      Set Suite-Wide Server Handle
 Suite Teardown   Stop Suite Server
