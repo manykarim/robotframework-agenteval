@@ -12,6 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# ruff: noqa: E501
+# Browser-Library-style docstring tables can carry long descriptions on a
+# single physical line. Per-line 120-char limit waived for this file per
+# Phase 5 docstring-refresh proposal (2026-05-26).
+
 """robotframework-agenteval — Robot Framework library for evaluating AI coding agents.
 
 Phase 1 surface:
@@ -62,6 +67,15 @@ from AgentEval._kernel.tier import tier
 
 __version__ = "0.0.1"
 __all__: list[str] = ["AgentEval"]
+
+# Browser-Library-style docstring migration marker (Phase 5, 2026-05-26).
+# This module hosts the top-level `AgentEval` class which carries 3
+# `@keyword`-decorated methods (Get Effective Config / Get Keyword Tier
+# / Get Effective Config With Provenance). The marker enables the
+# conventions-test suite to discover + enforce Browser-style structure
+# on the methods within this file. The composed sub-libraries each carry
+# their own marker in their respective `library.py` files.
+_BROWSER_STYLE_MIGRATED = True
 
 _logger = logging.getLogger("AgentEval.library")
 
@@ -371,33 +385,35 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
     @keyword(name="Get Effective Config")
     @tier(1)
     def get_effective_config(self, setting: str | None = None) -> Any:
-        """Return the resolved config as a dict OR a single ConfigValue.
+        """Returns the resolved AgentEval configuration as a dict OR a single ConfigValue (PRD FR41).
 
-        Story 1b.1 + Story 4.3 (PRD FR41 ConfigValue surface):
-        - No arg → returns `dict[str, Any]` of resolved values (Story 1a.6
-          ratified shape; preserves backwards-compat with tier1 + smoke
-          tests).
-        - `setting=<key>` → returns `ConfigValue(value, source)` for that
-          single setting per PRD FR41 L1563. `source` is one of
-          `"init_arg"` / `"env"` / `"dotenv"` / `"default"`.
+        [Tier 1 — Deterministic] — two-form return:
+        no-arg → ``dict[str, Any]`` of resolved values (Story 1a.6 ratified
+        shape, backwards-compat with tier-1 + smoke tests); ``setting=<key>``
+        → ``ConfigValue(value, source)`` for that single setting (FR41
+        L1563). ``source`` is one of ``"init_arg"`` / ``"env"`` /
+        ``"dotenv"`` / ``"default"``.
 
-        Story 4.3 carry-over DF-4.3-S1: full PRD FR41 `dict[str, ConfigValue]`
-        compliance is deferred to a Phase-1.5 sweep that migrates the
-        existing Story 1a.6 tier1 tests to the new shape. Until then,
-        the per-setting form + `Get Effective Config With Provenance`
-        provide the ConfigValue surface.
+        | =Arguments= | =Description= |
+        | ``setting`` | Optional config-key name (e.g., ``"max_cost_usd"``). When ``None`` (default), returns the full ``dict[str, Any]``. When set, returns the single ``ConfigValue`` for that key. |
 
-        Args:
-            setting: Optional config-key name (e.g., `"max_cost_usd"`).
-                When None, returns the full `dict[str, Any]`. When set,
-                returns the single `ConfigValue` for that key.
+        Raises ``ValueError`` when ``setting`` is set but not a known
+        config key (with a sorted list of known keys in the message).
 
-        Returns:
-            dict[str, Any] when `setting` is None; ConfigValue when set.
+        Example:
+        | Library    AgentEval    max_cost_usd=5.0    telemetry=False
+        | ${config} =    `Get Effective Config`
+        | Should Be Equal As Numbers    ${config}[max_cost_usd]    5.0
+        | Should Be Equal    ${config}[telemetry]    ${FALSE}
+        | ${cost_setting} =    `Get Effective Config`    setting=max_cost_usd
+        | Should Be Equal As Numbers    ${cost_setting.value}    5.0
+        | Should Be Equal    ${cost_setting.source}    init_arg
 
-        Raises:
-            ValueError: when `setting` is set but not a known config key.
-        """
+        Notes:
+        - PRD FR41 ratifies the ConfigValue surface; FR42 ratifies the 9 settings.
+        - Story 4.3 DF-4.3-S1 carry-over: full ``dict[str, ConfigValue]`` migration of the no-arg form is Phase-1.5.
+        - Sibling keyword: `Get Effective Config With Provenance` for the FR41-compliant full-surface form.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         if setting is not None:
             if setting not in self._config_provenance:
                 # Story 4.3 code-review Blind MED-1 fix 2026-05-20: `ValueError`
@@ -421,34 +437,41 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
     @keyword(name="Get Keyword Tier")
     @tier(1)
     def get_keyword_tier(self, keyword: str) -> int:
-        """[Tier 1 — Deterministic] Return the tier annotation for an RF keyword (PRD FR30a).
+        """Returns the determinism-tier annotation for an RF keyword (PRD FR30a).
 
-        Story 6.3 AC-6.3.7: walks the composed DynamicCore keyword registry +
-        top-level methods to resolve `keyword` (verbatim RF name) to its
-        `_agenteval_tier` integer.
+        [Tier 1 — Deterministic] — returns ``int ∈ {1, 2, 3}``. Walks the
+        composed DynamicCore keyword registry + top-level methods to
+        resolve the verbatim RF name to its ``_agenteval_tier`` integer
+        via the ``@tier(N)`` decorator chain.
 
-        Per epic AC-5 (epics.md:1659 verbatim ratified Story 6.3 D-14
-        amendment 2026-05-20): calling on `Stat.Run N Times` returns `3` (the
-        runner is a Tier-3 fan-out keyword per architecture L380 + L1056;
-        `@guarded_fanout` cost-guardrail enforcement requires Tier-3
-        classification). Note: this is an amendment of the pre-edit "returns
-        1" claim — the runner's tier governs the fan-out enforcement model,
-        independent of the wrapped keyword's own tier.
+        | =Arguments= | =Description= |
+        | ``keyword`` | Verbatim RF keyword name (e.g., ``"Send Prompt"``, ``"Stat.Run N Times"``, ``"Get Effective Config"``). |
 
-        Args:
-            keyword: Verbatim RF keyword name (e.g., `"Send Prompt"`,
-                `"Stat.Run N Times"`, `"Get Effective Config"`).
+        Returns the wrapper's own tier, not the wrapped keyword's tier —
+        e.g., ``Stat.Run N Times`` returns ``3`` (fan-out runner tier)
+        per epic AC-5 + Story 6.3 D-14 amendment. The runner's tier
+        governs the ``@guarded_fanout`` enforcement model, independent
+        of the wrapped keyword's own classification.
 
-        Returns:
-            `int ∈ {1, 2, 3}` — the keyword's tier.
+        Raises ``ValueError`` when the keyword is not found in the
+        composed library (with a sorted list of known keywords in the
+        message), OR when the keyword has no ``@tier(N)`` annotation,
+        OR when the annotated tier is outside ``{1, 2, 3}`` (defensive
+        range check per Story 6.3 code-review HIGH-π fix).
 
-        Raises:
-            ValueError: if `keyword` is not found in the composed library
-                (with a sorted-list-of-known-keywords hint), OR if the keyword
-                exists but has no `@tier(N)` annotation, OR if the annotated
-                tier is outside `{1, 2, 3}` (defensive range check per Story
-                6.3 code-review HIGH-π fix).
-        """
+        Example:
+        | ${tier} =    `Get Keyword Tier`    Get Tool Call Count
+        | Should Be Equal As Integers    ${tier}    1                                # Tier-1 deterministic metric.
+        | ${tier} =    `Get Keyword Tier`    Send Prompt
+        | Should Be Equal As Integers    ${tier}    2                                # Tier-2 stochastic single-shot.
+        | ${tier} =    `Get Keyword Tier`    Stat.Run N Times
+        | Should Be Equal As Integers    ${tier}    3                                # Tier-3 fan-out runner.
+
+        Notes:
+        - PRD FR30a ratifies the tier-introspection contract; AC-6.3.7 establishes the DynamicCore walk.
+        - Story 6.3 D-14 amendment: fan-out runner reports its own tier (3), not the wrapped keyword's tier.
+        - Sibling keywords: every `@tier`-decorated keyword in the composed library is introspectable here.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         from AgentEval._kernel.tier import find_tier_through_wrappers
 
         # DynamicCore exposes `self.keywords` as a {name: bound_method} dict —
@@ -481,13 +504,33 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
     @keyword(name="Get Effective Config With Provenance")
     @tier(1)
     def get_effective_config_with_provenance(self) -> dict[str, ConfigValue]:
-        """Story 4.3 / PRD FR41: return `dict[str, ConfigValue]` for the full settings map.
+        """Returns the full settings map with per-key provenance as a ``dict[str, ConfigValue]`` (PRD FR41).
 
-        Each `ConfigValue` carries `value` + `source` per PRD FR41 L1563.
-        This is the PRD-FR41-compliant full surface that DF-4.3-S1 will
-        migrate `Get Effective Config` (no-arg) to once existing tier1
-        tests are updated.
-        """
+        [Tier 1 — Deterministic] — FR41-compliant surface. Each
+        ``ConfigValue`` carries ``value`` + ``source`` per FR41 L1563.
+        Source is one of ``"init_arg"`` / ``"env"`` / ``"dotenv"`` /
+        ``"default"``.
+
+        | =Arguments= | =Description= |
+        | (none) | Returns the full settings map; no arguments. |
+
+        Defensive shallow-copy of the underlying provenance dict — caller
+        mutations don't propagate to the Library's internal state.
+
+        Example:
+        | Library    AgentEval    max_cost_usd=5.0
+        | ${settings} =    `Get Effective Config With Provenance`
+        | ${cost} =    Set Variable    ${settings}[max_cost_usd]
+        | Should Be Equal As Numbers    ${cost.value}    5.0
+        | Should Be Equal    ${cost.source}    init_arg                              # Constructor kwarg won.
+        | ${temp} =    Set Variable    ${settings}[default_temperature]
+        | Should Be Equal    ${temp.source}    default                               # Not overridden — uses FR42 default.
+
+        Notes:
+        - PRD FR41 ratifies the ``dict[str, ConfigValue]`` shape.
+        - This is the FR41-compliant surface DF-4.3-S1 will migrate ``Get Effective Config`` (no-arg) to once tier-1 tests update.
+        - Sibling keyword: `Get Effective Config` for the simpler ``dict[str, Any]`` or per-setting form.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         # M_R6 shallow-copy pattern: protect against caller mutating
         # the returned dict.
         return dict(self._config_provenance)
