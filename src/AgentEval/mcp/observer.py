@@ -96,14 +96,32 @@ _TESTED_MCP_VERSION_CEILING = (2, 0)
 
 
 class AdapterVersionDriftWarning(UserWarning):
-    """Warned when the installed mcp SDK version is outside the tested range.
+    """Warned when a version dependency is outside the adapter's tested range.
 
-    Per ADR-004 Consequences + Story 0.1 spike findings §Limitations: the
-    observer accesses ``Server.request_handlers`` + ``FastMCP._mcp_server``,
-    both technically internal in the mcp SDK. A major-version bump could
-    replace dict-dispatch with a closed registration mechanism. This
-    warning gives operators advance notice + a paper trail when the
-    coupling breaks in production.
+    Two use cases share this class (Story 11.3 D-6 decision; class lives
+    here for historical reasons + is re-exported from
+    `AgentEval._kernel.version_drift` for the CLI-binary-drift use case):
+
+    1. **MCP SDK drift** (Story 5.2): the installed ``mcp`` SDK version is
+       outside the observer's tested range (``_TESTED_MCP_VERSION_FLOOR/CEILING``).
+       Per ADR-004 Consequences + Story 0.1 spike findings §Limitations: the
+       observer accesses ``Server.request_handlers`` + ``FastMCP._mcp_server``,
+       both technically internal in the mcp SDK. A major-version bump could
+       replace dict-dispatch with a closed registration mechanism.
+
+    2. **CLI binary drift** (Story 11.3 / PRD FR60): a Tier-1 CLI adapter
+       (`ClaudeCodeCLIAdapter` / `CodexCLIAdapter` / `CopilotCLIAdapter`)
+       detected a binary version within its pinned compat range BUT >=2
+       minor versions behind the adapter's ``_TESTED_UP_TO`` constant.
+       Emitted via `AgentEval._kernel.version_drift.emit_adapter_version_drift_warning_if_applicable()`
+       at adapter `__init__` time, session-scoped dedupe.
+
+    Both cases: exit-code 0 (informational warning, NOT a failure per
+    ``docs/contracts/error-class-hierarchy.md`` L83). The warning gives
+    operators advance notice + a paper trail when the coupling breaks in
+    production. *Patched 2026-05-26 per Story 11.3 kilo H-2 + copilot
+    MED-1 cross-LLM review — pre-edit docstring covered only the MCP SDK
+    use case despite Story 11.3 expanding to CLI binary drift.*
     """
 
 

@@ -1,0 +1,131 @@
+● Read story-11-3-review-prompt.md
+  │ _bmad-output/cross-llm-reviews/story-11-3-review-prompt.md
+  └ 117 lines read
+
+● Read version_drift.py
+  │ src/AgentEval/_kernel/version_drift.py
+  └ 225 lines read
+
+● Read test_version_drift.py
+  │ tests/unit/kernel/test_version_drift.py
+  └ 367 lines read
+
+● Read conftest.py
+  │ tests/unit/coding_agent/conftest.py
+  └ 118 lines read
+
+● Read claude_code_cli.py
+  │ src/AgentEval/coding_agent/claude_code_cli.py
+  └ L1:80 (80 lines read)
+
+● Read codex_cli.py
+  │ src/AgentEval/coding_agent/codex_cli.py
+  └ L1:80 (80 lines read)
+
+● Read copilot_cli.py
+  │ src/AgentEval/coding_agent/copilot_cli.py
+  └ L1:80 (79 lines read)
+
+● Read observer.py
+  │ src/AgentEval/mcp/observer.py
+  └ L90:120 (31 lines read)
+
+● Read stability-surface.md
+  │ docs/contracts/stability-surface.md
+  └ 1 line read
+
+● Search (grep)
+  │ "_TESTED_UP_TO|parse_binary_version|emit_adapter_version_drift|_assert_binar
+  │ y_version" in *.py (src/AgentEval/coding_agent)
+  └ 34 lines found
+
+● Read claude_code_cli.py
+  │ src/AgentEval/coding_agent/claude_code_cli.py
+  └ L190:215 (26 lines read)
+
+● Read codex_cli.py
+  │ src/AgentEval/coding_agent/codex_cli.py
+  └ L235:265 (30 lines read)
+
+● Read copilot_cli.py
+  │ src/AgentEval/coding_agent/copilot_cli.py
+  └ L205:235 (31 lines read)
+
+● Search (grep)
+  │ "DF-\d+-S\d+|DF-[0-9]" in *.py (src/AgentEval/_kernel/version_drift.py)
+  └ No matches found
+
+● Read stability-surface.md
+  │ docs/contracts/stability-surface.md
+  └ L1:50 (50 lines read)
+
+● Read epics.md
+  │ _bmad-output/planning-artifacts/epics.md
+  └ L2067:2085 (19 lines read)
+
+● Search (grep)
+  │ "version_drift|AdapterVersionDrift|11\.3"
+  │ (docs/contracts/stability-surface.md)
+  └ 2 lines found
+
+● Search (grep)
+  │ "AdapterVersionDrift|83" (docs/contracts/error-class-hierarchy.md)
+  └ 3 lines found
+
+● Search (grep)
+  │ "DF-\d" (src/AgentEval/_kernel/version_drift.py)
+  └ No matches found
+
+● Search (grep)
+  │ "DF-11\.3" (docs/phase-1-5-carry-overs.md)
+  └ No matches found
+
+● Search (grep)
+  │ "DF-11\.3" (src/AgentEval/coding_agent)
+  └ 3 lines found
+
+● Check carry-overs for DF-11.3-S1 (shell)
+  │ grep -n "DF-11\.3"
+  │ /home/many/workspace/robotframework-agenteval/docs/phase-1-5-carry-overs.md
+  │ 2>/dev/null | head -20; grep -n "DF-11"
+  │ /home/many/workspace/robotframework-agenteval/docs/phase-1-5-carry-overs.md
+  │ 2>/dev/null | head -20
+  └ 7 lines...
+
+● Count test functions (shell)
+  │ grep -n "def test_" /home/many/workspace/robotframework-agenteval/tests/unit
+  │ /kernel/test_version_drift.py | wc -l
+  └ 2 lines...
+
+● Check if DF-11.3-S1 is in carry-overs (shell)
+  │ grep -c "C78\|C79\|C80\|11\.3"
+  │ /home/many/workspace/robotframework-agenteval/docs/phase-1-5-carry-overs.md
+  │ 2>/dev/null; tail -20
+  │ /home/many/workspace/robotframework-agenteval/docs/phase-1-5-carry-overs.md
+  └ 22 lines...
+
+● Find DF-11.3-S1 references across docs (shell)
+  │ grep -n "DF-11\.3\|11\.3-S" /home/many/workspace/robotframework-agenteval/do
+  │ cs/contracts/stability-surface.md /home/many/workspace/robotframework-agente
+  │ val/_bmad-output/implementation-artifacts/*.md 2>/dev/null | head -20
+  └ 8 lines...
+
+Now I have enough information to write the findings. Let me create the review output file.
+
+● Create story-11-3-copilot-findings.md +155
+  └ _bmad-output/cross-llm-reviews/story-11-3-copilot-findings.md
+
+Review complete. Findings saved to `_bmad-output/cross-llm-reviews/story-11-3-copilot-findings.md`.
+
+**Summary:**
+
+- **HIGH-1** (catalog gate): `DF-11.3-S1` is referenced in 3 production files + `stability-surface.md` but C78 row is **missing** from `docs/phase-1-5-carry-overs.md`. The story's own Task 10 mandated adding it before review.
+
+- **HIGH-2** (threshold off-by-one): `epics.md` L2076 says "**more than** 2 minor versions behind" → strict `> 2` (fires at 3+), but the code uses `_DRIFT_MINOR_THRESHOLD = 2` → fires at `>= 2`. No test covers the exact boundary (drift = 2).
+
+- **MED-1**: `AdapterVersionDriftWarning` class docstring at `mcp/observer.py:99` is still MCP-SDK-specific and doesn't mention CLI binary drift (D-6 follow-through gap).
+
+- **MED-2**: `_drift_across_major` returns sentinel `99`, which leaks as "99 minor versions behind" in the user-visible warning message.
+
+- **LOW-1/2**: Double subprocess call (acknowledged) + missing boundary test.
+

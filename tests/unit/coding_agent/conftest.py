@@ -80,6 +80,21 @@ def mock_copilot_version(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _reset_version_drift_dedupe() -> None:
+    """Story 11.3: clear the module-level `_session_drift_warned` set
+    before each test so dedupe state doesn't bleed across cases.
+
+    Without this fixture, the FIRST test that constructs (say) CodexCLIAdapter
+    + triggers a real-drift would warn once + then mark the (adapter, detected,
+    tested) triple as warned for the entire pytest session. Subsequent tests
+    that intend to verify the warning fires would see no warning + false-pass.
+    """
+    from AgentEval._kernel.version_drift import reset_session_drift_dedupe
+
+    reset_session_drift_dedupe()
+
+
+@pytest.fixture(autouse=True)
 def mock_codex_version(monkeypatch: pytest.MonkeyPatch) -> None:
     """Monkeypatch `subprocess.run` so `_assert_binary_version("codex")` passes
     without requiring the real `codex` binary in CI.

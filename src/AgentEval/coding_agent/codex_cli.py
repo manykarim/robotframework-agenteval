@@ -122,6 +122,10 @@ __all__ = ["CodexCLIAdapter", "CodexEvent"]
 CODEX_BINARY = "codex"
 MIN_VERSION = "0.100.0"
 MAX_VERSION = "1.0.0"
+# Story 11.3 (Epic 11) — adapter's "tested-up-to" version for the FR60
+# `AdapterVersionDriftWarning` surface. Bump in lockstep with future
+# "tested against" updates. DF-11.3-S1 tracks automated upstream-probe.
+_TESTED_UP_TO = "0.133.0"
 
 # `codex --version` prints e.g. ``codex-cli 0.133.0`` (Story 11.1 D-10).
 # The base `_assert_binary_version` helper's default `_SEMVER_RE.search()`
@@ -236,6 +240,21 @@ class CodexCLIAdapter(SubprocessAdapter):
         # substring search — no override needed (D-10 prefix is a
         # documentation note only, not a code requirement).
         self._assert_binary_version(CODEX_BINARY, min=MIN_VERSION, max=MAX_VERSION)
+        # Story 11.3 (Epic 11): emit `AdapterVersionDriftWarning` if the
+        # detected binary is >=2 minor versions behind `_TESTED_UP_TO`.
+        # Helper is a no-op outside the drift window + dedupes per-session.
+        from AgentEval._kernel.version_drift import (
+            emit_adapter_version_drift_warning_if_applicable,
+            parse_binary_version,
+        )
+
+        emit_adapter_version_drift_warning_if_applicable(
+            adapter_name="codex-cli",
+            detected_version=parse_binary_version(CODEX_BINARY),
+            tested_up_to=_TESTED_UP_TO,
+            compat_min=MIN_VERSION,
+            compat_max=MAX_VERSION,
+        )
         self._model = model
         # Phase-1 single-threaded per-instance: stash the most recent
         # `mcp_servers` argument so `_finalize` can resolve mcp_coverage

@@ -89,6 +89,10 @@ __all__ = ["ClaudeCodeCLIAdapter", "ClaudeCodeEvent"]
 CLAUDE_BINARY = "claude"
 MIN_VERSION = "2.0.0"
 MAX_VERSION = "3.0.0"
+# Story 11.3 (Epic 11) — adapter's "tested-up-to" version for the FR60
+# `AdapterVersionDriftWarning` surface. Bump in lockstep with future
+# "tested against" updates. DF-11.3-S1 tracks automated upstream-probe.
+_TESTED_UP_TO = "2.1.144"
 
 
 @dataclass(frozen=True)
@@ -189,6 +193,19 @@ class ClaudeCodeCLIAdapter(SubprocessAdapter):
         # construction. Raises `UnsupportedBinaryVersionError` on out-
         # of-range per FR47.
         self._assert_binary_version(CLAUDE_BINARY, min=MIN_VERSION, max=MAX_VERSION)
+        # Story 11.3 (Epic 11): emit `AdapterVersionDriftWarning` if drift exceeds threshold.
+        from AgentEval._kernel.version_drift import (
+            emit_adapter_version_drift_warning_if_applicable,
+            parse_binary_version,
+        )
+
+        emit_adapter_version_drift_warning_if_applicable(
+            adapter_name="claude-code-cli",
+            detected_version=parse_binary_version(CLAUDE_BINARY),
+            tested_up_to=_TESTED_UP_TO,
+            compat_min=MIN_VERSION,
+            compat_max=MAX_VERSION,
+        )
         # Story 5.2 DF-4.2-S1 absorption: per-run observer instance, set by
         # `run()` before delegating to base.run() so `_finalize` can read it.
         self._current_observer: HostedMcpObserver | None = None

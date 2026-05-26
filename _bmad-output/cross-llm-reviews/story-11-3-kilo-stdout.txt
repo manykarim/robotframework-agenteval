@@ -1,0 +1,11 @@
+Now I have enough to write the findings.
+Adversarial review complete. Wrote findings to `_bmad-output/cross-llm-reviews/story-11-3-kilo-findings.md`.
+
+**Key findings:**
+- **H-1 (HIGH):** `DF-11.3-S1` reference exists in 3 adapter files but has no catalog row in `docs/phase-1-5-carry-overs.md` — D-2 catalog gate violated (28th-consecutive gate application broken)
+- **H-2 (HIGH):** `AdapterVersionDriftWarning` class docstring at `observer.py:98` describes only MCP-SDK drift; Story 11.3 re-use for CLI binary drift is not documented
+- **M-1 (MED):** Double subprocess call architecture documented as Phase-1.5 refactor target (tracked via DF-11.3-S1)
+- **M-2 (MED):** Fixture declaration order correct now but fragile; recommended doc note
+- **L-1 (LOW):** `compat_max` informational parameter — flagged awareness only, no defect
+
+6/6 UPSTREAM lessons verified via grep (D-3 thread-safety ✓, D-4 ≥10 tests ✓, D-6 re-use ✓, D-7 threshold ✓, D-10 wiring order ✓); only D-2 fails due to missing catalog row.

@@ -101,6 +101,10 @@ __all__ = ["CopilotCLIAdapter", "CopilotEvent"]
 COPILOT_BINARY = "copilot"
 MIN_VERSION = "1.0.9"
 MAX_VERSION = "2.0.0"
+# Story 11.3 (Epic 11) — adapter's "tested-up-to" version for the FR60
+# `AdapterVersionDriftWarning` surface. Bump in lockstep with future
+# "tested against" updates. DF-11.3-S1 tracks automated upstream-probe.
+_TESTED_UP_TO = "1.0.54"
 
 # `copilot --version` prints e.g. ``GitHub Copilot CLI 1.0.54.`` (trailing
 # period). The base `_assert_binary_version`'s default `_SEMVER_RE.search()`
@@ -207,6 +211,19 @@ class CopilotCLIAdapter(SubprocessAdapter):
         # search is tolerant). No `_VERSION_RE` override needed (D-11
         # UPSTREAM from Story 11.1 MED-1).
         self._assert_binary_version(COPILOT_BINARY, min=MIN_VERSION, max=MAX_VERSION)
+        # Story 11.3 (Epic 11): emit `AdapterVersionDriftWarning` if drift exceeds threshold.
+        from AgentEval._kernel.version_drift import (
+            emit_adapter_version_drift_warning_if_applicable,
+            parse_binary_version,
+        )
+
+        emit_adapter_version_drift_warning_if_applicable(
+            adapter_name="copilot-cli",
+            detected_version=parse_binary_version(COPILOT_BINARY),
+            tested_up_to=_TESTED_UP_TO,
+            compat_min=MIN_VERSION,
+            compat_max=MAX_VERSION,
+        )
         self._model = model
         # See class docstring for thread-safety invariant.
         self._last_mcp_servers: dict[str, Any] | None = None
