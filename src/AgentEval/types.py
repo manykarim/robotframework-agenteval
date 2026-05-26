@@ -138,6 +138,15 @@ class Usage:
         - `output_tokens` ← `gen_ai.usage.output_tokens`
         - `cached_input_tokens` ← `gen_ai.usage.cached_input_tokens` (default 0
           for providers that don't emit it)
+        - `reasoning_output_tokens` ← `gen_ai.usage.reasoning_output_tokens`
+          (default 0 for providers that don't emit it; added Story 11.1
+          code-review kilo HIGH-1 2026-05-26 — Codex emits this verbatim
+          in ``turn.completed.usage`` and silently dropping it was a
+          data-loss bug. Downstream cost-catalog integration (DF-11.1-S2 /
+          C74) needs this field; per OTel GenAI semconv the canonical
+          attribute name is ``gen_ai.usage.reasoning_tokens`` — we keep
+          ``reasoning_output_tokens`` matching the Codex JSONL key + add
+          the semconv mapping in the next listener pass)
 
     All values MUST be non-negative integers (validated in `__post_init__` per
     Story 1b.2 code-review M_R11 fix). Negative values raise `ValueError` —
@@ -149,10 +158,11 @@ class Usage:
     input_tokens: int
     output_tokens: int
     cached_input_tokens: int = 0
+    reasoning_output_tokens: int = 0
 
     def __post_init__(self) -> None:
         # M_R11: non-negative validation per docstring contract.
-        for name in ("input_tokens", "output_tokens", "cached_input_tokens"):
+        for name in ("input_tokens", "output_tokens", "cached_input_tokens", "reasoning_output_tokens"):
             value = getattr(self, name)
             if value < 0:
                 raise ValueError(

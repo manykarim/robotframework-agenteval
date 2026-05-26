@@ -76,6 +76,12 @@ claude-sdk = ["claude-agent-sdk>=0.1.0,<1.0"]
 # — distinct from the bare `openai` LLM client. Pre-1.0 SDK, so upper-bound
 # is strict per FR60 binary-drift pattern.
 openai-agents = ["openai-agents>=0.1.0,<1.0"]
+# Story 11.1 (Epic 11) — Codex CLI adapter (Phase-2, FR13c). The `codex`
+# binary must be on `$PATH` (npm install -g @openai/codex). No Python
+# deps; mirrors `claude-code = []` pattern. Per ADR-002 (Tier-1 Adapter
+# Ceiling Rule), this is OpenAI's CLI-side ≤2-adapters slot; Codex SDK
+# adapter would be the in-process counterpart (`openai-agents`).
+codex = []
 
 [project.urls]
 Homepage = "https://github.com/manykarim/robotframework-agenteval"
@@ -114,6 +120,8 @@ claude-code-cli = "AgentEval.coding_agent.claude_code_cli:ClaudeCodeCLIAdapter"
 claude-agent-sdk = "AgentEval.coding_agent.claude_agent_sdk:ClaudeAgentSDKAdapter"
 # Story 10.2 (Epic 10) — OpenAI Agents SDK adapter under [openai-agents] extra.
 openai-agents-sdk = "AgentEval.coding_agent.openai_agents:OpenAIAgentsSDKAdapter"
+# Story 11.1 (Epic 11) — Codex CLI adapter (codex binary >=0.100.0,<1.0).
+codex-cli = "AgentEval.coding_agent.codex_cli:CodexCLIAdapter"
 
 [project.entry-points."agenteval.providers"]
 # Story 4.1 (Epic 4) — LLMProviderAdapter implementations.

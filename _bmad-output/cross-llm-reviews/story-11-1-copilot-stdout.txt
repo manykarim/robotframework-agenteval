@@ -1,0 +1,209 @@
+● Read story-11-1-review-prompt.md
+  │ _bmad-output/cross-llm-reviews/story-11-1-review-prompt.md
+  └ 126 lines read
+
+● Read test_codex_cli.py
+  │ tests/unit/coding_agent/test_codex_cli.py
+  └ 1 line read
+
+● Read codex_cli.py
+  │ src/AgentEval/coding_agent/codex_cli.py
+  └ 1 line read
+
+● Read base.py
+  │ src/AgentEval/coding_agent/base.py
+  └ 1 line read
+
+● Read codex_cli.py
+  │ src/AgentEval/coding_agent/codex_cli.py
+  └ L1:100 (99 lines read)
+
+● Read codex_cli.py
+  │ src/AgentEval/coding_agent/codex_cli.py
+  └ L100:200 (101 lines read)
+
+● Read codex_cli.py
+  │ src/AgentEval/coding_agent/codex_cli.py
+  └ L200:340 (141 lines read)
+
+● Read codex_cli.py
+  │ src/AgentEval/coding_agent/codex_cli.py
+  └ L340:450 (110 lines read)
+
+● Read test_codex_cli.py
+  │ tests/unit/coding_agent/test_codex_cli.py
+  └ L1:100 (100 lines read)
+
+● Read codex_cli.py
+  │ src/AgentEval/coding_agent/codex_cli.py
+  └ L450:480 (10 lines read)
+
+● Read test_codex_cli.py
+  │ tests/unit/coding_agent/test_codex_cli.py
+  └ L100:250 (151 lines read)
+
+● Read test_codex_cli.py
+  │ tests/unit/coding_agent/test_codex_cli.py
+  └ L250:450 (201 lines read)
+
+● Read base.py
+  │ src/AgentEval/coding_agent/base.py
+  └ L1:100 (100 lines read)
+
+● Read base.py
+  │ src/AgentEval/coding_agent/base.py
+  └ L100:300 (201 lines read)
+
+● Read test_codex_cli.py
+  │ tests/unit/coding_agent/test_codex_cli.py
+  └ L450:600 (53 lines read)
+
+● Read base.py
+  │ src/AgentEval/coding_agent/base.py
+  └ L300:420 (121 lines read)
+
+● Check conftest for mock_codex_version fixture (shell)
+  │ cat /home/many/workspace/robotframework-agenteval/tests/unit/coding_agent/co
+  │ nftest.py 2>&1 | head -80
+  └ 79 lines...
+
+● List fixtures and show simple_prompt (shell)
+  │ ls /home/many/workspace/robotframework-agenteval/tests/fixtures/codex_cli/
+  │ 2>&1 && echo "---" && cat /home/many/workspace/robotframework-agenteval/test
+  │ s/fixtures/codex_cli/simple_prompt.jsonl 2>&1
+  └ 7 lines...
+
+● Check empirical probe files (shell)
+  │ cat /tmp/codex_probe.jsonl 2>&1 && echo "===" && cat
+  │ /tmp/codex_tool_probe.jsonl 2>&1
+  └ 13 lines...
+
+● Check pyproject.toml for codex entries (shell)
+  │ grep -n "codex" /home/many/workspace/robotframework-agenteval/pyproject.toml
+  │ 2>&1 | head -40
+  └ 6 lines...
+
+● Check all fixtures (shell)
+  │ cat /home/many/workspace/robotframework-agenteval/tests/fixtures/codex_cli/t
+  │ ool_use.jsonl 2>&1 && echo "---" && cat /home/many/workspace/robotframework-
+  │ agenteval/tests/fixtures/codex_cli/nonzero_exit.jsonl 2>&1 && echo "---" &&
+  │ cat /home/many/workspace/robotframework-agenteval/tests/fixtures/codex_cli/t
+  │ runcated.jsonl 2>&1
+  └ 15 lines...
+
+● Check carry-overs doc for DF-11.1 entries (shell)
+  │ grep -n "C73\|C74\|DF-11.1"
+  │ /home/many/workspace/robotframework-agenteval/docs/phase-1-5-carry-overs.md
+  │ 2>&1 | head -30
+  └ 4 lines...
+
+● Check stability surface for codex entries (shell)
+  │ grep -n "codex\|CodexCLI\|11\.1" /home/many/workspace/robotframework-agentev
+  │ al/docs/contracts/stability-surface.md 2>&1 | head -30
+  └ 2 lines...
+
+● Check ADR/FR citations in the adapter (shell)
+  │ grep -n "ADR-002\|ADR-003\|ADR-010\|FR12\|FR13c\|FR47" /home/many/workspace/
+  │ robotframework-agenteval/src/AgentEval/coding_agent/codex_cli.py 2>&1
+  └ 11 lines...
+
+● Check ADR-016 existence and content (shell)
+  │ cat /home/many/workspace/robotframework-agenteval/docs/adr/ADR-016*.md
+  │ 2>/dev/null | head -80 || ls
+  │ /home/many/workspace/robotframework-agenteval/docs/adr/ | head -20
+  └ 73 lines...
+
+● Check ADR-016 line 59 (shell)
+  │ sed -n '55,65p'
+  │ /home/many/workspace/robotframework-agenteval/docs/adr/ADR-016*.md 2>&1
+  └ 11 lines...
+
+● Find ADR-016 safer-default rule (shell)
+  │ grep -n "external_mixed\|safer.default\|L59"
+  │ /home/many/workspace/robotframework-agenteval/docs/adr/ADR-016*.md 2>&1 |
+  │ head -20
+  └ 14 lines...
+
+● Check ADR-016 line 59 precisely (shell)
+  │ cat -n /home/many/workspace/robotframework-agenteval/docs/adr/ADR-016-mcp-co
+  │ verage-detection-default.md 2>&1 | sed -n '30,70p'
+  └ 42 lines...
+
+● Verify ADR-002 vs ADR-005 citation (shell)
+  │ grep -n "ADR-002\|ADR-005"
+  │ /home/many/workspace/robotframework-agenteval/docs/adr/ -r 2>&1 | grep
+  │ "ADR-002.*ceiling\|ADR-002.*vendor\|ADR-005.*oracle\|ADR-005.*conformance" |
+  │ head -10
+  └ 11 lines...
+
+● Check all ADR-016 citations (shell)
+  │ grep -n "ADR-016\|L59\|safer.default" /home/many/workspace/robotframework-ag
+  │ enteval/src/AgentEval/coding_agent/codex_cli.py 2>&1
+  └ 7 lines...
+
+● Check _VERSION_RE usage in adapter (shell)
+  │ grep -n "_VERSION_RE" /home/many/workspace/robotframework-agenteval/src/Agen
+  │ tEval/coding_agent/codex_cli.py
+  └ 3 lines...
+
+● Check ADR-016 citations in claude_code_cli for comparison (shell)
+  │ grep -n "ADR-016" /home/many/workspace/robotframework-agenteval/src/AgentEva
+  │ l/coding_agent/claude_code_cli.py 2>&1 | head -10
+  └ 7 lines...
+
+● Count lines in ADR-016 (shell)
+  │ wc -l /home/many/workspace/robotframework-agenteval/docs/adr/ADR-016-mcp-cov
+  │ erage-detection-default.md
+  └ 2 lines...
+
+● Run the codex CLI tests (shell)
+  │ cd /home/many/workspace/robotframework-agenteval && uv run pytest
+  │ tests/unit/coding_agent/test_codex_cli.py -v --tb=short 2>&1 | tail -50
+  └ 44 lines...
+
+● Read base.py
+  │ src/AgentEval/coding_agent/base.py
+  └ L410:480 (61 lines read)
+
+● Check FR references in story spec (shell)
+  │ grep -n "FR12\|FR13c\|FR17a\|FR47" /home/many/workspace/robotframework-agent
+  │ eval/_bmad-output/implementation-artifacts/11-1-codex-cli-adapter.md 2>&1 |
+  │ head -20
+  └ 4 lines...
+
+● Check _VERSION_RE usage in claude_code_cli for comparison (shell)
+  │ grep -n "_VERSION_RE" /home/many/workspace/robotframework-agenteval/src/Agen
+  │ tEval/coding_agent/claude_code_cli.py 2>&1
+  └ 1 line...
+
+● Verify DF-11.1 carry-overs present (shell)
+  │ grep -n "DF-11.1-S1\|DF-11.1-S2"
+  │ /home/many/workspace/robotframework-agenteval/docs/phase-1-5-carry-overs.md
+  │ 2>&1 | head -10
+  └ 3 lines...
+
+● Check how claude_code_cli uses _VERSION_RE (shell)
+  │ grep -n "_VERSION_RE\|_assert_binary_version\|_override_version"
+  │ /home/many/workspace/robotframework-agenteval/src/AgentEval/coding_agent/cla
+  │ ude_code_cli.py 2>&1 | head -20
+  └ 3 lines...
+
+● Check stderr usage in claude_code_cli (shell)
+  │ grep -n "stderr" /home/many/workspace/robotframework-agenteval/src/AgentEval
+  │ /coding_agent/claude_code_cli.py 2>&1 | head -10
+  └ 11 lines...
+
+Now I have enough to write the findings. Let me compile them:
+
+● Create story-11-1-copilot-findings.md +237
+  └ _bmad-output/cross-llm-reviews/story-11-1-copilot-findings.md
+
+Review complete. Findings written to `_bmad-output/cross-llm-reviews/story-11-1-copilot-findings.md`.
+
+**Summary:** No HIGH bugs found — all 9 cross-story lessons (D-1 through D-10) are correctly applied and all 33 tests pass. Four MED findings:
+
+1. **MED-1** — `_VERSION_RE` declared at L118 but never called; module docstring at L32 falsely claims it "accounts for the prefix" (contradicted by the constructor comment that correctly explains the base `_SEMVER_RE` handles it)
+2. **MED-2** — `ADR-016 L59` citations throughout the file point to the **Alternatives** section, not the **Decision** section; the primary contract is at L33
+3. **MED-3** — `_last_mcp_servers` concurrency invariant (concurrent `run()` calls on one instance corrupt mcp_coverage) is documented only in comments, not in the class docstring
+4. **MED-4** — No tests for the two negative cases of the D-3 diagnostic gate (`exit_code != 0` but response_text non-empty, and `exit_code != 0` but terminal present)
+

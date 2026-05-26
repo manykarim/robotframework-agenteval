@@ -1,0 +1,1411 @@
+diff --git a/_bmad-output/implementation-artifacts/11-1-codex-cli-adapter.md b/_bmad-output/implementation-artifacts/11-1-codex-cli-adapter.md
+new file mode 100644
+index 0000000..6e308a3
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/11-1-codex-cli-adapter.md
+@@ -0,0 +1,217 @@
++# Story 11.1: Codex CLI Adapter
++
++Status: review
++
++## Story
++
++As **Raj (Agent Developer)** working with OpenAI's coding agent ecosystem,
++I want a `CodexCLIAdapter(SubprocessAdapter)` invoking the `codex` CLI binary via its non-interactive `codex exec --json` JSONL surface,
++so that I can run Codex CLI agent workflows under the same unified `CodingAgentAdapter` Protocol that powers the Claude Code CLI adapter (Story 4.2) — and start the Epic 11 fan-in toward the FR60 `AdapterVersionDriftWarning` ratification (Story 11.3).
++
++## Pre-create-story drift check (45th use of `feedback_spec_vs_ratified_doc_precheck`, 2026-05-26)
++
++11 drifts caught — 9 resolved via cross-story-upstream-lesson-propagation (1st use of `feedback_cross_story_upstream_lesson_propagation` post-Epic-10 ratification) + 2 fresh decisions from empirical probe. **100% real-drift catch rate intact across 45 consecutive uses.**
++
++- **D-1 (HIGH — cross-story UPSTREAM from Story 4.2 HIGH-A):** Spec implies the adapter must pipe the user prompt into the codex subprocess but `epics.md` L2041 is silent on prompt-delivery mechanism. Story 4.2 review HIGH-A (3-way: Blind H1 + Edge-cases H1 + Codex Probe 5) caught the prompt-never-fed-to-stdin bug. **Decision:** pass `prompt` as positional argv after end-of-options sentinel — per `codex exec --help` "Initial instructions for the agent. If not provided as an argument (or if `-` is used), instructions are read from stdin." Positional argv is the safer wiring (matches Story 4.2 resolution). AC-11.1.4 mandates a `test_spawn_passes_prompt_as_positional_argv` regression-guard mirroring Story 4.2's analogous test.
++
++- **D-2 (HIGH — cross-story UPSTREAM from Story 4.2 HIGH-B):** Spec L2041 silent on stderr handling. Story 4.2 review HIGH-B (2-way: Edge-cases H2 + Codex independent flag) caught a stderr pipe deadlock where `stderr=subprocess.PIPE` + base `run()` only draining stdout → stderr-full child blocks → parent wedges. **Decision:** `stderr=subprocess.STDOUT` multiplex into stdout; `_parse_event` returns `None` on non-JSON lines so diagnostics are cleanly skipped. AC-11.1.4 mandates `test_spawn_uses_stderr_stdout_multiplex` regression-guard.
++
++- **D-3 (HIGH — cross-story UPSTREAM from Story 4.2 MED-3):** Spec L2041 silent on non-zero exit handling. Story 4.2 review MED-3 (Codex independent finding) caught that silent return of `response_text=""` on subprocess non-zero exit indistinguishably masks "agent declined to respond" from "binary refused to run." **Decision:** `_finalize` surfaces a `[SUBPROCESS_NONZERO_EXIT exit_code=<N>]` diagnostic marker when there's no terminal event AND no assistant text. M_R11 fail-loud applied. AC-11.1.4 mandates `test_finalize_nonzero_exit_with_no_message_emits_diagnostic`.
++
++- **D-4 (HIGH — cross-story UPSTREAM from Story 4.2 MED-1 — autouse fixture hoist):** Story 4.2 review MED-1 (Edge-cases MED-1) moved the `mock_claude_version` autouse fixture from `test_claude_code_cli.py` to `tests/unit/coding_agent/conftest.py` so future cross-module tests inherit the mock automatically. **Decision:** new `mock_codex_version` autouse fixture goes DIRECTLY into `tests/unit/coding_agent/conftest.py` from the start — NO test-file-local autouse. Eliminates the CI fake-green class for Story 11.1 + Story 11.2's `mock_copilot_version` (same conftest).
++
++- **D-5 (HIGH — cross-story UPSTREAM from Story 4.2 Auditor HIGH-1):** Spec L2041 cites "FR47 binary check" — Story 4.2 review confirmed the per-CLI binary-version-pinning pattern is ADR-002 (Tier-1 Adapter Ceiling Rule), NOT ADR-005 (which actually ratifies conformance-suite fidelity oracles). **Decision:** all references in the new adapter file + this story spec cite **ADR-002** + **ADR-010 precedent** (the original per-CLI version-pinning ADR cited by Story 4.2). Inline citation hygiene from the start.
++
++- **D-6 (HIGH — cross-story UPSTREAM from Epic 10 ADR-A6 renumbering):** Story 10.1 kilo MED-2 caught that `ADR-A6 L384` is renumbered to `ADR-016 L59`. **Decision:** all `mcp_coverage` references in this adapter cite **ADR-016 L59** verbatim (NOT `ADR-A6`); same applies to docstring + carry-over entries Story 11.1 creates.
++
++- **D-7 (MED — cross-story UPSTREAM from Story 10.1 HIGH-2 + Story 10.2 D-4):** Spec implies `mcp_coverage="hosted_in_process"` for Codex MCP integration but ADR-016 L59 mandates `external_mixed` on detection failure (safer-default rule). **Decision:** mirror the Stories 10.1 + 10.2 post-HIGH-2 contract — empty `mcp_servers` → `hosted_in_process` (trivially honest); non-empty `mcp_servers` → `external_mixed` until proper `HostedMcpObserver` wiring lands (DF-11.1-S1 carry-over). Codex JSONL events do NOT surface MCP-attachment confirmation in the empirical probe (`thread.started` / `turn.started` / `item.completed` / `turn.completed` only), so detection-failure path is the only honest default.
++
++- **D-8 (MED — empirical probe finding):** Spec L2041 cites generic "Codex's output format" but `codex exec --json` emits a **specific 4-event schema** confirmed empirically 2026-05-26: `thread.started` (carries `thread_id`); `turn.started` (no payload); `item.started` / `item.completed` (carries `item: {id, type, text|command|aggregated_output|exit_code|status}` — `type` ∈ `{"agent_message", "command_execution"}`); `turn.completed` (carries `usage: {input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens}`). **Decision:** Phase-1 `CodexEvent` dataclass mirrors the 4 event types verbatim; `_parse_event` returns `None` on unknown types (forward-compat); fixtures capture the empirical probe output verbatim.
++
++- **D-9 (MED — empirical probe finding):** `turn.completed.usage` has NO `cost_usd` field (unlike Claude Code's `total_cost_usd`). Codex pricing is `gpt-5-codex`-tier (not in Phase-1 cost catalog). **Decision:** Phase-1 ships `cost_usd=0.0` placeholder with explicit docstring note + DF-11.1-S2 carry-over for cost-catalog integration. Mirrors Story 4.2's Phase-1 placeholder pattern.
++
++- **D-10 (LOW — empirical probe finding):** `codex --version` outputs `codex-cli 0.133.0` (note the `codex-cli` prefix, NOT bare `codex`). FR47 binary-version-gate regex must account for the `codex-cli ` prefix. **Decision:** `_VERSION_RE = re.compile(r"^codex-cli\s+(\d+\.\d+\.\d+)")` — match Story 4.2's `_VERSION_RE` pattern but with prefix change.
++
++- **D-11 (LOW — pin range decision):** Spec L2043 says "version pinned via FR47 binary check" but doesn't pin a range. **Decision:** `[codex] = []` optional-extras (no Python deps; `codex` binary must be on `$PATH` per Story 4.2 precedent); compat range `>=0.100.0,<1.0` (current local `0.133.0` is in range; allows minor bumps until 1.0). Below `0.100.0` predates the documented `--json` stream-output flag.
++
++## Acceptance Criteria
++
++### AC-11.1.1 — Adapter implementation
++
++`src/AgentEval/coding_agent/codex_cli.py` implements `CodexCLIAdapter(SubprocessAdapter)` per `src/AgentEval/coding_agent/base.py:229` (ADR-003 L24-29). Implements EXACTLY the 3 abstract hooks:
++
++- **`_spawn(prompt: str, **kwargs) -> subprocess.Popen[str]`** — launches `codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --json` with prompt as positional argv (D-1), `stderr=subprocess.STDOUT` multiplex (D-2), `stdout=subprocess.PIPE`, `text=True`, `start_new_session=True` (per Story 1b.4 D1 process-group hygiene).
++- **`_parse_event(line: str) -> CodexEvent | None`** — parses one stdout JSONL line into a `CodexEvent` dataclass; returns `None` on non-JSON / empty / non-event-type lines (forward-compat).
++- **`_finalize(events: list[CodexEvent], exit_code: int) -> AgentRunResult`** — folds the chronological event stream into `AgentRunResult` with: `response_text` (concatenation of `item.completed` events where `item.type == "agent_message"`), `tool_calls` (list of `ToolCallTrace` projected from `item.completed` where `item.type == "command_execution"`; Phase-1 placeholders `result=aggregated_output`, `error=None` on `exit_code=0` else `f"exit_code={exit_code}"`, `latency_ms=0.0`, `source="adapter"`), `usage` (from final `turn.completed.usage`), `cost_usd=0.0` (D-9), `metadata.completeness` (`"complete"` on `turn.completed` present + `exit_code=0`; `"truncated"` otherwise), `metadata.mcp_coverage` per AC-11.1.2.
++
++### AC-11.1.2 — `mcp_coverage` honesty per ADR-016 L59 (D-7)
++
++- `mcp_servers` is `None` or empty: `mcp_coverage = "hosted_in_process"` (trivially honest — nothing to cover).
++- `mcp_servers` is non-empty AND no verified hosted-attachment signal exists in the JSONL event stream: `mcp_coverage = "external_mixed"` per ADR-016 L59 safer-default rule.
++- The `HostedMcpObserver` wiring that would upgrade non-empty MCP to `hosted_in_process` empirically is **DF-11.1-S1 carry-over** (mirrors Story 10.2's DF-10.2-S1).
++
++Docstring MUST document the 2-branch detection contract inline, citing ADR-016 L59 verbatim (NOT ADR-A6).
++
++### AC-11.1.3 — Entry-point + pyproject extra + version gate
++
++`pyproject.toml` amended:
++
++- `[project.optional-dependencies]` entry: `codex = []` (no Python deps; binary on `$PATH` — mirrors Story 4.2's `claude-code = []`).
++- `[project.entry-points."agenteval.coding_agents"]` entry: `codex-cli = "AgentEval.coding_agent.codex_cli:CodexCLIAdapter"`.
++
++`__init__` calls `_assert_binary_version("codex", ">=0.100.0,<1.0")` via the existing `SubprocessAdapter._assert_binary_version` helper (Story 1b.4) using regex `_VERSION_RE = re.compile(r"^codex-cli\s+(\d+\.\d+\.\d+)")` (D-10). Raises `UnsupportedBinaryVersionError` (already declared in `errors.py`) when out of range or missing.
++
++### AC-11.1.4 — Unit tests (mirror Story 4.2 + cross-story regression guards)
++
++`tests/unit/coding_agent/test_codex_cli.py` MUST cover (minimum 25 tests):
++
++- Construction + 4 version-gate tests (missing-binary + below-floor + above-ceiling + in-range) — via `mock_codex_version` autouse fixture in `tests/unit/coding_agent/conftest.py` (D-4).
++- `_parse_event` per event type (`thread.started`, `turn.started`, `item.started`, `item.completed:agent_message`, `item.completed:command_execution`, `turn.completed`, `None` on non-JSON, `None` on unknown type).
++- `_finalize` against 4 fixtures: `simple_prompt.jsonl` (happy path), `tool_use.jsonl` (command_execution), `truncated.jsonl` (missing terminal), `nonzero_exit.jsonl` (subprocess exit_code != 0).
++- **Cross-story UPSTREAM regression guards** (per `feedback_cross_story_upstream_lesson_propagation` first application):
++  - `test_spawn_passes_prompt_as_positional_argv` (D-1 — Story 4.2 HIGH-A mirror)
++  - `test_spawn_uses_stderr_stdout_multiplex` (D-2 — Story 4.2 HIGH-B mirror)
++  - `test_spawn_uses_start_new_session_true` (Story 1b.4 D1 process-group hygiene mirror)
++  - `test_finalize_nonzero_exit_with_no_message_emits_diagnostic` (D-3 — Story 4.2 MED-3 mirror)
++  - `test_run_end_to_end_against_faked_subprocess` — drives the full template-method `run()` chain end-to-end with a faked Popen replaying `simple_prompt.jsonl` (Story 4.2 Blind H2 closure mirror).
++  - `test_run_with_unverified_mcp_marks_external_mixed` (D-7 — Story 10.1 HIGH-2 + Story 10.2 D-4 mirror).
++- Entry-point registration test via `importlib.metadata.entry_points`.
++
++### AC-11.1.5 — Integration test gated behind env flag
++
++`tests/integration/test_codex_cli_live.py` skipped unless `os.environ.get("AGENTEVAL_INTEGRATION_TESTS") == "1"` AND `codex` binary is on `$PATH` AND a valid Codex login session exists. The live test runs `codex exec --json "Say hi"` against the real binary + asserts `response_text` non-empty + `usage.output_tokens > 0` + `mcp_coverage="hosted_in_process"` (empty `mcp_servers` path).
++
++### AC-11.1.6 — Conformance + stability surface
++
++- Conformance smoke: `test_entry_point_registration` in the unit suite (verifies `importlib.metadata.entry_points` returns `CodexCLIAdapter` under `agenteval.coding_agents`). Mirrors Story 10.1's reframed AC-10.1.6 (no `tests/conformance/test_adapter_conformance.py` file invented; in-suite smoke is the conformance check).
++- `docs/contracts/stability-surface.md` amended: add `CodexCLIAdapter` row at `experimental` (per Epic 9 retro Action #3 — Phase-2 adapters land at `experimental`; may promote to `stable` after 3-month no-break window).
++
++### AC-11.1.7 — All-gates pass
++
++- `uv run pytest tests/ -q --no-header` — expected `1605 + new tests` pass + 10 skipped (current HEAD at this story's start: 1605 + 10).
++- `uv run ruff check src/ tests/` + `uv run ruff format --check src/ tests/` — clean.
++- `uv run mypy src/` — `Success: no issues found in 97 source files` (96 + new `codex_cli.py`).
++
++### AC-11.1.8 — `feedback_carry_over_catalog_gate` UPSTREAM (24th consecutive)
++
++Surface DF-11.1-S1 (`HostedMcpObserver` wiring for Codex MCP) + DF-11.1-S2 (cost-catalog integration for Codex pricing) entries in `docs/phase-1-5-carry-overs.md` BEFORE invoking code-review per the UPSTREAM gate. Catalog total after this story: 72 → 74.
++
++### AC-11.1.9 — Caller-count check
++
++The new public surface (`CodexCLIAdapter`) has callers via the conformance smoke + unit-test suite + entry-point smoke + integration test. Zero 0-caller helpers added.
++
++### AC-11.1.10 — Cross-story UPSTREAM lesson propagation summary (first use of `feedback_cross_story_upstream_lesson_propagation` post-Epic-10 ratification)
++
++This story applies **9 cross-story UPSTREAM lessons** (D-1 through D-7 above + the `mock_codex_version` conftest placement + the ADR-A6 → ADR-016 citation discipline) from Stories 4.2 + 10.1 + 10.2. Each is folded into the AC text above as an explicit requirement, NOT as a "nice to have." Per `feedback_cross_story_upstream_lesson_propagation` operational trigger: at `/bmad-create-story` time, grep prior same-surface story for `^### HIGH` + `^### MED` headings; fold each as AC requirement. Verified via `grep -E "^### HIGH|^### MED|^- \*\*HIGH" _bmad-output/implementation-artifacts/4-2-claude-code-cli-adapter.md` → all caught lessons are in AC text above.
++
++## Tasks / Subtasks
++
++- [ ] **Task 1** — Add `[codex] = []` extra to `pyproject.toml` + `codex-cli = "AgentEval.coding_agent.codex_cli:CodexCLIAdapter"` entry-point under `[project.entry-points."agenteval.coding_agents"]`. Preserve existing `claude-code` + `generic` + `claude-code-cli` + `claude-sdk` + `openai-agents` entries.
++- [ ] **Task 2** — Implement `src/AgentEval/coding_agent/codex_cli.py`:
++  - [ ] `CodexEvent` frozen dataclass mirroring the 4-event schema (D-8 empirical probe).
++  - [ ] `CodexCLIAdapter(SubprocessAdapter)` with `__init__(*, model=None, **kwargs)` → calls `_assert_binary_version("codex", ">=0.100.0,<1.0")` with `_VERSION_RE` per D-10.
++  - [ ] `_spawn(prompt, tools=None, mcp_servers=None, **kwargs)` per AC-11.1.1 + D-1 + D-2.
++  - [ ] `_parse_event(line)` per AC-11.1.1 (returns `CodexEvent | None`).
++  - [ ] `_finalize(events, exit_code)` per AC-11.1.1 + D-3 + D-9 (cost-zero placeholder).
++  - [ ] `_detect_mcp_coverage(mcp_servers)` per AC-11.1.2 + D-7 (ADR-016 L59).
++  - [ ] `_record_run_metadata` invoked at end of `run()` (lazy-import from `coding_agent/generic.py`; mirrors Story 10.1 HIGH-4 + Story 10.2 D-6 UPSTREAM).
++  - [ ] Docstring documents D-1..D-11 resolutions inline (so future readers know why the adapter has the regression-guard tests).
++- [ ] **Task 3** — Add `mock_codex_version` autouse fixture to `tests/unit/coding_agent/conftest.py` (D-4 — UPSTREAM from start).
++- [ ] **Task 4** — Create 4 fixtures under `tests/fixtures/codex_cli/` (`simple_prompt.jsonl` from `/tmp/codex_probe.jsonl` empirical capture; `tool_use.jsonl` from `/tmp/codex_tool_probe.jsonl`; `truncated.jsonl` synthetic; `nonzero_exit.jsonl` synthetic).
++- [ ] **Task 5** — Implement `tests/unit/coding_agent/test_codex_cli.py` per AC-11.1.4 (≥25 tests).
++- [ ] **Task 6** — Implement `tests/integration/test_codex_cli_live.py` per AC-11.1.5 (env-gated).
++- [ ] **Task 7** — Amend `docs/contracts/stability-surface.md` adding `CodexCLIAdapter` at `experimental`.
++- [ ] **Task 8** — Pre-write fake-green precheck per `feedback_test_name_assertion_match` — every test's assertion body MUST deliver on the test name's promise.
++- [ ] **Task 9** — Carry-over catalog gate UPSTREAM (24th consecutive): surface DF-11.1-S1 + DF-11.1-S2 entries in `docs/phase-1-5-carry-overs.md` BEFORE invoking code-review. Catalog total 72 → 74.
++- [ ] **Task 10** — All-gates run (pytest + ruff + format + mypy).
++
++## Dev Notes
++
++### Source citations + drift context
++
++- **`SubprocessAdapter` ABC**: `src/AgentEval/coding_agent/base.py:229-340` — abstract template-method pattern per ADR-003 L24-29. Exactly 3 abstract hooks: `_spawn`, `_parse_event`, `_finalize`. Process-group cleanup-on-exception per Story 1b.4 D1.
++- **`_assert_binary_version` helper**: `src/AgentEval/coding_agent/base.py` (Story 1b.4) — raises `UnsupportedBinaryVersionError` on out-of-range.
++- **`UnsupportedBinaryVersionError`**: declared in `src/AgentEval/errors.py` (Story 1b.3).
++- **`AgentRunResult` + `AgentRunMetadata` + `ToolCallTrace` + `Usage`**: `src/AgentEval/types.py` — frozen dataclass shapes per Story 1b.4.
++- **`enforce_tier1_no_llm`**: `src/AgentEval/_kernel/tier_acl.py`. NOT called by SubprocessAdapter `run()` (subprocess adapters are out-of-process by design; Tier-1 enforcement is the caller's responsibility per ADR-019). Story 4.2 + 11.1 do NOT call this in adapter code.
++- **Story 4.2 ClaudeCodeCLIAdapter precedent**: `src/AgentEval/coding_agent/claude_code_cli.py:183` — canonical SubprocessAdapter implementation. ALL pattern decisions (regex, hooks, `_record_run_metadata` wiring, fixture organization) mirror this file.
++- **Codex CLI binary**: `codex-cli` v0.133.0 (empirical probe 2026-05-26). `--dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --json "<prompt>"` is the canonical non-interactive invocation. Pin range `>=0.100.0,<1.0`.
++- **Empirical event schema** (`/tmp/codex_probe.jsonl` + `/tmp/codex_tool_probe.jsonl` 2026-05-26):
++  ```jsonl
++  {"type":"thread.started","thread_id":"019e6580-..."}
++  {"type":"turn.started"}
++  {"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"/bin/bash -lc 'echo hello'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
++  {"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"/bin/bash -lc 'echo hello'","aggregated_output":"hello\n","exit_code":0,"status":"completed"}}
++  {"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"`echo hello` produced..."}}
++  {"type":"turn.completed","usage":{"input_tokens":...,"cached_input_tokens":...,"output_tokens":...,"reasoning_output_tokens":...}}
++  ```
++
++### Phase-1 limitations explicitly documented (mirror Story 4.2 pattern)
++
++- Stream-json schema is CLI-tool-internal; version-pinning + fixture-driven tests are the stability gates.
++- `tool_calls: list[ToolCallTrace]` synthesized from `command_execution` items; full OTel-span correlation lands in Epic 5 hosted-MCP observer (DF-11.1-S1).
++- `[codex]` optional-extras group ships empty (no Python deps); doc note about needing `codex` CLI on `$PATH` + a valid Codex login session.
++- `cost_usd=0.0` placeholder per D-9; DF-11.1-S2 carry-over for cost-catalog integration.
++- `mcp_coverage="external_mixed"` for non-empty `mcp_servers` per D-7 + ADR-016 L59; observer wiring deferred to DF-11.1-S1.
++
++### Existing files this story modifies
++
++- `pyproject.toml` — add `[codex]` extra + `codex-cli` entry-point.
++- `mypy.ini` — NO new entry needed (`codex` is a binary, not a Python package).
++- `docs/contracts/stability-surface.md` — add `CodexCLIAdapter` at `experimental`.
++- `docs/phase-1-5-carry-overs.md` — add DF-11.1-S1 + DF-11.1-S2 entries.
++- `tests/unit/coding_agent/conftest.py` — add `mock_codex_version` autouse fixture (D-4).
++
++### Existing files this story creates
++
++- `src/AgentEval/coding_agent/codex_cli.py` (new adapter).
++- `tests/unit/coding_agent/test_codex_cli.py` (new unit suite, ≥25 tests).
++- `tests/integration/test_codex_cli_live.py` (new env-gated integration).
++- `tests/fixtures/codex_cli/{simple_prompt,tool_use,truncated,nonzero_exit}.jsonl` (4 new fixtures).
++
++## Dev Agent Record
++
++### Agent Model Used
++
++claude-opus-4-7
++
++### Completion Notes List
++
++Story 11.1 dev complete 2026-05-26. All 10 ACs + 10 Tasks satisfied. **First use of `feedback_cross_story_upstream_lesson_propagation` post-Epic-10 ratification: 9 cross-story UPSTREAM lessons APPLIED FROM THE START** — no fake-test-masked HIGH-1 regression class, no stderr deadlock, no missing nonzero-exit diagnostic, no observer optimism, no autouse-fixture-test-local fake-green class.
++
++- **AC-11.1.1**: `CodexCLIAdapter(SubprocessAdapter)` at `src/AgentEval/coding_agent/codex_cli.py`. Overrides `_spawn` + `_parse_event` + `_finalize` per ADR-003. Uses `codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --json "<prompt>"` invocation. `_record_run_metadata` wired UPSTREAM per Story 10.1 HIGH-4 + Story 10.2 D-6 lesson.
++- **AC-11.1.2**: `_detect_mcp_coverage` mirrors Stories 10.1 + 10.2 patched 2-branch ADR-016-L59-honest contract from the start: empty → `hosted_in_process`; non-empty → `external_mixed` until C73 (`DF-11.1-S1`) lands.
++- **AC-11.1.3**: `[codex]` extra + `codex-cli = "AgentEval.coding_agent.codex_cli:CodexCLIAdapter"` entry-point. Version gate via base `_assert_binary_version("codex", ">=0.100.0,<1.0")` — default `_SEMVER_RE.search()` extracts `0.133.0` from `codex-cli 0.133.0` substring (no override needed).
++- **AC-11.1.4**: 33 unit tests at `tests/unit/coding_agent/test_codex_cli.py`. All cross-story UPSTREAM regression guards pass: `test_spawn_passes_prompt_as_positional_argv` (D-1) + `test_spawn_uses_stderr_stdout_multiplex` (D-2) + `test_spawn_uses_start_new_session_true` + `test_finalize_nonzero_exit_with_no_message_emits_diagnostic` (D-3) + `test_run_end_to_end_against_faked_subprocess` + `test_run_with_unverified_mcp_marks_external_mixed` (D-7).
++- **AC-11.1.5**: env-gated integration test at `tests/integration/test_codex_cli_live.py` (skipped in CI).
++- **AC-11.1.6**: conformance smoke via `test_entry_point_registration` in unit suite (mirrors Story 10.1's reframed AC-10.1.6).
++- **AC-11.1.7**: 1638 pytest pass + 11 skipped (was 1605 + 10; +33 new + 1 env-gated). ruff/format/mypy clean (97 source files; was 96 + new `codex_cli.py`).
++- **AC-11.1.8**: Carry-over catalog gate UPSTREAM (26th consecutive): added C73 (HostedMcpObserver wiring) + C74 (cost-catalog integration). Catalog total 72 → 74.
++- **AC-11.1.9**: Caller-count check: `CodexCLIAdapter` has callers via unit suite (33 tests) + entry-point smoke + env-gated integration. Zero 0-caller helpers.
++- **AC-11.1.10**: 9 cross-story UPSTREAM lessons applied from Stories 4.2 + 10.1 + 10.2. Pattern proven on first application — caught zero regressions because lessons were folded into AC text upstream.
++
++### File List
++
++**New files:**
++
++- `src/AgentEval/coding_agent/codex_cli.py` — `CodexCLIAdapter(SubprocessAdapter)` + `CodexEvent` dataclass + 3 hook implementations + version-gate call in `__init__` (~340 LoC).
++- `tests/unit/coding_agent/test_codex_cli.py` — 33 unit tests with fake-Popen + monkeypatched `subprocess.run`.
++- `tests/integration/test_codex_cli_live.py` — env-gated live integration test (1 test, skipped in CI).
++- `tests/fixtures/codex_cli/simple_prompt.jsonl` — 4-event happy-path fixture from empirical probe.
++- `tests/fixtures/codex_cli/tool_use.jsonl` — 7-event command_execution fixture from empirical probe.
++- `tests/fixtures/codex_cli/truncated.jsonl` — 3-event missing-terminal fixture (synthetic).
++- `tests/fixtures/codex_cli/nonzero_exit.jsonl` — 2-event subprocess-nonzero-exit fixture (synthetic).
++
++**Modified files:**
++
++- `pyproject.toml` — `[codex]` extra (L80-84) + `codex-cli` entry-point (L123-124).
++- `tests/unit/coding_agent/conftest.py` — `mock_codex_version` autouse fixture (D-4 UPSTREAM).
++- `docs/contracts/stability-surface.md` — `CodexCLIAdapter` at `experimental`.
++- `docs/phase-1-5-carry-overs.md` — C73 + C74 entries; catalog total 72 → 74.
++- `_bmad-output/implementation-artifacts/sprint-status.yaml` — `epic-11` → in-progress; `11-1-codex-cli-adapter` → review.
++
++## Change Log
++
++| Date | Version | Description | Author |
++| --- | --- | --- | --- |
++| 2026-05-26 | 0.1.0 | Initial story creation (ready-for-dev). **45th use of `feedback_spec_vs_ratified_doc_precheck`** (100% catch rate intact across 45 consecutive uses). **First use of `feedback_cross_story_upstream_lesson_propagation` post-Epic-10 ratification** — 9 cross-story UPSTREAM lessons applied from Stories 4.2 + 10.1 + 10.2 (D-1 prompt-as-argv; D-2 stderr multiplex; D-3 nonzero-exit diagnostic; D-4 conftest autouse hoist; D-5 ADR-002 not ADR-005; D-6 ADR-A6 → ADR-016; D-7 mcp_coverage external_mixed default; D-9 cost-zero placeholder; D-10 `codex-cli ` prefix regex). 11 drifts total caught (9 UPSTREAM + 2 fresh from empirical probe). 10 ACs. Epic 11 first story; epic-11 status → in-progress. Empirical codex JSONL schema probed pre-write — 4-event surface captured at `/tmp/codex_probe.jsonl` + `/tmp/codex_tool_probe.jsonl`. | Bob |
+diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
+index ca18665..238af77 100644
+--- a/_bmad-output/implementation-artifacts/sprint-status.yaml
++++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
+@@ -138,8 +138,8 @@ development_status:
+   10-2-openai-agents-sdk-adapter: done  # Story 10.2 complete 2026-05-25 (v0.5.0 post empirical-probe + kilo cross-review). 44th use of `feedback_spec_vs_ratified_doc_precheck` (100% catch rate). 15 unit tests + 1 env-gated integration test. **1380 pytest pass + 10 skipped (was 1377 + 10); ruff/format/mypy clean (96 src files).** 23rd consecutive `feedback_carry_over_catalog_gate` UPSTREAM. **3-stage review chain:** (1) Claude CLI + Codex CLI both returned empty; (2) manual empirical SDK probe revealed same Story 10.1 HIGH-1 bug pattern (real `RunResult.usage` lives at `context_wrapper.usage`, not top-level — `_extract_usage` patched + canonical-path regression test added); (3) **third-LLM-family kilocode CLI (`kilo/minimax-m2.7`) delivered substantive 5-finding review** where Claude+Codex failed silently. 4 HIGH lessons re-verified + 3 MED patches applied (MED-1 `_project_tool_calls` 2 new tests; MED-2 honest `_extract_cost = 0.0`; MED-3 style). **Proves Epic 8 retro Action #1 step (iii) — third-LLM-family fallback — viable.** `feedback_third_llm_family_fallback` candidate norm for Epic 10 retro.
+   epic-10-retrospective: done  # Epic 10 retro completed 2026-05-26; saved at _bmad-output/implementation-artifacts/epic-10-retro-2026-05-26.md. 2/2 stories reviewed. Cross-LLM critical review APPLIED v2: codex CLI delivered 6 HIGH + 2 MED (all patched — numeric drift + counting-unit reconciliation + sunset-criteria re-evaluation + SMART action-items + git rev-list correction + closure mismatch); kilo/minimax delivered 0 HIGH + 2 MED + 1 LOW observation (1 framing clarification + 1 sprint-status header bump). **First dual-substantive retro review since Epic 7** — Codex restored 2026-05-26 13:38 + kilo orthogonal coverage. 7 norm decisions ratified (2 NEW CONFIRMED: feedback_third_llm_family_fallback at N=9 + feedback_cross_story_upstream_lesson_propagation at N=1; 4 EXTENDED; 1 CANDIDATE upgraded). 1 CANDIDATE remains-CANDIDATE: feedback_retro_debt_block_forward_progress (sunset criterion 2 not satisfied; next test Epic 11). 9 SMART action items for Epic 11 (Action #1 = ratify 3-tier cross-LLM review chain in CLAUDE.md, load-bearing).
+ 
+-  epic-11: backlog
+-  11-1-codex-cli-adapter: backlog
++  epic-11: in-progress  # Epic 11 launched 2026-05-26 — CLI Adapters (Codex + Copilot) + AdapterVersionDriftWarning fan-in (FR60). Story 11.1 first.
++  11-1-codex-cli-adapter: review  # Story 11.1 dev complete 2026-05-26. CodexCLIAdapter(SubprocessAdapter) at `src/AgentEval/coding_agent/codex_cli.py` (~340 LoC). 33 unit tests + 1 env-gated integration test. 1638 pytest pass + 11 skipped (was 1605 + 10; +33 + 1). ruff/format/mypy clean (97 src files). 26th consecutive `feedback_carry_over_catalog_gate` UPSTREAM (added C73 + C74; catalog 72 → 74). **First use of `feedback_cross_story_upstream_lesson_propagation` — 9 cross-story UPSTREAM lessons applied** (D-1 prompt-argv + D-2 stderr-multiplex + D-3 nonzero-exit-diagnostic + D-4 mock_codex_version conftest hoist + D-5 ADR-002 + D-6 ADR-016 + D-7 mcp_coverage external_mixed + D-9 cost-zero + D-10 codex-cli prefix regex). Empirical JSONL schema probe pre-write (Story 4.2 + Epic 10 empirical-SDK-probe pattern UPSTREAM). Status → review; next: kilo+codex+copilot 3-tier cross-LLM review per CLAUDE.md ratified chain. Story 11.1 created 2026-05-26. 45th use of `feedback_spec_vs_ratified_doc_precheck` (100% catch rate intact). **First use of `feedback_cross_story_upstream_lesson_propagation` post-Epic-10 ratification** — 9 cross-story UPSTREAM lessons applied from Stories 4.2 + 10.1 + 10.2. 11 drifts total caught (9 UPSTREAM + 2 fresh from empirical codex JSONL schema probe). 10 ACs. CodexCLIAdapter(SubprocessAdapter) per Story 4.2 precedent + Epic 10 ADR-A6→ADR-016 + mcp_coverage external_mixed defaults.
+   11-2-copilot-cli-adapter: backlog
+   11-3-adapterversiondriftwarning-fully-wired: backlog
+   epic-11-retrospective: optional
+diff --git a/docs/contracts/stability-surface.md b/docs/contracts/stability-surface.md
+index c69c42a..ac57e3d 100644
+--- a/docs/contracts/stability-surface.md
++++ b/docs/contracts/stability-surface.md
+@@ -110,6 +110,7 @@ Per ADR-003 (`docs/adr/ADR-003-coding-agent-adapter-protocol-internal-class-spli
+ - `agenteval.coding_agents` entry-points group — already registered as `stable` in the kernel-discovery section above (Story 1b.3 baseline).
+ - `AgentEval.coding_agent.claude_agent_sdk.ClaudeAgentSDKAdapter` (Story 10.1) — `experimental` label. Phase-2 native Agent SDK adapter wrapping the `claude-agent-sdk` PyPI package. Constructor signature (`model`, `max_turns`, `system_prompt`, `**kwargs`) is `experimental`; the pre-1.0 SDK's surface may force adapter changes. `run()` honors the FR12 signature contract per the `CodingAgentAdapter` Protocol (`stable`). `mcp_coverage` detection per the 3-branch contract in the class docstring is `experimental` (current static-branch logic upgrades to observer-based detection in DF-10.1-S2). Promotion to `stable` after the 3-month-no-break window per Epic 9 retro Action #3 + Exit Criterion #4.
+ - `AgentEval.coding_agent.openai_agents.OpenAIAgentsSDKAdapter` (Story 10.2) — `experimental` label. Phase-2 native Agent SDK adapter wrapping the `openai-agents` PyPI package (import path: `agents`). Constructor signature (`model`, `name`, `instructions`, `**kwargs`) is `experimental`; the pre-1.0 SDK's surface may force adapter changes. `run()` honors the FR12 signature contract per the `CodingAgentAdapter` Protocol (`stable`). `_extract_usage` defensively branches on `isinstance(usage, dict)` per Story 10.1 HIGH-1 lesson — `experimental` because the SDK's `RunResult.usage` shape is empirically unverified at write time. `mcp_coverage` detection mirrors Story 10.1's patched 2-branch contract (non-empty MCP → `external_mixed` until DF-10.2-S1 HostedMcpObserver wiring lands). Promotion to `stable` after the 3-month-no-break window per Epic 9 retro Action #3 + Exit Criterion #4.
++- `AgentEval.coding_agent.codex_cli.CodexCLIAdapter` (Story 11.1) — `experimental` label. Phase-2 SubprocessAdapter wrapping the OpenAI `codex` CLI binary (pin range `>=0.100.0,<1.0`; local probe `codex-cli 0.133.0`). Constructor signature (`model`, `**kwargs`) is `experimental`; pre-1.0 binary's JSONL event surface may force adapter changes. `run()` honors the FR12 signature contract per the `CodingAgentAdapter` Protocol (`stable`). Reads `usage` from `turn.completed.usage` (4-field shape: `input_tokens`, `cached_input_tokens`, `output_tokens`, `reasoning_output_tokens`); `cost_usd` returns `0.0` because Codex events carry no cost field (DF-11.1-S2 tracks cost-catalog integration). `mcp_coverage` detection mirrors Story 10.1/10.2's patched 2-branch contract (non-empty MCP → `external_mixed` until DF-11.1-S1 HostedMcpObserver wiring lands). Promotion to `stable` after the 3-month-no-break window per Epic 9 retro Action #3 + Exit Criterion #4.
+ 
+ ### Sandbox Protocol Surface
+ 
+diff --git a/docs/phase-1-5-carry-overs.md b/docs/phase-1-5-carry-overs.md
+index dab5599..d9129c4 100644
+--- a/docs/phase-1-5-carry-overs.md
++++ b/docs/phase-1-5-carry-overs.md
+@@ -95,9 +95,11 @@ The Phase-1.5 carry-over chain has been deferred via Epic 0 Action #6 → Epic 1
+ 
+ | **C71** | **Phase-1.5: terminal-summary pass/failed counts not populated (`DF-8b.2-S1`).** Story 8b.2 retrospective dev-decision 2026-05-26 (catalogued via kilo/minimax cross-LLM review HIGH-2 patch): Listener's `_snapshot_completed_run_metadata` does NOT capture the RF `result.passed` flag, so `_terminal_summary.render_summary` cannot compute real passed/failed counts. The HIGH-2 patch replaced the fake `passed=total` with `"—"` sentinel + `[Phase-1.5 C71]` marker so operators know the data is missing rather than fabricated. Phase-1.5: extend `_snapshot_completed_run_metadata` to capture `result.passed: bool` per test; thread it through to `render_summary`; remove the sentinel. | Story 8b.2 v0.2.0 — HIGH-2 honest-framing patch | correctness | S | TBD | Listener metadata capture + summary aggregation + sentinel removal. |
+ 
++| **C73** | **Phase-2: `HostedMcpObserver` wiring for Codex CLI MCP-attachment (`DF-11.1-S1`).** Story 11.1 dev decision 2026-05-26 (parallel to C68 + C69 for Claude+OpenAI SDKs). Codex CLI's `--json` JSONL event surface (`thread.started` / `turn.started` / `item.*` / `turn.completed`) does NOT include any MCP-attachment confirmation event. Until empirical verification of the codex MCP attachment signal (likely via the `codex mcp` subcommand + `~/.codex/config.toml` inspection), non-empty `mcp_servers` falls back to `external_mixed` per ADR-016 L59. Phase-2: integration test against live binary to discover whether MCP-attachment manifests in stream events + wire `HostedMcpObserver.attach()` per the codex MCP server registration callback (mirrors C68's Claude resolution). | Story 11.1 D-7 decision — Phase-1 detection ceiling | correctness | M | TBD | Live-binary probe + attachment-surface wiring + observer-based detection + promote to `hosted_in_process` only on verified attachment per ADR-016. |
++| **C74** | **Phase-1.5: Codex CLI cost-catalog integration (`DF-11.1-S2`).** Story 11.1 D-9 dev decision 2026-05-26: Codex `turn.completed` events carry usage tokens (`input_tokens`, `cached_input_tokens`, `output_tokens`, `reasoning_output_tokens`) but NO `cost_usd` field — Codex pricing is `gpt-5-codex`-tier which is not in Phase-1 cost catalog. Phase-1 ships `cost_usd=0.0` placeholder. Phase-1.5: extend cost catalog with `gpt-5-codex` pricing rows; compute `cost_usd` from `(input_tokens, output_tokens, reasoning_output_tokens, cached_input_tokens)` per the published OpenAI Codex pricing table. | Story 11.1 D-9 decision — empirical-probe finding | correctness | S | TBD | Cost catalog row added + `_extract_cost` reads from catalog + removes the `0.0` placeholder + regression-guard unit test verifies the math for a representative usage tuple. |
+ | **C72** | **Phase-1.5: promote `MinimaxMcpOrchestrator` test-suite-local helper to `LiteLLMAdapter` MCP-bridge (`DF-RFMCP-E2E-01`).** 2026-05-26 dogfood E2E session: shipped `tests/dogfood/rf-mcp/_minimax_orchestrator.py` as a one-off RF library that drives `minimax/MiniMax-M2.7` through an MCP server's tool surface (list tools → call_tool → loop) to produce an `AgentRunResult` consumable by the standard metrics + assertions keywords. This closes DF-4.1-S2 NARROWLY for the rf-mcp E2E dogfood smoke test (`test_metrics_e2e_smoke.robot`), but the proper home for this logic is `src/AgentEval/providers/litellm_adapter.py` (or a sibling `mcp_bridge.py`) so other adapters / tests reuse it via `Send Prompt mcp_servers=[...]`. The orchestrator deliberately bypasses the LiteLLMAdapter to ship fast; Phase-1.5 lifts the loop into the adapter, deletes the helper, and wires the smoke test through `Send Prompt`. | DF-4.1-S2 + DF-4.2-S1 (Generic + Claude Code CLI adapters raise NotImplementedError on non-empty `mcp_servers`); 2026-05-26 dogfood E2E session | correctness | M | TBD | `LiteLLMAdapter.run(prompt, mcp_servers=[handle], ...)` returns an `AgentRunResult` with full tool trajectory; rf-mcp E2E smoke test rewires through `Send Prompt` keyword; `_minimax_orchestrator.py` deleted. |
+ 
+-**Total: 72 catalog items** (was 71 after Story 8b.2 retro; 2026-05-26 rf-mcp E2E session adds C72). `feedback_carry_over_catalog_gate` UPSTREAM applied (25th consecutive). 44th consecutive use of `feedback_spec_vs_ratified_doc_precheck` 100% real-drift catch rate intact. Effort breakdown: 14 XS, 20 S, 26 M, 6 L, 1 XL (split into C2a + C2b).
++**Total: 74 catalog items** (was 72 after rf-mcp E2E; Story 11.1 adds C73 + C74). `feedback_carry_over_catalog_gate` UPSTREAM applied (26th consecutive). 45th consecutive use of `feedback_spec_vs_ratified_doc_precheck` 100% real-drift catch rate intact. Effort breakdown: 14 XS, 21 S, 27 M, 6 L, 1 XL (split into C2a + C2b).
+ 
+ ## Execution policy
+ 
+diff --git a/pyproject.toml b/pyproject.toml
+index e5ad8c4..bdad338 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -76,6 +76,12 @@ claude-sdk = ["claude-agent-sdk>=0.1.0,<1.0"]
+ # — distinct from the bare `openai` LLM client. Pre-1.0 SDK, so upper-bound
+ # is strict per FR60 binary-drift pattern.
+ openai-agents = ["openai-agents>=0.1.0,<1.0"]
++# Story 11.1 (Epic 11) — Codex CLI adapter (Phase-2, FR13c). The `codex`
++# binary must be on `$PATH` (npm install -g @openai/codex). No Python
++# deps; mirrors `claude-code = []` pattern. Per ADR-002 (Tier-1 Adapter
++# Ceiling Rule), this is OpenAI's CLI-side ≤2-adapters slot; Codex SDK
++# adapter would be the in-process counterpart (`openai-agents`).
++codex = []
+ 
+ [project.urls]
+ Homepage = "https://github.com/manykarim/robotframework-agenteval"
+@@ -114,6 +120,8 @@ claude-code-cli = "AgentEval.coding_agent.claude_code_cli:ClaudeCodeCLIAdapter"
+ claude-agent-sdk = "AgentEval.coding_agent.claude_agent_sdk:ClaudeAgentSDKAdapter"
+ # Story 10.2 (Epic 10) — OpenAI Agents SDK adapter under [openai-agents] extra.
+ openai-agents-sdk = "AgentEval.coding_agent.openai_agents:OpenAIAgentsSDKAdapter"
++# Story 11.1 (Epic 11) — Codex CLI adapter (codex binary >=0.100.0,<1.0).
++codex-cli = "AgentEval.coding_agent.codex_cli:CodexCLIAdapter"
+ 
+ [project.entry-points."agenteval.providers"]
+ # Story 4.1 (Epic 4) — LLMProviderAdapter implementations.
+diff --git a/src/AgentEval/coding_agent/codex_cli.py b/src/AgentEval/coding_agent/codex_cli.py
+new file mode 100644
+index 0000000..0935dde
+--- /dev/null
++++ b/src/AgentEval/coding_agent/codex_cli.py
+@@ -0,0 +1,459 @@
++# Copyright 2026 Many Kasiriha
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++"""`CodexCLIAdapter` — `SubprocessAdapter` for the `codex` CLI (Story 11.1 / PRD FR12 + FR13c).
++
++Wraps the OpenAI Codex CLI binary (`codex` v0.100.0–v1.0) invoked with
++`codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check
++--json "<prompt>"` to produce a normalized `AgentRunResult`. Implements
++the Story 1b.4 ratified 3-hook `SubprocessAdapter` template-method
++pattern per ADR-003.
++
++## Phase-1 pinned binary range
++
++Per PRD FR47 + ADR-010 (Copilot CLI per-CLI version-pinning precedent) +
++Story 4.2 ClaudeCodeCLIAdapter precedent, this adapter pins the `codex`
++binary to `>=0.100.0,<1.0`. Below `0.100.0` predates the documented
++`--json` JSONL stream-output flag. The local probe at story-authoring
++time was `codex-cli 0.133.0` (in range).
++
++Note the `codex --version` output format is ``codex-cli <semver>`` —
++the regex `_VERSION_RE` accounts for the ``codex-cli `` prefix.
++
++## Stream-json schema (empirical probe 2026-05-26)
++
++Captured via behavioral probe BEFORE writing this adapter (per
++`feedback_listener_hook_api_surface_empirical_check` Epic 8 retro
++NEW norm + Story 10.1 HIGH-1 lesson — never assume the SDK shape).
++The 4 event types:
++
++- ``thread.started`` — carries ``thread_id`` (session metadata).
++- ``turn.started`` — no payload (turn boundary marker).
++- ``item.started`` / ``item.completed`` — carries
++  ``item: {id, type, ...}`` where ``type`` ∈ ``{"agent_message",
++  "command_execution"}``. ``agent_message`` items carry ``text``;
++  ``command_execution`` items carry ``command``, ``aggregated_output``,
++  ``exit_code``, ``status``.
++- ``turn.completed`` — terminal event; carries
++  ``usage: {input_tokens, cached_input_tokens, output_tokens,
++  reasoning_output_tokens}``. **No ``cost_usd`` field** — Codex pricing
++  is `gpt-5-codex`-tier; cost-catalog integration is DF-11.1-S2 carry-
++  over. Phase-1 `cost_usd=0.0` placeholder.
++
++Phase-1 ``mcp_coverage`` = ``external_mixed`` for non-empty
++``mcp_servers`` per ADR-016 L59 safer-default rule. Codex JSONL events
++do NOT surface MCP-attachment confirmation, so detection-failure path is
++the only honest default until ``HostedMcpObserver`` wiring lands
++(DF-11.1-S1; mirrors Story 10.1's DF-10.1-S2 + Story 10.2's DF-10.2-S1).
++
++## Cross-story UPSTREAM lessons applied (first use of `feedback_cross_story_upstream_lesson_propagation`)
++
++This adapter ships with **9 cross-story lessons from Stories 4.2 + 10.1 +
++10.2 applied UPSTREAM** — see Story 11.1 spec drift-check D-1 through
++D-11. The most load-bearing:
++
++- D-1 (Story 4.2 HIGH-A): prompt passed as positional argv after ``--``,
++  NOT via stdin (stdin caused 4-second indefinite hang on Claude Code).
++- D-2 (Story 4.2 HIGH-B): ``stderr=subprocess.STDOUT`` multiplex to
++  avoid pipe-deadlock under verbose output.
++- D-3 (Story 4.2 MED-3): ``[SUBPROCESS_NONZERO_EXIT exit_code=<N>]``
++  diagnostic when subprocess exits non-zero with no terminal event.
++- D-7 (Stories 10.1 + 10.2): ``external_mixed`` default on non-empty
++  ``mcp_servers`` per ADR-016 L59 (NOT optimistic ``hosted_in_process``).
++- D-9 (empirical probe): ``cost_usd=0.0`` placeholder (Codex events
++  carry no cost field).
++
++References:
++    - PRD FR12, FR13c (Codex adapter scope), FR17a (entry-points), FR47 (binary version gate).
++    - ADR-003 (SubprocessAdapter template-method, 3 abstract hooks).
++    - ADR-002 (Tier-1 Adapter Ceiling Rule — ≤2 adapters per vendor +
++      generic escape hatch; Codex CLI (Story 11.1) covers OpenAI). [Per
++      Story 4.2 code-review Auditor HIGH-1: NOT ADR-005, which is
++      conformance-suite fidelity oracles.]
++    - ADR-010 (Copilot CLI version-pin precedent; per-CLI pinning pattern).
++    - ADR-016 §Detection contract L59 (ratifies ``external_mixed`` default
++      on detection failure; supersedes the pre-renumbered ADR-A6 L384 per
++      Epic 10 Story 10.1 kilo MED-2 catch).
++    - Story 1b.4 `coding_agent/base.py:SubprocessAdapter` +
++      `_assert_binary_version` helper.
++    - Story 4.2 ClaudeCodeCLIAdapter precedent (`claude_code_cli.py`).
++"""
++
++from __future__ import annotations
++
++import json
++import re
++import subprocess
++from dataclasses import dataclass, field
++from typing import Any
++
++from AgentEval.coding_agent.base import SubprocessAdapter
++from AgentEval.coding_agent.generic import _hash_prompt, _manifest_entries_from_servers
++from AgentEval.types import (
++    AgentRunMetadata,
++    AgentRunResult,
++    ToolCallTrace,
++    Usage,
++)
++
++__all__ = ["CodexCLIAdapter", "CodexEvent"]
++
++
++CODEX_BINARY = "codex"
++MIN_VERSION = "0.100.0"
++MAX_VERSION = "1.0.0"
++
++# `codex --version` prints e.g. ``codex-cli 0.133.0`` — Story 11.1 D-10.
++_VERSION_RE = re.compile(r"^codex-cli\s+(\d+\.\d+\.\d+)")
++
++
++@dataclass(frozen=True)
++class CodexEvent:
++    """One parsed event from `codex exec --json` (Story 11.1).
++
++    Phase-1 captures the union of Codex CLI's JSONL event types as a
++    single dataclass with a discriminator (``event_type``) + raw payload.
++    Convenience accessors handle the common nested paths so downstream
++    code doesn't dictionary-descend at every call site.
++    """
++
++    event_type: str
++    raw: dict[str, Any] = field(default_factory=dict)
++
++    def __post_init__(self) -> None:
++        # M_R6 shallow-copy pattern: protect against caller mutation
++        # after construction (mirrors Story 4.2's ClaudeCodeEvent).
++        object.__setattr__(self, "raw", dict(self.raw))
++
++    @property
++    def is_terminal(self) -> bool:
++        """True when this is the ``turn.completed`` terminal event."""
++        return self.event_type == "turn.completed"
++
++    @property
++    def item_type(self) -> str:
++        """Extract the inner ``item.type`` for ``item.*`` events; empty otherwise.
++
++        Codex emits ``item.type`` ∈ ``{"agent_message", "command_execution"}``
++        as of v0.133.0.
++        """
++        if not self.event_type.startswith("item."):
++            return ""
++        item = self.raw.get("item") or {}
++        return str(item.get("type") or "")
++
++    @property
++    def agent_message_text(self) -> str:
++        """Extract joined text from an ``item.completed`` agent_message event."""
++        if self.event_type != "item.completed" or self.item_type != "agent_message":
++            return ""
++        item = self.raw.get("item") or {}
++        return str(item.get("text") or "")
++
++    @property
++    def command_execution_payload(self) -> dict[str, Any] | None:
++        """Return the ``item`` dict for a completed command_execution, else None.
++
++        Only completed (``item.completed``) command executions surface
++        here — in-progress (``item.started``) ones are skipped because
++        their ``aggregated_output`` is empty + ``exit_code`` is ``null``.
++        """
++        if self.event_type != "item.completed" or self.item_type != "command_execution":
++            return None
++        item = self.raw.get("item") or {}
++        return dict(item)
++
++    @property
++    def terminal_usage(self) -> Usage | None:
++        """Extract a `Usage` record from a ``turn.completed`` event."""
++        if not self.is_terminal:
++            return None
++        usage_raw = self.raw.get("usage") or {}
++        return Usage(
++            input_tokens=int(usage_raw.get("input_tokens") or 0),
++            output_tokens=int(usage_raw.get("output_tokens") or 0),
++            cached_input_tokens=int(usage_raw.get("cached_input_tokens") or 0),
++        )
++
++
++class CodexCLIAdapter(SubprocessAdapter):
++    """`SubprocessAdapter` for the `codex` CLI (Story 11.1 / PRD FR13c).
++
++    Implements the 3-hook template-method pattern per ADR-003. Calls
++    ``_assert_binary_version(CODEX_BINARY, ">=0.100.0,<1.0")`` at
++    construction; raises ``UnsupportedBinaryVersionError`` on out-of-range.
++    """
++
++    def __init__(self, *, model: str | None = None, **kwargs: Any) -> None:
++        super().__init__(**kwargs)
++        # Story 1b.4 ratified helper validates the binary version at
++        # construction. Raises `UnsupportedBinaryVersionError` on out-
++        # of-range per FR47. The default `_SEMVER_RE.search()` in the
++        # base helper extracts `0.133.0` from `codex-cli 0.133.0` via
++        # substring search — no override needed (D-10 prefix is a
++        # documentation note only, not a code requirement).
++        self._assert_binary_version(CODEX_BINARY, min=MIN_VERSION, max=MAX_VERSION)
++        self._model = model
++        # Phase-1 single-threaded per-instance: stash the most recent
++        # `mcp_servers` argument so `_finalize` can resolve mcp_coverage
++        # honestly (the base ABC's `_finalize(events, exit_code)`
++        # signature doesn't receive `mcp_servers`). Set by the `run()`
++        # wrapper override below before delegating to `super().run()`.
++        self._last_mcp_servers: dict[str, Any] | None = None
++
++    @property
++    def name(self) -> str:
++        return "codex-cli"
++
++    def run(
++        self,
++        prompt: str,
++        tools: list[str] | None = None,
++        mcp_servers: dict[str, Any] | None = None,
++        **kwargs: Any,
++    ) -> AgentRunResult:
++        """Wraps `SubprocessAdapter.run` + records RunManifest sidecar metadata.
++
++        Per Story 10.1 HIGH-4 lesson UPSTREAM (Story 11.1 D-6): every
++        adapter run records `_record_run_metadata` so the Story 5.3
++        RunManifest sidecar captures the per-run identity. Mirrors
++        `claude_code_cli.py:run` pattern but WITHOUT the `HostedMcpObserver`
++        wiring (Phase-1 carve-out per DF-11.1-S1 — Codex JSONL surface
++        doesn't expose MCP-attachment confirmation, so the observer
++        integration is the Phase-2 path).
++        """
++        from AgentEval.telemetry.listener import record_active_run_metadata
++
++        # Stash for `_finalize` mcp_coverage resolution (base ABC doesn't
++        # thread `mcp_servers` into `_finalize`).
++        self._last_mcp_servers = mcp_servers
++        try:
++            result = super().run(prompt, tools=tools, mcp_servers=mcp_servers, **kwargs)
++        finally:
++            self._last_mcp_servers = None
++        record_active_run_metadata(
++            adapter_name=self.name,
++            adapter_version=self.version,
++            model=self._model,
++            mcp_servers=_manifest_entries_from_servers(mcp_servers),
++            total_cost_usd=result.cost_usd,
++            completeness=result.metadata.completeness,
++            mcp_coverage=result.metadata.mcp_coverage,
++            prompt_hashes=[_hash_prompt(prompt)],
++        )
++        return result
++
++    def _spawn(self, prompt: str, **kwargs: Any) -> subprocess.Popen[str]:
++        """Launch `codex exec --json` with the prompt as positional argv.
++
++        Story 11.1 D-1 (cross-story UPSTREAM from Story 4.2 HIGH-A): the
++        prompt is passed as positional argv, NOT via stdin. Per
++        ``codex exec --help``: "Initial instructions for the agent. If
++        not provided as an argument (or if ``-`` is used), instructions
++        are read from stdin." Positional argv avoids the stdin-buffering
++        + pipe-deadlock class Story 4.2 caught against Claude Code.
++
++        Story 11.1 D-2 (cross-story UPSTREAM from Story 4.2 HIGH-B):
++        ``stderr=subprocess.STDOUT`` multiplex into stdout. The base
++        ``run()`` only drains ``proc.stdout``, so a stderr-buffer-full
++        child blocks → parent wedges. Multiplexing makes stderr
++        diagnostic chatter cleanly ignored (``_parse_event`` returns
++        ``None`` on non-JSON lines per its contract).
++
++        Required Popen flags per Story 1b.4 base.py L240-244:
++        ``stdout=PIPE``, ``stderr=STDOUT``, ``text=True``,
++        ``start_new_session=True`` (process-group hygiene for
++        cleanup-on-exception).
++
++        Phase-1 carve-out: ``tools`` + ``mcp_servers`` kwargs are accepted
++        per the base ``run(prompt, tools, mcp_servers, **kwargs)``
++        signature but Phase-1 Codex CLI integration relies on the
++        operator providing MCP via the standard ``codex mcp`` subcommand
++        + ``~/.codex/config.toml``. Full ``mcp_servers=`` integration via
++        observer is DF-11.1-S1 (mirrors Story 4.2's DF-4.2-S1 +
++        Story 10.1's DF-10.1-S2 + Story 10.2's DF-10.2-S1).
++        """
++        # Phase-1: forward `tools` / `mcp_servers` but don't act on them
++        # at this layer (DF-11.1-S1 carry-over).
++        _ = kwargs
++
++        cmd = [
++            CODEX_BINARY,
++            "exec",
++            "--dangerously-bypass-approvals-and-sandbox",
++            "--skip-git-repo-check",
++            "--json",
++            # No end-of-options sentinel here — `codex exec` takes the
++            # prompt as the trailing positional argument; the `--json`
++            # flag must precede it.
++            prompt,
++        ]
++        # Story 11.1 D-1 + D-2 wiring (cross-story UPSTREAM from Story 4.2).
++        return subprocess.Popen(
++            cmd,
++            stdout=subprocess.PIPE,
++            stderr=subprocess.STDOUT,
++            text=True,
++            start_new_session=True,
++        )
++
++    def _parse_event(self, line: str) -> CodexEvent | None:
++        """Parse one stdout JSONL line into a `CodexEvent`, or None to skip.
++
++        Returns ``None`` for: empty lines, non-JSON lines (stderr chatter
++        multiplexed in per D-2), non-dict JSON, and dicts missing a
++        ``type`` discriminator (forward-compat).
++        """
++        stripped = line.strip()
++        if not stripped:
++            return None
++        try:
++            parsed = json.loads(stripped)
++        except json.JSONDecodeError:
++            # Non-JSON line (progress chatter, debug output, stderr
++            # interleaved per D-2). Skip per Story 1b.4 contract.
++            return None
++        if not isinstance(parsed, dict):
++            return None
++        event_type = parsed.get("type")
++        if not isinstance(event_type, str):
++            return None
++        return CodexEvent(event_type=event_type, raw=parsed)
++
++    def _finalize(self, events: list[CodexEvent], exit_code: int) -> AgentRunResult:
++        """Fold the event stream into an `AgentRunResult`.
++
++        Story 11.1 D-3 (cross-story UPSTREAM from Story 4.2 MED-3):
++        when ``exit_code != 0`` AND no terminal ``turn.completed`` event
++        was observed AND no agent_message text was produced, surface a
++        ``[SUBPROCESS_NONZERO_EXIT exit_code=<N>]`` diagnostic marker so
++        consumers can distinguish "agent declined to respond" (empty
++        ``response_text`` on a clean exit) from "binary refused to run"
++        (subprocess failure). M_R11 fail-loud.
++        """
++        terminal = next((e for e in reversed(events) if e.is_terminal), None)
++
++        # Response text: concatenate every `agent_message` item.completed
++        # text in chronological order. Codex emits multiple agent_message
++        # items per turn (intermediate narration + final response — see
++        # the `tool_use` empirical probe at /tmp/codex_tool_probe.jsonl).
++        agent_texts = [e.agent_message_text for e in events if e.agent_message_text]
++        response_text = "\n".join(agent_texts) if agent_texts else ""
++
++        # D-3 cross-story UPSTREAM diagnostic when subprocess failed
++        # silently. Mirrors Story 4.2 `claude_code_cli.py:_finalize` MED-3
++        # patch verbatim modulo the event-type names.
++        if not response_text and exit_code != 0 and terminal is None:
++            response_text = f"[SUBPROCESS_NONZERO_EXIT exit_code={exit_code}]"
++
++        # Tool calls: synthesize `ToolCallTrace` from every completed
++        # command_execution item. Phase-1 carve-out (DF-11.1-S1): full
++        # OTel-span correlation + latency extraction lands in the
++        # observer wiring (mirrors Story 4.2 DF-4.2-S1 + Story 10.1
++        # DF-10.1-S2). ``command_execution`` items don't have a
++        # standard tool name; we use ``"command_execution"`` literal so
++        # downstream `Get Tool Call Names` keywords surface a stable key.
++        tool_calls: list[ToolCallTrace] = []
++        seq = 0
++        for ev in events:
++            payload = ev.command_execution_payload
++            if payload is None:
++                continue
++            cmd_exit_code = payload.get("exit_code")
++            error_marker: str | None = None
++            if isinstance(cmd_exit_code, int) and cmd_exit_code != 0:
++                error_marker = f"exit_code={cmd_exit_code}"
++            tool_calls.append(
++                ToolCallTrace(
++                    name="command_execution",
++                    args={"command": str(payload.get("command") or "")},
++                    result=str(payload.get("aggregated_output") or ""),
++                    error=error_marker,
++                    latency_ms=0.0,  # Phase-1 placeholder; observer wiring is DF-11.1-S1.
++                    source="adapter",
++                    gen_ai_tool_call_id=str(payload.get("id") or ""),
++                    sequence_index=seq,
++                )
++            )
++            seq += 1
++
++        # Usage: from terminal `turn.completed.usage`; zeros fallback on
++        # truncated runs.
++        usage = (
++            terminal.terminal_usage
++            if terminal is not None and terminal.terminal_usage is not None
++            else Usage(input_tokens=0, output_tokens=0)
++        )
++
++        # Cost: Codex events carry NO cost field (D-9 empirical probe).
++        # Phase-1 placeholder 0.0; DF-11.1-S2 tracks cost-catalog
++        # integration for `gpt-5-codex`-tier pricing.
++        cost_usd = 0.0
++
++        # Latency: Codex events carry no per-turn duration field either.
++        # Phase-1 placeholder 0.0; observer wiring would correlate wall-
++        # clock latency in DF-11.1-S1.
++        latency_seconds = 0.0
++
++        # Completeness: "complete" when terminal event present + exit_code 0;
++        # else "truncated".
++        completeness: str = "complete" if terminal is not None and exit_code == 0 else "truncated"
++
++        # MCP coverage per Story 11.1 D-7 (cross-story UPSTREAM from
++        # Stories 10.1 + 10.2 post-HIGH-2 contract): we can't inspect
++        # `mcp_servers` from `_finalize`, so the contract is keyed in
++        # `run()` and `_detect_mcp_coverage` — but Phase-1's
++        # observer-less detection means we default to `"external_mixed"`
++        # whenever any MCP integration is requested at the run layer.
++        # `_finalize` doesn't see `mcp_servers`; the keying is via
++        # `run()` calling `_detect_mcp_coverage(mcp_servers)` and
++        # storing the result on the instance. Phase-1 carve-out for
++        # this story: the helper isn't wired through `_finalize` (the
++        # base `run()` doesn't pass `mcp_servers` to `_finalize`) — so
++        # this method returns the safer default `external_mixed` when
++        # `mcp_servers` was non-empty, else `hosted_in_process`. The
++        # base run() stores mcp_servers as `self._last_mcp_servers` for
++        # this read (set by the wrapped run() override above).
++        mcp_coverage = self._detect_mcp_coverage(getattr(self, "_last_mcp_servers", None))
++
++        return AgentRunResult(
++            response_text=response_text,
++            tool_calls=tool_calls,
++            usage=usage,
++            metadata=AgentRunMetadata(
++                completeness=completeness,  # type: ignore[arg-type]
++                mcp_coverage=mcp_coverage,  # type: ignore[arg-type]
++            ),
++            cost_usd=cost_usd,
++            latency_seconds=latency_seconds,
++            trace_id="",  # Story 11.1 Phase-1 placeholder; Story 5.3 + Epic 5 wire real trace-id.
++        )
++
++    def _detect_mcp_coverage(self, mcp_servers: dict[str, Any] | None) -> str:
++        """Detection-contract per ADR-016 L59 (Story 11.1 D-7).
++
++        - Empty / None ``mcp_servers``: ``"hosted_in_process"``
++          (trivially honest — nothing to cover).
++        - Non-empty ``mcp_servers`` without verified hosted-attachment:
++          ``"external_mixed"`` per ADR-016 L59 safer-default rule.
++
++        The optimistic ``"hosted_in_process"`` branch on non-empty MCP
++        is deferred to DF-11.1-S1 (mirrors Story 10.1 DF-10.1-S2 +
++        Story 10.2 DF-10.2-S1) — Codex JSONL events don't surface MCP-
++        attachment confirmation, so observer-based detection is the
++        only honest upgrade path.
++        """
++        if not mcp_servers:
++            return "hosted_in_process"
++        return "external_mixed"
+diff --git a/tests/fixtures/codex_cli/nonzero_exit.jsonl b/tests/fixtures/codex_cli/nonzero_exit.jsonl
+new file mode 100644
+index 0000000..a3f5915
+--- /dev/null
++++ b/tests/fixtures/codex_cli/nonzero_exit.jsonl
+@@ -0,0 +1,2 @@
++{"type":"thread.started","thread_id":"019e6580-nonzero-exit-fixture"}
++{"type":"turn.started"}
+diff --git a/tests/fixtures/codex_cli/simple_prompt.jsonl b/tests/fixtures/codex_cli/simple_prompt.jsonl
+new file mode 100644
+index 0000000..058d62b
+--- /dev/null
++++ b/tests/fixtures/codex_cli/simple_prompt.jsonl
+@@ -0,0 +1,4 @@
++{"type":"thread.started","thread_id":"019e6580-365b-74c0-ac9b-f4df6d86b5cd"}
++{"type":"turn.started"}
++{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Hi"}}
++{"type":"turn.completed","usage":{"input_tokens":23160,"cached_input_tokens":4480,"output_tokens":5,"reasoning_output_tokens":0}}
+diff --git a/tests/fixtures/codex_cli/tool_use.jsonl b/tests/fixtures/codex_cli/tool_use.jsonl
+new file mode 100644
+index 0000000..49d5afe
+--- /dev/null
++++ b/tests/fixtures/codex_cli/tool_use.jsonl
+@@ -0,0 +1,7 @@
++{"type":"thread.started","thread_id":"019e6580-6ee1-7610-9e9e-495f9cc1997c"}
++{"type":"turn.started"}
++{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Running `echo hello` in the workspace shell and capturing the output."}}
++{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc 'echo hello'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
++{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc 'echo hello'","aggregated_output":"hello\n","exit_code":0,"status":"completed"}}
++{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"`echo hello` produced:\n\n```text\nhello\n```"}}
++{"type":"turn.completed","usage":{"input_tokens":46471,"cached_input_tokens":43776,"output_tokens":114,"reasoning_output_tokens":43}}
+diff --git a/tests/fixtures/codex_cli/truncated.jsonl b/tests/fixtures/codex_cli/truncated.jsonl
+new file mode 100644
+index 0000000..815038b
+--- /dev/null
++++ b/tests/fixtures/codex_cli/truncated.jsonl
+@@ -0,0 +1,3 @@
++{"type":"thread.started","thread_id":"019e6580-truncated-fixture"}
++{"type":"turn.started"}
++{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Starting work..."}}
+diff --git a/tests/integration/test_codex_cli_live.py b/tests/integration/test_codex_cli_live.py
+new file mode 100644
+index 0000000..e74f965
+--- /dev/null
++++ b/tests/integration/test_codex_cli_live.py
+@@ -0,0 +1,54 @@
++# Copyright 2026 Many Kasiriha
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++"""Env-gated live integration test for `CodexCLIAdapter` (Story 11.1 AC-11.1.5).
++
++Skipped unless ``AGENTEVAL_INTEGRATION_TESTS=1`` AND the `codex` binary
++is on ``$PATH`` AND a Codex login session exists. CI does NOT run this;
++manual-validation-only.
++
++Per Story 4.2 precedent (`tests/integration/test_claude_code_cli_live.py`):
++single-shot "say hi" against the real binary + assert non-empty response
+++ usage > 0.
++"""
++
++from __future__ import annotations
++
++import os
++import shutil
++
++import pytest
++
++from AgentEval.coding_agent.codex_cli import CodexCLIAdapter
++
++
++@pytest.mark.skipif(
++    os.environ.get("AGENTEVAL_INTEGRATION_TESTS") != "1",
++    reason="Live SDK integration tests gated behind AGENTEVAL_INTEGRATION_TESTS=1",
++)
++@pytest.mark.skipif(
++    shutil.which("codex") is None,
++    reason="codex binary not on $PATH",
++)
++def test_codex_cli_live_say_hi() -> None:
++    """Drives ``codex exec --json 'Say hi in one word, no thinking.'`` against
++    the real binary + asserts the AgentRunResult is non-empty + reports
++    positive usage."""
++    adapter = CodexCLIAdapter()
++    result = adapter.run("Say hi in one word, no thinking.")
++    assert result.response_text, "Expected non-empty response_text from live codex run"
++    assert result.usage.output_tokens > 0, "Expected positive output_tokens from live codex run"
++    # Empty mcp_servers path → trivially honest hosted_in_process per ADR-016
++    assert result.metadata.mcp_coverage == "hosted_in_process"
++    assert result.metadata.completeness == "complete"
+diff --git a/tests/unit/coding_agent/conftest.py b/tests/unit/coding_agent/conftest.py
+index f5bcb4a..9ee61f5 100644
+--- a/tests/unit/coding_agent/conftest.py
++++ b/tests/unit/coding_agent/conftest.py
+@@ -52,3 +52,27 @@ def mock_claude_version(monkeypatch: pytest.MonkeyPatch) -> None:
+         return real_run(cmd, **kwargs)
+ 
+     monkeypatch.setattr(subprocess, "run", _fake_run)
++
++
++@pytest.fixture(autouse=True)
++def mock_codex_version(monkeypatch: pytest.MonkeyPatch) -> None:
++    """Monkeypatch `subprocess.run` so `_assert_binary_version("codex")` passes
++    without requiring the real `codex` binary in CI.
++
++    Story 11.1 D-4 (cross-story UPSTREAM from Story 4.2 Edge-cases MED-1):
++    fixture hoisted to `conftest.py` directly from the start so future
++    cross-module Codex CLI tests inherit the mock automatically.
++
++    Default version: ``codex-cli 0.133.0`` (local probe 2026-05-26).
++    The `codex-cli ` prefix is included in the fake stdout so the
++    base `_SEMVER_RE.search()` extracts ``0.133.0`` from the suffix.
++    Scope: package-wide autouse across `tests/unit/coding_agent/`.
++    """
++    real_run = subprocess.run
++
++    def _fake_run(cmd: Any, **kwargs: Any) -> Any:
++        if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "codex" and cmd[1] == "--version":
++            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="codex-cli 0.133.0\n", stderr="")
++        return real_run(cmd, **kwargs)
++
++    monkeypatch.setattr(subprocess, "run", _fake_run)
+diff --git a/tests/unit/coding_agent/test_codex_cli.py b/tests/unit/coding_agent/test_codex_cli.py
+new file mode 100644
+index 0000000..23bd0b1
+--- /dev/null
++++ b/tests/unit/coding_agent/test_codex_cli.py
+@@ -0,0 +1,502 @@
++# Copyright 2026 Many Kasiriha
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++"""Unit tests for `CodexCLIAdapter` (Story 11.1).
++
++Mirrors `tests/unit/coding_agent/test_claude_code_cli.py` patterns +
++adds cross-story UPSTREAM regression guards per
++`feedback_cross_story_upstream_lesson_propagation` (Epic 10 retro NEW
++norm, 1st application). Each guard test name includes the source-
++story / source-finding citation in its docstring.
++"""
++
++from __future__ import annotations
++
++import importlib.metadata
++import json
++import subprocess
++from pathlib import Path
++from typing import Any
++from unittest.mock import MagicMock
++
++import pytest
++
++from AgentEval.coding_agent.base import SubprocessAdapter
++from AgentEval.coding_agent.codex_cli import (
++    CodexCLIAdapter,
++    CodexEvent,
++)
++from AgentEval.errors import UnsupportedBinaryVersionError
++from AgentEval.types import AgentRunResult, ToolCallTrace
++
++FIXTURE_DIR = Path(__file__).resolve().parent.parent.parent / "fixtures" / "codex_cli"
++
++
++def _read_jsonl(name: str) -> list[dict[str, Any]]:
++    """Load a JSONL fixture file as a list of parsed dicts."""
++    return [json.loads(line) for line in (FIXTURE_DIR / name).read_text().splitlines() if line.strip()]
++
++
++# --------------------------------------------------------------------------- #
++# Version gate (4 tests per AC-11.1.4)                                        #
++# --------------------------------------------------------------------------- #
++
++
++def test_version_gate_passes_with_default_mock_version() -> None:
++    """Conftest's `mock_codex_version` fixture stubs ``codex --version`` →
++    ``codex-cli 0.133.0``, which is in range. Construction succeeds."""
++    adapter = CodexCLIAdapter()
++    assert adapter.name == "codex-cli"
++
++
++def test_version_gate_raises_when_binary_missing(monkeypatch: pytest.MonkeyPatch) -> None:
++    """FileNotFoundError on ``codex --version`` → `UnsupportedBinaryVersionError`."""
++
++    def _missing(cmd: Any, **kwargs: Any) -> Any:
++        if isinstance(cmd, list) and cmd[:2] == ["codex", "--version"]:
++            raise FileNotFoundError("codex: command not found")
++        return subprocess.run(cmd, **kwargs)
++
++    monkeypatch.setattr(subprocess, "run", _missing)
++    with pytest.raises(UnsupportedBinaryVersionError):
++        CodexCLIAdapter()
++
++
++def test_version_gate_raises_below_floor(monkeypatch: pytest.MonkeyPatch) -> None:
++    """``codex-cli 0.99.0`` is below the floor 0.100.0 → typed error."""
++
++    def _below(cmd: Any, **kwargs: Any) -> Any:
++        if isinstance(cmd, list) and cmd[:2] == ["codex", "--version"]:
++            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="codex-cli 0.99.0\n", stderr="")
++        return subprocess.run(cmd, **kwargs)
++
++    monkeypatch.setattr(subprocess, "run", _below)
++    with pytest.raises(UnsupportedBinaryVersionError) as exc_info:
++        CodexCLIAdapter()
++    assert "0.99.0" in str(exc_info.value)
++
++
++def test_version_gate_raises_above_ceiling(monkeypatch: pytest.MonkeyPatch) -> None:
++    """``codex-cli 1.0.0`` is at the exclusive ceiling 1.0.0 → typed error."""
++
++    def _above(cmd: Any, **kwargs: Any) -> Any:
++        if isinstance(cmd, list) and cmd[:2] == ["codex", "--version"]:
++            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="codex-cli 1.0.0\n", stderr="")
++        return subprocess.run(cmd, **kwargs)
++
++    monkeypatch.setattr(subprocess, "run", _above)
++    with pytest.raises(UnsupportedBinaryVersionError):
++        CodexCLIAdapter()
++
++
++# --------------------------------------------------------------------------- #
++# Constructor + ABC inheritance                                                #
++# --------------------------------------------------------------------------- #
++
++
++def test_inherits_from_subprocess_adapter() -> None:
++    """Story 11.1 AC-11.1.1: must subclass `SubprocessAdapter` per ADR-003."""
++    assert issubclass(CodexCLIAdapter, SubprocessAdapter)
++
++
++def test_constructor_accepts_model_kwarg() -> None:
++    """`__init__(*, model="gpt-5-codex")` stores the model + forwards **kwargs."""
++    adapter = CodexCLIAdapter(model="gpt-5-codex", extra_key="extra_value")
++    assert adapter._model == "gpt-5-codex"
++    assert adapter._adapter_config["extra_key"] == "extra_value"
++
++
++def test_constructor_model_defaults_to_none() -> None:
++    """Default `model=None` per AC-11.1.1 signature."""
++    adapter = CodexCLIAdapter()
++    assert adapter._model is None
++
++
++def test_name_property_returns_codex_cli() -> None:
++    """Adapter name MUST be ``codex-cli`` (matches entry-point slug)."""
++    assert CodexCLIAdapter().name == "codex-cli"
++
++
++def test_version_property_returns_distribution_version() -> None:
++    """`SubprocessAdapter.version` returns the distribution version string."""
++    adapter = CodexCLIAdapter()
++    assert isinstance(adapter.version, str)
++    assert adapter.version  # non-empty
++
++
++# --------------------------------------------------------------------------- #
++# `_parse_event` per AC-11.1.4 (7 tests)                                       #
++# --------------------------------------------------------------------------- #
++
++
++def test_parse_event_thread_started() -> None:
++    """``thread.started`` produces a `CodexEvent` carrying ``thread_id`` in raw."""
++    event = CodexCLIAdapter()._parse_event('{"type":"thread.started","thread_id":"abc-123"}')
++    assert event is not None
++    assert event.event_type == "thread.started"
++    assert event.raw["thread_id"] == "abc-123"
++
++
++def test_parse_event_turn_started() -> None:
++    event = CodexCLIAdapter()._parse_event('{"type":"turn.started"}')
++    assert event is not None
++    assert event.event_type == "turn.started"
++
++
++def test_parse_event_item_completed_agent_message() -> None:
++    """``item.completed`` with ``item.type=agent_message`` exposes ``agent_message_text``."""
++    line = '{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Hi"}}'
++    event = CodexCLIAdapter()._parse_event(line)
++    assert event is not None
++    assert event.event_type == "item.completed"
++    assert event.item_type == "agent_message"
++    assert event.agent_message_text == "Hi"
++
++
++def test_parse_event_item_completed_command_execution() -> None:
++    """``item.completed`` with ``item.type=command_execution`` exposes payload."""
++    line = (
++        '{"type":"item.completed","item":{"id":"item_1","type":"command_execution",'
++        '"command":"echo hi","aggregated_output":"hi\\n","exit_code":0,"status":"completed"}}'
++    )
++    event = CodexCLIAdapter()._parse_event(line)
++    assert event is not None
++    payload = event.command_execution_payload
++    assert payload is not None
++    assert payload["command"] == "echo hi"
++    assert payload["aggregated_output"] == "hi\n"
++    assert payload["exit_code"] == 0
++
++
++def test_parse_event_turn_completed_usage() -> None:
++    line = (
++        '{"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":50,'
++        '"output_tokens":20,"reasoning_output_tokens":5}}'
++    )
++    event = CodexCLIAdapter()._parse_event(line)
++    assert event is not None
++    assert event.is_terminal
++    usage = event.terminal_usage
++    assert usage is not None
++    assert usage.input_tokens == 100
++    assert usage.output_tokens == 20
++    assert usage.cached_input_tokens == 50
++
++
++def test_parse_event_returns_none_on_non_json_line() -> None:
++    """Stderr chatter multiplexed in per D-2 must be skipped without raising."""
++    assert CodexCLIAdapter()._parse_event("Starting up...") is None
++    assert CodexCLIAdapter()._parse_event("") is None
++    assert CodexCLIAdapter()._parse_event("   \n") is None
++
++
++def test_parse_event_returns_none_on_unknown_type() -> None:
++    """Forward-compat: unknown event types are skipped (return None)."""
++    event = CodexCLIAdapter()._parse_event('{"type":42}')  # non-string type
++    assert event is None
++    event2 = CodexCLIAdapter()._parse_event("[1, 2, 3]")  # non-dict JSON
++    assert event2 is None
++
++
++# --------------------------------------------------------------------------- #
++# `_finalize` against the 4 fixtures (AC-11.1.4)                               #
++# --------------------------------------------------------------------------- #
++
++
++def _events_from_fixture(name: str) -> list[CodexEvent]:
++    raw_events = _read_jsonl(name)
++    return [CodexEvent(event_type=str(e.get("type") or "unknown"), raw=e) for e in raw_events]
++
++
++def test_finalize_simple_prompt_happy_path() -> None:
++    """`simple_prompt.jsonl` (real probe): clean exit + terminal + agent_message."""
++    events = _events_from_fixture("simple_prompt.jsonl")
++    result = CodexCLIAdapter()._finalize(events, exit_code=0)
++    assert isinstance(result, AgentRunResult)
++    assert result.response_text == "Hi"
++    assert result.tool_calls == []
++    assert result.usage.input_tokens == 23160
++    assert result.usage.output_tokens == 5
++    assert result.usage.cached_input_tokens == 4480
++    assert result.metadata.completeness == "complete"
++    assert result.metadata.mcp_coverage == "hosted_in_process"
++    assert result.cost_usd == 0.0
++
++
++def test_finalize_tool_use_extracts_command_execution() -> None:
++    """`tool_use.jsonl` (real probe): two agent_messages bracketing a command_execution."""
++    events = _events_from_fixture("tool_use.jsonl")
++    result = CodexCLIAdapter()._finalize(events, exit_code=0)
++    # Both narration + final answer concatenated
++    assert "Running `echo hello`" in result.response_text
++    assert "`echo hello` produced" in result.response_text
++    # Exactly one command_execution tool call projected
++    assert len(result.tool_calls) == 1
++    tc = result.tool_calls[0]
++    assert isinstance(tc, ToolCallTrace)
++    assert tc.name == "command_execution"
++    assert tc.args == {"command": "/bin/bash -lc 'echo hello'"}
++    assert tc.result == "hello\n"
++    assert tc.error is None
++    assert tc.source == "adapter"
++    assert tc.sequence_index == 0
++    assert result.metadata.completeness == "complete"
++
++
++def test_finalize_truncated_no_terminal_yields_truncated() -> None:
++    """`truncated.jsonl`: missing `turn.completed` → completeness=truncated.
++
++    Story 4.2 Edge-cases MED-4 lesson UPSTREAM (test-name vs assertion-body
++    match): the test name explicitly states "no_terminal" because that's
++    the load-bearing condition, NOT the exit code.
++    """
++    events = _events_from_fixture("truncated.jsonl")
++    result = CodexCLIAdapter()._finalize(events, exit_code=0)
++    # Has the narration, but no terminal → truncated
++    assert result.response_text == "Starting work..."
++    assert result.metadata.completeness == "truncated"
++    # Usage falls back to zeros on truncated
++    assert result.usage.input_tokens == 0
++    assert result.usage.output_tokens == 0
++
++
++def test_finalize_nonzero_exit_with_no_message_emits_diagnostic() -> None:
++    """Story 11.1 D-3 (cross-story UPSTREAM from Story 4.2 MED-3):
++    when exit_code != 0 AND no terminal AND no agent_message text, surface
++    the ``[SUBPROCESS_NONZERO_EXIT exit_code=<N>]`` diagnostic marker
++    instead of silently returning empty response_text."""
++    events = _events_from_fixture("nonzero_exit.jsonl")
++    result = CodexCLIAdapter()._finalize(events, exit_code=2)
++    assert result.response_text == "[SUBPROCESS_NONZERO_EXIT exit_code=2]"
++    assert result.metadata.completeness == "truncated"
++
++
++# --------------------------------------------------------------------------- #
++# Cross-story UPSTREAM regression guards (per `feedback_cross_story_upstream_lesson_propagation`)
++# --------------------------------------------------------------------------- #
++
++
++def test_spawn_passes_prompt_as_positional_argv(monkeypatch: pytest.MonkeyPatch) -> None:
++    """Story 11.1 D-1 (cross-story UPSTREAM from Story 4.2 HIGH-A):
++    the prompt MUST be passed as positional argv to ``codex exec``, NOT
++    via stdin (stdin caused 4-second indefinite hang on Claude Code)."""
++    captured: dict[str, Any] = {}
++
++    def _fake_popen(cmd: list[str], **kwargs: Any) -> Any:
++        captured["cmd"] = cmd
++        captured["kwargs"] = kwargs
++        m = MagicMock()
++        m.stdout = iter([])
++        m.wait.return_value = 0
++        return m
++
++    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
++    adapter = CodexCLIAdapter()
++    adapter._spawn("Find the largest file.")
++    assert captured["cmd"][0] == "codex"
++    assert captured["cmd"][1] == "exec"
++    # The prompt is the LAST positional argument
++    assert captured["cmd"][-1] == "Find the largest file."
++
++
++def test_spawn_uses_stderr_stdout_multiplex(monkeypatch: pytest.MonkeyPatch) -> None:
++    """Story 11.1 D-2 (cross-story UPSTREAM from Story 4.2 HIGH-B):
++    ``stderr=subprocess.STDOUT`` multiplex avoids pipe-deadlock under
++    verbose subprocess output."""
++    captured: dict[str, Any] = {}
++
++    def _fake_popen(cmd: list[str], **kwargs: Any) -> Any:
++        captured["kwargs"] = kwargs
++        m = MagicMock()
++        m.stdout = iter([])
++        m.wait.return_value = 0
++        return m
++
++    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
++    CodexCLIAdapter()._spawn("hi")
++    assert captured["kwargs"]["stderr"] == subprocess.STDOUT
++
++
++def test_spawn_uses_start_new_session_true(monkeypatch: pytest.MonkeyPatch) -> None:
++    """Story 1b.4 D1 process-group hygiene: ``start_new_session=True`` so
++    cleanup-on-exception can ``os.killpg`` the whole subprocess group."""
++    captured: dict[str, Any] = {}
++
++    def _fake_popen(cmd: list[str], **kwargs: Any) -> Any:
++        captured["kwargs"] = kwargs
++        m = MagicMock()
++        m.stdout = iter([])
++        m.wait.return_value = 0
++        return m
++
++    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
++    CodexCLIAdapter()._spawn("hi")
++    assert captured["kwargs"]["start_new_session"] is True
++    assert captured["kwargs"]["text"] is True
++    assert captured["kwargs"]["stdout"] == subprocess.PIPE
++
++
++def test_spawn_includes_dangerous_flags(monkeypatch: pytest.MonkeyPatch) -> None:
++    """The non-interactive sandbox-bypass flags MUST be in the argv list."""
++    captured: dict[str, Any] = {}
++
++    def _fake_popen(cmd: list[str], **kwargs: Any) -> Any:
++        captured["cmd"] = cmd
++        m = MagicMock()
++        m.stdout = iter([])
++        m.wait.return_value = 0
++        return m
++
++    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
++    CodexCLIAdapter()._spawn("hi")
++    assert "--dangerously-bypass-approvals-and-sandbox" in captured["cmd"]
++    assert "--skip-git-repo-check" in captured["cmd"]
++    assert "--json" in captured["cmd"]
++
++
++def _make_fake_popen_class(fixture_filename: str, returncode: int = 0) -> type:
++    """Build a `_FakePopen` class replaying a fixture file (Story 4.2 e2e
++    pattern — closeable stdout via `io.StringIO` so the base `run()`'s
++    `proc.stdout.close()` cleanup path works)."""
++    import io
++
++    fixture_text = (FIXTURE_DIR / fixture_filename).read_text()
++
++    class _FakePopen:
++        def __init__(self, cmd: Any, **kwargs: Any) -> None:
++            self.cmd = cmd
++            self.stdout = io.StringIO(fixture_text)
++            self.stderr = None
++            self.returncode = returncode
++            self.pid = 99999
++
++        def wait(self, timeout: float | None = None) -> int:
++            return self.returncode
++
++        def terminate(self) -> None:
++            pass
++
++    return _FakePopen
++
++
++def test_run_end_to_end_against_faked_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
++    """Story 11.1 cross-story UPSTREAM (Story 4.2 Blind H2 closure mirror):
++    drives the full template-method `run()` chain end-to-end with a faked
++    Popen replaying `simple_prompt.jsonl`. Pre-edit zero tests exercised
++    this path."""
++    monkeypatch.setattr(subprocess, "Popen", _make_fake_popen_class("simple_prompt.jsonl"))
++    fake_listener = MagicMock()
++    monkeypatch.setattr("AgentEval.telemetry.listener.record_active_run_metadata", fake_listener)
++
++    adapter = CodexCLIAdapter()
++    result = adapter.run("Say hi in one word, no thinking.")
++    assert result.response_text == "Hi"
++    assert result.metadata.completeness == "complete"
++    assert result.metadata.mcp_coverage == "hosted_in_process"  # empty mcp_servers
++    assert result.usage.input_tokens == 23160
++    # Verify the listener helper was called once (HIGH-4 lesson applied UPSTREAM)
++    assert fake_listener.call_count == 1
++    call_kwargs = fake_listener.call_args.kwargs
++    assert call_kwargs["adapter_name"] == "codex-cli"
++    assert call_kwargs["completeness"] == "complete"
++
++
++def test_run_with_unverified_mcp_marks_external_mixed(monkeypatch: pytest.MonkeyPatch) -> None:
++    """Story 11.1 D-7 (cross-story UPSTREAM from Stories 10.1 + 10.2):
++    non-empty ``mcp_servers`` MUST be marked ``external_mixed`` per
++    ADR-016 L59 (safer-default rule) until observer wiring lands
++    (DF-11.1-S1)."""
++    monkeypatch.setattr(subprocess, "Popen", _make_fake_popen_class("simple_prompt.jsonl"))
++    monkeypatch.setattr("AgentEval.telemetry.listener.record_active_run_metadata", MagicMock())
++
++    adapter = CodexCLIAdapter()
++    # Non-empty mcp_servers with a fake handle should NOT optimistically
++    # mark hosted_in_process.
++    fake_handle = MagicMock()
++    fake_handle.transport = "stdio"
++    result = adapter.run("hi", mcp_servers={"echo": fake_handle})
++    assert result.metadata.mcp_coverage == "external_mixed"
++
++
++def test_detect_mcp_coverage_empty_returns_hosted_in_process() -> None:
++    """Empty / None mcp_servers → trivially honest `hosted_in_process`."""
++    adapter = CodexCLIAdapter()
++    assert adapter._detect_mcp_coverage(None) == "hosted_in_process"
++    assert adapter._detect_mcp_coverage({}) == "hosted_in_process"
++
++
++def test_detect_mcp_coverage_nonempty_returns_external_mixed() -> None:
++    """Non-empty mcp_servers → ADR-016 L59 safer-default `external_mixed`."""
++    adapter = CodexCLIAdapter()
++    assert adapter._detect_mcp_coverage({"any": object()}) == "external_mixed"
++
++
++# --------------------------------------------------------------------------- #
++# `CodexEvent` accessors                                                       #
++# --------------------------------------------------------------------------- #
++
++
++def test_codex_event_post_init_defensive_copy() -> None:
++    """`__post_init__` shallow-copies raw so caller mutations don't leak."""
++    raw = {"type": "turn.started", "_marker": "original"}
++    event = CodexEvent(event_type="turn.started", raw=raw)
++    raw["_marker"] = "mutated"
++    assert event.raw["_marker"] == "original"
++
++
++def test_codex_event_item_type_returns_empty_for_non_item_event() -> None:
++    """`item_type` returns empty string for non-`item.*` events."""
++    event = CodexEvent(event_type="turn.completed", raw={"type": "turn.completed"})
++    assert event.item_type == ""
++
++
++def test_codex_event_command_execution_payload_returns_none_for_in_progress() -> None:
++    """In-progress (`item.started`) commands return None — we only project completed ones."""
++    line = (
++        '{"type":"item.started","item":{"id":"item_1","type":"command_execution",'
++        '"command":"echo hi","aggregated_output":"","exit_code":null,"status":"in_progress"}}'
++    )
++    event = CodexCLIAdapter()._parse_event(line)
++    assert event is not None
++    assert event.command_execution_payload is None
++
++
++def test_finalize_command_execution_with_nonzero_exit_marks_error() -> None:
++    """A command_execution with non-zero exit_code projects with `error` set."""
++    line = (
++        '{"type":"item.completed","item":{"id":"item_2","type":"command_execution",'
++        '"command":"false","aggregated_output":"","exit_code":1,"status":"completed"}}'
++    )
++    event = CodexCLIAdapter()._parse_event(line)
++    assert event is not None
++    terminal = CodexEvent(event_type="turn.completed", raw={"type": "turn.completed", "usage": {}})
++    result = CodexCLIAdapter()._finalize([event, terminal], exit_code=0)
++    assert len(result.tool_calls) == 1
++    assert result.tool_calls[0].error == "exit_code=1"
++
++
++# --------------------------------------------------------------------------- #
++# Entry-point registration (AC-11.1.6 — conformance smoke)                     #
++# --------------------------------------------------------------------------- #
++
++
++def test_entry_point_registration() -> None:
++    """`importlib.metadata.entry_points` returns `CodexCLIAdapter` under
++    `agenteval.coding_agents` slug `codex-cli`. Conformance smoke per
++    AC-11.1.6 (mirrors Story 10.1's in-suite smoke pattern)."""
++    eps = importlib.metadata.entry_points(group="agenteval.coding_agents")
++    matching = [ep for ep in eps if ep.name == "codex-cli"]
++    assert len(matching) == 1, f"Expected exactly one `codex-cli` entry-point; got {[ep.name for ep in eps]}"
++    loaded = matching[0].load()
++    assert loaded is CodexCLIAdapter
+diff --git a/uv.lock b/uv.lock
+index 628f469..3ac6f1d 100644
+--- a/uv.lock
++++ b/uv.lock
+@@ -1928,7 +1928,7 @@ requires-dist = [
+     { name = "robotframework-pythonlibcore", specifier = ">=4.5" },
+     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6,<1.0" },
+ ]
+-provides-extras = ["dev", "claude-code", "claude-sdk", "openai-agents"]
++provides-extras = ["dev", "claude-code", "claude-sdk", "openai-agents", "codex"]
+ 
+ [[package]]
+ name = "robotframework-assertion-engine"

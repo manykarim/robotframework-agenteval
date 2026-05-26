@@ -52,3 +52,27 @@ def mock_claude_version(monkeypatch: pytest.MonkeyPatch) -> None:
         return real_run(cmd, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", _fake_run)
+
+
+@pytest.fixture(autouse=True)
+def mock_codex_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Monkeypatch `subprocess.run` so `_assert_binary_version("codex")` passes
+    without requiring the real `codex` binary in CI.
+
+    Story 11.1 D-4 (cross-story UPSTREAM from Story 4.2 Edge-cases MED-1):
+    fixture hoisted to `conftest.py` directly from the start so future
+    cross-module Codex CLI tests inherit the mock automatically.
+
+    Default version: ``codex-cli 0.133.0`` (local probe 2026-05-26).
+    The `codex-cli ` prefix is included in the fake stdout so the
+    base `_SEMVER_RE.search()` extracts ``0.133.0`` from the suffix.
+    Scope: package-wide autouse across `tests/unit/coding_agent/`.
+    """
+    real_run = subprocess.run
+
+    def _fake_run(cmd: Any, **kwargs: Any) -> Any:
+        if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "codex" and cmd[1] == "--version":
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="codex-cli 0.133.0\n", stderr="")
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)

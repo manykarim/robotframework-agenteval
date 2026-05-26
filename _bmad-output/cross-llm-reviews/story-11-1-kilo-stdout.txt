@@ -1,0 +1,5 @@
+Now I have enough material. Let me verify a few more specific points before writing the findings.
+Now I have enough information. Let me write the findings.
+Findings written to `_bmad-output/cross-llm-reviews/story-11-1-kilo-findings.md`.
+
+**2 HIGH, 5 MED, 2 LOW** — most critical is **H-1**: `terminal_usage` silently drops `reasoning_output_tokens` (4th field from Codex's `turn.completed.usage`) because the `Usage` dataclass has only 3 fields (`input_tokens`, `output_tokens`, `cached_input_tokens`). This is a data-loss bug that blocks DF-11.1-S2 (C74 cost-catalog integration) since C74 explicitly requires all 4 token fields. H-2 flags a confusing citation of the pre-renumbered "ADR-A6 L384" in an inline docstring — the clean citation is `ADR-016 L59` per the story spec.
