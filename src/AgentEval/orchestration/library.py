@@ -12,6 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# ruff: noqa: E501
+# Browser-Library-style docstring tables (`| =Arguments= | =Description= |`)
+# can carry long descriptions on a single physical line; libdoc renders
+# them correctly. The per-line 120-char limit is waived for this file
+# per Phase 2 docstring-refresh proposal (2026-05-26).
+
 """Orchestration Library — `Send Prompt` + `Run Scenario` keywords (Story 4.3).
 
 Implements PRD FR14 (Send Prompt) + FR15 (Run Scenario) + FR16
@@ -47,6 +53,10 @@ from AgentEval.scenarios.schema import Scenario
 from AgentEval.types import AgentRunResult
 
 __all__ = ["OrchestrationLibrary"]
+
+# Browser-Library-style docstring migration marker (Phase 2, 2026-05-26).
+# See `tests/unit/conventions/test_docstring_browser_style.py`.
+_BROWSER_STYLE_MIGRATED = True
 
 
 # Story 4.3 code-review 3-way HIGH-A fix 2026-05-20 (Blind H2 + Edge-cases H1 +
@@ -121,34 +131,42 @@ class OrchestrationLibrary:
         mcp_servers: dict[str, Any] | str | None = None,
         **kwargs: Any,
     ) -> AgentRunResult:
-        """Execute a single-shot prompt against a coding-agent adapter (PRD FR14).
+        """Executes a single-shot prompt against a coding-agent adapter (PRD FR14).
 
         [Tier 2 — Stochastic Single-Shot] — invokes the named adapter's
-        `run()` method per Story 1b.4 ratified CodingAgentAdapter Protocol.
+        ``run()`` method per the `CodingAgentAdapter` Protocol. Returns
+        an ``AgentRunResult`` carrying ``response_text``, ``tool_calls``,
+        ``usage``, ``metadata`` (with ``completeness`` + ``mcp_coverage``),
+        ``cost_usd``, ``latency_seconds``, and ``trace_id``.
 
-        Args:
-            adapter: Adapter name registered via `agenteval.coding_agents`
-                entry-points group (default: `"generic"` — Story 4.1
-                LiteLLM-backed). Resolved via Story 1b.3 `get_adapter()`.
-            prompt: Prompt text to send to the agent.
-            mcp_servers: Phase-1 stub: dict[str, ServerHandle] forwarded
-                to adapter.run(mcp_servers=...). String form (comma-separated
-                names) is the user-facing convenience but Story 4.3
-                Phase-1 doesn't yet resolve names → handles (DF-4.3-S2).
-                Default None passes through cleanly.
-            **kwargs: Provider/adapter-specific forward-compat kwargs
-                (e.g., `model="anthropic/claude-sonnet-4-6"`, `temperature=0.5`).
+        | =Arguments= | =Description= |
+        | ``adapter`` | Adapter name registered via the ``agenteval.coding_agents`` entry-points group. Defaults to ``"generic"`` (LiteLLM-backed). |
+        | ``prompt`` | Prompt text to send to the agent. |
+        | ``mcp_servers`` | Optional ``dict[str, ServerHandle]`` of attached MCP servers. Phase-1: comma-separated name strings raise ``NotImplementedError`` (DF-4.3-S2 — name resolution to handles deferred). |
 
-        Returns:
-            `AgentRunResult` with the agent's response per Story 1b.4
-            ratified shape.
+        Additional keyword arguments are forwarded to the adapter — caller
+        kwargs that match the adapter's ``__init__`` signature flow to
+        construction; the rest flow to ``run()``. Useful for
+        ``model="anthropic/claude-sonnet-4-6"``, ``temperature=0.5``, etc.
 
-        Raises:
-            AdapterDiscoveryError: when `adapter` name is unknown.
-            NotImplementedError: when `mcp_servers` is non-empty (DF-4.3-S2
-                + DF-4.1-S2 + DF-4.2-S1 — adapter-side integration is
-                Phase-1.5).
-        """
+        Raises ``AdapterDiscoveryError`` when the ``adapter`` name is not
+        registered. Raises ``NotImplementedError`` on comma-separated
+        ``mcp_servers`` name strings until DF-4.3-S2 lands the name →
+        handle resolver (pass ``mcp_servers={'name': handle}`` directly to
+        forward Phase-1).
+
+        Example:
+        | ${result} =    `Send Prompt`    prompt=Hello, world.
+        | ${result} =    `Send Prompt`    adapter=claude-code-cli    prompt=Run the build.
+        | ${result} =    `Send Prompt`    adapter=generic    prompt=Search    model=anthropic/claude-sonnet-4-6
+        | `Tool Call Should Have Occurred`    ${result}    web_search
+
+        Notes:
+        - PRD FR14 ratifies the single-prompt orchestration contract.
+        - Adapter discovery per Story 1b.3 + ADR-013 entry-points.
+        - ``cost_usd`` is 0.0 on the Mock provider; non-zero on real adapters per Story 8a.1.
+        - Sibling keyword: `Run Scenario` for multi-eval YAML-driven dispatch (Tier-3).
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         # Story 4.3 code-review 2-way HIGH-C fix 2026-05-20: inject the
         # library-level `provider` default when caller didn't pass one.
         # Preserves PRD FR41 precedence (call kwarg > library config).
@@ -201,34 +219,42 @@ class OrchestrationLibrary:
         mcp_servers: dict[str, Any] | str | None = None,
         **kwargs: Any,
     ) -> list[AgentRunResult]:
-        """Execute a scenario YAML file's `evals[]` against an adapter (PRD FR15).
+        """Executes a scenario YAML file's ``evals[]`` against an adapter (PRD FR15).
 
         [Tier 3 — Stochastic Fan-Out] — loads the scenario YAML via
-        `scenarios.loader.load_scenario()`, validates against the
-        `Scenario` schema (raises `InvalidScenarioYAMLError` per
-        Story 4.3 catalog amendment 18th leaf), then dispatches each
-        eval's prompt to `adapter.run()` `eval.repeat` times.
+        ``load_scenario()``, validates against the ``Scenario`` schema,
+        then dispatches each eval's prompt to ``adapter.run()`` ``repeat``
+        times. Returns a flat ``list[AgentRunResult]`` of length
+        ``sum(eval.repeat for eval in scenario.evals)``.
 
-        Args:
-            adapter: Adapter name (default `"generic"`). Per-scenario
-                `agent:` field in the YAML OVERRIDES this kwarg
-                (precedence per PRD FR41 spirit — YAML beats default
-                but not explicit kwarg per FR15's "scenario YAML
-                specifies model/provider/agent" wording).
-            scenario: Path to the scenario YAML file.
-            mcp_servers: Phase-1 stub (see `Send Prompt` for semantics).
-            **kwargs: Adapter forward-compat kwargs.
+        | =Arguments= | =Description= |
+        | ``adapter`` | Adapter name. Per-scenario ``agent:`` field in the YAML overrides this kwarg per FR15 ("scenario YAML specifies agent" — YAML beats default but not explicit kwarg). |
+        | ``scenario`` | Filesystem path to the scenario YAML file. |
+        | ``mcp_servers`` | Optional ``dict[str, ServerHandle]``. Phase-1: comma-separated name strings raise ``NotImplementedError`` (DF-4.3-S2). |
 
-        Returns:
-            List of `AgentRunResult` records — one per eval execution.
-            For an `evals[]` of N entries with `repeat: k` each, length
-            is N * k.
+        Additional keyword arguments are split between adapter
+        constructor + ``run()`` per the same signature-introspection
+        rule as `Send Prompt`. Scenario-YAML ``model:`` /
+        ``provider:`` fields inject into the merged kwargs unless the
+        caller already passed them.
 
-        Raises:
-            InvalidScenarioYAMLError: on YAML parse / schema violation.
-            AdapterDiscoveryError: on unknown adapter name.
-            NotImplementedError: on non-empty `mcp_servers` (DF-4.3-S2).
-        """
+        Raises ``InvalidScenarioYAMLError`` on YAML parse / schema
+        failure, ``AdapterDiscoveryError`` on unknown adapter name, and
+        ``NotImplementedError`` on non-empty comma-separated
+        ``mcp_servers`` (Phase-1 DF-4.3-S2 carve-out).
+
+        Example:
+        | @{results} =    `Run Scenario`    scenario=${CURDIR}/scenarios/web-search.yaml
+        | Length Should Be    ${results}    5
+        | `Trajectory Should Match`    ${results}[0]    ${{['web_search', 'fetch', 'summarize']}}
+        | @{results} =    `Run Scenario`    adapter=claude-code-cli    scenario=${CURDIR}/scenarios/build.yaml
+
+        Notes:
+        - PRD FR15 ratifies the multi-eval orchestration contract.
+        - FR41 precedence resolution: explicit kwarg > scenario YAML > library default.
+        - Sibling keyword: `Load Scenario` (Tier-1) to validate the YAML without executing.
+        - Carry-overs: DF-4.3-S2 (mcp_servers name resolution), DF-4.3-S4 (multi-turn threading).
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         if not scenario:
             raise ValueError("Run Scenario requires `scenario=<path>` kwarg")
         scenario_obj = load_scenario(scenario)
@@ -302,15 +328,30 @@ class OrchestrationLibrary:
     @keyword(name="Load Scenario")
     @tier(1)
     def load_scenario_kw(self, scenario: str) -> Scenario:
-        """Load + validate a scenario YAML without executing.
+        """Loads + validates a scenario YAML without executing it.
 
         [Tier 1 — Deterministic] — pure file read + YAML parse + schema
-        validation. Story 4.3 surface for callers who want to inspect
-        the parsed `Scenario` shape before deciding whether to `Run
-        Scenario` against it (e.g., for `.robot` tests that assert
-        on scenario metadata).
+        validation. Returns the parsed ``Scenario`` dataclass without
+        dispatching to any adapter — useful for ``.robot`` tests that
+        assert on scenario metadata or pre-flight-check scenarios before
+        a `Run Scenario` invocation.
 
-        Raises:
-            InvalidScenarioYAMLError: on parse / schema failure.
-        """
+        | =Arguments= | =Description= |
+        | ``scenario`` | Filesystem path to the scenario YAML file. |
+
+        Raises ``InvalidScenarioYAMLError`` on parse failure or schema
+        violation. The error's ``field_name`` attribute pinpoints the
+        offending field per FR59.
+
+        Example:
+        | ${scenario} =    `Load Scenario`    ${CURDIR}/scenarios/web-search.yaml
+        | Should Be Equal    ${scenario.name}    web-search
+        | Length Should Be    ${scenario.evals}    5
+        | Should Contain    ${scenario.tags}    smoke
+
+        Notes:
+        - PRD FR15 ratifies the scenario YAML schema; see `Scenario` dataclass in `scenarios/schema.py`.
+        - Sibling keyword: `Run Scenario` (Tier-3) for dispatch + execution.
+        - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return load_scenario(scenario)

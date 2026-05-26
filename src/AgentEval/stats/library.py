@@ -12,6 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# ruff: noqa: E501
+# Browser-Library-style docstring tables (`| =Arguments= | =Description= |`)
+# can carry long descriptions on a single physical line. The per-line
+# 120-char limit is waived for this file per Phase 2 docstring-refresh
+# proposal (2026-05-26).
+
 """Statistical primitives RF-keyword surface (Story 6.3 / PRD FR26 + FR27 + FR31a).
 
 Ships 4 `@keyword`-decorated methods on `StatsLibrary`:
@@ -49,6 +55,9 @@ from AgentEval.stats.types import KeywordRun
 
 __all__ = ["StatsLibrary"]
 
+# Browser-Library-style docstring migration marker (Phase 2, 2026-05-26).
+_BROWSER_STYLE_MIGRATED = True
+
 
 class StatsLibrary:
     """4 `@keyword`-decorated statistical primitives (Story 6.3 / PRD FR26-FR31a)."""
@@ -81,34 +90,34 @@ class StatsLibrary:
         keyword_args: dict[str, Any] | list[Any] | None = None,
         seed: int | None = None,
     ) -> list[KeywordRun]:
-        """[Tier 3 — Stochastic Fan-Out] Run a keyword `n` times independently (PRD FR26).
+        """Runs a keyword ``n`` times independently and returns the per-trial results (PRD FR26).
 
-        Args:
-            n: Number of independent trials. Must be `>= 1`.
-            keyword: RF keyword name (`str`) OR a Python callable. When a string
-                is provided, the keyword is resolved via the Robot Framework
-                `BuiltIn` library; this requires an active RF execution context.
-                When a callable is provided, it's invoked directly (useful for
-                pytest unit tests).
-            keyword_args: Optional dict OR list of kwargs / RF named-arg strings
-                to pass to the wrapped keyword (e.g.,
-                `{"adapter": "generic", "prompt": "Hello"}` OR
-                `["adapter=generic", "prompt=Hello"]`). `None` = no args.
-            seed: Optional `int` seed; each trial receives `seed + trial_index`
-                via a `seed=` kwarg injection (so trials are deterministic but
-                distinct). `None` = OS-entropy seeding per trial.
+        [Tier 3 — Stochastic Fan-Out] — wraps the target keyword in
+        independent trials. Returns ``list[KeywordRun]`` of length ``n``.
+        Trial-level errors are re-raised from this keyword — wrap in
+        ``Run Keyword And Ignore Error`` for "ignore failures" semantics.
 
-        Returns:
-            `list[KeywordRun]` of length `n` per PRD FR26 + determinism-contract L55.
-            Trial-level errors are RE-RAISED from this keyword — operators
-            wanting "ignore failures" semantic must wrap in
-            `Run Keyword And Ignore Error`.
+        | =Arguments= | =Description= |
+        | ``n`` | Number of independent trials. Must be ``>= 1``. |
+        | ``keyword`` | RF keyword name (``str``) OR a Python callable. String form requires an active RF execution context (resolved via ``BuiltIn``); callable form is useful for pytest unit tests. |
+        | ``keyword_args`` | Optional ``dict`` of kwargs OR ``list`` of RF named-arg strings (e.g. ``{"adapter": "generic", "prompt": "Hi"}`` or ``["adapter=generic", "prompt=Hi"]``). ``None`` = no args. |
+        | ``seed`` | Optional ``int`` seed; each trial receives ``seed + trial_index`` via a ``seed=`` kwarg injection so trials are deterministic but distinct. ``None`` = OS-entropy seeding per trial. |
 
-        Raises:
-            ValueError: if `n < 1`.
-            CostExceededError / RuntimeBudgetExceededError: per `@guarded_fanout`
-                Layer 1/2/3 enforcement (ADR-015).
-        """
+        Raises ``ValueError`` when ``n < 1``. Raises ``CostExceededError`` /
+        ``RuntimeBudgetExceededError`` per the ``@guarded_fanout`` 3-layer
+        enforcement.
+
+        Example:
+        | @{runs} =    `Stat.Run N Times`    n=20    keyword=Send Prompt    keyword_args=${{['adapter=mock', 'prompt=Hi']}}
+        | ${pass_at_5} =    `Stat.Get Pass At K`    ${runs}    k=5
+        | Should Be True    ${pass_at_5} >= 0.6
+        | @{runs} =    `Stat.Run N Times`    n=10    keyword=Send Prompt    keyword_args=${{['adapter=mock']}}    seed=42
+
+        Notes:
+        - PRD FR26 ratifies the independent-trial fan-out shape; determinism-contract.md L55 pins the ``list[KeywordRun]`` return type.
+        - Cost / runtime guardrails per ADR-015 + `_kernel/guardrails.py::@guarded_fanout`.
+        - Sibling keyword: `Stat.Get Pass At K` (Tier-1) consumes the returned list.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         if n < 1:
             raise ValueError(f"n must be >= 1; got {n!r}")
         positional, named = _internal._normalize_keyword_args(keyword_args)
@@ -166,26 +175,35 @@ class StatsLibrary:
         k: int,
         predicate: Callable[[KeywordRun], bool] | None = None,
     ) -> float:
-        """[Tier 1 — Deterministic] HumanEval Pass@k estimate (PRD FR27).
+        """Computes the HumanEval Pass@k unbiased estimator over independent trials (PRD FR27).
 
-        Args:
-            runs: List of `KeywordRun` instances (typically from `Stat.Run N Times`).
-            k: Top-k parameter for the unbiased estimator. Must satisfy
-                `1 <= k <= len(runs)`.
-            predicate: Optional `Callable[[KeywordRun], bool]` for pass/fail
-                classification. Default (when `None`): `lambda r: r.completeness == "complete"`
-                per epic AC-2 (D-5 resolution + Story 6.4 DOGFOOD-FINDING-1
-                fix-NOW 2026-05-20: pre-edit `"full"` was fake-green because
-                `AgentRunMetadata.completeness` valid values are `complete/partial/truncated`).
+        [Tier 1 — Deterministic] — closed-form computation of the
+        HumanEval estimator ``1 - C(n-c, k) / C(n, k)``. Returns
+        ``float ∈ [0, 1]``. Scalar return preserves AssertionEngine
+        compatibility (``>=`` / ``<=`` matchers); CI is a separate paired
+        getter — see `Stat.Get Pass At K Confidence Interval`.
 
-        Returns:
-            `float ∈ [0, 1]` Pass@k estimate via the HumanEval unbiased estimator
-            `1 - C(n-c, k) / C(n, k)`. PRD FR27 verbatim return type — no tuple,
-            no dataclass (preserves AssertionEngine `>=` / `<=` matcher compatibility).
+        | =Arguments= | =Description= |
+        | ``runs`` | ``list[KeywordRun]`` — typically the result of `Stat.Run N Times`. |
+        | ``k`` | Top-k parameter. Must satisfy ``1 <= k <= len(runs)``. |
+        | ``predicate`` | Optional ``Callable[[KeywordRun], bool]`` for pass/fail classification. Default checks ``r.completeness == "complete"`` per epic AC-2 + Story 6.4 fix-NOW. |
 
-        Raises:
-            ValueError: if `k < 1`, `k > len(runs)`, or `len(runs) == 0`.
-        """
+        Raises ``ValueError`` when ``k < 1``, ``k > len(runs)``, or
+        ``len(runs) == 0``.
+
+        Example:
+        | @{runs} =    `Stat.Run N Times`    n=20    keyword=Send Prompt    keyword_args=${{['adapter=mock']}}
+        | ${pass_at_1} =    `Stat.Get Pass At K`    ${runs}    k=1
+        | ${pass_at_5} =    `Stat.Get Pass At K`    ${runs}    k=5
+        | Should Be True    ${pass_at_5} >= ${pass_at_1}                            # Pass@k is monotone non-decreasing in k.
+        | ${pred} =    Evaluate    lambda r: r.error is None
+        | ${pass_strict} =    `Stat.Get Pass At K`    ${runs}    k=5    predicate=${pred}
+
+        Notes:
+        - PRD FR27 ratifies the scalar ``float`` return type — no tuple, no dataclass (Wilson CI is a separate paired getter per Story 6.3 D-1 resolution).
+        - Default predicate updated by Story 6.4 fix-NOW: ``completeness == "complete"`` (pre-edit ``"full"`` was fake-green; `AgentRunMetadata._VALID_COMPLETENESS` is ``{"complete", "truncated", "partial"}``).
+        - Sibling keyword: `Stat.Get Pass At K Confidence Interval` for the Wilson score CI.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         predicate_fn = predicate if predicate is not None else _internal._default_pass_predicate
         c = sum(1 for r in runs if predicate_fn(r))
         n = len(runs)
@@ -200,26 +218,36 @@ class StatsLibrary:
         predicate: Callable[[KeywordRun], bool] | None = None,
         confidence: float = 0.95,
     ) -> tuple[float, float]:
-        """[Tier 1 — Deterministic] Wilson score CI for Pass@k (Story 6.3 D-1 paired getter).
+        """Computes the Wilson score confidence interval for the trial success rate (Story 6.3 D-1).
 
-        Returns the Wilson score interval at `confidence` level for the
-        predicate-pass proportion. Paired with `Stat.Get Pass At K` per the
-        D-1 drift resolution (PRD FR27 ratifies scalar `float` return for
-        the point estimate; epic AC-2's "with confidence interval per Wilson
-        CI" promise is satisfied via this separate getter).
+        [Tier 1 — Deterministic] — Wilson score interval at the given
+        ``confidence`` level for the latent per-trial success probability.
+        Returns ``(ci_lower, ci_upper)`` tuple of ``float`` in ``[0, 1]``.
+        Paired with `Stat.Get Pass At K` — the scalar point estimate plus
+        this CI together satisfy epic AC-2's "Pass@k with confidence
+        interval" promise.
 
-        Args:
-            runs: List of `KeywordRun` instances.
-            k: Top-k parameter (validated but only used for k-vs-n sanity check;
-                the Wilson interval is on the underlying success proportion, not
-                the Pass@k estimate itself — interpretation: CI of the latent
-                per-trial success probability).
-            predicate: Same as `Stat.Get Pass At K`.
-            confidence: Confidence level in `(0, 1)`; default 0.95.
+        | =Arguments= | =Description= |
+        | ``runs`` | ``list[KeywordRun]`` — typically the result of `Stat.Run N Times`. |
+        | ``k`` | Top-k parameter. Validated for ``1 <= k <= len(runs)`` but only used for sanity check — the Wilson interval is on the underlying success proportion, not on the Pass@k estimate itself. |
+        | ``predicate`` | Optional ``Callable[[KeywordRun], bool]`` for pass/fail classification. Same default as `Stat.Get Pass At K`. |
+        | ``confidence`` | Confidence level in ``(0, 1)``. Defaults to ``0.95``. |
 
-        Returns:
-            `(ci_lower, ci_upper)` tuple of `float`s in `[0, 1]`.
-        """
+        Raises ``ValueError`` when ``k`` is non-positive or ``k > n`` (with
+        ``n > 0`` — empty ``runs`` is permitted per the Wilson formula).
+
+        Example:
+        | @{runs} =    `Stat.Run N Times`    n=20    keyword=Send Prompt    keyword_args=${{['adapter=mock']}}
+        | ${ci_lo}    ${ci_hi} =    `Stat.Get Pass At K Confidence Interval`    ${runs}    k=5
+        | Should Be True    0.0 <= ${ci_lo} <= ${ci_hi} <= 1.0                      # CI bounds are well-formed probabilities.
+        | ${ci99_lo}    ${ci99_hi} =    `Stat.Get Pass At K Confidence Interval`    ${runs}    k=5    confidence=0.99
+        | Should Be True    (${ci99_hi} - ${ci99_lo}) >= (${ci_hi} - ${ci_lo})      # Higher confidence → wider interval.
+
+        Notes:
+        - Story 6.3 D-1 resolution: scalar Pass@k vs CI separated to preserve AssertionEngine compatibility on the point estimate.
+        - PRD FR27 covers Pass@k; CI is an epic-AC-2 extension.
+        - Sibling keyword: `Stat.Get Pass At K` for the scalar point estimate.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         predicate_fn = predicate if predicate is not None else _internal._default_pass_predicate
         c = sum(1 for r in runs if predicate_fn(r))
         n = len(runs)
@@ -245,25 +273,35 @@ class StatsLibrary:
         keyword_args: dict[str, Any] | list[Any] | None = None,
         expect: str = "byte_identical",
     ) -> None:
-        """[Tier 1 — Deterministic] Assert bit-identical Tier-1 output across 2 runs (PRD FR31a).
+        """Asserts bit-identical output across 2 invocations of a Tier-1 keyword (PRD FR31a).
 
-        Invokes the wrapped keyword twice with identical inputs + compares via
-        deep-equality. Phase-1 supports `expect="byte_identical"` only; other
-        modes (`"approximate"`, `"schema_identical"`) deferred to Phase-2.
+        [Tier 1 — Deterministic] — invokes the wrapped keyword twice with
+        identical inputs and compares via deep-equality. The bit-identical
+        guarantee is scoped to Tier-1 keywords only (FR31a contract); the
+        keyword raises ``TierViolationError`` if a Tier-2/3 keyword is
+        passed.
 
-        Args:
-            keyword: RF keyword name (`str`) OR callable; same dispatch as
-                `Stat.Run N Times`.
-            keyword_args: Optional dict / list per `Stat.Run N Times`.
-            expect: Comparison mode. Only `"byte_identical"` supported in Phase-1.
+        | =Arguments= | =Description= |
+        | ``keyword`` | RF keyword name (``str``) OR callable. Same dispatch rules as `Stat.Run N Times` (string form requires active RF context). |
+        | ``keyword_args`` | Optional ``dict`` of kwargs OR ``list`` of RF named-arg strings. |
+        | ``expect`` | Comparison mode. Phase-1 supports ``"byte_identical"`` only; ``"approximate"`` + ``"schema_identical"`` deferred to Phase-2. |
 
-        Raises:
-            ValueError: if `expect` is not `"byte_identical"`.
-            TierViolationError: if the wrapped keyword's tier is not 1 (FR31a
-                bit-identical guarantee scoped to Tier-1 only).
-            AssertionError: on output mismatch, with a `redact()`-scrubbed diff
-                per FR38a (Story 5.3 contract).
-        """
+        Raises ``ValueError`` when ``expect != "byte_identical"`` (Phase-1
+        scope). Raises ``TierViolationError`` when the wrapped keyword is
+        not Tier-1 — FR31a is scoped to Tier-1 only. Raises
+        ``AssertionError`` on output mismatch with a ``redact()``-scrubbed
+        diff per FR38a credential-safety contract.
+
+        Example:
+        | `Stat.Assert Run Determinism`    keyword=Get Keyword Tier    keyword_args=${{['Send Prompt']}}
+        | `Stat.Assert Run Determinism`    keyword=Get Effective Config
+        | Run Keyword And Expect Error    TierViolationError*    `Stat.Assert Run Determinism`    keyword=Send Prompt
+
+        Notes:
+        - PRD FR31a ratifies the bit-identical guarantee for Tier-1 keywords; Tier-2/3 keywords are stochastic by tier definition + must use `Stat.Run N Times` + `Stat.Get Pass At K` for statistical assertions instead.
+        - Diff redaction per FR38a + Story 5.3 — credentials in args / output don't leak into RF logs.
+        - Story 6.3 ratifies ``"byte_identical"`` as the Phase-1 contract; ``"approximate"`` + ``"schema_identical"`` are Phase-2 work-items.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         if expect != "byte_identical":
             raise ValueError(
                 f"expect must be 'byte_identical' in Phase-1; got {expect!r}. "

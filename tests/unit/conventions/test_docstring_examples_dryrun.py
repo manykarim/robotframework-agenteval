@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 import textwrap
 from pathlib import Path
 
@@ -51,6 +52,35 @@ from ._walk import (
 from .test_docstring_browser_style import MIGRATED_LIBRARIES
 
 _EXAMPLE_BLOCK_RE = re.compile(r"^\s*Example:\s*$\n((?:^\s*\|.*$\n?)+)", re.MULTILINE)
+
+
+def _composed_sub_libraries() -> frozenset[str]:
+    """Derive the set of composed sub-library module names from `AgentEval._SUB_LIBRARIES`.
+
+    Codex Phase 2 review MED (2026-05-26): the previous hardcoded
+    frozenset duplicated the canonical `_SUB_LIBRARIES` tuple in
+    `src/AgentEval/__init__.py`. Drift between the two would silently
+    cause dryrun-import failures (or false-passes) when a new sub-library
+    ships. Derive directly from the canonical source.
+    """
+    from AgentEval import _SUB_LIBRARIES
+
+    return frozenset(module_path for module_path, _ in _SUB_LIBRARIES)
+
+
+_COMPOSED_SUBLIBRARIES = _composed_sub_libraries()
+
+
+def _resolve_dryrun_library_import(module_name: str, class_name: str) -> str:
+    """Pick the right ``Library`` import for a docstring-example dryrun.
+
+    Composed sub-libraries are imported as ``AgentEval`` (the parent
+    library composes them via `DynamicCore`); direct-import libraries
+    (skills, mcp, subagents) use their fully-qualified class path.
+    """
+    if module_name in _COMPOSED_SUBLIBRARIES:
+        return "AgentEval"
+    return f"{module_name}.{class_name}"
 
 
 def _extract_example_lines(doc: str) -> list[str]:
@@ -130,22 +160,28 @@ def _all_migrated_examples() -> list[tuple[str, str, str, str, list[str]]]:
             kw_name = getattr(func, "robot_name", func_name)
             qualname = getattr(func, "__qualname__", "") or func_name
             class_name = qualname.split(".", 1)[0] if "." in qualname else "<module>"
-            library_import = f"{module.__name__}.{class_name}"
+            library_import = _resolve_dryrun_library_import(module.__name__, class_name)
             out.append((module.__name__, class_name, kw_name, library_import, lines))
     return out
 
 
 def _robot_executable_available() -> bool:
-    """Check whether ``robot`` is callable in the current environment.
+    """Check whether ``robot`` is callable in the current Python environment.
+
+    Codex Phase 2 review HIGH (2026-05-26): invoke ``robot`` via
+    ``sys.executable -m robot`` rather than the bare ``robot`` PATH
+    entry. Bare ``robot`` resolves to a globally-installed binary that
+    may not have ``AgentEval`` on its Python path (causing 9/9 false
+    failures in Codex's workspace). ``sys.executable -m robot`` runs
+    against the same interpreter+environment as pytest, so library
+    imports resolve correctly.
 
     `robotframework` is a pinned dev dep so this should always be True;
-    failure mode is the CI env lacking ``uv``-installed extras. The test
-    skips (not errors) when ``robot`` isn't found, to remain CI-friendly
-    on hosts where the dryrun is not reproducible.
+    failure mode is the CI env lacking ``uv``-installed extras.
     """
     try:
         result = subprocess.run(
-            ["robot", "--version"],
+            [sys.executable, "-m", "robot", "--version"],
             capture_output=True,
             timeout=10,
             check=False,
@@ -198,8 +234,14 @@ def test_example_block_dryruns_clean(
     suite_path = tmp_path / "docstring_example.robot"
     suite_path.write_text(suite_content, encoding="utf-8")
 
+    # Codex Phase 2 review HIGH patch: invoke `robot` via
+    # `sys.executable -m robot` so library imports resolve in the same
+    # interpreter+environment as pytest. The bare `robot` form resolved
+    # to a global binary that lacked `AgentEval` on its Python path.
     result = subprocess.run(
         [
+            sys.executable,
+            "-m",
             "robot",
             "--dryrun",
             "--outputdir",
