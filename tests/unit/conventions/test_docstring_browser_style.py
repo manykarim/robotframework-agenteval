@@ -71,7 +71,12 @@ def _get_migrated_libraries() -> frozenset[str]:
 MIGRATED_LIBRARIES = _get_migrated_libraries()
 
 _ARGUMENTS_TABLE_HEADER = re.compile(r"^\s*\|\s*=Arguments=\s*\|\s*=Description=\s*\|", re.MULTILINE)
-_EXAMPLE_BLOCK = re.compile(r"^\s*Example:\s*$", re.MULTILINE)
+# Allow trailing parenthetical annotations after `Example:` (e.g. for
+# `Example (illustrative — assumes a real adapter): ...`). The Phase 3
+# Codex review surfaced the need for these annotations on mock-incompatible
+# examples; treating bare `Example:` AND `Example (...):` as valid is the
+# pragmatic compromise.
+_EXAMPLE_BLOCK = re.compile(r"^\s*Example(?:\s*\([^)]*\))?:\s*$", re.MULTILINE)
 _EXAMPLE_LINE = re.compile(r"^\s*\|\s+\S+", re.MULTILINE)
 _NOTES_SECTION = re.compile(r"^\s*Notes:\s*$", re.MULTILINE)
 

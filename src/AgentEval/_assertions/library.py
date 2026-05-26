@@ -12,6 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# ruff: noqa: E501
+# Browser-Library-style docstring tables can carry long descriptions
+# on a single physical line. Per-line 120-char limit waived for this
+# file per Phase 3 docstring-refresh proposal (2026-05-26).
+
 """Assertion RF-keyword surface (Story 6.2 / PRD FR23a + FR23b + FR24 + FR25).
 
 Ships 5 assertion keywords reading from `AgentRunResult` instances:
@@ -54,6 +59,9 @@ from AgentEval.types import AgentRunResult
 
 __all__ = ["AssertionsLibrary"]
 
+# Browser-Library-style docstring migration marker (Phase 3, 2026-05-26).
+_BROWSER_STYLE_MIGRATED = True
+
 
 _VALID_TRAJECTORY_MODES = ("exact", "subsequence", "set", "regex")
 
@@ -81,35 +89,39 @@ class AssertionsLibrary:
         expected: list[str],
         mode: str = "exact",
     ) -> None:
-        """[Tier 1 — Deterministic] Assert the tool-call trajectory matches `expected` (PRD FR23a + FR23b).
+        """Asserts the agent's tool-call trajectory matches an expected sequence (PRD FR23a + FR23b).
 
-        Args:
-            result: `AgentRunResult` carrying the observed `tool_calls`.
-            expected: List of expected tool names (or regex patterns for
-                `mode="regex"`).
-            mode: Match mode per PRD FR23a verbatim:
+        [Tier 1 — Deterministic] — four match modes available. Failure
+        messages are ``redact()``-scrubbed per FR38a so credentials in
+        tool args don't leak into RF logs.
 
-                - `"exact"` (default): ordered list equality.
-                - `"subsequence"`: ordered, extras allowed between/around.
-                - `"set"`: unordered, no extras — **set equality** semantics.
-                  Note: duplicate names collapse (`["a", "a"]` set-equals
-                  `["a"]`); operators wanting multiset semantics ("exactly
-                  N calls of tool X") should use `mode="exact"` or count
-                  via `Get Tool Calls`. Per PRD FR23a verbatim "unordered,
-                  no extras" — implementation is set-equality of distinct
-                  tool names. Story 6.2 code-review MED-6 docstring fix.
-                - `"regex"`: per FR23b, each `expected[i]` is a regex
-                  matched via `re.fullmatch` against the concatenation
-                  `"<tool_name>:<json.dumps(args, sort_keys=True)>"`.
+        | =Arguments= | =Description= |
+        | ``result`` | ``AgentRunResult`` carrying the observed ``tool_calls``. |
+        | ``expected`` | List of expected tool names (or regex patterns when ``mode="regex"``). |
+        | ``mode`` | Match mode: ``"exact"`` (ordered equality) / ``"subsequence"`` (ordered, extras allowed between) / ``"set"`` (unordered set-equality of distinct names) / ``"regex"`` (each ``expected[i]`` is a ``re.fullmatch`` pattern against ``<tool>:<json.dumps(args, sort_keys=True)>``). Default ``"exact"``. |
 
-        Raises:
-            `IncompleteTraceError`: per FR37 when `mcp_coverage="external_mixed"`
-                + `allow_external_mcp_blind=False` (default).
-            `ValueError`: if `mode` is not one of the 4 documented values.
-            `AssertionError`: if the trajectory does not match. Failure
-                message is `redact()`-scrubbed per FR38a (Story 5.3) so
-                credentials in args don't leak into RF logs.
-        """
+        Set-mode caveat: duplicate names collapse — ``["a", "a"]`` set-
+        equals ``["a"]``. Operators wanting multiset semantics ("exactly
+        N calls of tool X") should use ``mode="exact"``.
+
+        Raises ``ValueError`` when ``mode`` is not one of the 4 documented
+        values (caller-typo gate fires BEFORE the FR37 coverage gate).
+        Raises ``IncompleteTraceError`` per FR37 on
+        ``mcp_coverage="external_mixed"`` + ``allow_external_mcp_blind=False``.
+        Raises ``AssertionError`` on trajectory mismatch.
+
+        Example (illustrative — assumes a real adapter with the expected 3-call trajectory):
+        | ${result} =    `Send Prompt`    prompt=Find news    adapter=generic    provider=mock
+        | `Trajectory Should Match`    ${result}    ${{['web_search', 'fetch', 'summarize']}}
+        | `Trajectory Should Match`    ${result}    ${{['web_search', 'summarize']}}    mode=subsequence
+        | `Trajectory Should Match`    ${result}    ${{['fetch', 'web_search']}}    mode=set
+        | `Trajectory Should Match`    ${result}    ${{['web_search:.*', 'fetch:.*', 'summarize:.*']}}    mode=regex
+
+        Notes:
+        - PRD FR23a + FR23b ratify the 4 match modes.
+        - mcp_coverage gating per FR37 + FR42; failure-message redaction per FR38a + Story 5.3.
+        - Sibling keyword: `Tool Call Should Have Occurred` for single-call name+args assertions.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         # Story 6.2 code-review MED ordering fix (Blind LOW-17 + Edge MED-7 +
         # Auditor #7 3-way): validate `mode` BEFORE the FR37 gate so caller-side
         # typos surface as `ValueError` regardless of run-coverage state.
@@ -154,25 +166,35 @@ class AssertionsLibrary:
         args: dict[str, Any] | None = None,
         match_mode: str = "subset",
     ) -> None:
-        """[Tier 1 — Deterministic] Assert a tool call with given name + args occurred (PRD FR24).
+        """Asserts that a tool call with the given name (and optional args) occurred (PRD FR24).
 
-        Args:
-            result: `AgentRunResult` carrying the observed `tool_calls`.
-            tool: Expected tool name (exact match required).
-            args: Optional dict of expected args. `None` = name-only match.
-            match_mode: Per FR24 verbatim:
+        [Tier 1 — Deterministic] — searches all observed ``tool_calls``
+        for one matching ``tool`` + (optionally) ``args``. Failure
+        messages are ``redact()``-scrubbed per FR38a.
 
-                - `"subset"` (default): `args` is a dict-subset of `tc.args`
-                  (extra args allowed); recursive for nested dicts.
-                - `"exact"`: `tc.args == args` exact equality.
+        | =Arguments= | =Description= |
+        | ``result`` | ``AgentRunResult`` carrying the observed ``tool_calls``. |
+        | ``tool`` | Expected tool name (exact-match required). |
+        | ``args`` | Optional dict of expected args. ``None`` (default) = name-only match. |
+        | ``match_mode`` | ``"subset"`` (default — ``args`` is a dict-subset of ``tc.args``; recursive for nested dicts) OR ``"exact"`` (``tc.args == args``). |
 
-        Raises:
-            `IncompleteTraceError`: per FR37 on `external_mixed` coverage.
-            `AssertionError`: if no tool call matches. Failure message is
-                `redact()`-scrubbed per FR38a (Story 5.3) so credentials
-                in tool args don't leak into RF logs.
-            `ValueError`: if `match_mode` is invalid.
-        """
+        Raises ``ValueError`` when ``match_mode`` is invalid (caller-typo
+        gate fires BEFORE the FR37 coverage gate). Raises
+        ``IncompleteTraceError`` per FR37 on
+        ``mcp_coverage="external_mixed"`` + ``allow_external_mcp_blind=False``.
+        Raises ``AssertionError`` when no tool call matches.
+
+        Example (illustrative — assumes a real adapter with the expected ``web_search`` call):
+        | ${result} =    `Send Prompt`    prompt=Find news    adapter=generic    provider=mock
+        | `Tool Call Should Have Occurred`    ${result}    web_search
+        | `Tool Call Should Have Occurred`    ${result}    web_search    args=${{ {"query": "agenteval"} }}
+        | `Tool Call Should Have Occurred`    ${result}    web_search    args=${{ {"query": "x"} }}    match_mode=exact
+
+        Notes:
+        - PRD FR24 ratifies the name + args + match-mode contract.
+        - mcp_coverage gating per FR37 + FR42; failure-message redaction per FR38a + Story 5.3.
+        - Sibling keyword: `Trajectory Should Match` for ordered-sequence assertions over multiple calls.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         # Story 6.2 code-review HIGH-α + MED ordering fix (Edge HIGH-2 + Codex
         # probe + Auditor #7/#8): validate `match_mode` up-front BEFORE the
         # FR37 gate AND before the tool-name loop so typos like
@@ -212,11 +234,29 @@ class AssertionsLibrary:
     @keyword(name="Agent Response Should Contain")
     @tier(1)
     def agent_response_should_contain(self, result: AgentRunResult, substring: str) -> None:
-        """[Tier 1 — Deterministic] Assert `substring` appears in `result.response_text` (PRD FR25).
+        """Asserts that ``substring`` appears in ``result.response_text`` (PRD FR25).
 
-        Raises:
-            `AssertionError`: if the substring is not in the response text.
-        """
+        [Tier 1 — Deterministic] — provider-reported scalar; NOT
+        ``mcp_coverage``-gated. Failure messages are ``redact()``-scrubbed
+        per FR38a.
+
+        | =Arguments= | =Description= |
+        | ``result`` | ``AgentRunResult`` carrying ``response_text``. |
+        | ``substring`` | Literal substring to match. Case-sensitive. |
+
+        Raises ``AssertionError`` when the substring is not found.
+
+        Example:
+        | ${result} =    `Send Prompt`    prompt=Robot Framework is a test automation framework    adapter=generic    provider=mock
+        | `Agent Response Should Contain`    ${result}    Robot Framework                                          # Mock echoes the prompt.
+        | `Agent Response Should Contain`    ${result}    test automation
+
+        Notes:
+        - PRD FR25 ratifies the 3 response assertions (Contain / Match Regex / Match Schema).
+        - Response text is observer-independent — no mcp_coverage gate.
+        - Failure-message redaction per FR38a + Story 5.3.
+        - Sibling keywords: `Agent Response Should Match Regex` (regex), `Agent Response Should Match Schema` (JSON schema).
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         if substring not in result.response_text:
             # Story 6.2 code-review HIGH-δ fix (Edge HIGH-4 / FR38a): redact
             # the response-text echo. Response text can carry tokens emitted
@@ -226,15 +266,31 @@ class AssertionsLibrary:
     @keyword(name="Agent Response Should Match Regex")
     @tier(1)
     def agent_response_should_match_regex(self, result: AgentRunResult, pattern: str) -> None:
-        """[Tier 1 — Deterministic] Assert `pattern` matches `result.response_text` (PRD FR25).
+        """Asserts a regex pattern matches ``result.response_text`` (PRD FR25).
 
-        Uses `re.search` (substring-match by default per the "match"
-        terminology in FR25). Multi-line text supported via standard
-        `re` flags in the pattern.
+        [Tier 1 — Deterministic] — uses ``re.search`` (substring-match by
+        default per FR25's "match" terminology). Multi-line text supported
+        via standard ``re`` flags in the pattern. NOT
+        ``mcp_coverage``-gated. Failure messages are ``redact()``-scrubbed
+        per FR38a.
 
-        Raises:
-            `AssertionError`: if the pattern does not match.
-        """
+        | =Arguments= | =Description= |
+        | ``result`` | ``AgentRunResult`` carrying ``response_text``. |
+        | ``pattern`` | Python ``re`` pattern. Use ``(?i)`` / ``(?m)`` / ``(?s)`` inline flags as needed. |
+
+        Raises ``AssertionError`` when the pattern does not match.
+
+        Example:
+        | ${result} =    `Send Prompt`    prompt=Released in 2020 — Robot Framework 3.x    adapter=generic    provider=mock
+        | `Agent Response Should Match Regex`    ${result}    20\\d{2}                          # 4-digit year — matches the echoed "2020".
+        | `Agent Response Should Match Regex`    ${result}    (?i)robot.*framework              # Case-insensitive multi-word.
+
+        Notes:
+        - PRD FR25 ratifies the regex assertion; `re.search` semantics (not `re.fullmatch`).
+        - Response text is observer-independent — no mcp_coverage gate.
+        - Failure-message redaction per FR38a + Story 5.3.
+        - Sibling keywords: `Agent Response Should Contain` (literal substring), `Agent Response Should Match Schema` (JSON schema).
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         if not re.search(pattern, result.response_text):
             # Story 6.2 code-review HIGH-δ fix (Edge HIGH-4 / FR38a): redact
             # response-text echo.
@@ -247,27 +303,35 @@ class AssertionsLibrary:
         result: AgentRunResult,
         schema: dict[str, Any] | str | Path,
     ) -> None:
-        """[Tier 1 — Deterministic] Assert `response_text` (parsed JSON) validates against schema (PRD FR25).
+        """Asserts ``response_text`` parses as JSON + validates against a JSON Schema (PRD FR25).
 
-        Args:
-            result: `AgentRunResult`.
-            schema: JSON Schema as a dict OR a file path (str or
-                `pathlib.Path`) per Story 6.2 D-4 drift fix supporting
-                both forms (operator convenience).
+        [Tier 1 — Deterministic] — provider-reported scalar; NOT
+        ``mcp_coverage``-gated. Parses ``response_text`` as JSON, then
+        validates against the schema via ``jsonschema``.
 
-        Raises:
-            `ValueError`: if `schema` is not a `dict`/`str`/`Path`, OR if
-                the str/Path is not a valid file, OR if the loaded JSON is
-                not a top-level dict (Story 6.2 code-review HIGH-β fix —
-                tightened dispatch so an unexpected `schema` type raises
-                the documented `ValueError` instead of leaking a bare
-                `TypeError` from `pathlib`).
-            `AssertionError`: if `response_text` is not parseable as JSON.
-                Failure message is `redact()`-scrubbed per FR38a.
-            `jsonschema.ValidationError`: if the parsed JSON does not
-                validate against the schema (preserves the jsonschema
-                convention so consumers can catch the specific exception).
-        """
+        | =Arguments= | =Description= |
+        | ``result`` | ``AgentRunResult`` carrying ``response_text`` (expected to be JSON-parsable). |
+        | ``schema`` | JSON Schema as a ``dict`` OR a file path (``str`` / ``pathlib.Path``). |
+
+        Raises ``ValueError`` when ``schema`` is not a ``dict``/``str``/``Path``,
+        or when the file is not a valid JSON schema dict. Raises
+        ``AssertionError`` (redacted per FR38a) when ``response_text`` is
+        not JSON-parsable. Raises ``jsonschema.ValidationError`` when the
+        parsed JSON does not validate against the schema (preserves the
+        jsonschema convention so consumers can catch the specific
+        exception).
+
+        Example:
+        | ${result} =    `Send Prompt`    prompt={"answer": 42}    adapter=generic    provider=mock
+        | `Agent Response Should Match Schema`    ${result}    ${{ {"type": "object", "required": ["answer"]} }}
+        | # Path form: `Agent Response Should Match Schema`    ${result}    ${CURDIR}/schemas/response.json    (requires the schema file to exist)
+
+        Notes:
+        - PRD FR25 ratifies the schema-validation contract; Story 6.2 D-4 supports both dict + path forms.
+        - Uses ``jsonschema`` package — the upstream ``ValidationError`` is preserved on validation failure (callers can catch specifically).
+        - Failure-message redaction per FR38a + Story 5.3.
+        - Sibling keywords: `Agent Response Should Contain` (literal substring), `Agent Response Should Match Regex` (regex pattern).
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         resolved = _internal._resolve_schema(schema)
         try:
             parsed = json.loads(result.response_text)

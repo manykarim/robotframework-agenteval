@@ -51,7 +51,12 @@ from ._walk import (
 )
 from .test_docstring_browser_style import MIGRATED_LIBRARIES
 
-_EXAMPLE_BLOCK_RE = re.compile(r"^\s*Example:\s*$\n((?:^\s*\|.*$\n?)+)", re.MULTILINE)
+# Allow trailing parenthetical annotations after `Example:` (e.g.
+# `Example (illustrative ...): `) per Phase 3 Codex-review compromise.
+_EXAMPLE_BLOCK_RE = re.compile(
+    r"^\s*Example(?:\s*\([^)]*\))?:\s*$\n((?:^\s*\|.*$\n?)+)",
+    re.MULTILINE,
+)
 
 
 def _composed_sub_libraries() -> frozenset[str]:
