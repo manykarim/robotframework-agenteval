@@ -1,0 +1,620 @@
+diff --git a/src/AgentEval/mcp/library.py b/src/AgentEval/mcp/library.py
+index 597868f..f5b9cdb 100644
+--- a/src/AgentEval/mcp/library.py
++++ b/src/AgentEval/mcp/library.py
+@@ -12,6 +12,11 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
++# ruff: noqa: E501
++# Browser-Library-style docstring tables can carry long descriptions
++# on a single physical line. Per-line 120-char limit waived for this
++# file per Phase 7 docstring-refresh proposal (2026-05-26).
++
+ """MCP sub-library — static-inspection keywords for `.mcp.json` files.
+ 
+ Story 2.3 ships 3 Tier-1 keywords per PRD FR5 + FR6 Phase-1 scope:
+@@ -85,6 +90,9 @@ from AgentEval.mcp.transport import Transport
+ 
+ __all__ = ["MCPLibrary"]
+ 
++# Browser-Library-style docstring migration marker (Phase 7, 2026-05-26).
++_BROWSER_STYLE_MIGRATED = True
++
+ 
+ class MCPLibrary:
+     """Static-inspection keywords for `.mcp.json` files [Tier 1 — Deterministic]."""
+@@ -92,30 +100,33 @@ class MCPLibrary:
+     @keyword(name="Get Server Config")
+     @tier(1)
+     def get_server_config(self, path: str | Path) -> dict[str, dict[str, Any]]:
+-        """Parse a `.mcp.json` file's `mcpServers` declarations.
+-
+-        [Tier 1 — Deterministic] — pure file-read + JSON parse + per-entry
+-        validation. Does NOT spawn any MCP server subprocesses (verifiable
+-        via process inventory diff). Median ≤ 50 ms per NFR-PERF-02.
+-
+-        Args:
+-            path: Filesystem path to the `.mcp.json` file.
+-
+-        Returns:
+-            A dict mapping `<server_name>` → server-entry dict. Each
+-            entry has at minimum `command` (str); may contain `args`
+-            (list[str]), `env` (dict[str,str]), `transport`
+-            (str ∈ {`stdio`, `streamable_http`, `in_memory`} per PRD
+-            FR7), `tools` (dict[str, JSON Schema] — Phase-1 declarative
+-            extension).
+-
+-        Raises:
+-            InvalidMCPServerConfigError: On any structural failure —
+-                file not found, wrong extension, malformed JSON, missing
+-                `command`, wrong types, unsupported transport. The
+-                `field_name` attribute carries an RFC 6901 JSON Pointer
+-                into the offending location.
+-        """
++        """Parses a ``.mcp.json`` file's ``mcpServers`` declarations (PRD FR5).
++
++        [Tier 1 — Deterministic] — pure file-read + JSON parse + per-
++        entry validation. Does NOT spawn any MCP subprocesses. Returns a
++        dict mapping ``<server_name>`` → server-entry dict. Each entry
++        has at minimum ``command`` (str); may carry ``args``, ``env``,
++        ``transport`` (one of ``stdio`` / ``streamable_http`` /
++        ``in_memory`` per FR7), ``tools`` (Phase-1 declarative
++        extension). Median ≤ 50 ms per NFR-PERF-02.
++
++        | =Arguments= | =Description= |
++        | ``path`` | Filesystem path to the ``.mcp.json`` file. Accepts ``str`` OR ``pathlib.Path``. |
++
++        Raises ``InvalidMCPServerConfigError`` on any structural
++        failure. The error's ``field_name`` attribute carries an RFC
++        6901 JSON Pointer into the offending location.
++
++        Example:
++        | ${servers} =    `Get Server Config`    ${CURDIR}/.mcp.json
++        | Should Be Equal    ${servers}[echo][transport]    stdio
++        | Should Contain    ${servers}[echo][args]    -m
++
++        Notes:
++        - PRD FR5 ratifies the ``.mcp.json`` parse contract; FR7 ratifies the transport enum.
++        - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
++        - Sibling keywords: `Get Tool Schema` + `Validate Tool Schema` for tool-schema introspection.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return parse_mcp_servers(path)
+ 
+     @keyword(name="Get Tool Schema")
+@@ -126,30 +137,31 @@ class MCPLibrary:
+         tool_name: str,
+         server_name: str | None = None,
+     ) -> dict[str, Any]:
+-        """Return a tool's input JSON Schema from `.mcp.json:tools`.
+-
+-        [Tier 1 — Deterministic] — Phase-1 reads from the declarative
+-        `tools` extension on each server entry (Story 2.3 drift-check
+-        D-D 2026-05-19). PRD FR6's "against a running or configured
+-        MCP server" runtime path is Phase-2 + Epic 3 scope.
+-
+-        Args:
+-            config_path: Path to the `.mcp.json` file.
+-            tool_name: Name of the tool whose schema to retrieve.
+-            server_name: When `None`, search every server in
+-                declaration order + return the first match. When set,
+-                only consult the named server.
+-
+-        Returns:
+-            The tool's input JSON Schema as a dict.
+-
+-        Raises:
+-            InvalidMCPServerConfigError: On `.mcp.json` structural
+-                failure.
+-            InvalidMCPToolSchemaError: If the tool is not declared on
+-                any candidate server (or on the named server when
+-                `server_name` is set).
+-        """
++        """Returns a tool's input JSON Schema from the ``.mcp.json:tools`` extension (PRD FR6).
++
++        [Tier 1 — Deterministic] — reads from the declarative ``tools``
++        extension on each server entry (Story 2.3 D-D). Returns the
++        schema as a ``dict``. PRD FR6's runtime "against a running MCP
++        server" path is Phase-2 + Epic 3 scope.
++
++        | =Arguments= | =Description= |
++        | ``config_path`` | Filesystem path to the ``.mcp.json`` file. |
++        | ``tool_name`` | Name of the tool whose input schema to retrieve. |
++        | ``server_name`` | When ``None`` (default), search every server in declaration order + return the first match. When set, only consult the named server. |
++
++        Raises ``InvalidMCPServerConfigError`` on ``.mcp.json``
++        structural failure. Raises ``InvalidMCPToolSchemaError`` when
++        the tool is not declared on any candidate server.
++
++        Example:
++        | ${schema} =    `Get Tool Schema`    ${CURDIR}/.mcp.json    tool_name=echo
++        | Should Be Equal    ${schema}[type]    object
++        | Should Contain    ${schema}[required]    message
++
++        Notes:
++        - PRD FR6 ratifies the tool-schema retrieval contract; Phase-1 scope per Story 2.3 D-D drift-check.
++        - Sibling keywords: `Get Server Config` (full ``.mcp.json`` parse); `Validate Tool Schema` (Draft 2020-12 well-formedness check).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return get_tool_schema(config_path, tool_name=tool_name, server_name=server_name)
+ 
+     @keyword(name="Validate Tool Schema")
+@@ -160,30 +172,34 @@ class MCPLibrary:
+         tool_name: str,
+         server_name: str | None = None,
+     ) -> None:
+-        """Validate a tool's schema against the jsonschema Draft 2020-12 meta-schema.
++        """Validates a tool's schema against the jsonschema Draft 2020-12 meta-schema.
+ 
+-        [Tier 1 — Deterministic] — verifies the schema-validity of an
++        [Tier 1 — Deterministic] — verifies the schema-VALIDITY of an
+         MCP tool's input schema. Does NOT validate any tool-call's
+         ARGUMENTS against the schema — that's a runtime concern Epic 3
+-        will own. Median ≤ 50 ms per NFR-PERF-02.
+-
+-        Args:
+-            config_path: Path to the `.mcp.json` file.
+-            tool_name: Tool whose schema to validate.
+-            server_name: Optional server scoping (see `Get Tool Schema`).
+-
+-        Returns:
+-            None on success.
+-
+-        Raises:
+-            InvalidMCPServerConfigError: On `.mcp.json` structural
+-                failure.
+-            InvalidMCPToolSchemaError: If the tool is not declared OR
+-                its schema fails Draft 2020-12 meta-schema validation.
+-                `field_name` carries an RFC 6901 JSON Pointer into the
+-                offending sub-schema; the wrapped jsonschema exception
+-                is available via `__cause__`.
+-        """
++        owns. Median ≤ 50 ms per NFR-PERF-02.
++
++        | =Arguments= | =Description= |
++        | ``config_path`` | Filesystem path to the ``.mcp.json`` file. |
++        | ``tool_name`` | Tool whose schema to validate. |
++        | ``server_name`` | Optional server scoping (see `Get Tool Schema`). |
++
++        Raises ``InvalidMCPServerConfigError`` on ``.mcp.json``
++        structural failure. Raises ``InvalidMCPToolSchemaError`` when
++        the tool is not declared OR its schema fails Draft 2020-12
++        meta-schema validation. The error's ``field_name`` carries an
++        RFC 6901 JSON Pointer; the wrapped jsonschema exception is
++        available via ``__cause__``.
++
++        Example:
++        | `Validate Tool Schema`    ${CURDIR}/.mcp.json    tool_name=echo
++        | Run Keyword And Expect Error    InvalidMCPToolSchemaError*    `Validate Tool Schema`    ${CURDIR}/.mcp.json    tool_name=nonexistent
++
++        Notes:
++        - Validates schema well-formedness, NOT argument conformance — that's runtime/Epic 3.
++        - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
++        - Sibling keyword: `Get Tool Schema` for retrieving the schema dict.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         validate_tool_schema(config_path, tool_name=tool_name, server_name=server_name)
+ 
+     # --------------------------------------------------------------- #
+@@ -201,34 +217,37 @@ class MCPLibrary:
+         env: dict[str, str] | None = None,
+         server_factory: Callable[[], Any] | None = None,
+     ) -> MCPServerHandle:
+-        """Build an MCP server handle per PRD FR7.
++        """Builds an MCP server handle per the 3-transport enum (PRD FR7).
+ 
+         [Tier 1 — Deterministic] — pure handle construction. For
+-        `stdio` + `in_memory` transports, this DOES NOT spawn or
+-        instantiate the server yet (per Story 3.1 Phase-1 per-call-
+-        session design); the actual server start happens during
+-        `Connect To Server`. The `streamable_http` transport name is
+-        accepted as a Phase-1 passthrough; full HTTP round-trip
+-        support lands Phase-1.5 OR Epic 3 Story 3.2.
+-
+-        Args:
+-            name: Caller-chosen server identifier (echoed in errors).
+-            transport: One of `"stdio"` / `"streamable_http"` /
+-                `"in_memory"` per PRD FR7 transport enum.
+-            command: stdio only — executable path/name (e.g.,
+-                `"python"`).
+-            args: stdio only — command-line arguments.
+-            env: stdio only — environment overlay.
+-            server_factory: in_memory only — no-arg callable returning
+-                a `FastMCP` server instance.
+-
+-        Returns:
+-            `MCPServerHandle` describing the server target. Consume via
+-            `Connect To Server`.
+-
+-        Raises:
+-            ValueError: If transport-required parameters are missing.
+-        """
++        ``stdio`` + ``in_memory`` transports, does NOT spawn the server
++        yet (per Story 3.1 per-call-session design); the actual server
++        start happens during `Connect To Server`. The ``streamable_http``
++        transport is accepted as a Phase-1 passthrough; full HTTP
++        round-trip lands Phase-1.5 or Story 3.2.
++
++        | =Arguments= | =Description= |
++        | ``name`` | Caller-chosen server identifier (echoed in errors). |
++        | ``transport`` | One of ``"stdio"`` / ``"streamable_http"`` / ``"in_memory"`` per FR7 transport enum. |
++        | ``command`` | stdio only — executable path/name (e.g. ``"python"``). |
++        | ``args`` | stdio only — list of command-line arguments. |
++        | ``env`` | stdio only — environment overlay. |
++        | ``server_factory`` | in_memory only — no-arg callable returning a ``FastMCP`` server instance. |
++
++        Raises ``ValueError`` when transport-required parameters are
++        missing (e.g. ``transport="stdio"`` without ``command``).
++
++        Example:
++        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
++        | ${session} =    `Connect To Server`    ${handle}
++        | @{tools} =    `List Tools`    ${handle}
++        | `Stop Server`    ${handle}
++
++        Notes:
++        - PRD FR7 ratifies the 3-transport enum; Story 3.1 ratifies the per-call-session design.
++        - Story 3.2 lands the full ``streamable_http`` round-trip (Phase-1 currently passthrough).
++        - Sibling keywords: `Connect To Server` (handshake + version check); `List Tools`, `Call Tool`, `Stop Server`.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return start_server(
+             name=name,
+             transport=transport,
+@@ -241,49 +260,67 @@ class MCPLibrary:
+     @keyword(name="Connect To Server")
+     @tier(1)
+     def connect_to_server(self, handle: MCPServerHandle) -> MCPSession:
+-        """Open + initialize an MCP `ClientSession`, gate-check the version (PRD FR8 + FR46).
+-
+-        [Tier 1 — Deterministic] — per Story 3.1 Phase-1 per-call-
+-        session design, opens the session, runs `initialize()`,
+-        captures the negotiated protocol version + server info, runs
+-        the version gate (`UnsupportedMCPVersionError` on out-of-range
+-        per AC-MCP-OBSERVE-02 + NFR-COMPAT-04 `mcp>=1.0,<2.0`), then
+-        closes the underlying SDK session. The returned `MCPSession`
+-        is metadata only — NOT a live SDK session.
+-
+-        Args:
+-            handle: An `MCPServerHandle` from `Start Server`.
+-
+-        Returns:
+-            `MCPSession` with negotiated `protocol_version` +
+-            `server_info`.
+-
+-        Raises:
+-            UnsupportedMCPVersionError: If the negotiated protocol
+-                version is outside the agenteval-supported range
+-                (`mcp>=1.0,<2.0`).
+-            ValueError: If `handle.transport == "streamable_http"`
+-                (Phase-1 passthrough; not yet implemented).
+-        """
++        """Opens + initializes an MCP ``ClientSession`` and gate-checks the version (PRD FR8 + FR46).
++
++        [Tier 1 — Deterministic] — per Story 3.1 per-call-session
++        design: opens session, runs ``initialize()``, captures the
++        negotiated protocol version + server info, gates on the
++        agenteval-supported range (``mcp>=1.0,<2.0``), then closes the
++        underlying SDK session. Returns ``MCPSession`` metadata —
++        **NOT a live SDK session**.
++
++        | =Arguments= | =Description= |
++        | ``handle`` | An ``MCPServerHandle`` from `Start Server`. |
++
++        Raises ``UnsupportedMCPVersionError`` when the negotiated
++        protocol version is outside the supported range. Raises
++        ``ValueError`` when ``handle.transport == "streamable_http"``
++        (Phase-1 passthrough; not yet implemented).
++
++        Example:
++        | ${handle} =    `Start Server`    name=echo    transport=in_memory    server_factory=${{echo_factory}}
++        | ${session} =    `Connect To Server`    ${handle}
++        | Should Not Be Empty    ${session.protocol_version}
++        | Should Be Equal    ${session.server_info.name}    echo
++
++        Notes:
++        - PRD FR8 + FR46 ratify the version-gate + per-call-session contract.
++        - Story 3.1 ratifies per-call-session design (no live session returned).
++        - NFR-COMPAT-04 pins the MCP SDK at ``mcp>=1.0,<2.0``.
++        - Sibling keywords: `Start Server` (handle construction); `Stop Server` (Phase-1 no-op cleanup); `List Tools` / `Call Tool` (per-call session-internal).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return connect_to_server(handle)
+ 
+     @keyword(name="Stop Server")
+     @tier(1)
+     def stop_server(self, handle: MCPServerHandle) -> None:
+-        """Tear down any per-handle resources.
++        """Tears down any per-handle MCP resources.
+ 
+         [Tier 1 — Deterministic] — Phase-1 no-op (each `Connect To
+         Server` self-cleans the SDK session). The keyword ships now so
+-        `.robot` tests can adopt the canonical 3-step lifecycle
++        ``.robot`` tests can adopt the canonical 3-step lifecycle
+         without breaking when Phase-1.5 introduces pooled sessions
+         that need explicit teardown.
+ 
+-        Args:
+-            handle: The `MCPServerHandle` from `Start Server`.
+-
+-        Returns:
+-            None.
+-        """
++        | =Arguments= | =Description= |
++        | ``handle`` | The ``MCPServerHandle`` from `Start Server`. |
++
++        Returns ``None``. Never raises in Phase-1 (no-op).
++
++        Example:
++        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
++        | TRY
++        |     ${result} =    `Call Tool`    ${handle}    echo    arguments=${{ {"message": "hi"} }}
++        |     Should Be True    ${result.is_error} == False
++        | FINALLY
++        |     `Stop Server`    ${handle}
++        | END
++
++        Notes:
++        - Phase-1 no-op per Story 3.1 design (per-call sessions self-clean).
++        - The canonical 3-step lifecycle (`Start Server` → `Connect To Server` → `Stop Server`) is ratified now to avoid breakage when Phase-1.5 introduces pooled sessions.
++        - Sibling keywords: `Start Server` + `Connect To Server` (companion lifecycle steps).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         stop_server(handle)
+ 
+     # --------------------------------------------------------------- #
+@@ -293,30 +330,36 @@ class MCPLibrary:
+     @keyword(name="List Tools")
+     @tier(1)
+     def list_tools(self, handle: MCPServerHandle) -> list[MCPTool]:
+-        """List the tools advertised by the MCP server at `handle` (PRD FR9a).
++        """Lists the tools advertised by the MCP server at ``handle`` (PRD FR9a).
+ 
+         [Tier 1 — Deterministic] — opens a fresh per-call MCP session
+-        (per Story 3.1 Phase-1 pattern), runs `initialize()`, calls
+-        the MCP spec's `list_tools` operation, then tears down. Each
+-        call pays the full handshake cost; Phase-1.5 may introduce
+-        pooled sessions for hot loops.
+-
+-        Args:
+-            handle: An `MCPServerHandle` from `Start Server`.
+-
+-        Returns:
+-            A list of `MCPTool` dataclasses (one per advertised tool)
+-            with `name`, `description`, `input_schema`, and optional
+-            `output_schema` per the MCP spec.
+-
+-        Raises:
+-            ValueError: If transport is `streamable_http` (Phase-1
+-                passthrough) or required handle params are missing.
+-            UnsupportedMCPVersionError: If `initialize()` rejects the
+-                negotiated protocol version.
+-            MCPConnectionLostError: If the transport layer fails
+-                mid-call.
+-        """
++        per Story 3.1, runs ``initialize()``, calls the MCP spec's
++        ``list_tools`` operation, then tears down. Each call pays the
++        full handshake cost; Phase-1.5 may introduce pooled sessions
++        for hot loops. Returns a ``list[MCPTool]`` with ``name``,
++        ``description``, ``input_schema``, and optional ``output_schema``.
++
++        | =Arguments= | =Description= |
++        | ``handle`` | An ``MCPServerHandle`` from `Start Server`. |
++
++        Raises ``ValueError`` when transport is ``streamable_http``
++        (Phase-1 passthrough). Raises ``UnsupportedMCPVersionError``
++        when ``initialize()`` rejects the negotiated protocol version.
++        Raises ``MCPConnectionLostError`` when the transport layer
++        fails mid-call.
++
++        Example:
++        | ${handle} =    `Start Server`    name=echo    transport=in_memory    server_factory=${{echo_factory}}
++        | @{tools} =    `List Tools`    ${handle}
++        | Should Not Be Empty    ${tools}
++        | Should Contain    ${{ [t.name for t in $tools] }}    echo
++
++        Notes:
++        - PRD FR9a ratifies the list-tools contract.
++        - Story 3.1 ratifies per-call-session design.
++        - Pooled-session optimization is Phase-1.5; Phase-1 pays per-call handshake.
++        - Sibling keyword: `Call Tool` (invoke a tool by name); `Get Tool Schema` (declarative — reads from ``.mcp.json``).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return list_tools(handle)
+ 
+     @keyword(name="Call Tool")
+@@ -327,37 +370,42 @@ class MCPLibrary:
+         tool_name: str,
+         arguments: dict[str, Any] | None = None,
+     ) -> MCPToolResult:
+-        """Invoke a tool by name on the MCP server at `handle` (PRD FR9b).
++        """Invokes a tool by name on the MCP server at ``handle`` (PRD FR9b).
+ 
+-        [Tier 1 — Deterministic] — given a deterministic server tool,
+-        opens a fresh per-call MCP session, runs `initialize()`,
+-        invokes the named tool, computes wall-clock latency, then
+-        tears down. Tool-LEVEL error responses surface as
+-        `MCPToolResult(is_error=True, ...)` — first-class data, NOT
++        [Tier 1 — Deterministic] (given a deterministic tool) — opens
++        a fresh per-call MCP session, runs ``initialize()``, invokes
++        the named tool, computes wall-clock latency, then tears down.
++        Tool-LEVEL error responses surface as
++        ``MCPToolResult(is_error=True, ...)`` — first-class data, NOT
+         exceptions. Infrastructure failures raise
+-        `MCPConnectionLostError`.
+-
+-        Args:
+-            handle: An `MCPServerHandle` from `Start Server`.
+-            tool_name: The tool name as advertised by the server.
+-            arguments: Optional dict of tool-specific arguments
+-                (default `{}`).
+-
+-        Returns:
+-            `MCPToolResult` with `content` (list of content blocks),
+-            `is_error`, `error_message`, `latency_ms` (wall-clock from
+-            request-send to response-receive), and per-call
+-            `correlation_id` (Phase-1 uuid4 hex placeholder; Epic 5
+-            wires real trace-id lookup).
+-
+-        Raises:
+-            ValueError: If transport is `streamable_http` (Phase-1
+-                passthrough) or required handle params are missing.
+-            UnsupportedMCPVersionError: If `initialize()` rejects the
+-                negotiated protocol version.
+-            MCPConnectionLostError: If the transport layer fails
+-                mid-call (subprocess crash, anyio stream closed, etc.).
+-        """
++        ``MCPConnectionLostError``.
++
++        | =Arguments= | =Description= |
++        | ``handle`` | An ``MCPServerHandle`` from `Start Server`. |
++        | ``tool_name`` | The tool name as advertised by the server. |
++        | ``arguments`` | Optional dict of tool-specific arguments. Defaults to ``{}``. |
++
++        Returns ``MCPToolResult`` with ``content`` (list of content
++        blocks), ``is_error``, ``error_message``, ``latency_ms``, and
++        ``correlation_id`` (Phase-1 uuid4 placeholder).
++
++        Raises ``ValueError`` on ``streamable_http`` transport (Phase-1
++        passthrough). Raises ``UnsupportedMCPVersionError`` on version
++        gate failure. Raises ``MCPConnectionLostError`` on transport-
++        layer failure mid-call (subprocess crash, etc.).
++
++        Example:
++        | ${handle} =    `Start Server`    name=echo    transport=in_memory    server_factory=${{echo_factory}}
++        | ${result} =    `Call Tool`    ${handle}    echo    arguments=${{ {"message": "hi"} }}
++        | Should Be Equal    ${result.is_error}    ${FALSE}
++        | Should Contain    ${result.text_content}    hi
++        | `Stop Server`    ${handle}
++
++        Notes:
++        - PRD FR9b ratifies the tool-call contract; tool-error-as-data per AC-MCP-CALL-01.
++        - ``correlation_id`` Phase-1 placeholder; Epic 5 wires real trace-id lookup.
++        - Sibling keywords: `List Tools`, `Start Server`, `Stop Server`.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return call_tool(handle, tool_name, arguments)
+ 
+     # --------------------------------------------------------------- #
+@@ -377,60 +425,74 @@ class MCPLibrary:
+         max_runtime_seconds: float | None = None,
+         **kwargs: Any,
+     ) -> DiscoverabilityResult:
+-        """Drive N-trial discoverability evaluation of an MCP server's tools (PRD FR10a).
+-
+-        [Tier 3 — Stochastic Fan-Out] — for each task in the YAML, dispatches
+-        `trials_per_task` adapter.run() calls and inspects `tool_calls` to
+-        compute Pass@k with Wilson CI bounds.
+-
+-        Phase-1 carve-out (DF-4.4-S1): `@guarded_fanout` enforcement of
+-        `max_cost_usd` + `max_runtime_seconds` is DEFERRED — same architectural
+-        gap as Story 4.3 DF-4.3-S6 (MCPLibrary is excluded from
+-        `_SUB_LIBRARIES` per Story 2.2 norm; no clean path to inject
+-        library-level budgets without architectural change). The kwargs are
+-        accepted + tracked on the result but NOT enforced. Operators must
+-        bound cost manually until Phase-1.5 plumbs the cross-library config.
+-
+-        Phase-1 carve-out (DF-4.1-S2 + DF-4.2-S1): `mcp_server=` is NOT
+-        forwarded to `adapter.run(mcp_servers=...)` because both Phase-1
+-        adapters (Generic + Claude Code CLI) raise `NotImplementedError`
+-        on non-empty `mcp_servers`. The kwarg is accepted for forward-
+-        compatibility + validated as non-empty; tool-call success is
+-        gated on what the model returns from prompt alone (useful for
+-        stub-adapter tests; meaningful for real LLMs only when
+-        DF-4.1-S2 + DF-4.2-S1 land).
+-
+-        Empty-`expected_tools` semantics (Story 4.4 code-review 3-way
+-        MED-A 2026-05-20): when a task's `expected_tools` is `[]`, the
+-        keyword treats ANY tool call as success (wildcard mode — useful
+-        for "did the agent invoke ANY tool?" probes). `competing_tools_picked`
+-        in this case collects ALL called tool names (since there's no
+-        expected set to subtract); operators get the same visibility
+-        regardless of whether `expected_tools` is populated.
+-
+-        Args:
+-            mcp_server: Name of the MCP server (per `MCP.Start Server`).
+-                Must be a non-empty string. Phase-1: accepted but NOT
+-                forwarded to `adapter.run()` (DF-4.1-S2 + DF-4.2-S1).
+-            adapter: Adapter name (default `"generic"`).
+-            model: Model identifier (e.g., `"anthropic/claude-sonnet-4-6"`).
+-            tasks: Path to the discoverability tasks YAML.
+-            trials_per_task: Number of trials per task (Pass@k semantics).
+-            max_cost_usd: Budget cap (Phase-1: tracked, NOT enforced —
+-                DF-4.4-S1 carry-over).
+-            max_runtime_seconds: Runtime cap (Phase-1: tracked, NOT enforced).
+-            **kwargs: Provider/adapter forward-compat kwargs.
+-
+-        Returns:
+-            `DiscoverabilityResult` with `per_task_results` + `summary`
+-            (aggregate pass rate + cost + runtime) + `mcp_coverage`,
+-            per PRD FR10a L1499 ratified shape.
+-
+-        Raises:
+-            InvalidDiscoverabilityTasksError: on tasks YAML parse/schema failure.
+-            AdapterDiscoveryError: on unknown adapter name.
+-            ValueError: when required kwargs are missing/empty.
+-        """
++        """Drives N-trial discoverability evaluation of an MCP server's tools (PRD FR10a).
++
++        [Tier 3 — Stochastic Fan-Out] — for each task in the YAML,
++        dispatches ``trials_per_task`` adapter.run() calls and
++        inspects ``tool_calls`` to compute Pass@k with Wilson CI bounds.
++
++        | =Arguments= | =Description= |
++        | ``mcp_server`` | Name of the MCP server (per `Start Server`). Must be a non-empty string. Phase-1: accepted but NOT forwarded to ``adapter.run()`` (DF-4.1-S2 + DF-4.2-S1). |
++        | ``adapter`` | Adapter name. Defaults to ``"generic"``. |
++        | ``model`` | Model identifier (e.g., ``"anthropic/claude-sonnet-4-6"``). |
++        | ``tasks`` | Path to the discoverability tasks YAML. |
++        | ``trials_per_task`` | Number of trials per task (Pass@k semantics). Defaults to ``3``. |
++        | ``max_cost_usd`` | Budget cap. Phase-1: tracked, NOT enforced (DF-4.4-S1 carry-over). Defaults to ``5.00``. |
++        | ``max_runtime_seconds`` | Runtime cap. Phase-1: tracked, NOT enforced. Defaults to ``None``. |
++        | ``**kwargs`` | Provider/adapter forward-compat kwargs. |
++
++        Phase-1 carve-out (DF-4.4-S1): ``@guarded_fanout`` enforcement
++        of ``max_cost_usd`` + ``max_runtime_seconds`` is DEFERRED —
++        same architectural gap as Story 4.3 DF-4.3-S6 (MCPLibrary is
++        excluded from ``_SUB_LIBRARIES`` per Story 2.2 norm; no clean
++        path to inject library-level budgets without architectural
++        change). The kwargs are accepted + tracked on the result but
++        NOT enforced. Operators must bound cost manually until
++        Phase-1.5 plumbs the cross-library config.
++
++        Phase-1 carve-out (DF-4.1-S2 + DF-4.2-S1): ``mcp_server=`` is
++        NOT forwarded to ``adapter.run(mcp_servers=...)`` because both
++        Phase-1 adapters (Generic + Claude Code CLI) raise
++        ``NotImplementedError`` on non-empty ``mcp_servers``. The
++        kwarg is accepted for forward-compatibility + validated as
++        non-empty; tool-call success is gated on what the model
++        returns from prompt alone (useful for stub-adapter tests;
++        meaningful for real LLMs only when DF-4.1-S2 + DF-4.2-S1 land).
++
++        Empty-``expected_tools`` semantics (Story 4.4 code-review 3-way
++        MED-A 2026-05-20): when a task's ``expected_tools`` is ``[]``,
++        the keyword treats ANY tool call as success (wildcard mode —
++        useful for "did the agent invoke ANY tool?" probes).
++        ``competing_tools_picked`` in this case collects ALL called
++        tool names.
++
++        Returns ``DiscoverabilityResult`` with ``per_task_results`` +
++        ``summary`` (aggregate pass rate + cost + runtime) +
++        ``mcp_coverage`` per PRD FR10a L1499 ratified shape.
++
++        Raises ``InvalidDiscoverabilityTasksError`` on tasks YAML
++        parse/schema failure. Raises ``AdapterDiscoveryError`` on
++        unknown adapter name. Raises ``ValueError`` when required
++        kwargs are missing/empty.
++
++        Example (illustrative — assumes a real adapter or fixture stub):
++        | ${result} =    `Get Tool Discoverability`
++        | ...    mcp_server=echo
++        | ...    adapter=generic
++        | ...    provider=mock
++        | ...    model=stub
++        | ...    tasks=${CURDIR}/discoverability_tasks.yaml
++        | ...    trials_per_task=3
++        | Should Be True    0.0 <= ${result.summary.activation_accuracy} <= 1.0
++        | Should Not Be Empty    ${result.per_task_results}
++
++        Notes:
++        - PRD FR10a ratifies the keyword + ``DiscoverabilityResult`` shape.
++        - Tier-3 stochastic; budgets tracked but NOT enforced in Phase-1 (DF-4.4-S1).
++        - Story 4.3 + Story 4.4 ratify the carve-out (architectural budget-injection gap shared with `MetricsLibrary` family).
++        - Story 2.2 ratifies the ``_SUB_LIBRARIES`` composition norm (which excludes ``MCPLibrary`` — driver of the carve-out).
++        - Sibling keywords: `Call Tool`, `List Tools`, `Start Server`; downstream: `HeatmapLibrary.Get Cohort Heatmap`.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         # Story 4.4 code-review MED-B fix 2026-05-20 (Codex empirical probe):
+         # `total_runtime_seconds` must capture the full end-to-end wall time
+         # operators care about for AC-DISCOVER-02 budget audit — including
