@@ -103,7 +103,7 @@ class MetricsLibrary:
         with ``allow_external_mcp_blind=False`` (default-deny per FR42).
 
         Example (illustrative — assumes a real adapter with the expected tool-call surface):
-        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    provider=mock
+        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    model=anthropic/claude-sonnet-4-6
         | ${count} =    `Get Tool Call Count`    ${result}
         | Should Be Equal As Integers    ${count}    3
 
@@ -144,7 +144,7 @@ class MetricsLibrary:
         with ``allow_external_mcp_blind=False``.
 
         Example (illustrative — assumes a real adapter with the expected tool-call surface):
-        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    provider=mock
+        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    model=anthropic/claude-sonnet-4-6
         | @{names} =    `Get Tool Call Names`    ${result}
         | Should Contain    ${names}    web_search
         | Should Be Equal    ${names}[0]    web_search                              # First tool called.
@@ -195,7 +195,7 @@ class MetricsLibrary:
         with ``allow_external_mcp_blind=False``.
 
         Example (illustrative — assumes a real adapter with the expected tool-call surface):
-        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    provider=mock
+        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    model=anthropic/claude-sonnet-4-6
         | ${hit_rate} =    `Get Tool Hit Rate`    ${result}    ${{['web_search', 'fetch']}}
         | Should Be True    ${hit_rate} >= 0.5                                      # At least half of expected tools were called.
 
@@ -237,7 +237,7 @@ class MetricsLibrary:
         with ``allow_external_mcp_blind=False``.
 
         Example (illustrative — assumes a real adapter with the expected tool-call surface):
-        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    provider=mock
+        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    model=anthropic/claude-sonnet-4-6
         | ${success_rate} =    `Get Tool Success Rate`    ${result}
         | Should Be True    ${success_rate} >= 0.8                                  # At least 80% of tool calls succeeded.
 
@@ -288,7 +288,7 @@ class MetricsLibrary:
         with ``allow_external_mcp_blind=False``.
 
         Example (illustrative — assumes a real adapter with the expected tool-call surface):
-        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    provider=mock
+        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    model=anthropic/claude-sonnet-4-6
         | ${noise} =    `Get Unnecessary Call Rate`    ${result}    ${{['web_search']}}
         | Should Be True    ${noise} <= 0.2                                         # At most 20% of calls were off-task.
 
@@ -335,7 +335,7 @@ class MetricsLibrary:
         ``mcp_coverage``-gated (PRD FR22 + AC-6.1.1).
 
         Example (illustrative — assumes a real adapter with the expected tool-call surface):
-        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    provider=mock
+        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    model=anthropic/claude-sonnet-4-6
         | ${usage} =    `Get Token Usage`    ${result}
         | Should Be True    ${usage.input_tokens} > 0
         | Should Be True    ${usage.output_tokens} > 0
@@ -370,7 +370,7 @@ class MetricsLibrary:
         Provider-reported scalar — NOT ``mcp_coverage``-gated.
 
         Example (illustrative — assumes a real adapter with the expected tool-call surface):
-        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    provider=mock
+        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    model=anthropic/claude-sonnet-4-6
         | ${latency_ms} =    `Get Latency`    ${result}
         | Should Be True    ${latency_ms} < 2000                                    # Mean turn latency under 2 seconds.
 
@@ -432,7 +432,7 @@ class MetricsLibrary:
         ``cost_usd``).
 
         Example (illustrative — assumes a real adapter with the expected tool-call surface):
-        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    provider=mock
+        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    model=anthropic/claude-sonnet-4-6
         | ${cost_usd} =    `Get Cost Total`    ${result}
         | Should Be True    ${cost_usd} < 0.10                                      # Single-shot cost cap $0.10.
         | @{results} =    `Stat.Run N Times`    n=20    keyword=Send Prompt    keyword_args=${{['adapter=generic', 'provider=mock']}}

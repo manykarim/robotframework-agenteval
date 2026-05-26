@@ -82,7 +82,7 @@ class TelemetryLibrary:
         | Length Should Be    ${warnings}    0                                                   # Clean run: zero warnings.
         | @{all_warnings} =    `Get Last Warnings`    test_id=all
         | FOR    ${w}    IN    @{all_warnings}
-        |     Log    [${w.timestamp}] ${w.warning_type}: ${w.message}
+        |     Log    [${w}[timestamp]] ${w}[warning_type]: ${w}[message]
         | END
 
         Notes:

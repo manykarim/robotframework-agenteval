@@ -1,0 +1,3480 @@
+diff --git a/src/AgentEval/__init__.py b/src/AgentEval/__init__.py
+index d758844..fd55421 100644
+--- a/src/AgentEval/__init__.py
++++ b/src/AgentEval/__init__.py
+@@ -12,6 +12,11 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
++# ruff: noqa: E501
++# Browser-Library-style docstring tables can carry long descriptions on a
++# single physical line. Per-line 120-char limit waived for this file per
++# Phase 5 docstring-refresh proposal (2026-05-26).
++
+ """robotframework-agenteval — Robot Framework library for evaluating AI coding agents.
+ 
+ Phase 1 surface:
+@@ -63,6 +68,15 @@ from AgentEval._kernel.tier import tier
+ __version__ = "0.0.1"
+ __all__: list[str] = ["AgentEval"]
+ 
++# Browser-Library-style docstring migration marker (Phase 5, 2026-05-26).
++# This module hosts the top-level `AgentEval` class which carries 3
++# `@keyword`-decorated methods (Get Effective Config / Get Keyword Tier
++# / Get Effective Config With Provenance). The marker enables the
++# conventions-test suite to discover + enforce Browser-style structure
++# on the methods within this file. The composed sub-libraries each carry
++# their own marker in their respective `library.py` files.
++_BROWSER_STYLE_MIGRATED = True
++
+ _logger = logging.getLogger("AgentEval.library")
+ 
+ # Sub-library registry per architecture L299/L354/L573 + agentguard ADR-003
+@@ -371,33 +385,35 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
+     @keyword(name="Get Effective Config")
+     @tier(1)
+     def get_effective_config(self, setting: str | None = None) -> Any:
+-        """Return the resolved config as a dict OR a single ConfigValue.
+-
+-        Story 1b.1 + Story 4.3 (PRD FR41 ConfigValue surface):
+-        - No arg → returns `dict[str, Any]` of resolved values (Story 1a.6
+-          ratified shape; preserves backwards-compat with tier1 + smoke
+-          tests).
+-        - `setting=<key>` → returns `ConfigValue(value, source)` for that
+-          single setting per PRD FR41 L1563. `source` is one of
+-          `"init_arg"` / `"env"` / `"dotenv"` / `"default"`.
+-
+-        Story 4.3 carry-over DF-4.3-S1: full PRD FR41 `dict[str, ConfigValue]`
+-        compliance is deferred to a Phase-1.5 sweep that migrates the
+-        existing Story 1a.6 tier1 tests to the new shape. Until then,
+-        the per-setting form + `Get Effective Config With Provenance`
+-        provide the ConfigValue surface.
+-
+-        Args:
+-            setting: Optional config-key name (e.g., `"max_cost_usd"`).
+-                When None, returns the full `dict[str, Any]`. When set,
+-                returns the single `ConfigValue` for that key.
+-
+-        Returns:
+-            dict[str, Any] when `setting` is None; ConfigValue when set.
+-
+-        Raises:
+-            ValueError: when `setting` is set but not a known config key.
+-        """
++        """Returns the resolved AgentEval configuration as a dict OR a single ConfigValue (PRD FR41).
++
++        [Tier 1 — Deterministic] — two-form return:
++        no-arg → ``dict[str, Any]`` of resolved values (Story 1a.6 ratified
++        shape, backwards-compat with tier-1 + smoke tests); ``setting=<key>``
++        → ``ConfigValue(value, source)`` for that single setting (FR41
++        L1563). ``source`` is one of ``"init_arg"`` / ``"env"`` /
++        ``"dotenv"`` / ``"default"``.
++
++        | =Arguments= | =Description= |
++        | ``setting`` | Optional config-key name (e.g., ``"max_cost_usd"``). When ``None`` (default), returns the full ``dict[str, Any]``. When set, returns the single ``ConfigValue`` for that key. |
++
++        Raises ``ValueError`` when ``setting`` is set but not a known
++        config key (with a sorted list of known keys in the message).
++
++        Example:
++        | Library    AgentEval    max_cost_usd=5.0    telemetry=False
++        | ${config} =    `Get Effective Config`
++        | Should Be Equal As Numbers    ${config}[max_cost_usd]    5.0
++        | Should Be Equal    ${config}[telemetry]    ${FALSE}
++        | ${cost_setting} =    `Get Effective Config`    setting=max_cost_usd
++        | Should Be Equal As Numbers    ${cost_setting.value}    5.0
++        | Should Be Equal    ${cost_setting.source}    init_arg
++
++        Notes:
++        - PRD FR41 ratifies the ConfigValue surface; FR42 ratifies the 9 settings.
++        - Story 4.3 DF-4.3-S1 carry-over: full ``dict[str, ConfigValue]`` migration of the no-arg form is Phase-1.5.
++        - Sibling keyword: `Get Effective Config With Provenance` for the FR41-compliant full-surface form.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if setting is not None:
+             if setting not in self._config_provenance:
+                 # Story 4.3 code-review Blind MED-1 fix 2026-05-20: `ValueError`
+@@ -421,34 +437,41 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
+     @keyword(name="Get Keyword Tier")
+     @tier(1)
+     def get_keyword_tier(self, keyword: str) -> int:
+-        """[Tier 1 — Deterministic] Return the tier annotation for an RF keyword (PRD FR30a).
+-
+-        Story 6.3 AC-6.3.7: walks the composed DynamicCore keyword registry +
+-        top-level methods to resolve `keyword` (verbatim RF name) to its
+-        `_agenteval_tier` integer.
+-
+-        Per epic AC-5 (epics.md:1659 verbatim ratified Story 6.3 D-14
+-        amendment 2026-05-20): calling on `Stat.Run N Times` returns `3` (the
+-        runner is a Tier-3 fan-out keyword per architecture L380 + L1056;
+-        `@guarded_fanout` cost-guardrail enforcement requires Tier-3
+-        classification). Note: this is an amendment of the pre-edit "returns
+-        1" claim — the runner's tier governs the fan-out enforcement model,
+-        independent of the wrapped keyword's own tier.
+-
+-        Args:
+-            keyword: Verbatim RF keyword name (e.g., `"Send Prompt"`,
+-                `"Stat.Run N Times"`, `"Get Effective Config"`).
+-
+-        Returns:
+-            `int ∈ {1, 2, 3}` — the keyword's tier.
+-
+-        Raises:
+-            ValueError: if `keyword` is not found in the composed library
+-                (with a sorted-list-of-known-keywords hint), OR if the keyword
+-                exists but has no `@tier(N)` annotation, OR if the annotated
+-                tier is outside `{1, 2, 3}` (defensive range check per Story
+-                6.3 code-review HIGH-π fix).
+-        """
++        """Returns the determinism-tier annotation for an RF keyword (PRD FR30a).
++
++        [Tier 1 — Deterministic] — returns ``int ∈ {1, 2, 3}``. Walks the
++        composed DynamicCore keyword registry + top-level methods to
++        resolve the verbatim RF name to its ``_agenteval_tier`` integer
++        via the ``@tier(N)`` decorator chain.
++
++        | =Arguments= | =Description= |
++        | ``keyword`` | Verbatim RF keyword name (e.g., ``"Send Prompt"``, ``"Stat.Run N Times"``, ``"Get Effective Config"``). |
++
++        Returns the wrapper's own tier, not the wrapped keyword's tier —
++        e.g., ``Stat.Run N Times`` returns ``3`` (fan-out runner tier)
++        per epic AC-5 + Story 6.3 D-14 amendment. The runner's tier
++        governs the ``@guarded_fanout`` enforcement model, independent
++        of the wrapped keyword's own classification.
++
++        Raises ``ValueError`` when the keyword is not found in the
++        composed library (with a sorted list of known keywords in the
++        message), OR when the keyword has no ``@tier(N)`` annotation,
++        OR when the annotated tier is outside ``{1, 2, 3}`` (defensive
++        range check per Story 6.3 code-review HIGH-π fix).
++
++        Example:
++        | ${tier} =    `Get Keyword Tier`    Get Tool Call Count
++        | Should Be Equal As Integers    ${tier}    1                                # Tier-1 deterministic metric.
++        | ${tier} =    `Get Keyword Tier`    Send Prompt
++        | Should Be Equal As Integers    ${tier}    2                                # Tier-2 stochastic single-shot.
++        | ${tier} =    `Get Keyword Tier`    Stat.Run N Times
++        | Should Be Equal As Integers    ${tier}    3                                # Tier-3 fan-out runner.
++
++        Notes:
++        - PRD FR30a ratifies the tier-introspection contract; AC-6.3.7 establishes the DynamicCore walk.
++        - Story 6.3 D-14 amendment: fan-out runner reports its own tier (3), not the wrapped keyword's tier.
++        - Sibling keywords: every `@tier`-decorated keyword in the composed library is introspectable here.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         from AgentEval._kernel.tier import find_tier_through_wrappers
+ 
+         # DynamicCore exposes `self.keywords` as a {name: bound_method} dict —
+@@ -481,13 +504,33 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
+     @keyword(name="Get Effective Config With Provenance")
+     @tier(1)
+     def get_effective_config_with_provenance(self) -> dict[str, ConfigValue]:
+-        """Story 4.3 / PRD FR41: return `dict[str, ConfigValue]` for the full settings map.
+-
+-        Each `ConfigValue` carries `value` + `source` per PRD FR41 L1563.
+-        This is the PRD-FR41-compliant full surface that DF-4.3-S1 will
+-        migrate `Get Effective Config` (no-arg) to once existing tier1
+-        tests are updated.
+-        """
++        """Returns the full settings map with per-key provenance as a ``dict[str, ConfigValue]`` (PRD FR41).
++
++        [Tier 1 — Deterministic] — FR41-compliant surface. Each
++        ``ConfigValue`` carries ``value`` + ``source`` per FR41 L1563.
++        Source is one of ``"init_arg"`` / ``"env"`` / ``"dotenv"`` /
++        ``"default"``.
++
++        | =Arguments= | =Description= |
++        | (none) | Returns the full settings map; no arguments. |
++
++        Defensive shallow-copy of the underlying provenance dict — caller
++        mutations don't propagate to the Library's internal state.
++
++        Example:
++        | Library    AgentEval    max_cost_usd=5.0
++        | ${settings} =    `Get Effective Config With Provenance`
++        | ${cost} =    Set Variable    ${settings}[max_cost_usd]
++        | Should Be Equal As Numbers    ${cost.value}    5.0
++        | Should Be Equal    ${cost.source}    init_arg                              # Constructor kwarg won.
++        | ${temp} =    Set Variable    ${settings}[default_temperature]
++        | Should Be Equal    ${temp.source}    default                               # Not overridden — uses FR42 default.
++
++        Notes:
++        - PRD FR41 ratifies the ``dict[str, ConfigValue]`` shape.
++        - This is the FR41-compliant surface DF-4.3-S1 will migrate ``Get Effective Config`` (no-arg) to once tier-1 tests update.
++        - Sibling keyword: `Get Effective Config` for the simpler ``dict[str, Any]`` or per-setting form.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         # M_R6 shallow-copy pattern: protect against caller mutating
+         # the returned dict.
+         return dict(self._config_provenance)
+diff --git a/src/AgentEval/_assertions/library.py b/src/AgentEval/_assertions/library.py
+index 73dacb5..6aac009 100644
+--- a/src/AgentEval/_assertions/library.py
++++ b/src/AgentEval/_assertions/library.py
+@@ -12,6 +12,11 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
++# ruff: noqa: E501
++# Browser-Library-style docstring tables can carry long descriptions
++# on a single physical line. Per-line 120-char limit waived for this
++# file per Phase 3 docstring-refresh proposal (2026-05-26).
++
+ """Assertion RF-keyword surface (Story 6.2 / PRD FR23a + FR23b + FR24 + FR25).
+ 
+ Ships 5 assertion keywords reading from `AgentRunResult` instances:
+@@ -54,6 +59,9 @@ from AgentEval.types import AgentRunResult
+ 
+ __all__ = ["AssertionsLibrary"]
+ 
++# Browser-Library-style docstring migration marker (Phase 3, 2026-05-26).
++_BROWSER_STYLE_MIGRATED = True
++
+ 
+ _VALID_TRAJECTORY_MODES = ("exact", "subsequence", "set", "regex")
+ 
+@@ -81,35 +89,39 @@ class AssertionsLibrary:
+         expected: list[str],
+         mode: str = "exact",
+     ) -> None:
+-        """[Tier 1 — Deterministic] Assert the tool-call trajectory matches `expected` (PRD FR23a + FR23b).
+-
+-        Args:
+-            result: `AgentRunResult` carrying the observed `tool_calls`.
+-            expected: List of expected tool names (or regex patterns for
+-                `mode="regex"`).
+-            mode: Match mode per PRD FR23a verbatim:
+-
+-                - `"exact"` (default): ordered list equality.
+-                - `"subsequence"`: ordered, extras allowed between/around.
+-                - `"set"`: unordered, no extras — **set equality** semantics.
+-                  Note: duplicate names collapse (`["a", "a"]` set-equals
+-                  `["a"]`); operators wanting multiset semantics ("exactly
+-                  N calls of tool X") should use `mode="exact"` or count
+-                  via `Get Tool Calls`. Per PRD FR23a verbatim "unordered,
+-                  no extras" — implementation is set-equality of distinct
+-                  tool names. Story 6.2 code-review MED-6 docstring fix.
+-                - `"regex"`: per FR23b, each `expected[i]` is a regex
+-                  matched via `re.fullmatch` against the concatenation
+-                  `"<tool_name>:<json.dumps(args, sort_keys=True)>"`.
+-
+-        Raises:
+-            `IncompleteTraceError`: per FR37 when `mcp_coverage="external_mixed"`
+-                + `allow_external_mcp_blind=False` (default).
+-            `ValueError`: if `mode` is not one of the 4 documented values.
+-            `AssertionError`: if the trajectory does not match. Failure
+-                message is `redact()`-scrubbed per FR38a (Story 5.3) so
+-                credentials in args don't leak into RF logs.
+-        """
++        """Asserts the agent's tool-call trajectory matches an expected sequence (PRD FR23a + FR23b).
++
++        [Tier 1 — Deterministic] — four match modes available. Failure
++        messages are ``redact()``-scrubbed per FR38a so credentials in
++        tool args don't leak into RF logs.
++
++        | =Arguments= | =Description= |
++        | ``result`` | ``AgentRunResult`` carrying the observed ``tool_calls``. |
++        | ``expected`` | List of expected tool names (or regex patterns when ``mode="regex"``). |
++        | ``mode`` | Match mode: ``"exact"`` (ordered equality) / ``"subsequence"`` (ordered, extras allowed between) / ``"set"`` (unordered set-equality of distinct names) / ``"regex"`` (each ``expected[i]`` is a ``re.fullmatch`` pattern against ``<tool>:<json.dumps(args, sort_keys=True)>``). Default ``"exact"``. |
++
++        Set-mode caveat: duplicate names collapse — ``["a", "a"]`` set-
++        equals ``["a"]``. Operators wanting multiset semantics ("exactly
++        N calls of tool X") should use ``mode="exact"``.
++
++        Raises ``ValueError`` when ``mode`` is not one of the 4 documented
++        values (caller-typo gate fires BEFORE the FR37 coverage gate).
++        Raises ``IncompleteTraceError`` per FR37 on
++        ``mcp_coverage="external_mixed"`` + ``allow_external_mcp_blind=False``.
++        Raises ``AssertionError`` on trajectory mismatch.
++
++        Example (illustrative — assumes a real adapter with the expected 3-call trajectory):
++        | ${result} =    `Send Prompt`    prompt=Find news    adapter=generic    provider=mock
++        | `Trajectory Should Match`    ${result}    ${{['web_search', 'fetch', 'summarize']}}
++        | `Trajectory Should Match`    ${result}    ${{['web_search', 'summarize']}}    mode=subsequence
++        | `Trajectory Should Match`    ${result}    ${{['fetch', 'web_search']}}    mode=set
++        | `Trajectory Should Match`    ${result}    ${{['web_search:.*', 'fetch:.*', 'summarize:.*']}}    mode=regex
++
++        Notes:
++        - PRD FR23a + FR23b ratify the 4 match modes.
++        - mcp_coverage gating per FR37 + FR42; failure-message redaction per FR38a + Story 5.3.
++        - Sibling keyword: `Tool Call Should Have Occurred` for single-call name+args assertions.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         # Story 6.2 code-review MED ordering fix (Blind LOW-17 + Edge MED-7 +
+         # Auditor #7 3-way): validate `mode` BEFORE the FR37 gate so caller-side
+         # typos surface as `ValueError` regardless of run-coverage state.
+@@ -154,25 +166,35 @@ class AssertionsLibrary:
+         args: dict[str, Any] | None = None,
+         match_mode: str = "subset",
+     ) -> None:
+-        """[Tier 1 — Deterministic] Assert a tool call with given name + args occurred (PRD FR24).
+-
+-        Args:
+-            result: `AgentRunResult` carrying the observed `tool_calls`.
+-            tool: Expected tool name (exact match required).
+-            args: Optional dict of expected args. `None` = name-only match.
+-            match_mode: Per FR24 verbatim:
+-
+-                - `"subset"` (default): `args` is a dict-subset of `tc.args`
+-                  (extra args allowed); recursive for nested dicts.
+-                - `"exact"`: `tc.args == args` exact equality.
+-
+-        Raises:
+-            `IncompleteTraceError`: per FR37 on `external_mixed` coverage.
+-            `AssertionError`: if no tool call matches. Failure message is
+-                `redact()`-scrubbed per FR38a (Story 5.3) so credentials
+-                in tool args don't leak into RF logs.
+-            `ValueError`: if `match_mode` is invalid.
+-        """
++        """Asserts that a tool call with the given name (and optional args) occurred (PRD FR24).
++
++        [Tier 1 — Deterministic] — searches all observed ``tool_calls``
++        for one matching ``tool`` + (optionally) ``args``. Failure
++        messages are ``redact()``-scrubbed per FR38a.
++
++        | =Arguments= | =Description= |
++        | ``result`` | ``AgentRunResult`` carrying the observed ``tool_calls``. |
++        | ``tool`` | Expected tool name (exact-match required). |
++        | ``args`` | Optional dict of expected args. ``None`` (default) = name-only match. |
++        | ``match_mode`` | ``"subset"`` (default — ``args`` is a dict-subset of ``tc.args``; recursive for nested dicts) OR ``"exact"`` (``tc.args == args``). |
++
++        Raises ``ValueError`` when ``match_mode`` is invalid (caller-typo
++        gate fires BEFORE the FR37 coverage gate). Raises
++        ``IncompleteTraceError`` per FR37 on
++        ``mcp_coverage="external_mixed"`` + ``allow_external_mcp_blind=False``.
++        Raises ``AssertionError`` when no tool call matches.
++
++        Example (illustrative — assumes a real adapter with the expected ``web_search`` call):
++        | ${result} =    `Send Prompt`    prompt=Find news    adapter=generic    provider=mock
++        | `Tool Call Should Have Occurred`    ${result}    web_search
++        | `Tool Call Should Have Occurred`    ${result}    web_search    args=${{ {"query": "agenteval"} }}
++        | `Tool Call Should Have Occurred`    ${result}    web_search    args=${{ {"query": "x"} }}    match_mode=exact
++
++        Notes:
++        - PRD FR24 ratifies the name + args + match-mode contract.
++        - mcp_coverage gating per FR37 + FR42; failure-message redaction per FR38a + Story 5.3.
++        - Sibling keyword: `Trajectory Should Match` for ordered-sequence assertions over multiple calls.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         # Story 6.2 code-review HIGH-α + MED ordering fix (Edge HIGH-2 + Codex
+         # probe + Auditor #7/#8): validate `match_mode` up-front BEFORE the
+         # FR37 gate AND before the tool-name loop so typos like
+@@ -212,11 +234,29 @@ class AssertionsLibrary:
+     @keyword(name="Agent Response Should Contain")
+     @tier(1)
+     def agent_response_should_contain(self, result: AgentRunResult, substring: str) -> None:
+-        """[Tier 1 — Deterministic] Assert `substring` appears in `result.response_text` (PRD FR25).
++        """Asserts that ``substring`` appears in ``result.response_text`` (PRD FR25).
+ 
+-        Raises:
+-            `AssertionError`: if the substring is not in the response text.
+-        """
++        [Tier 1 — Deterministic] — provider-reported scalar; NOT
++        ``mcp_coverage``-gated. Failure messages are ``redact()``-scrubbed
++        per FR38a.
++
++        | =Arguments= | =Description= |
++        | ``result`` | ``AgentRunResult`` carrying ``response_text``. |
++        | ``substring`` | Literal substring to match. Case-sensitive. |
++
++        Raises ``AssertionError`` when the substring is not found.
++
++        Example:
++        | ${result} =    `Send Prompt`    prompt=Robot Framework is a test automation framework    adapter=generic    provider=mock
++        | `Agent Response Should Contain`    ${result}    Robot Framework                                          # Mock echoes the prompt.
++        | `Agent Response Should Contain`    ${result}    test automation
++
++        Notes:
++        - PRD FR25 ratifies the 3 response assertions (Contain / Match Regex / Match Schema).
++        - Response text is observer-independent — no mcp_coverage gate.
++        - Failure-message redaction per FR38a + Story 5.3.
++        - Sibling keywords: `Agent Response Should Match Regex` (regex), `Agent Response Should Match Schema` (JSON schema).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if substring not in result.response_text:
+             # Story 6.2 code-review HIGH-δ fix (Edge HIGH-4 / FR38a): redact
+             # the response-text echo. Response text can carry tokens emitted
+@@ -226,15 +266,31 @@ class AssertionsLibrary:
+     @keyword(name="Agent Response Should Match Regex")
+     @tier(1)
+     def agent_response_should_match_regex(self, result: AgentRunResult, pattern: str) -> None:
+-        """[Tier 1 — Deterministic] Assert `pattern` matches `result.response_text` (PRD FR25).
+-
+-        Uses `re.search` (substring-match by default per the "match"
+-        terminology in FR25). Multi-line text supported via standard
+-        `re` flags in the pattern.
+-
+-        Raises:
+-            `AssertionError`: if the pattern does not match.
+-        """
++        """Asserts a regex pattern matches ``result.response_text`` (PRD FR25).
++
++        [Tier 1 — Deterministic] — uses ``re.search`` (substring-match by
++        default per FR25's "match" terminology). Multi-line text supported
++        via standard ``re`` flags in the pattern. NOT
++        ``mcp_coverage``-gated. Failure messages are ``redact()``-scrubbed
++        per FR38a.
++
++        | =Arguments= | =Description= |
++        | ``result`` | ``AgentRunResult`` carrying ``response_text``. |
++        | ``pattern`` | Python ``re`` pattern. Use ``(?i)`` / ``(?m)`` / ``(?s)`` inline flags as needed. |
++
++        Raises ``AssertionError`` when the pattern does not match.
++
++        Example:
++        | ${result} =    `Send Prompt`    prompt=Released in 2020 — Robot Framework 3.x    adapter=generic    provider=mock
++        | `Agent Response Should Match Regex`    ${result}    20\\d{2}                          # 4-digit year — matches the echoed "2020".
++        | `Agent Response Should Match Regex`    ${result}    (?i)robot.*framework              # Case-insensitive multi-word.
++
++        Notes:
++        - PRD FR25 ratifies the regex assertion; `re.search` semantics (not `re.fullmatch`).
++        - Response text is observer-independent — no mcp_coverage gate.
++        - Failure-message redaction per FR38a + Story 5.3.
++        - Sibling keywords: `Agent Response Should Contain` (literal substring), `Agent Response Should Match Schema` (JSON schema).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if not re.search(pattern, result.response_text):
+             # Story 6.2 code-review HIGH-δ fix (Edge HIGH-4 / FR38a): redact
+             # response-text echo.
+@@ -247,27 +303,35 @@ class AssertionsLibrary:
+         result: AgentRunResult,
+         schema: dict[str, Any] | str | Path,
+     ) -> None:
+-        """[Tier 1 — Deterministic] Assert `response_text` (parsed JSON) validates against schema (PRD FR25).
+-
+-        Args:
+-            result: `AgentRunResult`.
+-            schema: JSON Schema as a dict OR a file path (str or
+-                `pathlib.Path`) per Story 6.2 D-4 drift fix supporting
+-                both forms (operator convenience).
+-
+-        Raises:
+-            `ValueError`: if `schema` is not a `dict`/`str`/`Path`, OR if
+-                the str/Path is not a valid file, OR if the loaded JSON is
+-                not a top-level dict (Story 6.2 code-review HIGH-β fix —
+-                tightened dispatch so an unexpected `schema` type raises
+-                the documented `ValueError` instead of leaking a bare
+-                `TypeError` from `pathlib`).
+-            `AssertionError`: if `response_text` is not parseable as JSON.
+-                Failure message is `redact()`-scrubbed per FR38a.
+-            `jsonschema.ValidationError`: if the parsed JSON does not
+-                validate against the schema (preserves the jsonschema
+-                convention so consumers can catch the specific exception).
+-        """
++        """Asserts ``response_text`` parses as JSON + validates against a JSON Schema (PRD FR25).
++
++        [Tier 1 — Deterministic] — provider-reported scalar; NOT
++        ``mcp_coverage``-gated. Parses ``response_text`` as JSON, then
++        validates against the schema via ``jsonschema``.
++
++        | =Arguments= | =Description= |
++        | ``result`` | ``AgentRunResult`` carrying ``response_text`` (expected to be JSON-parsable). |
++        | ``schema`` | JSON Schema as a ``dict`` OR a file path (``str`` / ``pathlib.Path``). |
++
++        Raises ``ValueError`` when ``schema`` is not a ``dict``/``str``/``Path``,
++        or when the file is not a valid JSON schema dict. Raises
++        ``AssertionError`` (redacted per FR38a) when ``response_text`` is
++        not JSON-parsable. Raises ``jsonschema.ValidationError`` when the
++        parsed JSON does not validate against the schema (preserves the
++        jsonschema convention so consumers can catch the specific
++        exception).
++
++        Example:
++        | ${result} =    `Send Prompt`    prompt={"answer": 42}    adapter=generic    provider=mock
++        | `Agent Response Should Match Schema`    ${result}    ${{ {"type": "object", "required": ["answer"]} }}
++        | # Path form: `Agent Response Should Match Schema`    ${result}    ${CURDIR}/schemas/response.json    (requires the schema file to exist)
++
++        Notes:
++        - PRD FR25 ratifies the schema-validation contract; Story 6.2 D-4 supports both dict + path forms.
++        - Uses ``jsonschema`` package — the upstream ``ValidationError`` is preserved on validation failure (callers can catch specifically).
++        - Failure-message redaction per FR38a + Story 5.3.
++        - Sibling keywords: `Agent Response Should Contain` (literal substring), `Agent Response Should Match Regex` (regex pattern).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         resolved = _internal._resolve_schema(schema)
+         try:
+             parsed = json.loads(result.response_text)
+diff --git a/src/AgentEval/_heatmap/library.py b/src/AgentEval/_heatmap/library.py
+index 9a203cc..059a271 100644
+--- a/src/AgentEval/_heatmap/library.py
++++ b/src/AgentEval/_heatmap/library.py
+@@ -12,6 +12,11 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
++# ruff: noqa: E501
++# Browser-Library-style docstring tables can carry long descriptions on a
++# single physical line. Per-line 120-char limit waived for this file per
++# Phase 5 docstring-refresh proposal (2026-05-26).
++
+ """``HeatmapLibrary`` — RF library with ``Get Cohort Heatmap`` keyword (Story 8b.2)."""
+ 
+ from __future__ import annotations
+@@ -28,6 +33,9 @@ if TYPE_CHECKING:
+ 
+ __all__ = ["HeatmapLibrary"]
+ 
++# Browser-Library-style docstring migration marker (Phase 5, 2026-05-26).
++_BROWSER_STYLE_MIGRATED = True
++
+ 
+ @library(scope="GLOBAL")
+ class HeatmapLibrary:
+@@ -44,16 +52,36 @@ class HeatmapLibrary:
+         *,
+         model_name: str = "default",
+     ) -> CohortHeatmap:
+-        """Build a ``CohortHeatmap`` from a Story 4.4 ``DiscoverabilityResult``.
++        """Builds a ``CohortHeatmap`` from a ``DiscoverabilityResult`` (Story 8b.2 / FR55).
+ 
+         [Tier 1 — Deterministic] — pure projection over the result's
+-        ``per_task_results``; no LLM calls.
++        ``per_task_results``; no LLM calls. Returns a ``CohortHeatmap``
++        instance with ``.as_ascii()`` (box-drawing rendered grid) +
++        ``.as_dict()`` (nested ``{task: {model: pass_at_k}}`` mapping)
++        methods.
++
++        | =Arguments= | =Description= |
++        | ``discoverability_result`` | Result from `MCP.Get Tool Discoverability` (Story 4.4 / FR10a). Carries ``per_task_results`` list of per-task ``pass_rate`` values. |
++        | ``model_name`` | Column label for the single-model column. Phase-1: single-model heatmaps only. Defaults to ``"default"``. |
++
++        Phase-1 scope: single-model heatmap (one column). Multi-model
++        comparison (rows = tasks × columns = models) is Phase-2 work.
++        Missing cells render as ``" — "`` sentinel (em-dash with spaces)
++        rather than silently substituting ``0.0`` per the Story 10.1
++        kilo/minimax review HIGH-1 honesty patch.
+ 
+-        Args:
+-            discoverability_result: result from ``MCP.Get Tool Discoverability``.
+-            model_name: column label for the single-model column (Phase-1).
++        Example:
++        | ${task} =    Evaluate    type('R', (), {'task_id': 'task-1', 'pass_rate': 0.5})()
++        | ${disc} =    Evaluate    type('D', (), {'per_task_results': [$task]})()
++        | ${heatmap} =    `Get Cohort Heatmap`    ${disc}    model_name=claude-sonnet-4-5
++        | ${ascii} =    Evaluate    $heatmap.as_ascii()
++        | Log    ${ascii}                                                                           # Box-drawing render.
++        | ${cells} =    Evaluate    $heatmap.as_dict()
++        | Should Not Be Empty    ${cells}
+ 
+-        Returns:
+-            ``CohortHeatmap`` with ``.as_ascii()`` + ``.as_dict()`` methods.
+-        """
++        Notes:
++        - Story 8b.2 ratifies the ``CohortHeatmap`` data class + ``Get Cohort Heatmap`` keyword surface.
++        - FR55 ratifies ASCII + dict renderers; missing-cell honesty patch per Story 10.1 review (em-dash sentinel).
++        - Sibling keyword: `MCP.Get Tool Discoverability` produces the ``DiscoverabilityResult`` input.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return CohortHeatmap.from_discoverability(discoverability_result, model_name=model_name)
+diff --git a/src/AgentEval/hooks/library.py b/src/AgentEval/hooks/library.py
+index dfa6d53..ef18032 100644
+--- a/src/AgentEval/hooks/library.py
++++ b/src/AgentEval/hooks/library.py
+@@ -48,6 +48,15 @@ from AgentEval.hooks._parser import parse_hook_config
+ 
+ __all__ = ["HooksLibrary"]
+ 
++# Browser-Library-style docstring migration marker (Phase 1, 2026-05-26).
++# Read by `tests/unit/conventions/test_docstring_browser_style.py` +
++# `test_docstring_examples_dryrun.py` to determine which libraries are
++# subject to the Browser-style structure + example-dryrun enforcement.
++# Derived-via-marker pattern adopted per Kilo Phase 1 review HIGH (Patch B);
++# replaces the hardcoded `MIGRATED_LIBRARIES` allow-list that drifted as
++# new libraries shipped.
++_BROWSER_STYLE_MIGRATED = True
++
+ 
+ class HooksLibrary:
+     """Static-inspection keyword for `settings.json` hook configs [Tier 1 — Deterministic]."""
+@@ -55,31 +64,49 @@ class HooksLibrary:
+     @keyword(name="Get Config")
+     @tier(1)
+     def get_config(self, path: str | Path) -> dict[str, list[dict[str, Any]]]:
+-        """Parse a Claude Code `settings.json` hook configuration.
+-
+-        [Tier 1 — Deterministic] — pure file-read + JSON parse +
+-        per-entry validation per PRD FR4. Median ≤ 50 ms on typical
+-        hook configs per NFR-PERF-02 (PRD L1608).
+-
+-        Args:
+-            path: Filesystem path to the `settings.json` file.
+-
+-        Returns:
+-            A dict mapping `hooks.<event>` → list of validated hook
+-            entries. Events covered: `PreToolUse`, `PostToolUse`,
+-            `Stop` (per PRD FR4); other events are passed through with
+-            the same validation. Each entry has `command` plus any
+-            optional fields (`args`, `timeout`, `matcher`) that were
+-            present + `inline_skill: dict` if the entry's command
+-            contained an inline YAML frontmatter block.
+-
+-        Raises:
+-            InvalidHookConfigError: On any structural failure (file
+-                not found, malformed JSON, missing `command`, wrong
+-                optional-field types). The `field_name` attribute
+-                carries an RFC 6901 JSON Pointer (e.g.,
+-                `/hooks/PreToolUse/0/command`) into the offending
+-                location for nested-JSON pinpointing. Format per FR59
+-                + `docs/contracts/error-class-hierarchy.md` L96-104.
+-        """
++        """Parses a Claude Code ``settings.json`` hook configuration.
++
++        [Tier 1 — Deterministic] — pure file-read + JSON parse + per-entry
++        validation per PRD FR4. Returns a dict mapping ``hooks.<event>`` →
++        list of validated hook entries. Covered events: ``PreToolUse``,
++        ``PostToolUse``, ``Stop``; other events are passed through with the
++        same validation. Median ≤ 50 ms on typical hook configs per
++        NFR-PERF-02.
++
++        | =Arguments= | =Description= |
++        | ``path`` | Filesystem path to the ``settings.json`` file. Accepts ``str`` OR ``pathlib.Path``. |
++
++        Each returned entry has ``command`` (required) plus any of the
++        optional fields ``args`` / ``timeout`` / ``matcher`` that were
++        present in the source JSON. Entries whose command contains an
++        inline YAML frontmatter block additionally surface an
++        ``inline_skill: dict`` field with the parsed frontmatter.
++
++        Raises ``InvalidHookConfigError`` on any structural failure (file
++        not found, malformed JSON, missing ``command``, wrong-type optional
++        field). The error's ``field_name`` attribute carries an RFC 6901
++        JSON Pointer (e.g. ``/hooks/PreToolUse/0/command``) pinpointing the
++        nested location. Format per FR59 +
++        `docs/contracts/error-class-hierarchy.md` L96-104.
++
++        This keyword is re-exported through the top-level ``AgentEval``
++        library, so ``AgentEval.Get Config`` and ``Hook.Get Config`` (when
++        imported as ``WITH NAME    Hook``) resolve to the same
++        implementation.
++
++        Example:
++        | ${config} =    `Get Config`    ${CURDIR}/.claude/settings.json
++        | Length Should Be    ${config}[hooks.PreToolUse]    1
++        | Should Be Equal    ${config}[hooks.PreToolUse][0][command]    /usr/local/bin/audit-hook
++        | Should Be Equal As Integers    ${config}[hooks.PostToolUse][0][timeout]    30
++
++        Notes:
++        - PRD FR4 ratifies the canonical events (PreToolUse / PostToolUse / Stop).
++          Unknown events are validated with the same shape contract.
++        - Performance budget: NFR-PERF-02 (median ≤ 50 ms per call).
++        - Error format: FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
++          The ``field_name`` attribute on raised errors carries an RFC 6901 JSON Pointer.
++        - Inline-skill-frontmatter hooks are an extension surface — the inner skill
++          is reachable via `SkillsLibrary` keywords passed the ``inline_skill`` dict directly.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return parse_hook_config(path)
+diff --git a/src/AgentEval/mcp/library.py b/src/AgentEval/mcp/library.py
+index 597868f..fcf1ac7 100644
+--- a/src/AgentEval/mcp/library.py
++++ b/src/AgentEval/mcp/library.py
+@@ -12,9 +12,14 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
+-"""MCP sub-library — static-inspection keywords for `.mcp.json` files.
++# ruff: noqa: E501
++# Browser-Library-style docstring tables can carry long descriptions
++# on a single physical line. Per-line 120-char limit waived for this
++# file per Phase 7 docstring-refresh proposal (2026-05-26).
+ 
+-Story 2.3 ships 3 Tier-1 keywords per PRD FR5 + FR6 Phase-1 scope:
++"""MCP sub-library — `.mcp.json` static-inspection + Phase-1 lifecycle + discoverability keywords.
++
++Static-inspection keywords (Story 2.3 / PRD FR5 + FR6):
+ - `Get Server Config` — parse a `.mcp.json` server-config file into a
+   dict mapping `<server_name>` → entry (`command`, `args`, `env`,
+   `transport`, `tools`).
+@@ -26,6 +31,18 @@ Story 2.3 ships 3 Tier-1 keywords per PRD FR5 + FR6 Phase-1 scope:
+   `InvalidMCPToolSchemaError` with an RFC 6901 JSON Pointer + the
+   wrapped jsonschema error message.
+ 
++Lifecycle keywords (Story 3.1 + 3.2 / PRD FR7 + FR8 + FR9a + FR9b):
++- `Start Server` — pure handle construction over the 3-transport enum.
++- `Connect To Server` — open session, run `initialize()`, gate on the
++  agenteval-supported protocol range, then close.
++- `Stop Server` — Phase-1 no-op cleanup hook.
++- `List Tools` — per-call MCP `list_tools` projection.
++- `Call Tool` — per-call MCP tool invocation (tool-error-as-data).
++
++Discoverability keyword (Story 4.4 / PRD FR10a):
++- `Get Tool Discoverability` — Tier-3 N-trial Pass@k evaluation with
++  Wilson CI bounds.
++
+ Per Story 2.2 code-review HIGH-1 ratification (DynamicCore composition
+ keyword-name collision prevention): `MCPLibrary` is NOT registered in
+ `src/AgentEval/__init__.py:_SUB_LIBRARIES`. Users access via standalone
+@@ -85,6 +102,9 @@ from AgentEval.mcp.transport import Transport
+ 
+ __all__ = ["MCPLibrary"]
+ 
++# Browser-Library-style docstring migration marker (Phase 7, 2026-05-26).
++_BROWSER_STYLE_MIGRATED = True
++
+ 
+ class MCPLibrary:
+     """Static-inspection keywords for `.mcp.json` files [Tier 1 — Deterministic]."""
+@@ -92,30 +112,33 @@ class MCPLibrary:
+     @keyword(name="Get Server Config")
+     @tier(1)
+     def get_server_config(self, path: str | Path) -> dict[str, dict[str, Any]]:
+-        """Parse a `.mcp.json` file's `mcpServers` declarations.
+-
+-        [Tier 1 — Deterministic] — pure file-read + JSON parse + per-entry
+-        validation. Does NOT spawn any MCP server subprocesses (verifiable
+-        via process inventory diff). Median ≤ 50 ms per NFR-PERF-02.
+-
+-        Args:
+-            path: Filesystem path to the `.mcp.json` file.
+-
+-        Returns:
+-            A dict mapping `<server_name>` → server-entry dict. Each
+-            entry has at minimum `command` (str); may contain `args`
+-            (list[str]), `env` (dict[str,str]), `transport`
+-            (str ∈ {`stdio`, `streamable_http`, `in_memory`} per PRD
+-            FR7), `tools` (dict[str, JSON Schema] — Phase-1 declarative
+-            extension).
+-
+-        Raises:
+-            InvalidMCPServerConfigError: On any structural failure —
+-                file not found, wrong extension, malformed JSON, missing
+-                `command`, wrong types, unsupported transport. The
+-                `field_name` attribute carries an RFC 6901 JSON Pointer
+-                into the offending location.
+-        """
++        """Parses a ``.mcp.json`` file's ``mcpServers`` declarations (PRD FR5).
++
++        [Tier 1 — Deterministic] — pure file-read + JSON parse + per-
++        entry validation. Does NOT spawn any MCP subprocesses. Returns a
++        dict mapping ``<server_name>`` → server-entry dict. Each entry
++        has at minimum ``command`` (str); may carry ``args``, ``env``,
++        ``transport`` (one of ``stdio`` / ``streamable_http`` /
++        ``in_memory`` per FR7), ``tools`` (Phase-1 declarative
++        extension). Median ≤ 50 ms per NFR-PERF-02.
++
++        | =Arguments= | =Description= |
++        | ``path`` | Filesystem path to the ``.mcp.json`` file. Accepts ``str`` OR ``pathlib.Path``. |
++
++        Raises ``InvalidMCPServerConfigError`` on any structural
++        failure. The error's ``field_name`` attribute carries an RFC
++        6901 JSON Pointer into the offending location.
++
++        Example:
++        | ${servers} =    `Get Server Config`    ${CURDIR}/.mcp.json
++        | Should Be Equal    ${servers}[echo][transport]    stdio
++        | Should Contain    ${servers}[echo][args]    -m
++
++        Notes:
++        - PRD FR5 ratifies the ``.mcp.json`` parse contract; FR7 ratifies the transport enum.
++        - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
++        - Sibling keywords: `Get Tool Schema` + `Validate Tool Schema` for tool-schema introspection.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return parse_mcp_servers(path)
+ 
+     @keyword(name="Get Tool Schema")
+@@ -126,30 +149,31 @@ class MCPLibrary:
+         tool_name: str,
+         server_name: str | None = None,
+     ) -> dict[str, Any]:
+-        """Return a tool's input JSON Schema from `.mcp.json:tools`.
+-
+-        [Tier 1 — Deterministic] — Phase-1 reads from the declarative
+-        `tools` extension on each server entry (Story 2.3 drift-check
+-        D-D 2026-05-19). PRD FR6's "against a running or configured
+-        MCP server" runtime path is Phase-2 + Epic 3 scope.
+-
+-        Args:
+-            config_path: Path to the `.mcp.json` file.
+-            tool_name: Name of the tool whose schema to retrieve.
+-            server_name: When `None`, search every server in
+-                declaration order + return the first match. When set,
+-                only consult the named server.
+-
+-        Returns:
+-            The tool's input JSON Schema as a dict.
+-
+-        Raises:
+-            InvalidMCPServerConfigError: On `.mcp.json` structural
+-                failure.
+-            InvalidMCPToolSchemaError: If the tool is not declared on
+-                any candidate server (or on the named server when
+-                `server_name` is set).
+-        """
++        """Returns a tool's input JSON Schema from the ``.mcp.json:tools`` extension (PRD FR6).
++
++        [Tier 1 — Deterministic] — reads from the declarative ``tools``
++        extension on each server entry (Story 2.3 D-D). Returns the
++        schema as a ``dict``. PRD FR6's runtime "against a running MCP
++        server" path is Phase-2 + Epic 3 scope.
++
++        | =Arguments= | =Description= |
++        | ``config_path`` | Filesystem path to the ``.mcp.json`` file. |
++        | ``tool_name`` | Name of the tool whose input schema to retrieve. |
++        | ``server_name`` | When ``None`` (default), search every server in declaration order + return the first match. When set, only consult the named server. |
++
++        Raises ``InvalidMCPServerConfigError`` on ``.mcp.json``
++        structural failure. Raises ``InvalidMCPToolSchemaError`` when
++        the tool is not declared on any candidate server.
++
++        Example:
++        | ${schema} =    `Get Tool Schema`    ${CURDIR}/.mcp.json    tool_name=echo
++        | Should Be Equal    ${schema}[type]    object
++        | Should Contain    ${schema}[required]    message
++
++        Notes:
++        - PRD FR6 ratifies the tool-schema retrieval contract; Phase-1 scope per Story 2.3 D-D drift-check.
++        - Sibling keywords: `Get Server Config` (full ``.mcp.json`` parse); `Validate Tool Schema` (Draft 2020-12 well-formedness check).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return get_tool_schema(config_path, tool_name=tool_name, server_name=server_name)
+ 
+     @keyword(name="Validate Tool Schema")
+@@ -160,30 +184,34 @@ class MCPLibrary:
+         tool_name: str,
+         server_name: str | None = None,
+     ) -> None:
+-        """Validate a tool's schema against the jsonschema Draft 2020-12 meta-schema.
++        """Validates a tool's schema against the jsonschema Draft 2020-12 meta-schema.
+ 
+-        [Tier 1 — Deterministic] — verifies the schema-validity of an
++        [Tier 1 — Deterministic] — verifies the schema-VALIDITY of an
+         MCP tool's input schema. Does NOT validate any tool-call's
+         ARGUMENTS against the schema — that's a runtime concern Epic 3
+-        will own. Median ≤ 50 ms per NFR-PERF-02.
+-
+-        Args:
+-            config_path: Path to the `.mcp.json` file.
+-            tool_name: Tool whose schema to validate.
+-            server_name: Optional server scoping (see `Get Tool Schema`).
+-
+-        Returns:
+-            None on success.
+-
+-        Raises:
+-            InvalidMCPServerConfigError: On `.mcp.json` structural
+-                failure.
+-            InvalidMCPToolSchemaError: If the tool is not declared OR
+-                its schema fails Draft 2020-12 meta-schema validation.
+-                `field_name` carries an RFC 6901 JSON Pointer into the
+-                offending sub-schema; the wrapped jsonschema exception
+-                is available via `__cause__`.
+-        """
++        owns. Median ≤ 50 ms per NFR-PERF-02.
++
++        | =Arguments= | =Description= |
++        | ``config_path`` | Filesystem path to the ``.mcp.json`` file. |
++        | ``tool_name`` | Tool whose schema to validate. |
++        | ``server_name`` | Optional server scoping (see `Get Tool Schema`). |
++
++        Raises ``InvalidMCPServerConfigError`` on ``.mcp.json``
++        structural failure. Raises ``InvalidMCPToolSchemaError`` when
++        the tool is not declared OR its schema fails Draft 2020-12
++        meta-schema validation. The error's ``field_name`` carries an
++        RFC 6901 JSON Pointer; the wrapped jsonschema exception is
++        available via ``__cause__``.
++
++        Example:
++        | `Validate Tool Schema`    ${CURDIR}/.mcp.json    tool_name=echo
++        | Run Keyword And Expect Error    InvalidMCPToolSchemaError*    `Validate Tool Schema`    ${CURDIR}/.mcp.json    tool_name=nonexistent
++
++        Notes:
++        - Validates schema well-formedness, NOT argument conformance — that's runtime/Epic 3.
++        - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
++        - Sibling keyword: `Get Tool Schema` for retrieving the schema dict.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         validate_tool_schema(config_path, tool_name=tool_name, server_name=server_name)
+ 
+     # --------------------------------------------------------------- #
+@@ -201,34 +229,37 @@ class MCPLibrary:
+         env: dict[str, str] | None = None,
+         server_factory: Callable[[], Any] | None = None,
+     ) -> MCPServerHandle:
+-        """Build an MCP server handle per PRD FR7.
++        """Builds an MCP server handle per the 3-transport enum (PRD FR7).
+ 
+         [Tier 1 — Deterministic] — pure handle construction. For
+-        `stdio` + `in_memory` transports, this DOES NOT spawn or
+-        instantiate the server yet (per Story 3.1 Phase-1 per-call-
+-        session design); the actual server start happens during
+-        `Connect To Server`. The `streamable_http` transport name is
+-        accepted as a Phase-1 passthrough; full HTTP round-trip
+-        support lands Phase-1.5 OR Epic 3 Story 3.2.
+-
+-        Args:
+-            name: Caller-chosen server identifier (echoed in errors).
+-            transport: One of `"stdio"` / `"streamable_http"` /
+-                `"in_memory"` per PRD FR7 transport enum.
+-            command: stdio only — executable path/name (e.g.,
+-                `"python"`).
+-            args: stdio only — command-line arguments.
+-            env: stdio only — environment overlay.
+-            server_factory: in_memory only — no-arg callable returning
+-                a `FastMCP` server instance.
+-
+-        Returns:
+-            `MCPServerHandle` describing the server target. Consume via
+-            `Connect To Server`.
+-
+-        Raises:
+-            ValueError: If transport-required parameters are missing.
+-        """
++        ``stdio`` + ``in_memory`` transports, does NOT spawn the server
++        yet (per Story 3.1 per-call-session design); the actual server
++        start happens during `Connect To Server`. The ``streamable_http``
++        transport is accepted as a Phase-1 passthrough; full HTTP
++        round-trip lands Phase-1.5 or Story 3.2.
++
++        | =Arguments= | =Description= |
++        | ``name`` | Caller-chosen server identifier (echoed in errors). |
++        | ``transport`` | One of ``"stdio"`` / ``"streamable_http"`` / ``"in_memory"`` per FR7 transport enum. |
++        | ``command`` | stdio only — executable path/name (e.g. ``"python"``). |
++        | ``args`` | stdio only — list of command-line arguments. |
++        | ``env`` | stdio only — environment overlay. |
++        | ``server_factory`` | in_memory only — no-arg callable returning a ``FastMCP`` server instance. |
++
++        Raises ``ValueError`` when transport-required parameters are
++        missing (e.g. ``transport="stdio"`` without ``command``).
++
++        Example:
++        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
++        | ${session} =    `Connect To Server`    ${handle}
++        | @{tools} =    `List Tools`    ${handle}
++        | `Stop Server`    ${handle}
++
++        Notes:
++        - PRD FR7 ratifies the 3-transport enum; Story 3.1 ratifies the per-call-session design.
++        - Story 3.2 lands the full ``streamable_http`` round-trip (Phase-1 currently passthrough).
++        - Sibling keywords: `Connect To Server` (handshake + version check); `List Tools`, `Call Tool`, `Stop Server`.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return start_server(
+             name=name,
+             transport=transport,
+@@ -241,49 +272,67 @@ class MCPLibrary:
+     @keyword(name="Connect To Server")
+     @tier(1)
+     def connect_to_server(self, handle: MCPServerHandle) -> MCPSession:
+-        """Open + initialize an MCP `ClientSession`, gate-check the version (PRD FR8 + FR46).
+-
+-        [Tier 1 — Deterministic] — per Story 3.1 Phase-1 per-call-
+-        session design, opens the session, runs `initialize()`,
+-        captures the negotiated protocol version + server info, runs
+-        the version gate (`UnsupportedMCPVersionError` on out-of-range
+-        per AC-MCP-OBSERVE-02 + NFR-COMPAT-04 `mcp>=1.0,<2.0`), then
+-        closes the underlying SDK session. The returned `MCPSession`
+-        is metadata only — NOT a live SDK session.
+-
+-        Args:
+-            handle: An `MCPServerHandle` from `Start Server`.
+-
+-        Returns:
+-            `MCPSession` with negotiated `protocol_version` +
+-            `server_info`.
+-
+-        Raises:
+-            UnsupportedMCPVersionError: If the negotiated protocol
+-                version is outside the agenteval-supported range
+-                (`mcp>=1.0,<2.0`).
+-            ValueError: If `handle.transport == "streamable_http"`
+-                (Phase-1 passthrough; not yet implemented).
+-        """
++        """Opens + initializes an MCP ``ClientSession`` and gate-checks the version (PRD FR8 + FR46).
++
++        [Tier 1 — Deterministic] — per Story 3.1 per-call-session
++        design: opens session, runs ``initialize()``, captures the
++        negotiated protocol version + server info, gates on the
++        agenteval-supported range (``mcp>=1.0,<2.0``), then closes the
++        underlying SDK session. Returns ``MCPSession`` metadata —
++        **NOT a live SDK session**.
++
++        | =Arguments= | =Description= |
++        | ``handle`` | An ``MCPServerHandle`` from `Start Server`. |
++
++        Raises ``UnsupportedMCPVersionError`` when the negotiated
++        protocol version is outside the supported range. Raises
++        ``ValueError`` when ``handle.transport == "streamable_http"``
++        (Phase-1 passthrough; not yet implemented).
++
++        Example:
++        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
++        | ${session} =    `Connect To Server`    ${handle}
++        | Should Not Be Empty    ${session.protocol_version}
++        | Should Contain    ${session.server_info.name}    echo
++
++        Notes:
++        - PRD FR8 + FR46 ratify the version-gate + per-call-session contract.
++        - Story 3.1 ratifies per-call-session design (no live session returned).
++        - NFR-COMPAT-04 pins the MCP SDK at ``mcp>=1.0,<2.0``.
++        - Sibling keywords: `Start Server` (handle construction); `Stop Server` (Phase-1 no-op cleanup); `List Tools` / `Call Tool` (per-call session-internal).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return connect_to_server(handle)
+ 
+     @keyword(name="Stop Server")
+     @tier(1)
+     def stop_server(self, handle: MCPServerHandle) -> None:
+-        """Tear down any per-handle resources.
++        """Tears down any per-handle MCP resources.
+ 
+         [Tier 1 — Deterministic] — Phase-1 no-op (each `Connect To
+         Server` self-cleans the SDK session). The keyword ships now so
+-        `.robot` tests can adopt the canonical 3-step lifecycle
++        ``.robot`` tests can adopt the canonical 3-step lifecycle
+         without breaking when Phase-1.5 introduces pooled sessions
+         that need explicit teardown.
+ 
+-        Args:
+-            handle: The `MCPServerHandle` from `Start Server`.
+-
+-        Returns:
+-            None.
+-        """
++        | =Arguments= | =Description= |
++        | ``handle`` | The ``MCPServerHandle`` from `Start Server`. |
++
++        Returns ``None``. Never raises in Phase-1 (no-op).
++
++        Example:
++        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
++        | TRY
++        |     ${result} =    `Call Tool`    ${handle}    echo    arguments=${{ {"message": "hi"} }}
++        |     Should Be True    ${result.is_error} == False
++        | FINALLY
++        |     `Stop Server`    ${handle}
++        | END
++
++        Notes:
++        - Phase-1 no-op per Story 3.1 design (per-call sessions self-clean).
++        - The canonical 3-step lifecycle (`Start Server` → `Connect To Server` → `Stop Server`) is ratified now to avoid breakage when Phase-1.5 introduces pooled sessions.
++        - Sibling keywords: `Start Server` + `Connect To Server` (companion lifecycle steps).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         stop_server(handle)
+ 
+     # --------------------------------------------------------------- #
+@@ -293,30 +342,36 @@ class MCPLibrary:
+     @keyword(name="List Tools")
+     @tier(1)
+     def list_tools(self, handle: MCPServerHandle) -> list[MCPTool]:
+-        """List the tools advertised by the MCP server at `handle` (PRD FR9a).
++        """Lists the tools advertised by the MCP server at ``handle`` (PRD FR9a).
+ 
+         [Tier 1 — Deterministic] — opens a fresh per-call MCP session
+-        (per Story 3.1 Phase-1 pattern), runs `initialize()`, calls
+-        the MCP spec's `list_tools` operation, then tears down. Each
+-        call pays the full handshake cost; Phase-1.5 may introduce
+-        pooled sessions for hot loops.
+-
+-        Args:
+-            handle: An `MCPServerHandle` from `Start Server`.
+-
+-        Returns:
+-            A list of `MCPTool` dataclasses (one per advertised tool)
+-            with `name`, `description`, `input_schema`, and optional
+-            `output_schema` per the MCP spec.
+-
+-        Raises:
+-            ValueError: If transport is `streamable_http` (Phase-1
+-                passthrough) or required handle params are missing.
+-            UnsupportedMCPVersionError: If `initialize()` rejects the
+-                negotiated protocol version.
+-            MCPConnectionLostError: If the transport layer fails
+-                mid-call.
+-        """
++        per Story 3.1, runs ``initialize()``, calls the MCP spec's
++        ``list_tools`` operation, then tears down. Each call pays the
++        full handshake cost; Phase-1.5 may introduce pooled sessions
++        for hot loops. Returns a ``list[MCPTool]`` with ``name``,
++        ``description``, ``input_schema``, and optional ``output_schema``.
++
++        | =Arguments= | =Description= |
++        | ``handle`` | An ``MCPServerHandle`` from `Start Server`. |
++
++        Raises ``ValueError`` when transport is ``streamable_http``
++        (Phase-1 passthrough). Raises ``UnsupportedMCPVersionError``
++        when ``initialize()`` rejects the negotiated protocol version.
++        Raises ``MCPConnectionLostError`` when the transport layer
++        fails mid-call.
++
++        Example:
++        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
++        | @{tools} =    `List Tools`    ${handle}
++        | Should Not Be Empty    ${tools}
++        | Should Contain    ${{ [t.name for t in $tools] }}    echo_back
++
++        Notes:
++        - PRD FR9a ratifies the list-tools contract.
++        - Story 3.1 ratifies per-call-session design.
++        - Pooled-session optimization is Phase-1.5; Phase-1 pays per-call handshake.
++        - Sibling keyword: `Call Tool` (invoke a tool by name); `Get Tool Schema` (declarative — reads from ``.mcp.json``).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return list_tools(handle)
+ 
+     @keyword(name="Call Tool")
+@@ -327,37 +382,42 @@ class MCPLibrary:
+         tool_name: str,
+         arguments: dict[str, Any] | None = None,
+     ) -> MCPToolResult:
+-        """Invoke a tool by name on the MCP server at `handle` (PRD FR9b).
++        """Invokes a tool by name on the MCP server at ``handle`` (PRD FR9b).
+ 
+-        [Tier 1 — Deterministic] — given a deterministic server tool,
+-        opens a fresh per-call MCP session, runs `initialize()`,
+-        invokes the named tool, computes wall-clock latency, then
+-        tears down. Tool-LEVEL error responses surface as
+-        `MCPToolResult(is_error=True, ...)` — first-class data, NOT
++        [Tier 1 — Deterministic] (given a deterministic tool) — opens
++        a fresh per-call MCP session, runs ``initialize()``, invokes
++        the named tool, computes wall-clock latency, then tears down.
++        Tool-LEVEL error responses surface as
++        ``MCPToolResult(is_error=True, ...)`` — first-class data, NOT
+         exceptions. Infrastructure failures raise
+-        `MCPConnectionLostError`.
+-
+-        Args:
+-            handle: An `MCPServerHandle` from `Start Server`.
+-            tool_name: The tool name as advertised by the server.
+-            arguments: Optional dict of tool-specific arguments
+-                (default `{}`).
+-
+-        Returns:
+-            `MCPToolResult` with `content` (list of content blocks),
+-            `is_error`, `error_message`, `latency_ms` (wall-clock from
+-            request-send to response-receive), and per-call
+-            `correlation_id` (Phase-1 uuid4 hex placeholder; Epic 5
+-            wires real trace-id lookup).
+-
+-        Raises:
+-            ValueError: If transport is `streamable_http` (Phase-1
+-                passthrough) or required handle params are missing.
+-            UnsupportedMCPVersionError: If `initialize()` rejects the
+-                negotiated protocol version.
+-            MCPConnectionLostError: If the transport layer fails
+-                mid-call (subprocess crash, anyio stream closed, etc.).
+-        """
++        ``MCPConnectionLostError``.
++
++        | =Arguments= | =Description= |
++        | ``handle`` | An ``MCPServerHandle`` from `Start Server`. |
++        | ``tool_name`` | The tool name as advertised by the server. |
++        | ``arguments`` | Optional dict of tool-specific arguments. Defaults to ``{}``. |
++
++        Returns ``MCPToolResult`` with ``content`` (list of content
++        blocks), ``is_error``, ``error_message``, ``latency_ms``, and
++        ``correlation_id`` (Phase-1 uuid4 placeholder).
++
++        Raises ``ValueError`` on ``streamable_http`` transport (Phase-1
++        passthrough). Raises ``UnsupportedMCPVersionError`` on version
++        gate failure. Raises ``MCPConnectionLostError`` on transport-
++        layer failure mid-call (subprocess crash, etc.).
++
++        Example:
++        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
++        | ${result} =    `Call Tool`    ${handle}    echo_back    arguments=${{ {"text": "hi"} }}
++        | Should Be Equal    ${result.is_error}    ${FALSE}
++        | Should Contain    ${result.content}[0][text]    hi
++        | `Stop Server`    ${handle}
++
++        Notes:
++        - PRD FR9b ratifies the tool-call contract; tool-error-as-data per AC-MCP-CALL-01.
++        - ``correlation_id`` Phase-1 placeholder; Epic 5 wires real trace-id lookup.
++        - Sibling keywords: `List Tools`, `Start Server`, `Stop Server`.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return call_tool(handle, tool_name, arguments)
+ 
+     # --------------------------------------------------------------- #
+@@ -377,60 +437,75 @@ class MCPLibrary:
+         max_runtime_seconds: float | None = None,
+         **kwargs: Any,
+     ) -> DiscoverabilityResult:
+-        """Drive N-trial discoverability evaluation of an MCP server's tools (PRD FR10a).
+-
+-        [Tier 3 — Stochastic Fan-Out] — for each task in the YAML, dispatches
+-        `trials_per_task` adapter.run() calls and inspects `tool_calls` to
+-        compute Pass@k with Wilson CI bounds.
+-
+-        Phase-1 carve-out (DF-4.4-S1): `@guarded_fanout` enforcement of
+-        `max_cost_usd` + `max_runtime_seconds` is DEFERRED — same architectural
+-        gap as Story 4.3 DF-4.3-S6 (MCPLibrary is excluded from
+-        `_SUB_LIBRARIES` per Story 2.2 norm; no clean path to inject
+-        library-level budgets without architectural change). The kwargs are
+-        accepted + tracked on the result but NOT enforced. Operators must
+-        bound cost manually until Phase-1.5 plumbs the cross-library config.
+-
+-        Phase-1 carve-out (DF-4.1-S2 + DF-4.2-S1): `mcp_server=` is NOT
+-        forwarded to `adapter.run(mcp_servers=...)` because both Phase-1
+-        adapters (Generic + Claude Code CLI) raise `NotImplementedError`
+-        on non-empty `mcp_servers`. The kwarg is accepted for forward-
+-        compatibility + validated as non-empty; tool-call success is
+-        gated on what the model returns from prompt alone (useful for
+-        stub-adapter tests; meaningful for real LLMs only when
+-        DF-4.1-S2 + DF-4.2-S1 land).
+-
+-        Empty-`expected_tools` semantics (Story 4.4 code-review 3-way
+-        MED-A 2026-05-20): when a task's `expected_tools` is `[]`, the
+-        keyword treats ANY tool call as success (wildcard mode — useful
+-        for "did the agent invoke ANY tool?" probes). `competing_tools_picked`
+-        in this case collects ALL called tool names (since there's no
+-        expected set to subtract); operators get the same visibility
+-        regardless of whether `expected_tools` is populated.
+-
+-        Args:
+-            mcp_server: Name of the MCP server (per `MCP.Start Server`).
+-                Must be a non-empty string. Phase-1: accepted but NOT
+-                forwarded to `adapter.run()` (DF-4.1-S2 + DF-4.2-S1).
+-            adapter: Adapter name (default `"generic"`).
+-            model: Model identifier (e.g., `"anthropic/claude-sonnet-4-6"`).
+-            tasks: Path to the discoverability tasks YAML.
+-            trials_per_task: Number of trials per task (Pass@k semantics).
+-            max_cost_usd: Budget cap (Phase-1: tracked, NOT enforced —
+-                DF-4.4-S1 carry-over).
+-            max_runtime_seconds: Runtime cap (Phase-1: tracked, NOT enforced).
+-            **kwargs: Provider/adapter forward-compat kwargs.
+-
+-        Returns:
+-            `DiscoverabilityResult` with `per_task_results` + `summary`
+-            (aggregate pass rate + cost + runtime) + `mcp_coverage`,
+-            per PRD FR10a L1499 ratified shape.
+-
+-        Raises:
+-            InvalidDiscoverabilityTasksError: on tasks YAML parse/schema failure.
+-            AdapterDiscoveryError: on unknown adapter name.
+-            ValueError: when required kwargs are missing/empty.
+-        """
++        """Drives N-trial discoverability evaluation of an MCP server's tools (PRD FR10a).
++
++        [Tier 3 — Stochastic Fan-Out] — for each task in the YAML,
++        dispatches ``trials_per_task`` adapter.run() calls and
++        inspects ``tool_calls`` to compute Pass@k with Wilson CI bounds.
++
++        | =Arguments= | =Description= |
++        | ``mcp_server`` | Name of the MCP server (per `Start Server`). Must be a non-empty string. Phase-1: accepted but NOT forwarded to ``adapter.run()`` (DF-4.1-S2 + DF-4.2-S1). |
++        | ``adapter`` | Adapter name. Defaults to ``"generic"``. |
++        | ``model`` | Model identifier (e.g., ``"anthropic/claude-sonnet-4-6"``). |
++        | ``tasks`` | Path to the discoverability tasks YAML. |
++        | ``trials_per_task`` | Number of trials per task (Pass@k semantics). Defaults to ``3``. |
++        | ``max_cost_usd`` | Budget cap. Phase-1: tracked, NOT enforced (DF-4.4-S1 carry-over). Defaults to ``5.00``. |
++        | ``max_runtime_seconds`` | Runtime cap. Phase-1: tracked, NOT enforced. Defaults to ``None``. |
++        | ``**kwargs`` | Provider/adapter forward-compat kwargs. |
++
++        Phase-1 carve-out (DF-4.4-S1): ``@guarded_fanout`` enforcement
++        of ``max_cost_usd`` + ``max_runtime_seconds`` is DEFERRED —
++        same architectural gap as Story 4.3 DF-4.3-S6 (MCPLibrary is
++        excluded from ``_SUB_LIBRARIES`` per Story 2.2 norm; no clean
++        path to inject library-level budgets without architectural
++        change). The kwargs are accepted + tracked on the result but
++        NOT enforced. Operators must bound cost manually until
++        Phase-1.5 plumbs the cross-library config.
++
++        Phase-1 carve-out (DF-4.1-S2 + DF-4.2-S1): ``mcp_server=`` is
++        NOT forwarded to ``adapter.run(mcp_servers=...)`` because both
++        Phase-1 adapters (Generic + Claude Code CLI) raise
++        ``NotImplementedError`` on non-empty ``mcp_servers``. The
++        kwarg is accepted for forward-compatibility + validated as
++        non-empty; tool-call success is gated on what the model
++        returns from prompt alone (useful for stub-adapter tests;
++        meaningful for real LLMs only when DF-4.1-S2 + DF-4.2-S1 land).
++
++        Empty-``expected_tools`` semantics (Story 4.4 code-review 3-way
++        MED-A 2026-05-20): when a task's ``expected_tools`` is ``[]``,
++        the keyword treats ANY tool call as success (wildcard mode —
++        useful for "did the agent invoke ANY tool?" probes).
++        ``competing_tools_picked`` in this case collects ALL called
++        tool names.
++
++        Returns ``DiscoverabilityResult`` with ``per_task_results`` +
++        ``summary`` (aggregate pass rate + cost + runtime) +
++        ``mcp_coverage`` per PRD FR10a L1499 ratified shape.
++
++        Raises ``InvalidDiscoverabilityTasksError`` on tasks YAML
++        parse/schema failure. Raises ``AdapterDiscoveryError`` on
++        unknown adapter name. Raises ``ValueError`` when required
++        kwargs are missing/empty.
++
++        Example (illustrative — assumes a real adapter or fixture stub):
++        | ${result} =    `Get Tool Discoverability`
++        | ...    mcp_server=echo
++        | ...    adapter=generic
++        | ...    provider=mock
++        | ...    model=stub
++        | ...    tasks=${CURDIR}/discoverability_tasks.yaml
++        | ...    trials_per_task=3
++        | Should Be True    0.0 <= ${result.summary.activation_accuracy} <= 1.0
++        | Should Not Be Empty    ${result.per_task_results}
++
++        Notes:
++        - PRD FR10a ratifies the keyword + ``DiscoverabilityResult`` shape.
++        - Tier-3 stochastic; budgets tracked but NOT enforced in Phase-1 (DF-4.4-S1).
++        - Story 4.3 + Story 4.4 ratify the carve-out (architectural budget-injection gap shared with `MetricsLibrary` family).
++        - Story 2.2 ratifies the ``_SUB_LIBRARIES`` composition norm (which excludes ``MCPLibrary`` — driver of the carve-out).
++        - Sibling keywords (same library): `Call Tool`, `List Tools`, `Start Server`.
++        - Downstream keyword (separately composed sub-library): `HeatmapLibrary.Get Cohort Heatmap` consumes ``DiscoverabilityResult`` to render the FR55 cohort heatmap.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         # Story 4.4 code-review MED-B fix 2026-05-20 (Codex empirical probe):
+         # `total_runtime_seconds` must capture the full end-to-end wall time
+         # operators care about for AC-DISCOVER-02 budget audit — including
+diff --git a/src/AgentEval/metrics/library.py b/src/AgentEval/metrics/library.py
+index 5d482a6..41bae17 100644
+--- a/src/AgentEval/metrics/library.py
++++ b/src/AgentEval/metrics/library.py
+@@ -12,6 +12,11 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
++# ruff: noqa: E501
++# Browser-Library-style docstring tables can carry long descriptions on a
++# single physical line. Per-line 120-char limit waived for this file
++# per Phase 3 docstring-refresh proposal (2026-05-26).
++
+ """Tool-call metrics RF-keyword surface (Story 6.1 / PRD FR19-22).
+ 
+ Ships 9 `Metric.*` keywords reading from `AgentRunResult` instances:
+@@ -55,6 +60,9 @@ from AgentEval.types import AgentRunResult, Usage
+ 
+ __all__ = ["MetricsLibrary", "Usage"]
+ 
++# Browser-Library-style docstring migration marker (Phase 3, 2026-05-26).
++_BROWSER_STYLE_MIGRATED = True
++
+ 
+ # Coverage-gated keywords (per AC-6.1.1): tool-call-bearing metrics
+ # raise IncompleteTraceError on `external_mixed` unless opted out.
+@@ -82,22 +90,28 @@ class MetricsLibrary:
+     @keyword(name="Get Tool Call Count")
+     @tier(1)
+     def get_tool_call_count(self, result: AgentRunResult | list[AgentRunResult]) -> int:
+-        """[Tier 1 — Deterministic] Return the number of tool calls (PRD FR19).
+-
+-        Args:
+-            result: Single `AgentRunResult` OR `list[AgentRunResult]` for
+-                multi-trial sum aggregation per AC-6.1.1.
+-
+-        Returns:
+-            `int` — `len(result.tool_calls)` for a single run; sum across
+-            trials for a list.
+-
+-        Raises:
+-            `IncompleteTraceError`: per FR37 when any input run carries
+-                `mcp_coverage="external_mixed"` AND the Library was
+-                constructed with `allow_external_mcp_blind=False`
+-                (default-deny per PRD FR42).
+-        """
++        """Returns the number of tool calls made by the agent (PRD FR19).
++
++        [Tier 1 — Deterministic] — returns ``int``. Single run:
++        ``len(result.tool_calls)``. Multi-trial: sum across trials.
++
++        | =Arguments= | =Description= |
++        | ``result`` | Single ``AgentRunResult`` OR ``list[AgentRunResult]`` for multi-trial sum aggregation. |
++
++        Raises ``IncompleteTraceError`` per FR37 when any input run carries
++        ``mcp_coverage="external_mixed"`` AND the Library was constructed
++        with ``allow_external_mcp_blind=False`` (default-deny per FR42).
++
++        Example (illustrative — assumes a real adapter with the expected tool-call surface):
++        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    provider=mock
++        | ${count} =    `Get Tool Call Count`    ${result}
++        | Should Be Equal As Integers    ${count}    3
++
++        Notes:
++        - PRD FR19 ratifies the count metric; AC-6.1.1 ratifies single-vs-multi-trial dispatch.
++        - mcp_coverage gating per FR37 + FR42 — opt out via ``AgentEval(allow_external_mcp_blind=True)``.
++        - Sibling keyword: `Get Tool Call Names` for the ordered names list.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if isinstance(result, list):
+             for r in result:
+                 _check_mcp_coverage(
+@@ -116,11 +130,30 @@ class MetricsLibrary:
+     @keyword(name="Get Tool Call Names")
+     @tier(1)
+     def get_tool_call_names(self, result: AgentRunResult | list[AgentRunResult]) -> list[str]:
+-        """[Tier 1 — Deterministic] Return tool-call names in chronological order (PRD FR19).
++        """Returns tool-call names in chronological order (PRD FR19).
+ 
+-        Duplicates preserved per PRD FR19 verbatim ("list[str] (preserving order)").
++        [Tier 1 — Deterministic] — duplicates preserved per FR19 verbatim
++        ("list[str] (preserving order)"). Single run: chronological list.
+         Multi-trial: union preserving order-of-first-appearance.
+-        """
++
++        | =Arguments= | =Description= |
++        | ``result`` | Single ``AgentRunResult`` OR ``list[AgentRunResult]`` for multi-trial union aggregation. |
++
++        Raises ``IncompleteTraceError`` per FR37 when any input run carries
++        ``mcp_coverage="external_mixed"`` AND the Library was constructed
++        with ``allow_external_mcp_blind=False``.
++
++        Example (illustrative — assumes a real adapter with the expected tool-call surface):
++        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    provider=mock
++        | @{names} =    `Get Tool Call Names`    ${result}
++        | Should Contain    ${names}    web_search
++        | Should Be Equal    ${names}[0]    web_search                              # First tool called.
++
++        Notes:
++        - PRD FR19 ratifies the names metric; AC-6.1.1 ratifies single-vs-multi-trial dispatch.
++        - mcp_coverage gating per FR37 + FR42.
++        - Sibling keyword: `Get Tool Call Count` for the count; `Get Tool Hit Rate` for expected-set comparison.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if isinstance(result, list):
+             for r in result:
+                 _check_mcp_coverage(
+@@ -147,11 +180,30 @@ class MetricsLibrary:
+         result: AgentRunResult | list[AgentRunResult],
+         expected_tools: list[str],
+     ) -> float:
+-        """[Tier 1 — Deterministic] Return `|expected ∩ observed| / |expected|` (PRD FR20).
+-
+-        Empty `expected_tools` returns 0.0 per AC-6.1.8 vacuous-truth
+-        convention.
+-        """
++        """Returns the tool-hit rate ``|expected ∩ observed| / |expected|`` (PRD FR20).
++
++        [Tier 1 — Deterministic] — returns ``float`` in ``[0, 1]``. Empty
++        ``expected_tools`` returns ``0.0`` per AC-6.1.8 vacuous-truth
++        convention. Multi-trial: union-of-observed against expected_tools.
++
++        | =Arguments= | =Description= |
++        | ``result`` | Single ``AgentRunResult`` OR ``list[AgentRunResult]``. |
++        | ``expected_tools`` | List of tool names the agent SHOULD have called. |
++
++        Raises ``IncompleteTraceError`` per FR37 when any input run carries
++        ``mcp_coverage="external_mixed"`` AND the Library was constructed
++        with ``allow_external_mcp_blind=False``.
++
++        Example (illustrative — assumes a real adapter with the expected tool-call surface):
++        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    provider=mock
++        | ${hit_rate} =    `Get Tool Hit Rate`    ${result}    ${{['web_search', 'fetch']}}
++        | Should Be True    ${hit_rate} >= 0.5                                      # At least half of expected tools were called.
++
++        Notes:
++        - PRD FR20 ratifies the hit-rate formula; AC-6.1.8 ratifies the vacuous-truth convention for empty expected_tools.
++        - mcp_coverage gating per FR37 + FR42.
++        - Sibling keywords: `Get Unnecessary Call Rate` (calls NOT in expected set); `Get Tool Success Rate` (errors / total).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if isinstance(result, list):
+             for r in result:
+                 _check_mcp_coverage(
+@@ -170,10 +222,31 @@ class MetricsLibrary:
+     @keyword(name="Get Tool Success Rate")
+     @tier(1)
+     def get_tool_success_rate(self, result: AgentRunResult | list[AgentRunResult]) -> float:
+-        """[Tier 1 — Deterministic] Return `non-error / total` (PRD FR20).
+-
+-        Zero tool_calls → 0.0 per AC-6.1.8.
+-        """
++        """Returns the tool-success rate ``non-error / total`` (PRD FR20).
++
++        [Tier 1 — Deterministic] — returns ``float`` in ``[0, 1]``. Zero
++        ``tool_calls`` returns ``0.0`` per AC-6.1.8 vacuous-truth
++        convention. Multi-trial: aggregate across all per-trial tool
++        calls.
++
++        | =Arguments= | =Description= |
++        | ``result`` | Single ``AgentRunResult`` OR ``list[AgentRunResult]``. |
++
++        Raises ``IncompleteTraceError`` per FR37 when any input run carries
++        ``mcp_coverage="external_mixed"`` AND the Library was constructed
++        with ``allow_external_mcp_blind=False``.
++
++        Example (illustrative — assumes a real adapter with the expected tool-call surface):
++        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    provider=mock
++        | ${success_rate} =    `Get Tool Success Rate`    ${result}
++        | Should Be True    ${success_rate} >= 0.8                                  # At least 80% of tool calls succeeded.
++
++        Notes:
++        - PRD FR20 ratifies the success-rate formula; AC-6.1.8 ratifies the zero-division convention.
++        - mcp_coverage gating per FR37 + FR42.
++        - Each ``ToolCallTrace`` has an ``error`` field — non-None counts as a failure.
++        - Sibling keywords: `Get Tool Hit Rate` (vs expected set); `Get Unnecessary Call Rate`.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if isinstance(result, list):
+             for r in result:
+                 _check_mcp_coverage(
+@@ -200,10 +273,31 @@ class MetricsLibrary:
+         result: AgentRunResult | list[AgentRunResult],
+         expected_tools: list[str],
+     ) -> float:
+-        """[Tier 1 — Deterministic] Return `not_in_expected / total` (PRD FR21).
++        """Returns the unnecessary-call rate ``not_in_expected / total`` (PRD FR21).
++
++        [Tier 1 — Deterministic] — returns ``float`` in ``[0, 1]``. Zero
++        ``tool_calls`` returns ``0.0`` per AC-6.1.8 vacuous-truth
++        convention.
+ 
+-        Zero tool_calls → 0.0 per AC-6.1.8.
+-        """
++        | =Arguments= | =Description= |
++        | ``result`` | Single ``AgentRunResult`` OR ``list[AgentRunResult]``. |
++        | ``expected_tools`` | List of tool names the agent SHOULD have called. Any observed call NOT in this list counts as unnecessary. |
++
++        Raises ``IncompleteTraceError`` per FR37 when any input run carries
++        ``mcp_coverage="external_mixed"`` AND the Library was constructed
++        with ``allow_external_mcp_blind=False``.
++
++        Example (illustrative — assumes a real adapter with the expected tool-call surface):
++        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    provider=mock
++        | ${noise} =    `Get Unnecessary Call Rate`    ${result}    ${{['web_search']}}
++        | Should Be True    ${noise} <= 0.2                                         # At most 20% of calls were off-task.
++
++        Notes:
++        - PRD FR21 ratifies the unnecessary-rate formula — quantifies "noise" tool calls beyond the expected set.
++        - AC-6.1.8 ratifies the vacuous-truth convention (zero tool_calls → 0.0).
++        - Sibling keyword: `Get Tool Hit Rate` (calls that ARE in expected set).
++        - mcp_coverage gating per FR37 + FR42.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if isinstance(result, list):
+             for r in result:
+                 _check_mcp_coverage(
+@@ -228,10 +322,30 @@ class MetricsLibrary:
+     @keyword(name="Get Token Usage")
+     @tier(1)
+     def get_token_usage(self, result: AgentRunResult | list[AgentRunResult]) -> Usage:
+-        """[Tier 1 — Deterministic] Return token usage (PRD FR22).
+-
+-        Multi-trial: sum per field. Empty list → `Usage(0, 0, 0)`.
+-        """
++        """Returns the agent's token usage as a ``Usage`` dataclass (PRD FR22).
++
++        [Tier 1 — Deterministic] — returns ``Usage(input_tokens,
++        output_tokens, cached_input_tokens)``. Single run: the run's own
++        usage. Multi-trial: sum per field. Empty list → ``Usage(0, 0, 0)``.
++
++        | =Arguments= | =Description= |
++        | ``result`` | Single ``AgentRunResult`` OR ``list[AgentRunResult]``. |
++
++        Provider-reported scalar — observer-independent. NOT
++        ``mcp_coverage``-gated (PRD FR22 + AC-6.1.1).
++
++        Example (illustrative — assumes a real adapter with the expected tool-call surface):
++        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    provider=mock
++        | ${usage} =    `Get Token Usage`    ${result}
++        | Should Be True    ${usage.input_tokens} > 0
++        | Should Be True    ${usage.output_tokens} > 0
++        | Log    Total: ${{${usage.input_tokens} + ${usage.output_tokens}}} tokens
++
++        Notes:
++        - PRD FR22 ratifies the four usage metrics — `Get Token Usage`, `Get Latency`, `Get Latency P95`, `Get Cost Total` — all observer-independent per AC-6.1.1.
++        - ``Usage`` is a frozen dataclass; field validation ensures non-negative counts.
++        - Sibling keywords: `Get Cost Total`, `Get Latency`, `Get Latency P95`.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if isinstance(result, list):
+             return _internal._aggregate_token_usage(result)
+         return _internal._compute_token_usage(result)
+@@ -239,18 +353,33 @@ class MetricsLibrary:
+     @keyword(name="Get Latency")
+     @tier(1)
+     def get_latency(self, result: AgentRunResult | list[AgentRunResult]) -> float:
+-        """[Tier 1 — Deterministic] Return mean turn-level latency in ms (PRD FR22).
+-
+-        Per AC-6.1.1: when `tool_calls` is empty, falls back to
+-        `result.latency_seconds * 1000.0`. Multi-trial: union-of-tool-calls
+-        mean — all per-tool-call latencies from all trials are flattened
+-        into one list + `statistics.mean()` taken. Zero-tc trials
+-        contribute their `latency_seconds * 1000` fallback as a SINGLE
+-        sample to the union. Mean-of-per-run-means is a known statistical
+-        anti-pattern (under-weights runs with more tool calls); union-then-
+-        mean is the operator-intuitive default (Story 6.1 code-review
+-        3-way HIGH-γ docstring fix 2026-05-20).
+-        """
++        """Returns mean turn-level latency in milliseconds (PRD FR22).
++
++        [Tier 1 — Deterministic] — returns ``float`` (ms). When the run
++        has no ``tool_calls``, falls back to
++        ``result.latency_seconds * 1000.0``. Multi-trial: union-of-
++        tool-calls mean — all per-tool-call latencies from all trials
++        are flattened into one list before ``statistics.mean()`` is
++        taken. Mean-of-per-run-means is a statistical anti-pattern
++        (under-weights runs with more tool calls); union-then-mean is
++        the operator-intuitive default per Story 6.1 code-review.
++
++        | =Arguments= | =Description= |
++        | ``result`` | Single ``AgentRunResult`` OR ``list[AgentRunResult]``. |
++
++        Provider-reported scalar — NOT ``mcp_coverage``-gated.
++
++        Example (illustrative — assumes a real adapter with the expected tool-call surface):
++        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    provider=mock
++        | ${latency_ms} =    `Get Latency`    ${result}
++        | Should Be True    ${latency_ms} < 2000                                    # Mean turn latency under 2 seconds.
++
++        Notes:
++        - PRD FR22 ratifies the latency metric — per-tool-call resolution preferred over per-run.
++        - Union-then-mean aggregation rule ratified by Story 6.1 code-review (anti-pattern: mean-of-per-run-means).
++        - Sibling keyword: `Get Latency P95` for tail-latency tracking.
++        - Provider-reported scalar — observer-independent per AC-6.1.1.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if isinstance(result, list):
+             return _internal._aggregate_latency_mean(result)
+         return _internal._compute_latency_mean(result)
+@@ -258,15 +387,29 @@ class MetricsLibrary:
+     @keyword(name="Get Latency P95")
+     @tier(1)
+     def get_latency_p95(self, result: AgentRunResult | list[AgentRunResult]) -> float:
+-        """[Tier 1 — Deterministic] Return P95 latency in ms (PRD FR22).
+-
+-        Per AC-6.1.8 boundary:
+-        - 0 tool_calls → 0.0
+-        - 1 tool_call → that single latency value
+-        - ≥2 → `statistics.quantiles(n=100)[94]`.
++        """Returns the P95 latency across tool calls in milliseconds (PRD FR22).
+ 
++        [Tier 1 — Deterministic] — returns ``float`` (ms). AC-6.1.8
++        boundary conditions: 0 tool_calls → ``0.0``; 1 tool_call → that
++        single latency; ≥2 → ``statistics.quantiles(n=100)[94]``.
+         Multi-trial: P95 across the union of all tool_calls' latencies.
+-        """
++
++        | =Arguments= | =Description= |
++        | ``result`` | Single ``AgentRunResult`` OR ``list[AgentRunResult]``. |
++
++        Provider-reported scalar — NOT ``mcp_coverage``-gated.
++
++        Example (illustrative — assumes a real adapter with the expected tool-call surface):
++        | @{results} =    `Stat.Run N Times`    n=20    keyword=Send Prompt    keyword_args=${{['adapter=generic', 'provider=mock']}}
++        | ${p95_ms} =    `Get Latency P95`    ${results}
++        | ${mean_ms} =    `Get Latency`    ${results}
++        | Should Be True    ${p95_ms} >= ${mean_ms}                                 # P95 ≥ mean by definition.
++
++        Notes:
++        - PRD FR22 ratifies the P95 metric — tail-latency tracking complements `Get Latency` mean.
++        - AC-6.1.8 boundary conditions cover empty / single-call edge cases.
++        - Sibling keywords: `Get Latency` for mean; `Stat.Run N Times` to generate multi-trial input.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if isinstance(result, list):
+             return _internal._aggregate_latency_p95(result)
+         return _internal._compute_latency_p95(result)
+@@ -274,10 +417,33 @@ class MetricsLibrary:
+     @keyword(name="Get Cost Total")
+     @tier(1)
+     def get_cost_total(self, result: AgentRunResult | list[AgentRunResult]) -> float:
+-        """[Tier 1 — Deterministic] Return total USD cost (PRD FR22).
+-
+-        Multi-trial: sum across trials. Empty list → 0.0.
+-        """
++        """Returns total provider-reported USD cost (PRD FR22).
++
++        [Tier 1 — Deterministic] — returns ``float`` (USD). Single run:
++        the run's ``cost_usd``. Multi-trial: sum across trials. Empty
++        list → ``0.0``.
++
++        | =Arguments= | =Description= |
++        | ``result`` | Single ``AgentRunResult`` OR ``list[AgentRunResult]``. |
++
++        Provider-reported scalar — NOT ``mcp_coverage``-gated. Returns
++        ``0.0`` on the Mock provider; non-zero on real adapters per
++        Story 8a.1 (real adapters use ``total_cost_usd`` not
++        ``cost_usd``).
++
++        Example (illustrative — assumes a real adapter with the expected tool-call surface):
++        | ${result} =    `Send Prompt`    prompt=Find the latest news    adapter=generic    provider=mock
++        | ${cost_usd} =    `Get Cost Total`    ${result}
++        | Should Be True    ${cost_usd} < 0.10                                      # Single-shot cost cap $0.10.
++        | @{results} =    `Stat.Run N Times`    n=20    keyword=Send Prompt    keyword_args=${{['adapter=generic', 'provider=mock']}}
++        | ${total_cost} =    `Get Cost Total`    ${results}                         # Cohort cost rollup.
++
++        Notes:
++        - PRD FR22 ratifies the cost metric.
++        - Mock-provider runs return ``0.0`` cost; real adapters surface the provider's reported cost.
++        - Story 8a.1 v1 HIGH-1 ratified ``total_cost_usd`` as the canonical real-adapter key.
++        - Sibling keywords: `Get Token Usage`, `Get Latency`, `Get Latency P95`.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if isinstance(result, list):
+             return _internal._aggregate_cost_total(result)
+         return _internal._compute_cost_total(result)
+diff --git a/src/AgentEval/orchestration/library.py b/src/AgentEval/orchestration/library.py
+index 2a5767c..2d555d2 100644
+--- a/src/AgentEval/orchestration/library.py
++++ b/src/AgentEval/orchestration/library.py
+@@ -12,6 +12,12 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
++# ruff: noqa: E501
++# Browser-Library-style docstring tables (`| =Arguments= | =Description= |`)
++# can carry long descriptions on a single physical line; libdoc renders
++# them correctly. The per-line 120-char limit is waived for this file
++# per Phase 2 docstring-refresh proposal (2026-05-26).
++
+ """Orchestration Library — `Send Prompt` + `Run Scenario` keywords (Story 4.3).
+ 
+ Implements PRD FR14 (Send Prompt) + FR15 (Run Scenario) + FR16
+@@ -48,6 +54,10 @@ from AgentEval.types import AgentRunResult
+ 
+ __all__ = ["OrchestrationLibrary"]
+ 
++# Browser-Library-style docstring migration marker (Phase 2, 2026-05-26).
++# See `tests/unit/conventions/test_docstring_browser_style.py`.
++_BROWSER_STYLE_MIGRATED = True
++
+ 
+ # Story 4.3 code-review 3-way HIGH-A fix 2026-05-20 (Blind H2 + Edge-cases H1 +
+ # Codex HIGH-3): the pre-edit `adapter: str = "generic"` default could not
+@@ -121,34 +131,42 @@ class OrchestrationLibrary:
+         mcp_servers: dict[str, Any] | str | None = None,
+         **kwargs: Any,
+     ) -> AgentRunResult:
+-        """Execute a single-shot prompt against a coding-agent adapter (PRD FR14).
++        """Executes a single-shot prompt against a coding-agent adapter (PRD FR14).
+ 
+         [Tier 2 — Stochastic Single-Shot] — invokes the named adapter's
+-        `run()` method per Story 1b.4 ratified CodingAgentAdapter Protocol.
+-
+-        Args:
+-            adapter: Adapter name registered via `agenteval.coding_agents`
+-                entry-points group (default: `"generic"` — Story 4.1
+-                LiteLLM-backed). Resolved via Story 1b.3 `get_adapter()`.
+-            prompt: Prompt text to send to the agent.
+-            mcp_servers: Phase-1 stub: dict[str, ServerHandle] forwarded
+-                to adapter.run(mcp_servers=...). String form (comma-separated
+-                names) is the user-facing convenience but Story 4.3
+-                Phase-1 doesn't yet resolve names → handles (DF-4.3-S2).
+-                Default None passes through cleanly.
+-            **kwargs: Provider/adapter-specific forward-compat kwargs
+-                (e.g., `model="anthropic/claude-sonnet-4-6"`, `temperature=0.5`).
+-
+-        Returns:
+-            `AgentRunResult` with the agent's response per Story 1b.4
+-            ratified shape.
+-
+-        Raises:
+-            AdapterDiscoveryError: when `adapter` name is unknown.
+-            NotImplementedError: when `mcp_servers` is non-empty (DF-4.3-S2
+-                + DF-4.1-S2 + DF-4.2-S1 — adapter-side integration is
+-                Phase-1.5).
+-        """
++        ``run()`` method per the `CodingAgentAdapter` Protocol. Returns
++        an ``AgentRunResult`` carrying ``response_text``, ``tool_calls``,
++        ``usage``, ``metadata`` (with ``completeness`` + ``mcp_coverage``),
++        ``cost_usd``, ``latency_seconds``, and ``trace_id``.
++
++        | =Arguments= | =Description= |
++        | ``adapter`` | Adapter name registered via the ``agenteval.coding_agents`` entry-points group. Defaults to ``"generic"`` (LiteLLM-backed). |
++        | ``prompt`` | Prompt text to send to the agent. |
++        | ``mcp_servers`` | Optional ``dict[str, ServerHandle]`` of attached MCP servers. Phase-1: comma-separated name strings raise ``NotImplementedError`` (DF-4.3-S2 — name resolution to handles deferred). |
++
++        Additional keyword arguments are forwarded to the adapter — caller
++        kwargs that match the adapter's ``__init__`` signature flow to
++        construction; the rest flow to ``run()``. Useful for
++        ``model="anthropic/claude-sonnet-4-6"``, ``temperature=0.5``, etc.
++
++        Raises ``AdapterDiscoveryError`` when the ``adapter`` name is not
++        registered. Raises ``NotImplementedError`` on comma-separated
++        ``mcp_servers`` name strings until DF-4.3-S2 lands the name →
++        handle resolver (pass ``mcp_servers={'name': handle}`` directly to
++        forward Phase-1).
++
++        Example:
++        | ${result} =    `Send Prompt`    prompt=Hello, world.
++        | ${result} =    `Send Prompt`    adapter=claude-code-cli    prompt=Run the build.
++        | ${result} =    `Send Prompt`    adapter=generic    prompt=Search    model=anthropic/claude-sonnet-4-6
++        | `Tool Call Should Have Occurred`    ${result}    web_search
++
++        Notes:
++        - PRD FR14 ratifies the single-prompt orchestration contract.
++        - Adapter discovery per Story 1b.3 + ADR-013 entry-points.
++        - ``cost_usd`` is 0.0 on the Mock provider; non-zero on real adapters per Story 8a.1.
++        - Sibling keyword: `Run Scenario` for multi-eval YAML-driven dispatch (Tier-3).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         # Story 4.3 code-review 2-way HIGH-C fix 2026-05-20: inject the
+         # library-level `provider` default when caller didn't pass one.
+         # Preserves PRD FR41 precedence (call kwarg > library config).
+@@ -201,34 +219,42 @@ class OrchestrationLibrary:
+         mcp_servers: dict[str, Any] | str | None = None,
+         **kwargs: Any,
+     ) -> list[AgentRunResult]:
+-        """Execute a scenario YAML file's `evals[]` against an adapter (PRD FR15).
++        """Executes a scenario YAML file's ``evals[]`` against an adapter (PRD FR15).
+ 
+         [Tier 3 — Stochastic Fan-Out] — loads the scenario YAML via
+-        `scenarios.loader.load_scenario()`, validates against the
+-        `Scenario` schema (raises `InvalidScenarioYAMLError` per
+-        Story 4.3 catalog amendment 18th leaf), then dispatches each
+-        eval's prompt to `adapter.run()` `eval.repeat` times.
+-
+-        Args:
+-            adapter: Adapter name (default `"generic"`). Per-scenario
+-                `agent:` field in the YAML OVERRIDES this kwarg
+-                (precedence per PRD FR41 spirit — YAML beats default
+-                but not explicit kwarg per FR15's "scenario YAML
+-                specifies model/provider/agent" wording).
+-            scenario: Path to the scenario YAML file.
+-            mcp_servers: Phase-1 stub (see `Send Prompt` for semantics).
+-            **kwargs: Adapter forward-compat kwargs.
+-
+-        Returns:
+-            List of `AgentRunResult` records — one per eval execution.
+-            For an `evals[]` of N entries with `repeat: k` each, length
+-            is N * k.
+-
+-        Raises:
+-            InvalidScenarioYAMLError: on YAML parse / schema violation.
+-            AdapterDiscoveryError: on unknown adapter name.
+-            NotImplementedError: on non-empty `mcp_servers` (DF-4.3-S2).
+-        """
++        ``load_scenario()``, validates against the ``Scenario`` schema,
++        then dispatches each eval's prompt to ``adapter.run()`` ``repeat``
++        times. Returns a flat ``list[AgentRunResult]`` of length
++        ``sum(eval.repeat for eval in scenario.evals)``.
++
++        | =Arguments= | =Description= |
++        | ``adapter`` | Adapter name. Per-scenario ``agent:`` field in the YAML overrides this kwarg per FR15 ("scenario YAML specifies agent" — YAML beats default but not explicit kwarg). |
++        | ``scenario`` | Filesystem path to the scenario YAML file. |
++        | ``mcp_servers`` | Optional ``dict[str, ServerHandle]``. Phase-1: comma-separated name strings raise ``NotImplementedError`` (DF-4.3-S2). |
++
++        Additional keyword arguments are split between adapter
++        constructor + ``run()`` per the same signature-introspection
++        rule as `Send Prompt`. Scenario-YAML ``model:`` /
++        ``provider:`` fields inject into the merged kwargs unless the
++        caller already passed them.
++
++        Raises ``InvalidScenarioYAMLError`` on YAML parse / schema
++        failure, ``AdapterDiscoveryError`` on unknown adapter name, and
++        ``NotImplementedError`` on non-empty comma-separated
++        ``mcp_servers`` (Phase-1 DF-4.3-S2 carve-out).
++
++        Example:
++        | @{results} =    `Run Scenario`    scenario=${CURDIR}/scenarios/web-search.yaml
++        | Length Should Be    ${results}    5
++        | `Trajectory Should Match`    ${results}[0]    ${{['web_search', 'fetch', 'summarize']}}
++        | @{results} =    `Run Scenario`    adapter=claude-code-cli    scenario=${CURDIR}/scenarios/build.yaml
++
++        Notes:
++        - PRD FR15 ratifies the multi-eval orchestration contract.
++        - FR41 precedence resolution: explicit kwarg > scenario YAML > library default.
++        - Sibling keyword: `Load Scenario` (Tier-1) to validate the YAML without executing.
++        - Carry-overs: DF-4.3-S2 (mcp_servers name resolution), DF-4.3-S4 (multi-turn threading).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if not scenario:
+             raise ValueError("Run Scenario requires `scenario=<path>` kwarg")
+         scenario_obj = load_scenario(scenario)
+@@ -302,15 +328,30 @@ class OrchestrationLibrary:
+     @keyword(name="Load Scenario")
+     @tier(1)
+     def load_scenario_kw(self, scenario: str) -> Scenario:
+-        """Load + validate a scenario YAML without executing.
++        """Loads + validates a scenario YAML without executing it.
+ 
+         [Tier 1 — Deterministic] — pure file read + YAML parse + schema
+-        validation. Story 4.3 surface for callers who want to inspect
+-        the parsed `Scenario` shape before deciding whether to `Run
+-        Scenario` against it (e.g., for `.robot` tests that assert
+-        on scenario metadata).
+-
+-        Raises:
+-            InvalidScenarioYAMLError: on parse / schema failure.
+-        """
++        validation. Returns the parsed ``Scenario`` dataclass without
++        dispatching to any adapter — useful for ``.robot`` tests that
++        assert on scenario metadata or pre-flight-check scenarios before
++        a `Run Scenario` invocation.
++
++        | =Arguments= | =Description= |
++        | ``scenario`` | Filesystem path to the scenario YAML file. |
++
++        Raises ``InvalidScenarioYAMLError`` on parse failure or schema
++        violation. The error's ``field_name`` attribute pinpoints the
++        offending field per FR59.
++
++        Example:
++        | ${scenario} =    `Load Scenario`    ${CURDIR}/scenarios/web-search.yaml
++        | Should Be Equal    ${scenario.name}    web-search
++        | Length Should Be    ${scenario.evals}    5
++        | Should Contain    ${scenario.tags}    smoke
++
++        Notes:
++        - PRD FR15 ratifies the scenario YAML schema; see `Scenario` dataclass in `scenarios/schema.py`.
++        - Sibling keyword: `Run Scenario` (Tier-3) for dispatch + execution.
++        - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return load_scenario(scenario)
+diff --git a/src/AgentEval/skills/library.py b/src/AgentEval/skills/library.py
+index babd54f..256e1eb 100644
+--- a/src/AgentEval/skills/library.py
++++ b/src/AgentEval/skills/library.py
+@@ -12,6 +12,11 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
++# ruff: noqa: E501
++# Browser-Library-style docstring tables can carry long descriptions
++# on a single physical line. Per-line 120-char limit waived for this
++# file per Phase 6 docstring-refresh proposal (2026-05-26).
++
+ """Skill sub-library — static-inspection keywords for skill `.md` files.
+ 
+ Story 2.1 ships 5 Tier-1 keywords (per architecture L620 Decision-1 +
+@@ -40,10 +45,11 @@ Usage from a `.robot` file:
+         ${desc}=    Skill.Get Description    skills/example.md
+         Should Be Equal    ${desc}    Example skill for testing.
+ 
+-Usage when composed under the top-level `AgentEval` library: the 5
+-keywords are flattened into the parent's keyword namespace via
+-`DynamicCore` so users who imported `Library AgentEval` can call them
+-directly (no `Skill.` prefix).
++**NOTE (per Phase 6 review):** unlike other AgentEval sub-libraries,
++`SkillsLibrary` is NOT registered in `_SUB_LIBRARIES` and is NOT
++composed under the top-level `AgentEval` library (DF-7.1-S1 / name
++collision with `SubagentsLibrary.Get Frontmatter`). All 8 keywords
++must be imported via the direct path shown in the Usage block above.
+ 
+ Phase-1 limitations explicitly documented:
+ - `Should Be Valid Frontmatter` is a plain `@keyword`-decorated function,
+@@ -79,6 +85,9 @@ from AgentEval.skills.types import (
+ 
+ __all__ = ["SkillsLibrary"]
+ 
++# Browser-Library-style docstring migration marker (Phase 6, 2026-05-26).
++_BROWSER_STYLE_MIGRATED = True
++
+ 
+ class SkillsLibrary:
+     """Static-inspection keywords for skill `.md` files [Tier 1 — Deterministic].
+@@ -92,98 +101,125 @@ class SkillsLibrary:
+     @keyword(name="Get Frontmatter")
+     @tier(1)
+     def get_frontmatter(self, path: str | Path) -> dict[str, Any]:
+-        """Parse the YAML frontmatter at the head of a skill `.md` file.
++        """Parses the YAML frontmatter at the head of a skill ``.md`` file (PRD FR1).
+ 
+         [Tier 1 — Deterministic] — pure file-read + YAML parse; no
+-        provider, no trace store. Median ≤ 50 ms per call on the 5 KB
+-        reference fixture per NFR-PERF-02.
+-
+-        Args:
+-            path: Filesystem path to the skill `.md` file.
+-
+-        Returns:
+-            The parsed YAML frontmatter as a dict.
+-
+-        Raises:
+-            InvalidSkillFrontmatterError: On YAML / file-level structural
+-                failure (missing file, broken YAML, missing `---`
+-                delimiters, frontmatter not a mapping). This keyword
+-                does NOT enforce the required-fields contract — callers
+-                that need that should use `Get Description` / `Get
+-                Allowed Tools` / etc. (which validate) OR call `Should
+-                Be Valid Frontmatter` on the returned dict. Error
+-                format per `docs/contracts/error-class-hierarchy.md`
+-                L96-104.
+-        """
++        provider, no trace store. Returns the raw parsed YAML as a
++        ``dict[str, Any]``. Does NOT enforce the required-fields
++        contract — see `Should Be Valid Frontmatter` for structural
++        validation, OR the typed getters (`Get Description`,
++        `Get Allowed Tools`, etc.) which validate during projection.
++        Median ≤ 50 ms per call on the 5 KB reference fixture.
++
++        | =Arguments= | =Description= |
++        | ``path`` | Filesystem path to the skill ``.md`` file. Accepts ``str`` OR ``pathlib.Path``. |
++
++        Raises ``InvalidSkillFrontmatterError`` on YAML / file-level
++        structural failure (missing file, broken YAML, missing ``---``
++        delimiters, frontmatter not a mapping). Error format per FR59 +
++        `docs/contracts/error-class-hierarchy.md` L96-104.
++
++        Example:
++        | ${frontmatter} =    `Get Frontmatter`    ${CURDIR}/skills/example.md
++        | Should Be Equal    ${frontmatter}[name]    example-skill
++        | Should Contain    ${frontmatter}[allowed-tools]    Bash
++
++        Notes:
++        - PRD FR1 ratifies the YAML frontmatter parse + dict-return contract.
++        - Performance budget: NFR-PERF-02 (median ≤ 50 ms per call).
++        - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
++        - Sibling keywords: `Get Description`, `Get Allowed Tools`, `Get Disable Model Invocation` (typed-validated projections); `Should Be Valid Frontmatter` (structural validator).
++        - Parallel surface: `SubagentsLibrary.Get Frontmatter` for sub-agent ``.md`` files (different validation rules).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return parse_frontmatter(path)
+ 
+     @keyword(name="Get Description")
+     @tier(1)
+     def get_description(self, path: str | Path) -> str:
+-        """Return the `description` field from a skill `.md` file's frontmatter.
++        """Returns the ``description`` field from a skill ``.md`` file's frontmatter (PRD FR1).
+ 
+         [Tier 1 — Deterministic] — pure projection of `Get Frontmatter`
+-        with a `description`-field type check. Raises if the field is
+-        missing or empty.
++        with a ``description``-field non-empty-string check.
+ 
+-        Args:
+-            path: Filesystem path to the skill `.md` file.
++        | =Arguments= | =Description= |
++        | ``path`` | Filesystem path to the skill ``.md`` file. Accepts ``str`` OR ``pathlib.Path``. |
+ 
+-        Returns:
+-            The `description` field value as a non-empty string.
++        Raises ``InvalidSkillFrontmatterError`` when the frontmatter is
++        invalid OR the ``description`` field is missing / non-string /
++        empty.
+ 
+-        Raises:
+-            InvalidSkillFrontmatterError: If the frontmatter is invalid
+-                OR the `description` field is missing/non-string/empty.
+-        """
++        Example:
++        | ${desc} =    `Get Description`    ${CURDIR}/skills/example.md
++        | Should Contain    ${desc}    example skill
++        | Should Be True    len('${desc}') > 0
++
++        Notes:
++        - PRD FR1 ratifies the description-field projection contract.
++        - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
++        - Sibling keywords: `Get Frontmatter` (raw dict); `Should Be Valid Frontmatter` (all-fields validator).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return str(self._read_and_validate(path)["description"])
+ 
+     @keyword(name="Get Allowed Tools")
+     @tier(1)
+     def get_allowed_tools(self, path: str | Path) -> list[str]:
+-        """Return the `allowed-tools` list from a skill `.md` file's frontmatter.
++        """Returns the ``allowed-tools`` list from a skill ``.md`` file's frontmatter (PRD FR1).
+ 
+         [Tier 1 — Deterministic] — pure projection of `Get Frontmatter`
+-        with a `list[str]` type check.
+-
+-        Args:
+-            path: Filesystem path to the skill `.md` file.
+-
+-        Returns:
+-            The `allowed-tools` field value as a `list[str]`. The list
+-            may be empty (a skill with no tool allowlist is valid).
+-
+-        Raises:
+-            InvalidSkillFrontmatterError: If the frontmatter is invalid
+-                OR `allowed-tools` is not a list of strings.
+-        """
++        with a ``list[str]`` type check. The list MAY be empty (a skill
++        with no tool allowlist is valid).
++
++        | =Arguments= | =Description= |
++        | ``path`` | Filesystem path to the skill ``.md`` file. Accepts ``str`` OR ``pathlib.Path``. |
++
++        Raises ``InvalidSkillFrontmatterError`` when the frontmatter is
++        invalid OR ``allowed-tools`` is not a list of strings.
++
++        Example:
++        | @{tools} =    `Get Allowed Tools`    ${CURDIR}/skills/example.md
++        | Should Contain    ${tools}    Bash
++        | Should Contain    ${tools}    Read
++        | Length Should Be    ${tools}    3
++
++        Notes:
++        - PRD FR1 ratifies the allowed-tools projection contract.
++        - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
++        - Sibling keywords: `Get Frontmatter` (raw dict); `Get Disable Model Invocation` (companion projection).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return list(self._read_and_validate(path)["allowed-tools"])
+ 
+     @keyword(name="Get Disable Model Invocation")
+     @tier(1)
+     def get_disable_model_invocation(self, path: str | Path) -> bool:
+-        """Return the `disable-model-invocation` bool from a skill `.md` file.
++        """Returns the ``disable-model-invocation`` bool from a skill ``.md`` file's frontmatter (PRD FR1).
+ 
+         [Tier 1 — Deterministic] — pure projection of `Get Frontmatter`
+-        with a strict bool type check.
+-
+-        YAML coercion notes:
+-            - `true`/`false`/`yes`/`no`/`on`/`off` parse to Python bool
+-              (PyYAML 1.1 semantics) and are accepted.
+-            - `1`/`0` integers parse to Python int and are REJECTED
+-              (`isinstance(value, bool)` is False for ints).
+-            - String forms like `"true"` are REJECTED — must be unquoted.
+-
+-        Args:
+-            path: Filesystem path to the skill `.md` file.
+-
+-        Returns:
+-            The `disable-model-invocation` field value as a bool.
+-
+-        Raises:
+-            InvalidSkillFrontmatterError: If the frontmatter is invalid
+-                OR `disable-model-invocation` is not a bool.
+-        """
++        with a strict bool type check. YAML coercion rules:
++
++        - ``true``/``false``/``yes``/``no``/``on``/``off`` parse to Python
++          bool (PyYAML 1.1 semantics) — accepted.
++        - ``1``/``0`` integers parse to Python int — **rejected**
++          (``isinstance(value, bool)`` is False for ints).
++        - String forms like ``"true"`` are **rejected** — must be unquoted.
++
++        | =Arguments= | =Description= |
++        | ``path`` | Filesystem path to the skill ``.md`` file. Accepts ``str`` OR ``pathlib.Path``. |
++
++        Raises ``InvalidSkillFrontmatterError`` when the frontmatter is
++        invalid OR ``disable-model-invocation`` is not a bool.
++
++        Example:
++        | ${disabled} =    `Get Disable Model Invocation`    ${CURDIR}/skills/example.md
++        | Should Be Equal    ${disabled}    ${FALSE}                                      # Default for most skills.
++        | ${disabled} =    `Get Disable Model Invocation`    ${CURDIR}/skills/static-only.md
++        | Should Be Equal    ${disabled}    ${TRUE}
++
++        Notes:
++        - PRD FR1 ratifies the disable-model-invocation projection contract.
++        - Strict bool typing — int / string forms rejected. The PyYAML 1.1 coercion of unquoted ``true``/``yes`` etc. to Python bool IS accepted.
++        - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
++        - Sibling keyword: `Get Allowed Tools` (companion projection).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         return bool(self._read_and_validate(path)["disable-model-invocation"])
+ 
+     def _read_and_validate(self, path: str | Path) -> dict[str, Any]:
+@@ -210,31 +246,35 @@ class SkillsLibrary:
+     @keyword(name="Should Be Valid Frontmatter")
+     @tier(1)
+     def should_be_valid_frontmatter(self, frontmatter: dict[str, Any]) -> None:
+-        """Assert a parsed frontmatter dict has the 4 required fields + correct types.
+-
+-        [Tier 1 — Deterministic] — structural validator. Phase-1 plain
+-        `@keyword` per ADR-022 catalog row (full AssertionEngine matcher
+-        deferred to Phase-2 when ADR-022 adoption completes).
+-
+-        Args:
+-            frontmatter: The dict returned by `Get Frontmatter`. The
+-                4 required fields are `name`, `description`,
+-                `allowed-tools`, `disable-model-invocation`.
+-
+-        Returns:
+-            None on success.
+-
+-        Raises:
+-            InvalidSkillFrontmatterError: If any required field is
+-                missing OR any field has the wrong type. The error
+-                message lists the offending field(s) so the test author
+-                can remediate.
+-
+-        Phase-1 limitation:
+-            This keyword is a plain `@keyword`-decorated function (NOT
+-            a `robotframework-assertion-engine` matcher) pending
+-            Phase-2 ADR-022 adoption.
+-        """
++        """Asserts a parsed frontmatter dict has the 4 required fields with correct types (PRD FR1).
++
++        [Tier 1 — Deterministic] — structural validator. Required fields:
++        ``name`` (str), ``description`` (str), ``allowed-tools``
++        (``list[str]``), ``disable-model-invocation`` (bool). Phase-1
++        plain ``@keyword`` per ADR-019 catalog row; full AssertionEngine
++        matcher deferred to Phase-2.
++
++        | =Arguments= | =Description= |
++        | ``frontmatter`` | The dict returned by `Get Frontmatter`. |
++
++        Raises ``InvalidSkillFrontmatterError`` when any required field
++        is missing OR has the wrong type. The error message lists the
++        offending field(s) so the test author can remediate. Error
++        format per FR59 + `docs/contracts/error-class-hierarchy.md`
++        L96-104.
++
++        Example:
++        | ${frontmatter} =    `Get Frontmatter`    ${CURDIR}/skills/example.md
++        | `Should Be Valid Frontmatter`    ${frontmatter}
++        | ${fm_broken} =    Create Dictionary    name=just-a-name
++        | Run Keyword And Expect Error    InvalidSkillFrontmatterError*    `Should Be Valid Frontmatter`    ${fm_broken}
++
++        Notes:
++        - PRD FR1 ratifies the required-fields contract.
++        - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
++        - ADR-019 ratifies the Phase-1 plain-``@keyword`` form; Phase-2 will adopt the AssertionEngine matcher idiom.
++        - Sibling keyword: `Get Frontmatter` (raw dict — feed its return into this validator).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         validate_frontmatter_structure(frontmatter)
+ 
+     @keyword(name="Get Activation Decision")
+@@ -249,37 +289,41 @@ class SkillsLibrary:
+         polling: float | None = None,
+         **kwargs: Any,
+     ) -> ActivationDecision:
+-        """Query an agent and infer whether the given skill was activated.
+-
+-        [Tier 3 — Stochastic Fan-Out] — sends `prompt` to the LLM adapter
+-        and returns an `ActivationDecision` indicating whether the skill's
+-        `name` appeared in the agent's response text.
+-
+-        Phase-1 activation heuristic (AC-7.1.4): case-insensitive substring
+-        check of the skill `name` field in `result.response_text`. Phase-2
+-        will adopt a more robust classifier (DF-7.1-S1 / C55).
+-
+-        Args:
+-            skill: Filesystem path to the skill `.md` file.
+-            prompt: Prompt to send to the agent.
+-            adapter: Adapter identifier (default ``"generic"``).
+-            model: Optional model override forwarded to the adapter.
+-            polling: Must NOT be provided — raises `PollingDisallowedError`
+-                per FR28 / AC-7.1.5. Use `Stat.Run N Times` instead.
+-            **kwargs: Additional kwargs forwarded to the adapter constructor.
+-
+-        Returns:
+-            `ActivationDecision` with `activated`, `reasoning`, `cost_usd`,
+-            `latency_seconds`.
+-
+-        Raises:
+-            PollingDisallowedError: If `polling` is provided (FR28).
+-            InvalidSkillFrontmatterError: If the skill file cannot be read
+-                or parsed as valid YAML (missing delimiters, broken YAML,
+-                wrong extension, file not found). Structurally invalid
+-                frontmatter (missing required fields) does NOT raise here —
+-                `name` absence / null silently yields `activated=False`.
+-        """
++        """Queries an agent and infers whether the given skill was activated (PRD FR1 + AC-7.1).
++
++        [Tier 3 — Stochastic Fan-Out] — sends ``prompt`` to the named
++        adapter and returns an ``ActivationDecision`` with ``activated``
++        (bool), ``reasoning`` (the response text), ``cost_usd``, and
++        ``latency_seconds``. Phase-1 activation heuristic: case-
++        insensitive substring check of the skill's ``name`` field in
++        ``result.response_text``. Phase-2 will adopt a more robust
++        classifier (DF-7.1-S1 / C55).
++
++        | =Arguments= | =Description= |
++        | ``skill`` | Filesystem path to the skill ``.md`` file. Accepts ``str`` OR ``pathlib.Path``. |
++        | ``prompt`` | Prompt text to send to the agent. |
++        | ``adapter`` | Adapter identifier registered via the ``agenteval.coding_agents`` entry-points group. Defaults to ``"generic"``. |
++        | ``model`` | Optional model override forwarded to the adapter constructor. |
++        | ``polling`` | Must NOT be provided — raises ``PollingDisallowedError`` per FR28 / AC-7.1.5. Use `Stat.Run N Times` for fan-out instead. |
++        | ``**kwargs`` | Additional kwargs forwarded to the adapter constructor. |
++
++        Raises ``PollingDisallowedError`` when ``polling`` is provided
++        (FR28). Raises ``InvalidSkillFrontmatterError`` when the skill
++        file cannot be read or parsed as valid YAML. Structurally
++        invalid frontmatter (missing required fields) does NOT raise
++        here — missing ``name`` silently yields ``activated=False``.
++
++        Example (illustrative — assumes a real adapter):
++        | ${decision} =    `Get Activation Decision`    ${CURDIR}/skills/web-search.md    prompt=Find news about Robot Framework
++        | Should Be True    ${decision.activated}
++        | Should Be True    ${decision.cost_usd} >= 0.0
++
++        Notes:
++        - PRD FR1 ratifies the skill-activation surface; AC-7.1 ratifies the keyword contract.
++        - Phase-1 heuristic per AC-7.1.4 — substring check on skill ``name`` in response text. Phase-2 classifier deferred per DF-7.1-S1 / C55.
++        - FR28 prohibits polling — use `Stat.Run N Times` for statistical assertions instead.
++        - Sibling keyword: `Should Activate For` (assertion wrapper); `Get Discoverability` (multi-task cohort evaluation).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if polling is not None:
+             raise PollingDisallowedError(
+                 build_polling_disallowed_message(
+@@ -317,39 +361,46 @@ class SkillsLibrary:
+         polling: float | None = None,
+         **kwargs: Any,
+     ) -> SkillDiscoverabilityResult:
+-        """Run a cohort discoverability evaluation for a skill (FR4b).
+-
+-        [Tier 3 — Stochastic Fan-Out] — runs `trials_per_task` adapter calls
+-        per task across all tasks in the YAML, returning per-task activation
+-        rates + aggregate summary.
+-
+-        Phase-1 activation heuristic (AC-7.2.4): case-insensitive substring
+-        check of the skill `name` field in each trial's `response_text`.
+-        Phase-2 will add structured response schema or classifier for
+-        competing-skills-picked detection (DF-7.2-S1 / C56).
+-
+-        Args:
+-            skill: Filesystem path to the skill `.md` file.
+-            tasks: Filesystem path to the skill-discoverability tasks YAML.
+-            adapter: Adapter identifier (default ``"generic"``).
+-            model: Optional model override forwarded to the adapter constructor.
+-            trials_per_task: Number of adapter calls per task (default 3).
+-            polling: Must NOT be provided — raises `PollingDisallowedError`
+-                per FR28 / AC-7.2.6.
+-            **kwargs: Additional kwargs forwarded to the adapter constructor.
+-
+-        Returns:
+-            `SkillDiscoverabilityResult` with `per_task_results`,
+-            `summary`, and `adapter_coverage`.
+-
+-        Raises:
+-            PollingDisallowedError: If `polling` is provided (FR28).
+-            ValueError: If `trials_per_task` is less than 1.
+-            InvalidSkillFrontmatterError: If the skill file cannot be read
+-                or parsed as valid YAML.
+-            InvalidSkillDiscoverabilityTasksError: If the tasks YAML cannot
+-                be read, parsed, or is structurally invalid.
+-        """
++        """Runs a cohort discoverability evaluation across N tasks × M trials (PRD FR4b).
++
++        [Tier 3 — Stochastic Fan-Out] — runs ``trials_per_task`` adapter
++        calls per task across all tasks in the YAML, returning a
++        ``SkillDiscoverabilityResult`` with ``per_task_results``,
++        ``summary``, and ``adapter_coverage``. Phase-1 activation
++        heuristic per AC-7.2.4: case-insensitive substring check of the
++        skill ``name`` field in each trial's ``response_text``. Phase-2
++        adds structured-response schema for competing-skills-picked
++        detection (DF-7.2-S1 / C56).
++
++        | =Arguments= | =Description= |
++        | ``skill`` | Filesystem path to the skill ``.md`` file. |
++        | ``tasks`` | Filesystem path to the skill-discoverability tasks YAML. |
++        | ``adapter`` | Adapter identifier. Defaults to ``"generic"``. |
++        | ``model`` | Optional model override forwarded to the adapter constructor. |
++        | ``trials_per_task`` | Number of adapter calls per task. Defaults to ``3``. |
++        | ``polling`` | Must NOT be provided — raises ``PollingDisallowedError`` per FR28 / AC-7.2.6. |
++        | ``**kwargs`` | Additional kwargs forwarded to the adapter constructor. |
++
++        Raises ``PollingDisallowedError`` when ``polling`` is provided
++        (FR28). Raises ``ValueError`` when ``trials_per_task < 1``.
++        Raises ``InvalidSkillFrontmatterError`` when the skill file is
++        unreadable / un-parseable. Raises
++        ``InvalidSkillDiscoverabilityTasksError`` when the tasks YAML
++        is structurally invalid.
++
++        Example (illustrative — assumes a real adapter):
++        | ${disc} =    `Get Discoverability`    ${CURDIR}/skills/web-search.md    ${CURDIR}/tasks/web-search.yaml    trials_per_task=5
++        | Should Be True    ${disc.summary.activation_accuracy} >= 0.6
++        | FOR    ${task_result}    IN    @{disc.per_task_results}
++        |     Log    ${task_result.task_id}: ${task_result.pass_at_k}
++        | END
++
++        Notes:
++        - PRD FR4b ratifies the cohort-discoverability contract; AC-7.2 ratifies the keyword surface.
++        - Phase-1 activation heuristic per AC-7.2.4. Phase-2 structured-response classifier deferred per DF-7.2-S1 / C56.
++        - FR28 prohibits polling — fan-out via this keyword's own ``trials_per_task`` or via `Stat.Run N Times`.
++        - Sibling keywords: `Get Activation Decision` (single-task variant); `Should Activate For` (assertion wrapper).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if polling is not None:
+             raise PollingDisallowedError(
+                 build_polling_disallowed_message(
+@@ -415,44 +466,44 @@ class SkillsLibrary:
+         polling: float | None = None,
+         **kwargs: Any,
+     ) -> None:
+-        """Assert that the given skill activates for the given prompt (FR4d).
+-
+-        [Tier 2 — Stochastic Single-Shot] — sends `prompt` to the adapter
+-        once and asserts the skill name appears in the response. Raises
+-        `SkillDidNotActivateError` with diagnostic fields if the skill
+-        does not activate.
+-
+-        Phase-1 activation heuristic (AC-7.2.5): case-insensitive substring
+-        check of the skill `name` field in `result.response_text` (same
+-        heuristic as `Skill.Get Activation Decision`).
+-
+-        Args:
+-            prompt: Natural-language prompt to test.
+-            skill: Filesystem path to the skill `.md` file.
+-            adapter: Adapter identifier (default ``"generic"``).
+-            model: Optional model override forwarded to the adapter constructor.
+-            polling: Must NOT be provided — raises `PollingDisallowedError`
+-                per FR28 / AC-7.2.6.
+-            **kwargs: Additional kwargs forwarded to the adapter constructor.
+-
+-        Returns:
+-            None on success (skill activated).
+-
+-        Raises:
+-            PollingDisallowedError: If `polling` is provided (FR28).
+-            SkillDidNotActivateError: If the skill did not activate, carrying
+-                `prompt`, `skill_path`, `skill_name`, `competing_skill` (None
+-                in Phase-1), `reasoning` (full response text), and
+-                `fix_suggestion`.
+-            InvalidSkillFrontmatterError: If the skill file cannot be read
+-                or parsed as valid YAML.
+-
+-        Note:
+-            If the skill `name` field is absent, empty, or not a string, the
+-            activation check always evaluates to False — this keyword will
+-            raise `SkillDidNotActivateError` unconditionally (same behaviour
+-            as `Skill.Get Activation Decision` for null name per AC-7.1.4).
+-        """
++        """Asserts that the given skill activates for the given prompt (PRD FR4d).
++
++        [Tier 2 — Stochastic Single-Shot] — sends ``prompt`` to the
++        adapter once and asserts the skill name appears in the response
++        text. Phase-1 activation heuristic per AC-7.2.5: case-insensitive
++        substring check of the skill ``name`` field in
++        ``result.response_text`` (same heuristic as `Get Activation Decision`).
++
++        | =Arguments= | =Description= |
++        | ``prompt`` | Natural-language prompt to test. |
++        | ``skill`` | Filesystem path to the skill ``.md`` file. |
++        | ``adapter`` | Adapter identifier. Defaults to ``"generic"``. |
++        | ``model`` | Optional model override forwarded to the adapter constructor. |
++        | ``polling`` | Must NOT be provided — raises ``PollingDisallowedError`` per FR28 / AC-7.2.6. |
++        | ``**kwargs`` | Additional kwargs forwarded to the adapter constructor. |
++
++        Raises ``PollingDisallowedError`` when ``polling`` is provided
++        (FR28). Raises ``SkillDidNotActivateError`` on no-activation
++        with diagnostic fields (``prompt``, ``skill_path``,
++        ``skill_name``, ``competing_skill`` (None in Phase-1),
++        ``reasoning``, ``fix_suggestion``). Raises
++        ``InvalidSkillFrontmatterError`` on YAML / file failure.
++
++        Note: missing / empty / non-string ``name`` field causes the
++        activation check to always evaluate False — this keyword raises
++        ``SkillDidNotActivateError`` unconditionally in that case
++        (same as `Get Activation Decision` per AC-7.1.4).
++
++        Example (illustrative — assumes a real adapter):
++        | `Should Activate For`    Find news about Robot Framework    ${CURDIR}/skills/web-search.md
++        | Run Keyword And Expect Error    SkillDidNotActivateError*    `Should Activate For`    Calculate 2+2    ${CURDIR}/skills/web-search.md
++
++        Notes:
++        - PRD FR4d ratifies the activation-assertion contract; AC-7.2.5 + AC-7.2.6 ratify the keyword surface.
++        - Phase-1 heuristic per AC-7.1.4 — substring check on skill ``name`` in response text.
++        - FR28 prohibits polling — fan-out via `Stat.Run N Times` if statistical evidence is needed.
++        - Sibling keywords: `Get Activation Decision` (returns decision instead of raising); `Get Discoverability` (multi-task cohort).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if polling is not None:
+             raise PollingDisallowedError(
+                 build_polling_disallowed_message(
+diff --git a/src/AgentEval/stats/library.py b/src/AgentEval/stats/library.py
+index 3e06d70..6bd9954 100644
+--- a/src/AgentEval/stats/library.py
++++ b/src/AgentEval/stats/library.py
+@@ -12,6 +12,12 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
++# ruff: noqa: E501
++# Browser-Library-style docstring tables (`| =Arguments= | =Description= |`)
++# can carry long descriptions on a single physical line. The per-line
++# 120-char limit is waived for this file per Phase 2 docstring-refresh
++# proposal (2026-05-26).
++
+ """Statistical primitives RF-keyword surface (Story 6.3 / PRD FR26 + FR27 + FR31a).
+ 
+ Ships 4 `@keyword`-decorated methods on `StatsLibrary`:
+@@ -49,6 +55,9 @@ from AgentEval.stats.types import KeywordRun
+ 
+ __all__ = ["StatsLibrary"]
+ 
++# Browser-Library-style docstring migration marker (Phase 2, 2026-05-26).
++_BROWSER_STYLE_MIGRATED = True
++
+ 
+ class StatsLibrary:
+     """4 `@keyword`-decorated statistical primitives (Story 6.3 / PRD FR26-FR31a)."""
+@@ -81,34 +90,34 @@ class StatsLibrary:
+         keyword_args: dict[str, Any] | list[Any] | None = None,
+         seed: int | None = None,
+     ) -> list[KeywordRun]:
+-        """[Tier 3 — Stochastic Fan-Out] Run a keyword `n` times independently (PRD FR26).
+-
+-        Args:
+-            n: Number of independent trials. Must be `>= 1`.
+-            keyword: RF keyword name (`str`) OR a Python callable. When a string
+-                is provided, the keyword is resolved via the Robot Framework
+-                `BuiltIn` library; this requires an active RF execution context.
+-                When a callable is provided, it's invoked directly (useful for
+-                pytest unit tests).
+-            keyword_args: Optional dict OR list of kwargs / RF named-arg strings
+-                to pass to the wrapped keyword (e.g.,
+-                `{"adapter": "generic", "prompt": "Hello"}` OR
+-                `["adapter=generic", "prompt=Hello"]`). `None` = no args.
+-            seed: Optional `int` seed; each trial receives `seed + trial_index`
+-                via a `seed=` kwarg injection (so trials are deterministic but
+-                distinct). `None` = OS-entropy seeding per trial.
+-
+-        Returns:
+-            `list[KeywordRun]` of length `n` per PRD FR26 + determinism-contract L55.
+-            Trial-level errors are RE-RAISED from this keyword — operators
+-            wanting "ignore failures" semantic must wrap in
+-            `Run Keyword And Ignore Error`.
+-
+-        Raises:
+-            ValueError: if `n < 1`.
+-            CostExceededError / RuntimeBudgetExceededError: per `@guarded_fanout`
+-                Layer 1/2/3 enforcement (ADR-015).
+-        """
++        """Runs a keyword ``n`` times independently and returns the per-trial results (PRD FR26).
++
++        [Tier 3 — Stochastic Fan-Out] — wraps the target keyword in
++        independent trials. Returns ``list[KeywordRun]`` of length ``n``.
++        Trial-level errors are re-raised from this keyword — wrap in
++        ``Run Keyword And Ignore Error`` for "ignore failures" semantics.
++
++        | =Arguments= | =Description= |
++        | ``n`` | Number of independent trials. Must be ``>= 1``. |
++        | ``keyword`` | RF keyword name (``str``) OR a Python callable. String form requires an active RF execution context (resolved via ``BuiltIn``); callable form is useful for pytest unit tests. |
++        | ``keyword_args`` | Optional ``dict`` of kwargs OR ``list`` of RF named-arg strings (e.g. ``{"adapter": "generic", "prompt": "Hi"}`` or ``["adapter=generic", "prompt=Hi"]``). ``None`` = no args. |
++        | ``seed`` | Optional ``int`` seed; each trial receives ``seed + trial_index`` via a ``seed=`` kwarg injection so trials are deterministic but distinct. ``None`` = OS-entropy seeding per trial. |
++
++        Raises ``ValueError`` when ``n < 1``. Raises ``CostExceededError`` /
++        ``RuntimeBudgetExceededError`` per the ``@guarded_fanout`` 3-layer
++        enforcement.
++
++        Example:
++        | @{runs} =    `Stat.Run N Times`    n=20    keyword=Send Prompt    keyword_args=${{['adapter=mock', 'prompt=Hi']}}
++        | ${pass_at_5} =    `Stat.Get Pass At K`    ${runs}    k=5
++        | Should Be True    ${pass_at_5} >= 0.6
++        | @{runs} =    `Stat.Run N Times`    n=10    keyword=Send Prompt    keyword_args=${{['adapter=mock']}}    seed=42
++
++        Notes:
++        - PRD FR26 ratifies the independent-trial fan-out shape; determinism-contract.md L55 pins the ``list[KeywordRun]`` return type.
++        - Cost / runtime guardrails per ADR-015 + `_kernel/guardrails.py::@guarded_fanout`.
++        - Sibling keyword: `Stat.Get Pass At K` (Tier-1) consumes the returned list.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if n < 1:
+             raise ValueError(f"n must be >= 1; got {n!r}")
+         positional, named = _internal._normalize_keyword_args(keyword_args)
+@@ -166,26 +175,35 @@ class StatsLibrary:
+         k: int,
+         predicate: Callable[[KeywordRun], bool] | None = None,
+     ) -> float:
+-        """[Tier 1 — Deterministic] HumanEval Pass@k estimate (PRD FR27).
+-
+-        Args:
+-            runs: List of `KeywordRun` instances (typically from `Stat.Run N Times`).
+-            k: Top-k parameter for the unbiased estimator. Must satisfy
+-                `1 <= k <= len(runs)`.
+-            predicate: Optional `Callable[[KeywordRun], bool]` for pass/fail
+-                classification. Default (when `None`): `lambda r: r.completeness == "complete"`
+-                per epic AC-2 (D-5 resolution + Story 6.4 DOGFOOD-FINDING-1
+-                fix-NOW 2026-05-20: pre-edit `"full"` was fake-green because
+-                `AgentRunMetadata.completeness` valid values are `complete/partial/truncated`).
+-
+-        Returns:
+-            `float ∈ [0, 1]` Pass@k estimate via the HumanEval unbiased estimator
+-            `1 - C(n-c, k) / C(n, k)`. PRD FR27 verbatim return type — no tuple,
+-            no dataclass (preserves AssertionEngine `>=` / `<=` matcher compatibility).
+-
+-        Raises:
+-            ValueError: if `k < 1`, `k > len(runs)`, or `len(runs) == 0`.
+-        """
++        """Computes the HumanEval Pass@k unbiased estimator over independent trials (PRD FR27).
++
++        [Tier 1 — Deterministic] — closed-form computation of the
++        HumanEval estimator ``1 - C(n-c, k) / C(n, k)``. Returns
++        ``float ∈ [0, 1]``. Scalar return preserves AssertionEngine
++        compatibility (``>=`` / ``<=`` matchers); CI is a separate paired
++        getter — see `Stat.Get Pass At K Confidence Interval`.
++
++        | =Arguments= | =Description= |
++        | ``runs`` | ``list[KeywordRun]`` — typically the result of `Stat.Run N Times`. |
++        | ``k`` | Top-k parameter. Must satisfy ``1 <= k <= len(runs)``. |
++        | ``predicate`` | Optional ``Callable[[KeywordRun], bool]`` for pass/fail classification. Default checks ``r.completeness == "complete"`` per epic AC-2 + Story 6.4 fix-NOW. |
++
++        Raises ``ValueError`` when ``k < 1``, ``k > len(runs)``, or
++        ``len(runs) == 0``.
++
++        Example:
++        | @{runs} =    `Stat.Run N Times`    n=20    keyword=Send Prompt    keyword_args=${{['adapter=mock']}}
++        | ${pass_at_1} =    `Stat.Get Pass At K`    ${runs}    k=1
++        | ${pass_at_5} =    `Stat.Get Pass At K`    ${runs}    k=5
++        | Should Be True    ${pass_at_5} >= ${pass_at_1}                            # Pass@k is monotone non-decreasing in k.
++        | ${pred} =    Evaluate    lambda r: r.error is None
++        | ${pass_strict} =    `Stat.Get Pass At K`    ${runs}    k=5    predicate=${pred}
++
++        Notes:
++        - PRD FR27 ratifies the scalar ``float`` return type — no tuple, no dataclass (Wilson CI is a separate paired getter per Story 6.3 D-1 resolution).
++        - Default predicate updated by Story 6.4 fix-NOW: ``completeness == "complete"`` (pre-edit ``"full"`` was fake-green; `AgentRunMetadata._VALID_COMPLETENESS` is ``{"complete", "truncated", "partial"}``).
++        - Sibling keyword: `Stat.Get Pass At K Confidence Interval` for the Wilson score CI.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         predicate_fn = predicate if predicate is not None else _internal._default_pass_predicate
+         c = sum(1 for r in runs if predicate_fn(r))
+         n = len(runs)
+@@ -200,26 +218,36 @@ class StatsLibrary:
+         predicate: Callable[[KeywordRun], bool] | None = None,
+         confidence: float = 0.95,
+     ) -> tuple[float, float]:
+-        """[Tier 1 — Deterministic] Wilson score CI for Pass@k (Story 6.3 D-1 paired getter).
+-
+-        Returns the Wilson score interval at `confidence` level for the
+-        predicate-pass proportion. Paired with `Stat.Get Pass At K` per the
+-        D-1 drift resolution (PRD FR27 ratifies scalar `float` return for
+-        the point estimate; epic AC-2's "with confidence interval per Wilson
+-        CI" promise is satisfied via this separate getter).
+-
+-        Args:
+-            runs: List of `KeywordRun` instances.
+-            k: Top-k parameter (validated but only used for k-vs-n sanity check;
+-                the Wilson interval is on the underlying success proportion, not
+-                the Pass@k estimate itself — interpretation: CI of the latent
+-                per-trial success probability).
+-            predicate: Same as `Stat.Get Pass At K`.
+-            confidence: Confidence level in `(0, 1)`; default 0.95.
+-
+-        Returns:
+-            `(ci_lower, ci_upper)` tuple of `float`s in `[0, 1]`.
+-        """
++        """Computes the Wilson score confidence interval for the trial success rate (Story 6.3 D-1).
++
++        [Tier 1 — Deterministic] — Wilson score interval at the given
++        ``confidence`` level for the latent per-trial success probability.
++        Returns ``(ci_lower, ci_upper)`` tuple of ``float`` in ``[0, 1]``.
++        Paired with `Stat.Get Pass At K` — the scalar point estimate plus
++        this CI together satisfy epic AC-2's "Pass@k with confidence
++        interval" promise.
++
++        | =Arguments= | =Description= |
++        | ``runs`` | ``list[KeywordRun]`` — typically the result of `Stat.Run N Times`. |
++        | ``k`` | Top-k parameter. Validated for ``1 <= k <= len(runs)`` but only used for sanity check — the Wilson interval is on the underlying success proportion, not on the Pass@k estimate itself. |
++        | ``predicate`` | Optional ``Callable[[KeywordRun], bool]`` for pass/fail classification. Same default as `Stat.Get Pass At K`. |
++        | ``confidence`` | Confidence level in ``(0, 1)``. Defaults to ``0.95``. |
++
++        Raises ``ValueError`` when ``k`` is non-positive or ``k > n`` (with
++        ``n > 0`` — empty ``runs`` is permitted per the Wilson formula).
++
++        Example:
++        | @{runs} =    `Stat.Run N Times`    n=20    keyword=Send Prompt    keyword_args=${{['adapter=mock']}}
++        | ${ci_lo}    ${ci_hi} =    `Stat.Get Pass At K Confidence Interval`    ${runs}    k=5
++        | Should Be True    0.0 <= ${ci_lo} <= ${ci_hi} <= 1.0                      # CI bounds are well-formed probabilities.
++        | ${ci99_lo}    ${ci99_hi} =    `Stat.Get Pass At K Confidence Interval`    ${runs}    k=5    confidence=0.99
++        | Should Be True    (${ci99_hi} - ${ci99_lo}) >= (${ci_hi} - ${ci_lo})      # Higher confidence → wider interval.
++
++        Notes:
++        - Story 6.3 D-1 resolution: scalar Pass@k vs CI separated to preserve AssertionEngine compatibility on the point estimate.
++        - PRD FR27 covers Pass@k; CI is an epic-AC-2 extension.
++        - Sibling keyword: `Stat.Get Pass At K` for the scalar point estimate.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         predicate_fn = predicate if predicate is not None else _internal._default_pass_predicate
+         c = sum(1 for r in runs if predicate_fn(r))
+         n = len(runs)
+@@ -245,25 +273,35 @@ class StatsLibrary:
+         keyword_args: dict[str, Any] | list[Any] | None = None,
+         expect: str = "byte_identical",
+     ) -> None:
+-        """[Tier 1 — Deterministic] Assert bit-identical Tier-1 output across 2 runs (PRD FR31a).
+-
+-        Invokes the wrapped keyword twice with identical inputs + compares via
+-        deep-equality. Phase-1 supports `expect="byte_identical"` only; other
+-        modes (`"approximate"`, `"schema_identical"`) deferred to Phase-2.
+-
+-        Args:
+-            keyword: RF keyword name (`str`) OR callable; same dispatch as
+-                `Stat.Run N Times`.
+-            keyword_args: Optional dict / list per `Stat.Run N Times`.
+-            expect: Comparison mode. Only `"byte_identical"` supported in Phase-1.
+-
+-        Raises:
+-            ValueError: if `expect` is not `"byte_identical"`.
+-            TierViolationError: if the wrapped keyword's tier is not 1 (FR31a
+-                bit-identical guarantee scoped to Tier-1 only).
+-            AssertionError: on output mismatch, with a `redact()`-scrubbed diff
+-                per FR38a (Story 5.3 contract).
+-        """
++        """Asserts bit-identical output across 2 invocations of a Tier-1 keyword (PRD FR31a).
++
++        [Tier 1 — Deterministic] — invokes the wrapped keyword twice with
++        identical inputs and compares via deep-equality. The bit-identical
++        guarantee is scoped to Tier-1 keywords only (FR31a contract); the
++        keyword raises ``TierViolationError`` if a Tier-2/3 keyword is
++        passed.
++
++        | =Arguments= | =Description= |
++        | ``keyword`` | RF keyword name (``str``) OR callable. Same dispatch rules as `Stat.Run N Times` (string form requires active RF context). |
++        | ``keyword_args`` | Optional ``dict`` of kwargs OR ``list`` of RF named-arg strings. |
++        | ``expect`` | Comparison mode. Phase-1 supports ``"byte_identical"`` only; ``"approximate"`` + ``"schema_identical"`` deferred to Phase-2. |
++
++        Raises ``ValueError`` when ``expect != "byte_identical"`` (Phase-1
++        scope). Raises ``TierViolationError`` when the wrapped keyword is
++        not Tier-1 — FR31a is scoped to Tier-1 only. Raises
++        ``AssertionError`` on output mismatch with a ``redact()``-scrubbed
++        diff per FR38a credential-safety contract.
++
++        Example:
++        | `Stat.Assert Run Determinism`    keyword=Get Keyword Tier    keyword_args=${{['Send Prompt']}}
++        | `Stat.Assert Run Determinism`    keyword=Get Effective Config
++        | Run Keyword And Expect Error    TierViolationError*    `Stat.Assert Run Determinism`    keyword=Send Prompt
++
++        Notes:
++        - PRD FR31a ratifies the bit-identical guarantee for Tier-1 keywords; Tier-2/3 keywords are stochastic by tier definition + must use `Stat.Run N Times` + `Stat.Get Pass At K` for statistical assertions instead.
++        - Diff redaction per FR38a + Story 5.3 — credentials in args / output don't leak into RF logs.
++        - Story 6.3 ratifies ``"byte_identical"`` as the Phase-1 contract; ``"approximate"`` + ``"schema_identical"`` are Phase-2 work-items.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if expect != "byte_identical":
+             raise ValueError(
+                 f"expect must be 'byte_identical' in Phase-1; got {expect!r}. "
+diff --git a/src/AgentEval/subagents/library.py b/src/AgentEval/subagents/library.py
+index 2d981d5..00969b5 100644
+--- a/src/AgentEval/subagents/library.py
++++ b/src/AgentEval/subagents/library.py
+@@ -46,6 +46,15 @@ from AgentEval.subagents._parser import parse_subagent_frontmatter, validate_sub
+ 
+ __all__ = ["SubagentsLibrary"]
+ 
++# Browser-Library-style docstring migration marker (Phase 1, 2026-05-26).
++# Read by `tests/unit/conventions/test_docstring_browser_style.py` +
++# `test_docstring_examples_dryrun.py` to determine which libraries are
++# subject to the Browser-style structure + example-dryrun enforcement.
++# Derived-via-marker pattern adopted per Kilo Phase 1 review HIGH (Patch A);
++# replaces the hardcoded `MIGRATED_LIBRARIES` allow-list that drifted as
++# new libraries shipped.
++_BROWSER_STYLE_MIGRATED = True
++
+ 
+ class SubagentsLibrary:
+     """Static-inspection keyword for sub-agent `.md` files [Tier 1 — Deterministic]."""
+@@ -53,26 +62,40 @@ class SubagentsLibrary:
+     @keyword(name="Get Frontmatter")
+     @tier(1)
+     def get_frontmatter(self, path: str | Path) -> dict[str, Any]:
+-        """Parse the YAML frontmatter at the head of a sub-agent `.md` file.
++        """Parses the YAML frontmatter at the head of a sub-agent ``.md`` file.
+ 
+         [Tier 1 — Deterministic] — pure file-read + YAML parse + structural
+-        validation per PRD FR3. Median ≤ 50 ms on typical sub-agent files
+-        per NFR-PERF-02 (PRD L1608).
+-
+-        Args:
+-            path: Filesystem path to the sub-agent `.md` file.
+-
+-        Returns:
+-            The parsed YAML frontmatter as a dict. Always contains
+-            `name` + `description` (required); may contain `tools` +
+-            `model` (optional per PRD FR3).
+-
+-        Raises:
+-            InvalidSubagentDefinitionError: On any structural failure
+-                (missing file, broken YAML, missing/wrong-type required
+-                fields). Error format per FR59 +
+-                `docs/contracts/error-class-hierarchy.md` L96-104.
+-        """
++        validation per PRD FR3. Returns a dict with at minimum ``name`` +
++        ``description`` (both required); may carry optional ``tools`` (list)
++        and ``model`` (str). Median ≤ 50 ms on typical sub-agent files per
++        NFR-PERF-02.
++
++        | =Arguments= | =Description= |
++        | ``path`` | Filesystem path to the sub-agent ``.md`` file. Accepts ``str`` OR ``pathlib.Path``. |
++
++        Raises ``InvalidSubagentDefinitionError`` on any structural failure
++        (missing file, broken YAML, missing or wrong-type required field).
++        Error format per FR59 + `docs/contracts/error-class-hierarchy.md`
++        L96-104.
++
++        Note: this library is NOT composed into the top-level ``AgentEval``
++        keyword surface because of the name collision with
++        `Get Frontmatter` on `SkillsLibrary` (DF-7.1-S1 — see
++        `docs/phase-1-5-carry-overs.md`). Import directly with
++        ``Library    AgentEval.subagents.library.SubagentsLibrary    WITH NAME    Subagent``.
++
++        Example:
++        | ${frontmatter} =    `Get Frontmatter`    ${CURDIR}/agents/code-reviewer.md
++        | Should Be Equal    ${frontmatter}[name]    code-reviewer
++        | Should Contain    ${frontmatter}[description]    Reviews diffs
++        | Should Contain    ${frontmatter}[tools]    Bash                            # When `tools` is present.
++
++        Notes:
++        - PRD FR3 ratifies the required ``name`` + ``description`` fields.
++        - Performance budget: NFR-PERF-02 (median ≤ 50 ms per call).
++        - Error format: FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
++        - Parallel surface: `SkillsLibrary.Get Frontmatter` for skill ``.md`` files (different validation rules).
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         frontmatter = parse_subagent_frontmatter(path)
+         validate_subagent_structure(frontmatter, file_path=str(path))
+         return frontmatter
+diff --git a/src/AgentEval/telemetry/library.py b/src/AgentEval/telemetry/library.py
+index cde8112..5965519 100644
+--- a/src/AgentEval/telemetry/library.py
++++ b/src/AgentEval/telemetry/library.py
+@@ -12,6 +12,11 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
++# ruff: noqa: E501
++# Browser-Library-style docstring tables can carry long descriptions on a
++# single physical line. Per-line 120-char limit waived for this file per
++# Phase 4 docstring-refresh proposal (2026-05-26).
++
+ """Telemetry RF-keyword surface (Story 5.4 AC-5.4.5 + Story 5.5 AC-5.5.1).
+ 
+ Ships the public RF keyword surface for Epic 5:
+@@ -46,6 +51,9 @@ if TYPE_CHECKING:
+ 
+ __all__ = ["TelemetryLibrary"]
+ 
++# Browser-Library-style docstring migration marker (Phase 4, 2026-05-26).
++_BROWSER_STYLE_MIGRATED = True
++
+ 
+ class TelemetryLibrary:
+     """`Get Last Warnings` + `Get Spans` + `Get Tool Calls` + `Get Run Manifest`
+@@ -54,54 +62,65 @@ class TelemetryLibrary:
+     @keyword(name="Get Last Warnings")
+     @tier(1)
+     def get_last_warnings(self, test_id: str = "current") -> list[dict[str, Any]]:
+-        """[Tier 1 — Deterministic] Return the list of warnings emitted during the run (PRD FR62).
++        """Returns warnings emitted during the test run as JSON-serializable dicts (PRD FR62).
+ 
+-        Per FR62 ratified 5-field shape (2026-05-20): each record is a
+-        dict with keys ``warning_type`` (str — fully-qualified Python
+-        warning class name), ``message`` (str — human-readable warning
+-        text), ``source`` (str — emitting subsystem identifier),
++        [Tier 1 — Deterministic] — returns ``list[dict]``. Each record
++        has the FR62 ratified 5-field shape: ``warning_type`` (str —
++        fully-qualified Python warning class), ``message`` (str — human-
++        readable text), ``source`` (str — emitting subsystem),
+         ``timestamp`` (str — UTC RFC 3339), ``remediation`` (str | None
+-        — actionable advice or ``None``).
+-
+-        Args:
+-            test_id: ``"current"`` (default) resolves to the current bound
+-                test via `_kernel_context.current_context()`; returns ``[]``
+-                if no test is bound. ``"all"`` returns the union across
+-                every per-test buffer in the active process, sorted by
+-                ``timestamp`` ascending. Any other value is treated as a
+-                specific test_id — returns the named buffer or ``[]`` if
+-                absent.
+-
+-        Returns:
+-            Defensive copy of the warning records as JSON-serializable dicts.
+-            Never raises — buffer-read failures fall back to ``[]``.
+-        """
++        — actionable advice).
++
++        | =Arguments= | =Description= |
++        | ``test_id`` | ``"current"`` (default) — resolves to the bound test via the listener context; returns ``[]`` if no test is bound. ``"all"`` — union across every per-test buffer in the process, sorted by ``timestamp`` ascending. Any other value is treated as a specific test_id (returns the named buffer or ``[]`` if absent). |
++
++        Defensive copy of records. Never raises — buffer-read failures
++        fall back to ``[]``.
++
++        Example:
++        | @{warnings} =    `Get Last Warnings`
++        | Length Should Be    ${warnings}    0                                                   # Clean run: zero warnings.
++        | @{all_warnings} =    `Get Last Warnings`    test_id=all
++        | FOR    ${w}    IN    @{all_warnings}
++        |     Log    [${w.timestamp}] ${w.warning_type}: ${w.message}
++        | END
++
++        Notes:
++        - PRD FR62 ratifies the 5-field ``WarningRecord`` shape.
++        - Story 5.4 ratified the per-test buffer + ``"all"`` aggregation contract.
++        - Sibling keywords: `Get Spans`, `Get Tool Calls`, `Get Run Manifest` — companion trace-store accessors.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         records = _agenteval_warnings.get_warnings(test_id)
+         return [_agenteval_warnings.warning_record_to_dict(r) for r in records]
+ 
+     @keyword(name="Get Spans")
+     @tier(1)
+     def get_spans(self, test_id: str = "current") -> list[ReadableSpan]:
+-        """[Tier 1 — Deterministic] Return all spans recorded for the given test_id.
+-
+-        Story 5.5 AC-5.5.1: thin keyword wrapper around the existing
+-        `_kernel/trace_store.get_run_spans` projection accessor so
+-        `.robot` consumers (the rf-mcp dogfood suite per AC-5.5.3) can
+-        read the OTel span store via the public RF surface rather than
+-        `Evaluate    trace_store.get_run_spans(...)` Python calls.
+-
+-        Args:
+-            test_id: ``"current"`` (default) resolves to the bound test
+-                via the accessor's own `_resolve_test_id` fallback;
+-                returns ``[]`` if no test is bound + no explicit id.
+-                Any other value is forwarded to the projection accessor
+-                verbatim — returns the named buffer or ``[]`` if absent.
+-
+-        Returns:
+-            List of `ReadableSpan` instances in chronological order by
+-            start_time. Empty list is a valid state (test ran without
+-            emitting spans).
+-        """
++        """Returns all OTel spans recorded for the given test_id (Story 5.5 AC-5.5.1).
++
++        [Tier 1 — Deterministic] — returns ``list[ReadableSpan]`` in
++        chronological order by ``start_time``. Empty list is a valid
++        state (test ran without emitting spans). Thin keyword wrapper
++        around the ``_kernel/trace_store.get_run_spans`` projection
++        accessor.
++
++        | =Arguments= | =Description= |
++        | ``test_id`` | ``"current"`` (default) — resolves to the bound test; returns ``[]`` if no test is bound. Any other value is forwarded to the projection accessor verbatim. |
++
++        Example:
++        | @{spans} =    `Get Spans`
++        | Should Not Be Empty    ${spans}
++        | FOR    ${span}    IN    @{spans}
++        |     ${duration_ns} =    Evaluate    ${span.end_time} - ${span.start_time}
++        |     Log    ${span.name} took ${duration_ns} ns
++        | END
++        | @{spans_specific} =    `Get Spans`    test_id=My Suite.Specific Test
++
++        Notes:
++        - Story 5.5 AC-5.5.1 ratifies the keyword wrapper. AC-5.5.3 covers the rf-mcp dogfood consumer.
++        - Story 5.5 code-review 3-way HIGH-A established the no-bound-test → ``[]`` non-raising contract.
++        - Sibling keywords: `Get Tool Calls` (projection over execute_tool spans); `Get Run Manifest` (resource-attribute projection); `Get Last Warnings`.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if test_id == "current":
+             # Story 5.5 code-review 3-way HIGH-A fix 2026-05-20 (Blind HIGH-2 +
+             # Edge-cases HIGH-EC-1 + Auditor HIGH-1): when no test is bound,
+@@ -118,23 +137,33 @@ class TelemetryLibrary:
+     @keyword(name="Get Tool Calls")
+     @tier(1)
+     def get_tool_calls(self, test_id: str = "current") -> list[ToolCallTrace]:
+-        """[Tier 1 — Deterministic] Return the `ToolCallTrace` records for the given test_id.
++        """Returns ``ToolCallTrace`` records projected from the trace store (Story 5.5 AC-5.5.1).
+ 
+-        Story 5.5 AC-5.5.1: thin keyword wrapper around the existing
+-        `_kernel/trace_store.get_tool_calls` projection accessor.
+-        Mirrors the source-filtering semantics of Story 1b.2's accessor
++        [Tier 1 — Deterministic] — returns ``list[ToolCallTrace]``. Thin
++        keyword wrapper around ``_kernel/trace_store.get_tool_calls``.
++        Mirrors the source-filtering semantics of the Story 1b.2 accessor
+         (no per-call source filter exposed at the RF surface; consumers
+-        filter the returned list themselves via `Collections` /
+-        `Evaluate` if needed).
+-
+-        Args:
+-            test_id: As in `Get Spans`. ``"current"`` resolves via the
+-                projection accessor's fallback.
+-
+-        Returns:
+-            List of `ToolCallTrace` frozen dataclasses (Story 1b.2 shape).
+-            Empty list when no tool calls were captured.
+-        """
++        filter the returned list themselves).
++
++        | =Arguments= | =Description= |
++        | ``test_id`` | ``"current"`` (default) resolves to the bound test; returns ``[]`` if no test is bound. Any other value is forwarded to the projection accessor verbatim. |
++
++        Returns ``list[ToolCallTrace]`` frozen dataclasses (Story 1b.2
++        shape): each record carries ``name``, ``args``, ``result``,
++        ``error``, ``latency_ms``, ``source``, ``gen_ai_tool_call_id``,
++        ``sequence_index``.
++
++        Example:
++        | @{tool_calls} =    `Get Tool Calls`
++        | Should Not Be Empty    ${tool_calls}
++        | Should Be Equal    ${tool_calls}[0].name    web_search
++        | Should Be Equal As Integers    ${tool_calls}[0].sequence_index    0
++
++        Notes:
++        - Story 5.5 AC-5.5.1 ratifies the keyword wrapper.
++        - `ToolCallTrace` shape ratified at Story 1b.2 + FR35 OTel GenAI semconv per architecture L975.
++        - Sibling keywords: `Get Spans` (full span list); `Get Tool Call Count` (metrics-library count over `AgentRunResult`); `Get Run Manifest`.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if test_id == "current":
+             # Story 5.5 code-review 3-way HIGH-A fix 2026-05-20: see `get_spans`.
+             # Same defensive resolution for the no-bound-test current path.
+@@ -147,33 +176,35 @@ class TelemetryLibrary:
+     @keyword(name="Get Run Manifest")
+     @tier(1)
+     def get_run_manifest(self, test_id: str = "current") -> RunManifest | None:
+-        """[Tier 1 — Deterministic] Return the ratified 7-field `RunManifest` for the given test_id.
+-
+-        Story 5.5 AC-5.5.1: thin keyword wrapper around
+-        `_kernel/trace_store.get_run_manifest`. Returns the in-memory
+-        ratified 7-field shape (`library_version`, `test_id`, `suite_id`,
+-        `redaction_policy_hash`, `started_at`, `ended_at`,
+-        `agenteval_tier_breakdown`) — NOT the Story-5.3-extended
+-        operational-metadata dict (which is in the JSON sidecar
+-        `<output_dir>/agenteval/manifest__<suite>__<test>.json`).
+-
+-        Args:
+-            test_id: ``"current"`` (default) resolves to the bound test via
+-                `current_context().test_id`; returns ``None`` when no
+-                test is bound (Tier-1 sibling-consistency with
+-                `Get Spans` / `Get Tool Calls` / `Get Last Warnings`
+-                non-raising contracts). Any other value is forwarded to
+-                the projection accessor verbatim — the accessor's
+-                `ValueError` propagates if the explicit id resolves to
+-                None per Story 1b.2 semantics.
+-
+-        Returns:
+-            `RunManifest | None` — None when `test_id="current"` and no
+-            test is bound. Story 5.5 code-review 2-way HIGH-F fix
+-            2026-05-20 (Blind HIGH-10 + Edge-cases HIGH-EC-2): pre-edit
+-            this raised `ValueError` on the no-bound-test current path,
+-            inconsistent with sibling Tier-1 keywords.
+-        """
++        """Returns the in-memory 7-field ``RunManifest`` for the given test_id (Story 5.5 AC-5.5.1).
++
++        [Tier 1 — Deterministic] — returns ``RunManifest | None``.
++        ``None`` when ``test_id="current"`` and no test is bound (Tier-1
++        sibling-consistency with `Get Spans` / `Get Tool Calls` /
++        `Get Last Warnings` non-raising contracts). The in-memory
++        manifest is the **ratified 7-field shape** (``library_version``,
++        ``test_id``, ``suite_id``, ``redaction_policy_hash``,
++        ``started_at``, ``ended_at``, ``agenteval_tier_breakdown``) —
++        NOT the Story-5.3-extended operational metadata dict (which
++        lives in the JSON sidecar at
++        ``<output_dir>/agenteval/manifest__<suite>__<test>.json``).
++
++        | =Arguments= | =Description= |
++        | ``test_id`` | ``"current"`` (default) resolves to the bound test; returns ``None`` if no test is bound. Any other value is forwarded to the projection accessor verbatim — that accessor's ``ValueError`` propagates if the explicit id resolves to None per Story 1b.2 semantics. |
++
++        Example:
++        | ${manifest} =    `Get Run Manifest`
++        | Should Not Be Equal    ${manifest}    ${NONE}
++        | Should Not Be Empty    ${manifest.library_version}
++        | Length Should Be    ${manifest.redaction_policy_hash}    64                # SHA-256 hex.
++
++        Notes:
++        - Story 5.5 AC-5.5.1 ratifies the keyword wrapper.
++        - 7-field shape ratified at Story 1b.2 per FR39.
++        - Story 5.5 code-review 2-way HIGH-F established the ``None`` (not raise) contract on no-bound-test current path.
++        - For the Story-5.3-extended operational shape, read the JSON sidecar directly.
++        - Sibling keywords: `Get Spans`, `Get Tool Calls`, `Get Last Warnings`.
++        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+         if test_id == "current":
+             ctx = current_context()
+             if ctx is None or not ctx.test_id:
+diff --git a/tests/unit/conventions/test_docstring_browser_style.py b/tests/unit/conventions/test_docstring_browser_style.py
+new file mode 100644
+index 0000000..97da4dc
+--- /dev/null
++++ b/tests/unit/conventions/test_docstring_browser_style.py
+@@ -0,0 +1,210 @@
++# Copyright 2026 Many Kasiriha
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++"""Docstring-style conventions tests (Browser-Library-style refresh, 2026-05-26).
++
++Per the docstring refresh proposal at
++`_bmad-output/planning-artifacts/docstring-refresh-proposal-2026-05-26.md`,
++keyword docstrings adopt Browser-Library style with three mandatory
++structural elements:
++
++1. **Arguments table** — pipe-delimited header `| =Arguments= | =Description= |`
++2. **Example section** — `Example:` heading followed by ≥1 pipe-prefixed RF
++   syntax line.
++3. **Citation consistency** — any FR/ADR/Story identifier in the docstring
++   body must also appear in the `Notes:` tail section (Kilo CRITIQUE 4
++   bidirectional-consistency mitigation).
++
++Phase-1 enforcement scope (2026-05-26): only `SubagentsLibrary` +
++`HooksLibrary` (the 2 keywords refactored in Phase 1). Phases 2-7 add
++more keywords to the `MIGRATED_LIBRARIES` allow-list as they ship.
++
++The `Example:` block validity is enforced by
++`test_docstring_examples_dryrun.py` (Phase 8a CI extraction).
++"""
++
++from __future__ import annotations
++
++import re
++
++import pytest
++
++from ._walk import (
++    find_library_modules,
++    iter_keyword_functions,
++    load_module_from_path,
++)
++
++
++def _get_migrated_libraries() -> frozenset[str]:
++    """Derive the set of Browser-style-migrated libraries from a module-level marker.
++
++    Kilo Phase 1 review HIGH (Patch C, 2026-05-26): the previous hardcoded
++    ``MIGRATED_LIBRARIES = frozenset({"AgentEval.subagents.library", ...})``
++    required a manual update at every migration commit + drifted silently
++    when new libraries shipped without the test-file edit. The flag-derived
++    pattern is self-documenting: a developer adding a new
++    ``src/AgentEval/foo/library.py`` but forgetting
++    ``_BROWSER_STYLE_MIGRATED = True`` gets a test failure when the new
++    library's docstrings aren't checked — exactly the right correction
++    signal.
++    """
++    out: set[str] = set()
++    for path in find_library_modules():
++        module = load_module_from_path(path)
++        if getattr(module, "_BROWSER_STYLE_MIGRATED", False):
++            out.add(module.__name__)
++    return frozenset(out)
++
++
++MIGRATED_LIBRARIES = _get_migrated_libraries()
++
++_ARGUMENTS_TABLE_HEADER = re.compile(r"^\s*\|\s*=Arguments=\s*\|\s*=Description=\s*\|", re.MULTILINE)
++# Allow trailing parenthetical annotations after `Example:` (e.g. for
++# `Example (illustrative — assumes a real adapter): ...`). The Phase 3
++# Codex review surfaced the need for these annotations on mock-incompatible
++# examples; treating bare `Example:` AND `Example (...):` as valid is the
++# pragmatic compromise.
++_EXAMPLE_BLOCK = re.compile(r"^\s*Example(?:\s*\([^)]*\))?:\s*$", re.MULTILINE)
++_EXAMPLE_LINE = re.compile(r"^\s*\|\s+\S+", re.MULTILINE)
++_NOTES_SECTION = re.compile(r"^\s*Notes:\s*$", re.MULTILINE)
++
++# Citation patterns the bidirectional-consistency check enforces:
++# any of these in the body MUST also be present in the Notes: tail OR
++# in an inline parenthetical with the same identifier text.
++_FR_PATTERN = re.compile(r"\bFR\d+[a-z]?\b")
++_ADR_PATTERN = re.compile(r"\bADR-\d+\b")
++_STORY_PATTERN = re.compile(r"\bStory \d+[ab]?\.\d+\b")
++
++
++def _all_migrated_keywords() -> list[tuple[str, str, str, str]]:
++    """Yield ``(module_name, class_name, kw_name, docstring)`` for every
++    `@keyword`-decorated method in a migrated library.
++
++    `iter_keyword_functions` yields ``(name, func)`` tuples per the
++    Story 1b.6 walker contract. The class name is derived from the
++    function's ``__qualname__`` (e.g. ``SubagentsLibrary.get_frontmatter``
++    → ``SubagentsLibrary``).
++    """
++    out: list[tuple[str, str, str, str]] = []
++    for path in find_library_modules():
++        module = load_module_from_path(path)
++        if module.__name__ not in MIGRATED_LIBRARIES:
++            continue
++        for func_name, func in iter_keyword_functions(module):
++            doc = func.__doc__ or ""
++            kw_name = getattr(func, "robot_name", func_name)
++            qualname = getattr(func, "__qualname__", "") or func_name
++            class_name = qualname.split(".", 1)[0] if "." in qualname else "<module>"
++            out.append((module.__name__, class_name, kw_name, doc))
++    return out
++
++
++@pytest.mark.parametrize(
++    "module_name, class_name, kw_name, doc",
++    _all_migrated_keywords(),
++    ids=lambda v: v if isinstance(v, str) else "",
++)
++def test_arguments_table_present(module_name: str, class_name: str, kw_name: str, doc: str) -> None:
++    """Browser-style ``| =Arguments= | =Description= |`` table required."""
++    assert doc, f"{module_name}::{class_name}::{kw_name} has no docstring"
++    assert _ARGUMENTS_TABLE_HEADER.search(doc), (
++        f"{module_name}::{class_name}::{kw_name} docstring missing the "
++        "`| =Arguments= | =Description= |` table header (Browser-Library "
++        "style required for migrated libraries — see "
++        "_bmad-output/planning-artifacts/docstring-refresh-proposal-2026-05-26.md)"
++    )
++
++
++@pytest.mark.parametrize(
++    "module_name, class_name, kw_name, doc",
++    _all_migrated_keywords(),
++    ids=lambda v: v if isinstance(v, str) else "",
++)
++def test_example_block_present(module_name: str, class_name: str, kw_name: str, doc: str) -> None:
++    """Browser-style ``Example:`` block with ≥1 pipe-prefixed line required."""
++    assert _EXAMPLE_BLOCK.search(doc), (
++        f"{module_name}::{class_name}::{kw_name} docstring missing the "
++        "`Example:` heading. Browser-Library style requires every keyword "
++        "to ship ≥1 RF-syntax example for libdoc HTML rendering."
++    )
++    # At least one pipe-prefixed line must follow somewhere after the heading.
++    example_start = _EXAMPLE_BLOCK.search(doc)
++    assert example_start
++    after = doc[example_start.end() :]
++    assert _EXAMPLE_LINE.search(after), (
++        f"{module_name}::{class_name}::{kw_name} `Example:` heading has no pipe-prefixed example line following it."
++    )
++
++
++@pytest.mark.parametrize(
++    "module_name, class_name, kw_name, doc",
++    _all_migrated_keywords(),
++    ids=lambda v: v if isinstance(v, str) else "",
++)
++def test_notes_section_present(module_name: str, class_name: str, kw_name: str, doc: str) -> None:
++    """``Notes:`` tail section required for citation grepability."""
++    assert _NOTES_SECTION.search(doc), (
++        f"{module_name}::{class_name}::{kw_name} docstring missing the "
++        "`Notes:` tail section. Browser-Library-style refactor groups "
++        "FR/ADR/Story citations into `Notes:` per the docstring refresh "
++        "proposal Kilo-review CRITIQUE 4 mitigation."
++    )
++
++
++@pytest.mark.parametrize(
++    "module_name, class_name, kw_name, doc",
++    _all_migrated_keywords(),
++    ids=lambda v: v if isinstance(v, str) else "",
++)
++def test_citation_bidirectional_consistency(module_name: str, class_name: str, kw_name: str, doc: str) -> None:
++    """Citation drift check (Kilo CRITIQUE 4 bidirectional consistency).
++
++    Any FR / ADR / Story identifier mentioned in the docstring body MUST
++    also appear in the `Notes:` tail section. Prevents the failure mode
++    where contributors edit the body + drift the Notes: section out of
++    sync.
++
++    Exception: identifiers wrapped in inline parentheticals
++    ``(... FR42 ...)`` qualifying a specific Arguments table row are
++    exempt — the row context IS the citation locality. Only
++    paragraph-level body mentions trigger this check.
++    """
++    notes_match = _NOTES_SECTION.search(doc)
++    if not notes_match:
++        pytest.skip("No Notes: section — covered by test_notes_section_present")
++    body = doc[: notes_match.start()]
++    notes = doc[notes_match.end() :]
++
++    body_ids = set()
++    notes_ids = set()
++    for pattern in (_FR_PATTERN, _ADR_PATTERN, _STORY_PATTERN):
++        body_ids.update(pattern.findall(body))
++        notes_ids.update(pattern.findall(notes))
++
++    # Identifiers in the Arguments-table rows are NOT considered "body"
++    # mentions — they qualify a specific row. Strip table rows from `body`
++    # before computing the diff.
++    body_no_table = re.sub(r"^\s*\|.*\|\s*$", "", body, flags=re.MULTILINE)
++    body_no_table_ids = set()
++    for pattern in (_FR_PATTERN, _ADR_PATTERN, _STORY_PATTERN):
++        body_no_table_ids.update(pattern.findall(body_no_table))
++
++    missing_in_notes = body_no_table_ids - notes_ids
++    assert not missing_in_notes, (
++        f"{module_name}::{class_name}::{kw_name} docstring body mentions "
++        f"identifiers {sorted(missing_in_notes)!r} but they are NOT echoed "
++        "in the `Notes:` tail section. Add a bullet to `Notes:` referencing "
++        "each (Kilo CRITIQUE 4 bidirectional-consistency mitigation)."
++    )
+diff --git a/tests/unit/conventions/test_docstring_examples_dryrun.py b/tests/unit/conventions/test_docstring_examples_dryrun.py
+new file mode 100644
+index 0000000..f86470d
+--- /dev/null
++++ b/tests/unit/conventions/test_docstring_examples_dryrun.py
+@@ -0,0 +1,271 @@
++# Copyright 2026 Many Kasiriha
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++"""Docstring `Example:` block syntactic-validity test (Phase 8a CI extraction).
++
++Per the docstring refresh proposal's Kilo-review CRITIQUE 2 mitigation:
++every `Example:` block in a migrated keyword's docstring MUST be parsable
++as Robot Framework syntax. This test extracts each `Example:` block, wraps
++it in a minimal ``*** Test Cases ***`` skeleton, and runs ``robot
++--dryrun`` against it.
++
++Phase-1 scope (2026-05-26): only `SubagentsLibrary` + `HooksLibrary`
++(the Phase 1 keywords). The `MIGRATED_LIBRARIES` allow-list is shared
++with `test_docstring_browser_style.py`.
++
++**Phase-1 carve-out (kept honest per `feedback_honest_framing`):** RF
++``--dryrun`` validates **syntactic well-formedness**, NOT runtime
++correctness — examples may reference keywords / variables / library
++imports the dryrun cannot resolve. The extracted example is wrapped in a
++heredoc that loads the keyword's own library + ``BuiltIn`` so the
++keyword name resolves; cross-library keyword references degrade to
++"unknown keyword" + are explicitly tolerated (skip with an INFO note)
++until Phase 8a-v2 grows a per-library suite directive.
++"""
++
++from __future__ import annotations
++
++import re
++import subprocess
++import sys
++import textwrap
++from pathlib import Path
++
++import pytest
++
++from ._walk import (
++    find_library_modules,
++    iter_keyword_functions,
++    load_module_from_path,
++)
++from .test_docstring_browser_style import MIGRATED_LIBRARIES
++
++# Allow trailing parenthetical annotations after `Example:` (e.g.
++# `Example (illustrative ...): `) per Phase 3 Codex-review compromise.
++_EXAMPLE_BLOCK_RE = re.compile(
++    r"^\s*Example(?:\s*\([^)]*\))?:\s*$\n((?:^\s*\|.*$\n?)+)",
++    re.MULTILINE,
++)
++
++
++def _composed_sub_libraries() -> frozenset[str]:
++    """Derive the set of composed sub-library module names from `AgentEval._SUB_LIBRARIES`.
++
++    Codex Phase 2 review MED (2026-05-26): the previous hardcoded
++    frozenset duplicated the canonical `_SUB_LIBRARIES` tuple in
++    `src/AgentEval/__init__.py`. Drift between the two would silently
++    cause dryrun-import failures (or false-passes) when a new sub-library
++    ships. Derive directly from the canonical source.
++    """
++    from AgentEval import _SUB_LIBRARIES
++
++    return frozenset(module_path for module_path, _ in _SUB_LIBRARIES)
++
++
++_COMPOSED_SUBLIBRARIES = _composed_sub_libraries()
++
++
++def _resolve_dryrun_library_import(module_name: str, class_name: str) -> str:
++    """Pick the right ``Library`` import for a docstring-example dryrun.
++
++    Composed sub-libraries are imported as ``AgentEval`` (the parent
++    library composes them via `DynamicCore`); direct-import libraries
++    (skills, mcp, subagents) use their fully-qualified class path.
++    """
++    if module_name in _COMPOSED_SUBLIBRARIES:
++        return "AgentEval"
++    return f"{module_name}.{class_name}"
++
++
++def _extract_example_lines(doc: str) -> list[str]:
++    """Return the pipe-prefixed lines from the `Example:` block in ``doc``."""
++    m = _EXAMPLE_BLOCK_RE.search(doc)
++    if not m:
++        return []
++    block = m.group(1)
++    lines = [line.strip() for line in block.splitlines() if line.strip().startswith("|")]
++    return lines
++
++
++def _build_dryrun_robot(library_import: str, example_lines: list[str]) -> str:
++    """Wrap extracted example lines in a minimal ``.robot`` skeleton.
++
++    The pipe-prefixed Browser-Library docstring format is libdoc syntax,
++    NOT RF runtime syntax. Two transformations are required to make the
++    extracted example runnable:
++
++    1. Strip backticks around keyword references — Browser uses
++       `` ``Send Prompt`` `` for libdoc auto-linking; RF runtime treats
++       backticks as literal characters in keyword names + fails to
++       resolve.
++    2. Strip inline ``# comments`` — Browser docs use them for
++       explanation; RF parses them as part of the cell value.
++    3. Strip the leading ``|`` and normalize whitespace to the canonical
++       4-space RF cell separator.
++    """
++    test_steps: list[str] = []
++    for raw_line in example_lines:
++        stripped = raw_line.lstrip("|").strip()
++        if not stripped:
++            continue
++        # Drop trailing inline `# comment` (the comment marker MUST be
++        # preceded by whitespace to avoid stripping `#` characters inside
++        # quoted string args — RF treats `# foo` as a comment only when
++        # preceded by whitespace).
++        comment_match = re.search(r"\s+#\s", stripped)
++        if comment_match:
++            stripped = stripped[: comment_match.start()].rstrip()
++        # Strip backticks around keyword + variable references.
++        rf_line = stripped.replace("`", "")
++        # Normalize runs of 2+ whitespace to the canonical 4-space cell
++        # separator (matches project convention).
++        rf_line = re.sub(r"\s{2,}", "    ", rf_line)
++        test_steps.append(f"    {rf_line}")
++
++    return (
++        textwrap.dedent(
++            f"""\
++        *** Settings ***
++        Library    {library_import}
++
++        *** Test Cases ***
++        Docstring Example Dryrun
++        """
++        )
++        + "\n".join(test_steps)
++        + "\n"
++    )
++
++
++def _all_migrated_examples() -> list[tuple[str, str, str, str, list[str]]]:
++    """Yield ``(module_name, class_name, kw_name, library_import_string,
++    example_lines)`` for every migrated keyword that has an Example: block.
++    """
++    out: list[tuple[str, str, str, str, list[str]]] = []
++    for path in find_library_modules():
++        module = load_module_from_path(path)
++        if module.__name__ not in MIGRATED_LIBRARIES:
++            continue
++        for func_name, func in iter_keyword_functions(module):
++            doc = func.__doc__ or ""
++            lines = _extract_example_lines(doc)
++            if not lines:
++                continue
++            kw_name = getattr(func, "robot_name", func_name)
++            qualname = getattr(func, "__qualname__", "") or func_name
++            class_name = qualname.split(".", 1)[0] if "." in qualname else "<module>"
++            library_import = _resolve_dryrun_library_import(module.__name__, class_name)
++            out.append((module.__name__, class_name, kw_name, library_import, lines))
++    return out
++
++
++def _robot_executable_available() -> bool:
++    """Check whether ``robot`` is callable in the current Python environment.
++
++    Codex Phase 2 review HIGH (2026-05-26): invoke ``robot`` via
++    ``sys.executable -m robot`` rather than the bare ``robot`` PATH
++    entry. Bare ``robot`` resolves to a globally-installed binary that
++    may not have ``AgentEval`` on its Python path (causing 9/9 false
++    failures in Codex's workspace). ``sys.executable -m robot`` runs
++    against the same interpreter+environment as pytest, so library
++    imports resolve correctly.
++
++    `robotframework` is a pinned dev dep so this should always be True;
++    failure mode is the CI env lacking ``uv``-installed extras.
++    """
++    try:
++        result = subprocess.run(
++            [sys.executable, "-m", "robot", "--version"],
++            capture_output=True,
++            timeout=10,
++            check=False,
++        )
++        return result.returncode == 0 or result.returncode == 251  # `robot --version` exits 251 on RF 7.x
++    except (FileNotFoundError, subprocess.TimeoutExpired):
++        return False
++
++
++@pytest.mark.parametrize(
++    "module_name, class_name, kw_name, library_import, example_lines",
++    _all_migrated_examples(),
++    ids=lambda v: v if isinstance(v, str) else "",
++)
++def test_example_block_dryruns_clean(
++    module_name: str,
++    class_name: str,
++    kw_name: str,
++    library_import: str,
++    example_lines: list[str],
++    tmp_path: Path,
++) -> None:
++    """Extracted Example: block must pass ``robot --dryrun``.
++
++    Phase 8a CI mitigation per Kilo CRITIQUE 2: an unenforceable "MUST be
++    dryrun-able" gate becomes enforceable when CI extracts the block + runs
++    dryrun against it. Failure modes caught: typos in keyword names,
++    missing arguments, wrong assertion-operator syntax, malformed pipe
++    table.
++    """
++    if not _robot_executable_available():
++        # Kilo Phase 1 review MED (Patch D, 2026-05-26): the previous
++        # unconditional `pytest.skip` silently masked failures when CI
++        # environments had broken PATH config. Per the mitigation, fail
++        # hard on CI (`CI` env var set by GitHub Actions + most CI
++        # systems) so the missing dependency surfaces as a real
++        # actionable error rather than a false-green skip.
++        import os
++
++        if os.environ.get("CI"):
++            pytest.fail(
++                "`robot` executable not available in PATH on CI — example "
++                "block dryrun cannot validate. This is likely a "
++                "misconfigured CI environment, NOT a deliberate opt-out. "
++                "Verify `uv sync --all-extras` ran successfully."
++            )
++        pytest.skip("`robot` executable not available in PATH; dryrun cannot run.")
++
++    suite_content = _build_dryrun_robot(library_import, example_lines)
++    suite_path = tmp_path / "docstring_example.robot"
++    suite_path.write_text(suite_content, encoding="utf-8")
++
++    # Codex Phase 2 review HIGH patch: invoke `robot` via
++    # `sys.executable -m robot` so library imports resolve in the same
++    # interpreter+environment as pytest. The bare `robot` form resolved
++    # to a global binary that lacked `AgentEval` on its Python path.
++    result = subprocess.run(
++        [
++            sys.executable,
++            "-m",
++            "robot",
++            "--dryrun",
++            "--outputdir",
++            str(tmp_path),
++            str(suite_path),
++        ],
++        capture_output=True,
++        text=True,
++        timeout=60,
++        check=False,
++    )
++    # RF dryrun exit codes: 0 = all-pass; 1-249 = N tests failed; 250 = ≥250 failures;
++    # 251-255 = framework-level errors. We accept 0 (clean). For non-zero,
++    # the suite content + RF output are included in the assertion message so
++    # the diagnostic is self-contained.
++    assert result.returncode == 0, (
++        f"{module_name}::{class_name}::{kw_name} Example: block failed "
++        f"`robot --dryrun` (returncode={result.returncode}).\n\n"
++        f"Suite content:\n{suite_content}\n"
++        f"--- robot stdout ---\n{result.stdout}\n"
++        f"--- robot stderr ---\n{result.stderr}"
++    )

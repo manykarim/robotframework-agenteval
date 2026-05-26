@@ -345,9 +345,9 @@ class OrchestrationLibrary:
 
         Example:
         | ${scenario} =    `Load Scenario`    ${CURDIR}/scenarios/web-search.yaml
-        | Should Be Equal    ${scenario.name}    web-search
+        | Should Be Equal    ${scenario.agent}    web-search-agent
+        | Should Be Equal    ${scenario.model}    anthropic/claude-sonnet-4-6
         | Length Should Be    ${scenario.evals}    5
-        | Should Contain    ${scenario.tags}    smoke
 
         Notes:
         - PRD FR15 ratifies the scenario YAML schema; see `Scenario` dataclass in `scenarios/schema.py`.

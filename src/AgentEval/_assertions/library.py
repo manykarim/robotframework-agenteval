@@ -111,7 +111,7 @@ class AssertionsLibrary:
         Raises ``AssertionError`` on trajectory mismatch.
 
         Example (illustrative — assumes a real adapter with the expected 3-call trajectory):
-        | ${result} =    `Send Prompt`    prompt=Find news    adapter=generic    provider=mock
+        | ${result} =    `Send Prompt`    prompt=Find news    adapter=generic    model=anthropic/claude-sonnet-4-6
         | `Trajectory Should Match`    ${result}    ${{['web_search', 'fetch', 'summarize']}}
         | `Trajectory Should Match`    ${result}    ${{['web_search', 'summarize']}}    mode=subsequence
         | `Trajectory Should Match`    ${result}    ${{['fetch', 'web_search']}}    mode=set
@@ -185,7 +185,7 @@ class AssertionsLibrary:
         Raises ``AssertionError`` when no tool call matches.
 
         Example (illustrative — assumes a real adapter with the expected ``web_search`` call):
-        | ${result} =    `Send Prompt`    prompt=Find news    adapter=generic    provider=mock
+        | ${result} =    `Send Prompt`    prompt=Find news    adapter=generic    model=anthropic/claude-sonnet-4-6
         | `Tool Call Should Have Occurred`    ${result}    web_search
         | `Tool Call Should Have Occurred`    ${result}    web_search    args=${{ {"query": "agenteval"} }}
         | `Tool Call Should Have Occurred`    ${result}    web_search    args=${{ {"query": "x"} }}    match_mode=exact

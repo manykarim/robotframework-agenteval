@@ -293,7 +293,7 @@ class MCPLibrary:
         | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
         | ${session} =    `Connect To Server`    ${handle}
         | Should Not Be Empty    ${session.protocol_version}
-        | Should Contain    ${session.server_info.name}    echo
+        | Should Contain    ${session.server_info}[name]    echo
 
         Notes:
         - PRD FR8 + FR46 ratify the version-gate + per-call-session contract.
@@ -495,7 +495,7 @@ class MCPLibrary:
         | ...    model=stub
         | ...    tasks=${CURDIR}/discoverability_tasks.yaml
         | ...    trials_per_task=3
-        | Should Be True    0.0 <= ${result.summary.activation_accuracy} <= 1.0
+        | Should Be True    0.0 <= ${result.summary.overall_pass_rate} <= 1.0
         | Should Not Be Empty    ${result.per_task_results}
 
         Notes:
