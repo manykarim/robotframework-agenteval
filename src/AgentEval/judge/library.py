@@ -181,7 +181,7 @@ class JudgeLibrary:
         # Parse the judge response into a `JudgeScore`.
         return _parse_judge_response(judge_run, parsed_rubric)
 
-    @keyword(name="Judge.Calibrate", tags=("agenteval",))
+    @keyword(name="Judge.Calibrate Rubric", tags=("agenteval",))
     @tier(2)
     @guarded_fanout()
     def calibrate(
@@ -221,7 +221,7 @@ class JudgeLibrary:
         returns malformed JSON.
 
         Example:
-        | ${report} =    `Judge.Calibrate`    rubric=${CURDIR}/rubrics/skill-quality.md    calibration_set=${CURDIR}/calibration/skill-quality.yaml    judge_adapter=generic    judge_model=anthropic/claude-sonnet-4-6
+        | ${report} =    `Judge.Calibrate Rubric`    rubric=${CURDIR}/rubrics/skill-quality.md    calibration_set=${CURDIR}/calibration/skill-quality.yaml    judge_adapter=generic    judge_model=anthropic/claude-sonnet-4-6
         | Should Be True    ${report.passes_hard_fail}
         | Log    Cohen's kappa = ${report.cohen_kappa}
         | Log    Recommended threshold = ${report.recommended_threshold}
@@ -457,7 +457,7 @@ def _parse_judge_response(judge_run: AgentRunResult, rubric: JudgeRubric) -> Jud
 
 
 _THRESHOLD_SWEEP: tuple[float, ...] = (5.0, 6.0, 6.5, 7.0, 7.5, 8.0, 9.0)
-"""Candidate thresholds for the `Judge.Calibrate` precision/recall sweep.
+"""Candidate thresholds for the `Judge.Calibrate Rubric` precision/recall sweep.
 
 A coarser-than-finest sweep keeps `threshold_tuning` legible in user
 output; covers the typical "lenient" (5.0) to "strict" (9.0) operator

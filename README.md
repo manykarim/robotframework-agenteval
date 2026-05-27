@@ -4,7 +4,7 @@ Robot Framework library for evaluating AI coding agents — skills, subagents, h
 
 ## Status
 
-**Phase 1 complete (2026-05-25) · Phase 2 launched.** Version `0.0.1` is feature-complete for the Phase 1 surface (10+ epics, ~50 stories, 1380+ tests, 19 ratified ADRs, 23 ratified review-methodology norms). Phase 2 has shipped native Agent SDK adapters for Anthropic + OpenAI (Epic 10).
+**Phase 1 complete (2026-05-25) · Phase 2 in progress.** Version `0.0.1` is feature-complete for the Phase 1 surface (10+ epics, ~50 stories, 1775+ tests, 19 ratified ADRs, 24 ratified review-methodology norms). Phase 2 has shipped native Agent SDK adapters for Anthropic + OpenAI (Epic 10), CLI adapters for Codex + Copilot + `AdapterVersionDriftWarning` (Epic 11), and the LLM-Judge + Rubric-Calibration surface closing Devon's Journey 4 Tier-2 slot (Epic 12: `Judge.Get Score` + `Judge.Calibrate Rubric` + Cohen's-kappa hard-fail).
 
 The library remains pre-1.0 — see [`docs/contracts/exit-criteria-0x-to-1x.md`](./docs/contracts/exit-criteria-0x-to-1x.md) for the 6 ratified promotion criteria. Public API uses [`docs/contracts/stability-surface.md`](./docs/contracts/stability-surface.md) labels (`stable` / `provisional` / `experimental`); breaking changes on `stable` surfaces are constrained by the 3-month-no-break window.
 
@@ -91,23 +91,24 @@ agenteval new-adapter <name> [--protocol stdio|inprocess]
 # Run the conformance suite + emit JSON + Markdown reports (Story 8a.2; FR57)
 python -m AgentEval.conformance --adapter <name> --output-dir reports/
 
-# Generate keyword reference HTML for all 5 libraries (RF libdoc)
+# Generate keyword reference HTML for all 6 libraries (RF libdoc)
 uv run python -m robot.libdoc AgentEval docs/keywords/AgentEval.html
 uv run python -m robot.libdoc AgentEval.skills.library.SkillsLibrary docs/keywords/SkillsLibrary.html
 uv run python -m robot.libdoc AgentEval.subagents.library.SubagentsLibrary docs/keywords/SubagentsLibrary.html
 uv run python -m robot.libdoc AgentEval.hooks.library.HooksLibrary docs/keywords/HooksLibrary.html
 uv run python -m robot.libdoc AgentEval.mcp.library.MCPLibrary docs/keywords/MCPLibrary.html
+uv run python -m robot.libdoc AgentEval.judge.library.JudgeLibrary docs/keywords/JudgeLibrary.html
 ```
 
 Committing the regenerated `docs/keywords/*.html` updates GitHub Pages automatically (Pages is configured to serve from `main` branch's `/docs` folder).
 
-Exit codes from `python -m AgentEval.conformance` follow the sysexits-style 21-leaf mapping at [`docs/contracts/error-class-hierarchy.md`](./docs/contracts/error-class-hierarchy.md) L66-L101 (`EXIT_CODE_FALLBACK = 70` when fixtures fail).
+Exit codes from `python -m AgentEval.conformance` follow the sysexits-style 24-leaf mapping at [`docs/contracts/error-class-hierarchy.md`](./docs/contracts/error-class-hierarchy.md) L66-L107 (`EXIT_CODE_FALLBACK = 70` when fixtures fail).
 
 ## Keywords at a glance
 
-5 libraries ship as of Phase 1 close. **49 keywords total**: 30 + 8 + 9 + 1 + 1. The top-level `AgentEval` library composes 30 keywords drawn from metrics + assertions + stats + orchestration + telemetry + heatmap surfaces. Three of the libraries (`SkillsLibrary`, `SubagentsLibrary`, `HooksLibrary`, `MCPLibrary`) require direct import — they are not composed into the top-level library.
+6 libraries ship as of Phase 2 Epic 12 close (Devon's Journey 4 Tier-2 LLM-judge slot). **51 keywords total**: 32 + 8 + 9 + 2 + 1 + 1. The top-level `AgentEval` library composes 32 keywords drawn from metrics + assertions + stats + orchestration + telemetry + heatmap + judge surfaces. Four of the libraries (`SkillsLibrary`, `SubagentsLibrary`, `HooksLibrary`, `MCPLibrary`) require direct import — they are not composed into the top-level library. `JudgeLibrary` IS composed via `_SUB_LIBRARIES` (the `Judge.*` keywords surface through the top-level `AgentEval` import) but also stands alone for direct import.
 
-### `AgentEval` library — 30 keywords
+### `AgentEval` library — 32 keywords
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html](https://manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html)** (GitHub Pages) · local: [`docs/keywords/AgentEval.html`](./docs/keywords/AgentEval.html)
 
@@ -147,6 +148,25 @@ Library    AgentEval
 | **Get Config** | 1 | Parse a Claude Code `settings.json` hook configuration |
 | **Get Effective Config** | 1 | Resolved config dict or single `ConfigValue` |
 | **Get Effective Config With Provenance** | 1 | Full settings map with per-key provenance |
+| **Judge.Get Score** | 2 | LLM-judge scoring of an `AgentRunResult` against a Markdown rubric (Story 12.1; PRD FR48 — Phase-2 Tier-2 slot) |
+| **Judge.Calibrate Rubric** | 2 | Run the judge against a YAML calibration set; compute Cohen's kappa + threshold-tuning + bias diagnostics (Story 12.2; κ ≥ 0.7 hard-fail per architecture L199) |
+
+### `AgentEval.judge.library.JudgeLibrary` — 2 keywords
+
+Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/JudgeLibrary.html](https://manykarim.github.io/robotframework-agenteval/keywords/JudgeLibrary.html)** (GitHub Pages) · local: [`docs/keywords/JudgeLibrary.html`](./docs/keywords/JudgeLibrary.html)
+
+Composed into `AgentEval` via `_SUB_LIBRARIES` — keywords surface as `Judge.Get Score` + `Judge.Calibrate Rubric` through the top-level import. The standalone import works too (and lets operators pass `max_cost_usd` / `max_runtime_seconds` budgets directly):
+
+```robotframework
+Library    AgentEval.judge.library.JudgeLibrary    WITH NAME    Judge
+```
+
+| Keyword | Tier | What it does |
+|---|---|---|
+| **Judge.Get Score** | 2 | LLM-judge scoring against a Markdown rubric (Phase-2 — PRD FR48); returns `JudgeScore` (numeric_score 0-10 + pass_threshold_met + reasoning + criteria_breakdown + cost_usd) |
+| **Judge.Calibrate Rubric** | 2 | Cohen's-kappa calibration over a YAML calibration set; returns `CalibrationReport` with `passes_hard_fail` (κ ≥ 0.7), `threshold_tuning`, `recommended_threshold`, `systematic_bias_diagnostics` |
+
+Calibration discipline (κ ≥ 0.7 hard-fail per `architecture.md` L199, agentguard ADR-011 borrow) — see the [Judge calibration cookbook](./docs/recipes/judge-calibration.md) for the recommended pre-deployment workflow.
 
 ### `AgentEval.skills.library.SkillsLibrary` — 8 keywords
 
@@ -246,13 +266,13 @@ Per-recipe details + cross-references live at [`docs/recipes/README.md`](./docs/
 
 ## Documentation
 
-- **Keyword reference (GitHub Pages)** — [manykarim.github.io/robotframework-agenteval](https://manykarim.github.io/robotframework-agenteval/) — hosted libdoc HTML for all 5 libraries: [AgentEval](https://manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html) · [SkillsLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/SkillsLibrary.html) · [MCPLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/MCPLibrary.html) · [SubagentsLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/SubagentsLibrary.html) · [HooksLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/HooksLibrary.html). Local copies under [`docs/keywords/`](./docs/keywords/) — regenerated via `python -m robot.libdoc`.
+- **Keyword reference (GitHub Pages)** — [manykarim.github.io/robotframework-agenteval](https://manykarim.github.io/robotframework-agenteval/) — hosted libdoc HTML for all 6 libraries: [AgentEval](https://manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html) · [SkillsLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/SkillsLibrary.html) · [MCPLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/MCPLibrary.html) · [JudgeLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/JudgeLibrary.html) · [SubagentsLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/SubagentsLibrary.html) · [HooksLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/HooksLibrary.html). Local copies under [`docs/keywords/`](./docs/keywords/) — regenerated via `python -m robot.libdoc`.
 - **Architecture decisions** — [`docs/adr/`](./docs/adr/) — 19 ADRs (ADR-001 catalog + ADR-002 → ADR-019) covering adapter protocols, tier rules, MCP observation, coverage semantics, error hierarchy, assertion-engine adoption, and more
 - **Contracts** — [`docs/contracts/`](./docs/contracts/) — stable surfaces consumers can rely on (12 contract docs at Phase-1 close)
-- **Recipes** — [`docs/recipes/`](./docs/recipes/) — 8 worked examples covering Devon + Raj + Many personas
+- **Recipes** — [`docs/recipes/`](./docs/recipes/) — 8 worked examples covering Devon + Raj + Many personas + [judge-calibration cookbook](./docs/recipes/judge-calibration.md) (Story 12.2)
 - **Exit criteria for 1.0** — [`docs/contracts/exit-criteria-0x-to-1x.md`](./docs/contracts/exit-criteria-0x-to-1x.md) — 6 ratified promotion criteria (`accepted` status per Story 9.3)
 - **Phase-1 retrospective** — [`_bmad-output/planning-artifacts/phase-1-retrospective-2026-05-25.md`](./_bmad-output/planning-artifacts/phase-1-retrospective-2026-05-25.md)
-- **Phase-1.5 carry-over catalog** — [`docs/phase-1-5-carry-overs.md`](./docs/phase-1-5-carry-overs.md) — 71 entries at Phase-1 close, categorised XS/S/M/L by effort
+- **Phase-1.5 carry-over catalog** — [`docs/phase-1-5-carry-overs.md`](./docs/phase-1-5-carry-overs.md) — 82 entries at Phase-2 Epic 12 close, categorised XS/S/M/L by effort
 - **Review methodology** — [MAINTAINERS.md §Review methodology](./MAINTAINERS.md#review-methodology) — the 23 ratified `feedback_*` norms governing project quality bar
 - **Troubleshooting** — [`docs/troubleshooting/`](./docs/troubleshooting/) — first-day issues and workarounds
 

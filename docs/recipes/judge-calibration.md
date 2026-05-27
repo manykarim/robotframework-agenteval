@@ -66,7 +66,7 @@ rows:
 Strict schema: each row is exactly `{prompt: str, response: str, human_label:
 float in [0.0, 10.0]}`. Extra keys raise `InvalidCalibrationSetError`.
 
-## Step 3 — Run `Judge.Calibrate` and inspect the report
+## Step 3 — Run `Judge.Calibrate Rubric` and inspect the report
 
 ```robot
 *** Settings ***
@@ -74,7 +74,7 @@ Library    AgentEval    max_cost_usd=2.00    max_runtime_seconds=600
 
 *** Test Cases ***
 Calibrate Judge Against Human Labels
-    ${report}=    Judge.Calibrate
+    ${report}=    Judge.Calibrate Rubric
     ...    rubric=tests/fixtures/rubrics/skill-quality.md
     ...    calibration_set=tests/fixtures/calibration/skill-quality-calibration.yaml
     ...    judge_adapter=generic
@@ -100,7 +100,7 @@ If `passes_hard_fail` is `False`:
 ```robot
 *** Test Cases ***
 Calibration Must Pass Hard Fail
-    ${report}=    Judge.Calibrate    rubric=${RUBRIC}    calibration_set=${CALIBRATION_SET}
+    ${report}=    Judge.Calibrate Rubric    rubric=${RUBRIC}    calibration_set=${CALIBRATION_SET}
     Should Be True    ${report.passes_hard_fail}
     ...    Calibration failed: kappa=${report.cohen_kappa} below the 0.7 hard-fail threshold. Review systematic_bias_diagnostics + retune the rubric.
 ```
@@ -121,7 +121,7 @@ Run this on every PR that touches the rubric or the judge configuration.
 
 ## See also
 
-- `docs/contracts/stability-surface.md` for the `Judge.Calibrate` /
+- `docs/contracts/stability-surface.md` for the `Judge.Calibrate Rubric` /
   `CalibrationReport` / `load_calibration_set` API surfaces.
 - `docs/contracts/error-class-hierarchy.md` for `InvalidCalibrationSetError`
   (24th ratified leaf).

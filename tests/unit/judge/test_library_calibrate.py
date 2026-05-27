@@ -226,8 +226,8 @@ def test_calibrate_surfaces_systematic_bias_when_judge_scores_high(
 
 
 def test_agenteval_composition_includes_judge_calibrate() -> None:
-    """`Judge.Calibrate` MUST surface in `AgentEval.get_keyword_names()`."""
+    """`Judge.Calibrate Rubric` MUST surface in `AgentEval.get_keyword_names()`."""
     from AgentEval import AgentEval
 
     agent_eval = AgentEval()
-    assert "Judge.Calibrate" in agent_eval.get_keyword_names()
+    assert "Judge.Calibrate Rubric" in agent_eval.get_keyword_names()

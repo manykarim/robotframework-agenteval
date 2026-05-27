@@ -29,7 +29,7 @@ Devon validates a skill `.md` file using a three-tier stacked pattern:
 | 3 — Cohort | `Skill.Get Discoverability` | 7.2 | 10 trials/task; assert Pass@k ≥ 0.8 |
 | 3 — Spot | `Skill.Should Activate For` | 7.2 | Single-prompt assertion |
 | Stat | `Stat.Run N Times` + `Stat.Get Pass At K` | 6.3 | Composition with Tier-3 |
-| Calibration | `Judge.Calibrate` | Epic 12.2 | Pre-deployment — verify Cohen's κ ≥ 0.7 against human labels before relying on Tier-2 |
+| Calibration | `Judge.Calibrate Rubric` | Epic 12.2 | Pre-deployment — verify Cohen's κ ≥ 0.7 against human labels before relying on Tier-2 |
 
 ## Robot Framework Example
 
@@ -58,7 +58,7 @@ Devon Validates Skill: Stacked Three-Tier Pattern
     # Run the agent once against a representative prompt, then judge the
     # response against the rubric. Tier-2 is a SEPARATE LLM call from any
     # Tier-3 cohort run — Devon pays for it explicitly. Calibrate the rubric
-    # first via `Judge.Calibrate` (Story 12.2) — see docs/recipes/judge-calibration.md.
+    # first via `Judge.Calibrate Rubric` (Story 12.2) — see docs/recipes/judge-calibration.md.
     ${run}=    Send Prompt    prompt=${REPRESENTATIVE_PROMPT}    adapter=${ADAPTER}
     ${score}=    Judge.Get Score
     ...    result=${run}
@@ -118,7 +118,7 @@ flow is shipping. Devon's Journey 4 from PRD L394-401 is end-to-end exercisable:
 Operators may opt out of Tier-2 by leaving the section commented out; Tier-1 +
 Tier-3 remain the Phase-1 ceiling for budget-constrained users. Tier-2 adds one
 LLM call per representative prompt — calibrate the rubric first via
-`Judge.Calibrate` (Story 12.2) and gate CI on Cohen's kappa ≥ 0.7 per
+`Judge.Calibrate Rubric` (Story 12.2) and gate CI on Cohen's kappa ≥ 0.7 per
 `architecture.md` L199.
 
 ## See Also
@@ -127,6 +127,6 @@ LLM call per representative prompt — calibrate the rubric first via
 - Story 7.2: `Skill.Get Discoverability` + `Skill.Should Activate For`
 - Story 6.3: `Stat.Run N Times` + `Stat.Get Pass At K`
 - Story 12.1: `Judge.Get Score` — Tier-2 LLM-judge keyword
-- Story 12.2: `Judge.Calibrate` + `docs/recipes/judge-calibration.md` — calibrate rubrics against human labels
+- Story 12.2: `Judge.Calibrate Rubric` + `docs/recipes/judge-calibration.md` — calibrate rubrics against human labels
 - Story 12.3: `tests/integration/skills/test_devon_three_tier_complete.py` — Python pytest example
 - `tests/integration/skills/test_devon_stacked_validation.py` — Tier-1 + Tier-3 subset (Story 7.3)

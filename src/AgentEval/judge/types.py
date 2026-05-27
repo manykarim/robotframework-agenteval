@@ -87,7 +87,7 @@ class JudgeScore:
 
 @dataclass(frozen=True)
 class CalibrationReport:
-    """Result of `Judge.Calibrate` per Story 12.2.
+    """Result of `Judge.Calibrate Rubric` per Story 12.2.
 
     Fields:
     - `rubric_path`, `calibration_set_path`, `judge_adapter`, `judge_model`:
