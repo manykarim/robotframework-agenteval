@@ -20,7 +20,8 @@ Devon's three-tier validation pattern (Journey 4):
       Skill.Get Frontmatter + Skill.Should Be Valid Frontmatter  (Story 2.1)
 
   Tier 2 — Judge (LLM, Phase 2):
-      # TODO Phase 2: Judge.Get Score here  (Epic 12 Story 12.3)
+      Now ships in `test_devon_three_tier_complete.py` (Story 12.3 — 2026-05-27).
+      This file exercises the Tier-1 + Tier-3 SUBSET (Story 7.3 Phase-1 ceiling).
 
   Tier 3 — Cohort (stochastic fan-out):
       Skill.Get Discoverability (10 trials/task)  (Story 7.2)
@@ -132,7 +133,8 @@ class TestDevonStackedValidation:
         NOTE (DF-7.3-S1/C59): Must use custom predicate because ActivationDecision
         has no metadata.completeness → r.completeness == "n/a" → default predicate
         always False → Pass@k = 0.0 with default. Use r.result.activated instead.
-        # TODO Phase 2: Judge.Get Score here — replace predicate with Judge score threshold
+        For the Tier-2 Judge.Get Score integration, see
+        `test_devon_three_tier_complete.py` (Story 12.3).
         """
         runs = stats.run_n_times(
             n=10,
@@ -157,13 +159,19 @@ class TestDevonStackedValidation:
             result = skills.should_activate_for(prompt, SKILL_PATH, adapter=ADAPTER_NAME)
             assert result is None
 
-    def test_recipe_stub_exists_with_phase2_placeholder(self) -> None:
-        """Recipe stub at docs/recipes/04-skill-author-stacked-validation.md exists
-        and contains the Phase-2 Judge placeholder (AC-7.3.6 + AC-7.3.7)."""
-        assert RECIPE_PATH.exists(), (
-            f"Recipe stub missing: {RECIPE_PATH}\nCreate it per Story 7.3 AC-7.3.6 (stub draft, Epic 8b polishes it)."
-        )
+    def test_recipe_documents_complete_three_tier_pattern(self) -> None:
+        """Recipe at docs/recipes/04-skill-author-stacked-validation.md ships the
+        full three-tier flow (Story 12.3 completion of Devon's Journey 4).
+
+        Amended from Story 7.3's `test_recipe_stub_exists_with_phase2_placeholder`
+        per `feedback_in_flight_spec_amendment` (Story 12.2 Opus LOW-3 lesson
+        UPSTREAM): the "TODO Phase 2" placeholder is replaced by an actual
+        `Judge.Get Score` invocation in Story 12.3; the assertion is flipped
+        in lock-step.
+        """
+        assert RECIPE_PATH.exists(), f"Recipe missing: {RECIPE_PATH}"
         content = RECIPE_PATH.read_text()
-        assert "TODO Phase 2: Judge.Get Score" in content, (
-            "Recipe must contain Phase-2 Judge slot: '# TODO Phase 2: Judge.Get Score here'"
+        assert "Judge.Get Score" in content, "Recipe must reference `Judge.Get Score` keyword (Tier-2 LLM judge)"
+        assert "TODO Phase 2: Judge.Get Score" not in content, (
+            "Recipe still carries the Story 7.3 Phase-2 placeholder; Story 12.3 should have replaced it."
         )
