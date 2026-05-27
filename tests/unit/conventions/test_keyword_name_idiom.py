@@ -62,6 +62,8 @@ _VERB_ALLOWLIST: frozenset[str] = frozenset(
         "trajectory",
         "tool",
         "agent",
+        # Story 12.2 — Tier-2 judge calibration:
+        "calibrate",
     }
 )
 

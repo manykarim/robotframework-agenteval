@@ -14,6 +14,7 @@ Per architecture.md L1316 — the Judge sub-package's types live here:
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
@@ -84,4 +85,107 @@ class JudgeScore:
         object.__setattr__(self, "criteria_breakdown", dict(self.criteria_breakdown))
 
 
-__all__ = ["JudgeRubric", "JudgeScore"]
+@dataclass(frozen=True)
+class CalibrationReport:
+    """Result of `Judge.Calibrate` per Story 12.2.
+
+    Fields:
+    - `rubric_path`, `calibration_set_path`, `judge_adapter`, `judge_model`:
+      provenance.
+    - `rows_total`, `rows_processed`: total rows in the YAML vs how many
+      the judge actually scored (may be less if a row raised mid-run; in
+      Phase-1 these are always equal because mid-run failures abort).
+    - `judge_scores`, `human_labels`: parallel tuples of length
+      `rows_processed`.
+    - `cohen_kappa`: Cohen's kappa over binarized judge-pass / human-pass
+      labels at the rubric's threshold. `nan` if zero-variance (see
+      `kappa_undefined_reason`).
+    - `kappa_undefined_reason`: one of `"human_label_zero_variance"`,
+      `"judge_score_zero_variance"`, `"expected_agreement_unity"`, or
+      `None`.
+    - `passes_hard_fail`: True iff `not isnan(cohen_kappa) and
+      cohen_kappa >= 0.7` per `architecture.md` L199.
+    - `threshold_tuning`: `{threshold: {precision, recall, f1}}` over a
+      sweep of candidate thresholds; lets callers inspect alternate cuts.
+    - `recommended_threshold`: threshold maximizing F1 in
+      `threshold_tuning`.
+    - `systematic_bias_diagnostics`: human-readable bullets surfacing
+      patterns (e.g., "judge consistently scores +1.2 above humans").
+    - `total_cost_usd`, `total_latency_seconds`: aggregate.
+
+    `judge_scores`, `human_labels`, and `systematic_bias_diagnostics` are
+    already immutable tuples (callers cannot mutate them); only the mutable
+    `threshold_tuning` nested dict is defensively copied in `__post_init__`
+    so caller mutations to the source dict cannot leak (Story 1b.2 M_R6
+    lesson).
+    """
+
+    rubric_path: str
+    calibration_set_path: str
+    judge_adapter: str
+    judge_model: str | None
+    rows_total: int
+    rows_processed: int
+    judge_scores: tuple[float, ...]
+    human_labels: tuple[float, ...]
+    cohen_kappa: float
+    kappa_undefined_reason: str | None
+    passes_hard_fail: bool
+    threshold_tuning: dict[float, dict[str, float]]
+    recommended_threshold: float
+    systematic_bias_diagnostics: tuple[str, ...]
+    total_cost_usd: float
+    total_latency_seconds: float
+
+    def __post_init__(self) -> None:
+        if self.rows_processed > self.rows_total:
+            raise ValueError(
+                f"CalibrationReport.rows_processed ({self.rows_processed}) must be <= rows_total ({self.rows_total})"
+            )
+        if len(self.judge_scores) != self.rows_processed:
+            raise ValueError(
+                f"CalibrationReport.judge_scores length {len(self.judge_scores)} != "
+                f"rows_processed {self.rows_processed}"
+            )
+        if len(self.human_labels) != self.rows_processed:
+            raise ValueError(
+                f"CalibrationReport.human_labels length {len(self.human_labels)} != "
+                f"rows_processed {self.rows_processed}"
+            )
+        for label in self.human_labels:
+            if not 0.0 <= label <= 10.0:
+                raise ValueError(
+                    f"CalibrationReport.human_labels contains out-of-range value {label!r}; "
+                    f"all labels must be in [0.0, 10.0]"
+                )
+        if not 0.0 <= self.recommended_threshold <= 10.0:
+            raise ValueError(
+                f"CalibrationReport.recommended_threshold must be in [0.0, 10.0]; got {self.recommended_threshold!r}"
+            )
+        if self.total_cost_usd < 0.0:
+            raise ValueError(f"CalibrationReport.total_cost_usd must be non-negative; got {self.total_cost_usd!r}")
+        if self.total_latency_seconds < 0.0:
+            raise ValueError(
+                f"CalibrationReport.total_latency_seconds must be non-negative; got {self.total_latency_seconds!r}"
+            )
+        # Story 12.2 2-way MED (Sonnet MED-3 + Opus LOW-1): enforce the
+        # `passes_hard_fail` iff `not isnan(kappa) and kappa >= 0.7` invariant
+        # documented in the class docstring. Direct construction (the type is
+        # `experimental` public) bypasses the JudgeLibrary.calibrate caller's
+        # correct derivation; this check prevents inconsistent reports.
+        expected_passes_hard_fail = not math.isnan(self.cohen_kappa) and self.cohen_kappa >= 0.7
+        if self.passes_hard_fail != expected_passes_hard_fail:
+            raise ValueError(
+                f"CalibrationReport.passes_hard_fail={self.passes_hard_fail} inconsistent with "
+                f"cohen_kappa={self.cohen_kappa!r} (expected passes_hard_fail={expected_passes_hard_fail} "
+                f"per architecture.md L199: True iff not isnan(kappa) and kappa >= 0.7)"
+            )
+        # M_R6 defensive copy.
+        object.__setattr__(
+            self,
+            "threshold_tuning",
+            {threshold: dict(metrics) for threshold, metrics in self.threshold_tuning.items()},
+        )
+
+
+__all__ = ["JudgeRubric", "JudgeScore", "CalibrationReport"]

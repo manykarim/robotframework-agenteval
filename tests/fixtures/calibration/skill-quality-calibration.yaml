@@ -1,0 +1,37 @@
+# Canonical calibration set for Story 12.2 — paired with
+# `tests/fixtures/rubrics/skill-quality.md`. 5 rows balanced 2 clear-pass +
+# 2 clear-fail + 1 borderline (per Story 12.2 AC-12.2.9).
+#
+# Schema (strict):
+#   rows:
+#     - prompt: str
+#       response: str
+#       human_label: float in [0.0, 10.0]
+#
+# Use a real judge run + a human reviewer to populate `human_label` against
+# the same rubric the keyword evaluates against.
+
+rows:
+  - prompt: "Write a Python function that adds two numbers."
+    response: "def add(a: int, b: int) -> int: return a + b"
+    human_label: 9.0
+
+  - prompt: "Find the largest file in /tmp via the filesystem tool."
+    response: |
+      I'll use the filesystem.list_files tool then sort by size.
+      result: /tmp/very_large.log (size 4.2 GB)
+    human_label: 8.5
+
+  - prompt: "Compute the determinant of a 3x3 matrix."
+    response: "I don't know how to do that, sorry."
+    human_label: 2.0
+
+  - prompt: "List the top 3 most recent commits in this repo."
+    response: "Done."
+    human_label: 1.5
+
+  - prompt: "Summarize the README in 2 sentences."
+    response: |
+      The README explains the project setup and lists three primary use cases.
+      It also includes a CONTRIBUTING section pointing readers at GitHub Issues.
+    human_label: 7.0

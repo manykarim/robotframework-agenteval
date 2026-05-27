@@ -1311,9 +1311,10 @@ robotframework-agenteval/
 │       │
 │       ├── judge/                          # Phase 2 only (under [judge] extra); FR48 + pattern reviewed in agentguard ADR-011
 │       │   ├── __init__.py
-│       │   ├── library.py                  # Judge keywords: Get Score with rubric
-│       │   ├── _internal.py                # Rubric loader, calibration helpers
-│       │   └── types.py                    # JudgeRubric, JudgeScore
+│       │   ├── library.py                  # Judge keywords: Get Score (Story 12.1) + Calibrate (Story 12.2)
+│       │   ├── rubric.py                   # Markdown rubric loader (Story 12.1; was `_internal.py` in original architecture sketch — fix-the-losing-source-NOW amendment 2026-05-27 per Story 12.2 D-2)
+│       │   ├── calibration.py              # Cohen's kappa + load_calibration_set + KAPPA_HARD_FAIL_THRESHOLD (Story 12.2)
+│       │   └── types.py                    # JudgeRubric, JudgeScore (Story 12.1) + CalibrationReport (Story 12.2)
 │       │
 │       ├── security/                       # Phase 1 = policy + gate + Protocol per ADR-A8
 │       │   ├── __init__.py

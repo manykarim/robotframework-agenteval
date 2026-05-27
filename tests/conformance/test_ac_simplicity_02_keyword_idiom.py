@@ -200,6 +200,8 @@ def test_keyword_names_use_snake_case_method_names() -> None:
         "trajectory",
         "tool",
         "agent",
+        # Story 12.2 — Tier-2 judge calibration:
+        "calibrate",
     }
     violations: list[str] = []
     for cls in _all_library_classes():

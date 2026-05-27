@@ -107,7 +107,7 @@ __all__ = [
     "AgentEvalSafetyError",
     "AgentEvalBudgetError",
     "AgentEvalCompatError",
-    # Leaves (21 implemented + ValidateOperatorDisallowed; 1 future per docstring):
+    # Leaves (23 implemented + ValidateOperatorDisallowed; 1 future per docstring):
     "IncompleteTraceError",
     "PollingDisallowedError",
     "TierViolationError",
@@ -120,6 +120,7 @@ __all__ = [
     "InvalidScenarioYAMLError",
     "InvalidDiscoverabilityTasksError",
     "InvalidJudgeRubricError",
+    "InvalidCalibrationSetError",
     "CostExceededError",
     "RuntimeBudgetExceededError",
     "AdapterDiscoveryError",
@@ -994,6 +995,31 @@ class JudgeOutputParseError(AgentEvalCompatError):
             f"  Raw response: {raw_preview}\n"
             f"  Fix: {self.fix_suggestion or 'N/A'}"
         )
+
+
+class InvalidCalibrationSetError(_FR59Tier1SetupFailureError):
+    """Raised when a Judge calibration set YAML fails parse or schema validation.
+
+    Story 12.2 Tier-1 setup-failure leaf (24th ratified leaf; parallel to
+    `InvalidJudgeRubricError` + `InvalidScenarioYAMLError` etc.). Raised by
+    `judge/calibration.load_calibration_set()` when:
+        - File extension is not `.yaml`/`.yml` or file does not exist
+        - YAML parse fails (malformed YAML)
+        - Top-level value is not a mapping
+        - `rows` key missing or not a list
+        - Per-row required field missing (`prompt`, `response`, `human_label`)
+        - Per-row unknown extra key (strict schema enforcement)
+        - `human_label` not a float in `[0.0, 10.0]`
+        - Nullish-input variant (`None`/`""`/`False`/missing-key) for any field
+
+    `field_name` convention: name of the missing/malformed field
+    (e.g., `"rows[3].human_label"`, `"prompt"`). Root-error case uses `""`.
+
+    `error_code = "INVALID_CALIBRATION_SET"`; exit code 65 (EX_DATAERR; same
+    family as other Tier-1 setup-failure errors).
+    """
+
+    error_code: ClassVar[str] = "INVALID_CALIBRATION_SET"
 
 
 # --------------------------------------------------------------------------- #
