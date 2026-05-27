@@ -107,7 +107,7 @@ __all__ = [
     "AgentEvalSafetyError",
     "AgentEvalBudgetError",
     "AgentEvalCompatError",
-    # Leaves (19 implemented + ValidateOperatorDisallowed; 1 future per docstring):
+    # Leaves (21 implemented + ValidateOperatorDisallowed; 1 future per docstring):
     "IncompleteTraceError",
     "PollingDisallowedError",
     "TierViolationError",
@@ -119,6 +119,7 @@ __all__ = [
     "InvalidMCPToolSchemaError",
     "InvalidScenarioYAMLError",
     "InvalidDiscoverabilityTasksError",
+    "InvalidJudgeRubricError",
     "CostExceededError",
     "RuntimeBudgetExceededError",
     "AdapterDiscoveryError",
@@ -126,6 +127,7 @@ __all__ = [
     "UnsupportedBinaryVersionError",
     "UnsupportedMCPVersionError",
     "MCPConnectionLostError",
+    "JudgeOutputParseError",
     "SkillDidNotActivateError",
     "InvalidSkillDiscoverabilityTasksError",
     # Warnings (1):
@@ -913,6 +915,83 @@ class SkillDidNotActivateError(AgentEvalIntegrityError):
             f"  Skill: {self.skill_path} (name: {self.skill_name or 'N/A'})\n"
             f"  Competing: {self.competing_skill or 'none detected'}\n"
             f"  Reasoning: {reasoning_preview}\n"
+            f"  Fix: {self.fix_suggestion or 'N/A'}"
+        )
+
+
+class InvalidJudgeRubricError(_FR59Tier1SetupFailureError):
+    """Raised when a Judge rubric Markdown file fails parse or schema validation.
+
+    Story 12.1 Tier-1 setup-failure leaf (parallel to `InvalidSkillFrontmatterError`
+    + `InvalidScenarioYAMLError` etc.). Raised by `judge/rubric.load_rubric()` when:
+        - File extension is not `.md` or file does not exist
+        - Required `## Criteria` section missing
+        - Required `## Threshold` section missing OR threshold unparseable
+        - `## Criteria` bullets malformed (each must be `- name: description`)
+
+    Phase-1 carve-out: ONLY Markdown rubrics with the canonical 2-section
+    format are supported. YAML schema-based rubrics are DF-12.1-S1 carry-over.
+
+    `field_name` convention: name of the missing/malformed section
+    (e.g., `"## Criteria"`, `"## Threshold"`) or the offending bullet's
+    raw text. Root-error case uses `""`.
+
+    `error_code = "INVALID_JUDGE_RUBRIC"`; exit code 65 (EX_DATAERR; same
+    family as other Tier-1 setup-failure errors).
+    """
+
+    error_code: ClassVar[str] = "INVALID_JUDGE_RUBRIC"
+
+
+class JudgeOutputParseError(AgentEvalCompatError):
+    """Raised when the LLM judge's response cannot be parsed as a valid `JudgeScore`.
+
+    Story 12.1 runtime-compat leaf (parallel to `UnsupportedBinaryVersionError`
+    semantic — the LLM's output shape is the surface this error protects).
+    Raised by `judge/library.Judge.Get Score` when:
+        - The LLM response is not valid JSON
+        - The parsed JSON does not contain a `numeric_score` field
+        - `numeric_score` is not a number OR outside `[0.0, 10.0]`
+        - Required JudgeScore fields (`reasoning`, `criteria_breakdown`) missing
+
+    Phase-1 carve-out: NO retry loop on parse failure. The operator's
+    seed+temperature=0 should make the judge response deterministic; if
+    the model fails to format correctly the test fails loud.
+
+    Structured attrs:
+        - `raw_response: str` — the LLM's raw response text (truncated to
+          500 chars in `__str__` for readability).
+        - `parse_error: str` — the underlying JSON/shape error message.
+        - `fix_suggestion: str` — operator-facing remediation hint.
+
+    `error_code = "JUDGE_OUTPUT_PARSE"`; exit code 65 (EX_DATAERR — data
+    shape error matching the FR59 family).
+    """
+
+    error_code: ClassVar[str] = "JUDGE_OUTPUT_PARSE"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        raw_response: str = "",
+        parse_error: str = "",
+        fix_suggestion: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.raw_response: str = raw_response
+        self.parse_error: str = parse_error
+        self.fix_suggestion: str = fix_suggestion
+
+    def __str__(self) -> str:
+        message = Exception.__str__(self)
+        raw_preview = (
+            self.raw_response[:500] + "..." if len(self.raw_response) > 500 else (self.raw_response or "N/A")
+        )
+        return (
+            f"{self.error_code}: {message}\n"
+            f"  Parse error: {self.parse_error or 'N/A'}\n"
+            f"  Raw response: {raw_preview}\n"
             f"  Fix: {self.fix_suggestion or 'N/A'}"
         )
 

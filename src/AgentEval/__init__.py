@@ -126,6 +126,7 @@ _SUB_LIBRARIES: tuple[tuple[str, str], ...] = (
     ("AgentEval._assertions.library", "AssertionsLibrary"),
     ("AgentEval.stats.library", "StatsLibrary"),  # NEW per Story 6.3 (PRD FR26-31a)
     ("AgentEval._heatmap.library", "HeatmapLibrary"),  # NEW per Story 8b.2 (FR55-ASCII + dict)
+    ("AgentEval.judge.library", "JudgeLibrary"),  # NEW per Story 12.1 (PRD FR48 — Tier-2 LLM-judge)
 )
 
 
@@ -347,6 +348,16 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
             elif cls_name == "StatsLibrary":
                 # Story 6.3 AC-6.3.8: forward `max_cost_usd` + `max_runtime_seconds`
                 # for `Stat.Run N Times` Tier-3 `@guarded_fanout` enforcement (ADR-015).
+                components.append(
+                    cls(
+                        max_cost_usd=self._max_cost_usd,
+                        max_runtime_seconds=self._max_runtime_seconds,
+                    )
+                )
+            elif cls_name == "JudgeLibrary":
+                # Story 12.1 AC-12.1.5 (PRD FR48): forward `max_cost_usd` +
+                # `max_runtime_seconds` for `Judge.Get Score` Tier-2
+                # `@guarded_fanout` enforcement. Mirrors StatsLibrary pattern.
                 components.append(
                     cls(
                         max_cost_usd=self._max_cost_usd,
