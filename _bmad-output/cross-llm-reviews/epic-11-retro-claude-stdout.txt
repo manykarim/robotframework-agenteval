@@ -1,0 +1,17 @@
+Review complete. Findings written to `_bmad-output/cross-llm-reviews/epic-11-retro-claude-findings.md`.
+
+## Summary: 4 HIGH + 4 MED + 3 LOW
+
+Every numeric claim was re-derived against git, source, and the three story records. **The headline metrics (1696 tests, 99 src files, 78 catalog) are all empirically correct** — I confirmed 1696/12 via a live `pytest` run. The drift is in the *derivations and norm-counts*:
+
+**HIGH**
+1. **"7 commits post-Epic-10-close"** (L32) contradicts its own parenthetical (3 / 4) and the rev-list math is wrong: `git rev-list --count 229313e..HEAD` = **3, not 4**, and "incl. 229313e" is impossible since the range excludes its endpoint. The correct 4-count is `438b4a4..HEAD`.
+2. **N=12 fallback math** doesn't reconcile: "9 + 3 kilo + 3 copilot" = 15, not 12 — and copilot (claude-sonnet-4.6, a Tier-1 alternative) shouldn't count toward the *third-LLM-family* (minimax) norm at all.
+3. **UPSTREAM lessons "5/5 + 5/5 + 6/6"** mis-assigns the 10.2→11.1 transition, which the 11.1 record states was **9/9**. The misplaced "5/5" belongs to the Epic-10 10.1→10.2 transition. The draft even self-contradicts (What worked #2 says "9 lessons" for the same transition).
+4. **"28 pre-create drifts"** — the parts (11+12+10) sum to **33**, not 28 (looks borrowed from the adjacent "28 consecutive stories" metric).
+
+**MED**: catalog-gate step-breakdown contradicts the records (11.1/11.2/11.3 = 26th/27th/28th, not the draft's mapping); the 1696 figure is "confirmed via" a Change Log that actually says 1700+ (false citation, right number); the 11.1 matrix drops a kilo-UNIQUE HIGH (H-2); and "the 3-tier chain ran for every story" overstates — only 2 tiers ran (Tier-2 codex was rate-limited throughout).
+
+**LOW**: Action #5 attributes a non-repo memory file to a repo SHA; CONFIRMED norms lack next-test conditions; Story 12.2 title truncated.
+
+Action-item follow-through (2 ✅ + 7 ❌), the 5→7 retro-debt math, N=4 listener-hook, and the 11.2/11.3 matrix cells all checked out correct.

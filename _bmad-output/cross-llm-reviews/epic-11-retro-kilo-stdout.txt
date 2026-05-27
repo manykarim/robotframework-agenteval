@@ -1,0 +1,19 @@
+Let me read all the source files to verify the claims in the draft.
+Now let me verify key numeric and citation claims against source files.
+Let me check more specific items from the review checklist.
+Now I have enough source material. Let me verify a few more critical claims before writing the findings.
+Now I have enough information to write the adversarial review findings.
+Review complete. Findings written to `_bmad-output/cross-llm-reviews/epic-11-retro-kilo-findings.md`.
+
+**Summary of findings:**
+
+| # | Severity | Issue |
+|---|---|---|
+| 1 | **HIGH** | `feedback_third_llm_family_fallback` N=12 arithmetic:9+3+3=15, not 12 |
+| 2 | **HIGH** | UPSTREAM lesson counts mismatched vs source records (10.2→11.1: source says 9, retro says 5/5; 11.1→11.2: source says 12 total, retro says 5/5) |
+| 3 | **HIGH** | `feedback_retro_debt_block_forward_progress` sunset criterion2 comparison baseline (Epic 10 close: "5 ❌") was itself flagged as uncertain in the Epic 10 retro's own codex review |
+| 4 | MED |7/9 action items lack explicit next-test conditions beyond "Epic 12" |
+| 5 | MED | `feedback_carry_over_catalog_gate` consecutive count parenthetical injects non-story events into story sequence |
+| 6 | MED | Action #5 MEMORY.md index verification not independently verifiable in my scope |
+| 7 | LOW | "FALSE POSITIVE" framing on kilo M-1 is tone-heavy; underlying fact is correct |
+| 8 | LOW | `feedback_listener_hook_api_surface_empirical_check` N=4 claim verified correct (no finding) |
