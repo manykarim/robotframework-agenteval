@@ -2202,7 +2202,7 @@ So that I can share rich cohort visualizations with stakeholders who don't read 
 **When** I call `${html}=    ${heatmap.as_html()}`,
 **Then** the variable receives a standalone HTML string with embedded CSS rendering the heatmap as a color-coded table (Pass@k → color gradient); file write via `${heatmap.write_html("/tmp/heatmap.html")}` produces a viewable file.
 
-**And** unit tests verify HTML validity (parseable by html.parser) + visual regression test against a recorded baseline image.
+**And** unit tests verify HTML validity (parseable by html.parser) + structural-regression test against a recorded baseline HTML fixture (Story 13.4 D-7 in-flight amendment 2026-06-01 + Codex HIGH-1 ratification 2026-06-01: image-based visual regression deferred to Phase-2.5 via DF-13.4-S1 / C92; structural byte-equality vs recorded `.html` baseline fixtures replaces the image regression for Phase-2. Operators can manually inspect the recorded baselines in a browser to verify visual fidelity. Image-based regression requires headless browser + image diff library — heavy deps; Phase-2.5 evaluates whether structural baselines + manual inspection suffice OR whether image regression has empirical value warranting the deps).
 
 ---
 

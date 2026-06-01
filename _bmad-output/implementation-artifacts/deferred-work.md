@@ -390,6 +390,14 @@ Added by Story 4.3 (Orchestration Keywords — Epic 4 Story 3). Pre-create-story
 
 - **DF-13.3-S3 (Phase-2.5 multi-pairwise correction (Bonferroni / Holm) for cross-adapter delta significance)** — Story 13.3 D-10 path-of-least-amendment decision 2026-06-01 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Story 13.3 ships pairwise comparisons WITHOUT multiple-testing correction; for N=3 adapters there are C(3,2)=3 pairs and uncorrected α=0.05 inflates the family-wise error rate. Phase-2.5: add `correction_method: Literal["none", "bonferroni", "holm"]` kwarg + `summary.bonferroni_adjusted_alpha` + `delta.significant_at_corrected_alpha` fields. Catalogued as C91. Effort: S. Phase-2.5.
 
+## Deferred from: story-13.4 dev (2026-06-01) — UPSTREAM pre-emptive per Epic 11 retro
+
+- **DF-13.4-S1 (Phase-2.5 image-based visual regression test for `as_html()`)** — Story 13.4 D-7 in-flight amendment 2026-06-01 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Story 13.4 ships STRUCTURAL regression (byte-equality vs recorded `.html` baselines) instead of the epic L2205-mandated image-based visual regression. Image regression requires headless browser (Playwright / Selenium) + image diff library (Pillow + structural similarity OR pixel hash) — heavy deps. Phase-2.5 evaluates whether structural baselines + manual inspection suffice OR whether image regression has empirical value warranting the deps. Catalogued as C92. Effort: M. Phase-2.5.
+
+- **DF-13.4-S2 (Phase-2.5 color-blind-safe palette mode for `as_html()`)** — Story 13.4 D-10 path-of-least-amendment decision 2026-06-01 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Story 13.4's default 5-stop red-orange-yellow-lime-green palette is NOT WCAG 2.1 AA color-blind safe (~8% of males have red-green color blindness). Phase-2.5: ship an alternative `palette: Literal["default", "viridis", "magma"]` kwarg on `as_html()` (sequential colormaps from matplotlib are perceptually uniform + color-blind friendly). Catalogued as C93. Effort: M. Phase-2.5.
+
+- **DF-13.4-S3 (Phase-2.5 interactive HTML with embedded JavaScript for cell hover tooltips)** — Story 13.4 D-10 path-of-least-amendment decision 2026-06-01 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Story 13.4 ships embedded CSS only per D-3 explicit prohibition on `<script>` (offline-safety + email-safe sharing). Phase-2.5: opt-in interactive mode (`as_html(interactive=True)`) embeds vanilla JS for hover tooltips showing per-cell trial count + cost + Wilson-CI bounds. Default `interactive=False` preserves the script-free guarantee. Catalogued as C94. Effort: M. Phase-2.5.
+
 ---
 
 *Update this file as new deferred items emerge from future reviews.*
