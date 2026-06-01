@@ -75,14 +75,14 @@ from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace import Span as SDKSpan
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
 
 from AgentEval._kernel import context as _kernel_context
 from AgentEval._kernel import trace_store
 from AgentEval._kernel import warnings as _agenteval_warnings
 from AgentEval._kernel.redaction import RedactionProcessor
 from AgentEval.errors import DegradedTraceWarning
-from AgentEval.telemetry.backends import JSONLBackend, MemoryBackend
+from AgentEval.telemetry.backends import JSONLBackend, MemoryBackend, OTLPBackend
 from AgentEval.telemetry.semconv import AGENTEVAL_TEST_ID
 
 __all__ = [
@@ -200,7 +200,7 @@ class Listener:
     def __init__(self) -> None:
         """Initialize the listener; defer expensive setup to ``start_suite``."""
         self._tracer_configured: bool = False
-        self._backend: MemoryBackend | JSONLBackend = MemoryBackend()
+        self._backend: MemoryBackend | JSONLBackend | OTLPBackend = MemoryBackend()
         self._output_dir: Path | None = None
         self._mcp_per_test: bool | str = True
         # Story 5.2: per-test observer registry. Adapters register their
@@ -272,7 +272,20 @@ class Listener:
         # the SPAN-level attribute. Pre-populating the Resource with an
         # empty string would defeat the fallback (trace_store would read
         # the empty Resource value and never check span attributes).
-        resource = Resource.create({})
+        #
+        # Story 13.2 code-review HIGH-A fix 2026-06-01 (3-way: Opus HIGH-1
+        # + Codex HIGH-3 + carry-over C86 claim drift): set
+        # `service.name="robotframework-agenteval"` on the Resource so OTLP
+        # exports carry the correct service identifier. Pre-edit the
+        # `Resource.create({})` left OpenTelemetry's default of
+        # `service.name=unknown_service`, contradicting
+        # `docs/contracts/otel-trace-visual.md` L78+L104 + AC-13.2.10
+        # stability-surface entries. This is a Story 5.1 latent bug
+        # surfaced by Story 13.2's OTLP feature — the in-memory backend
+        # never queried `service.name`, so the empty resource was
+        # undetectable until OTLP export made the resource attribute
+        # load-bearing.
+        resource = Resource.create({"service.name": "robotframework-agenteval"})
         provider = TracerProvider(resource=resource)
         # Per-test discriminator: stamps `agenteval.test_id` on every span at
         # on_start from `_kernel/context`. Must run BEFORE RedactionProcessor
@@ -309,6 +322,90 @@ class Listener:
         trace_store._configure_tracer_provider()  # noqa: SLF001
         self._tracer_configured = True
 
+    def _attach_otlp_exporter_if_needed(self) -> None:
+        """Attach (or update / detach) the OTLP BatchSpanProcessor on the active provider.
+
+        Called from ``start_suite`` AFTER ``_resolve_backend`` so the
+        backend selection is known. Manages a SINGLE BatchSpanProcessor on
+        the active TracerProvider tagged with the active endpoint URL
+        (`_agenteval_otlp_processor` + `_agenteval_otlp_endpoint`
+        attributes on the provider). Three cases (Story 13.2 code-review
+        Codex HIGH-1 + HIGH-2 + Sonnet HIGH-1 fix 2026-06-01):
+
+        1. ``self._backend is OTLPBackend`` + no processor attached → attach.
+        2. ``self._backend is OTLPBackend`` + already attached + endpoint
+           matches → no-op (idempotent across same-endpoint re-attaches).
+        3. ``self._backend is OTLPBackend`` + already attached + endpoint
+           differs → detach old + attach new (handles endpoint changes
+           across Listener re-instantiation in the same process).
+        4. ``self._backend is not OTLPBackend`` (memory / jsonl) + processor
+           still attached → detach (NFR-SEC-05 compliance: when operator
+           switches `trace_backend` away from `otlp`, OTLP egress MUST
+           stop; the existing in-memory processor remains attached
+           per dual-export design).
+
+        The detach uses the OTel SDK's `BatchSpanProcessor.shutdown()` for
+        graceful drain then drops the reference from the provider's
+        internal processor list. The provider doesn't expose a public
+        detach API; we use the documented `_active_span_processor`
+        composite + private list mutation per the SDK convention used
+        by SimpleSpanProcessor / BatchSpanProcessor internals (the
+        composite is published as `_active_span_processor` and the
+        underlying `_span_processors` list IS the mutation point).
+
+        Dual-export design (Story 13.2 D-7): the in-memory chain
+        (``SimpleSpanProcessor(InMemorySpanExporter)``) remains attached
+        unconditionally for projection-accessor compatibility; the OTLP
+        processor is an ADDITIONAL exporter, NOT a replacement.
+        """
+        provider = trace.get_tracer_provider()
+        if not isinstance(provider, TracerProvider):
+            # Real OTel TracerProvider not active (proxy stub during tests
+            # without Listener wiring). Nothing to attach to.
+            return
+        attached_endpoint: str | None = getattr(provider, "_agenteval_otlp_endpoint", None)
+        attached_processor: BatchSpanProcessor | None = getattr(provider, "_agenteval_otlp_processor", None)
+        if isinstance(self._backend, OTLPBackend):
+            target_endpoint = self._backend._endpoint  # noqa: SLF001
+            if attached_endpoint == target_endpoint and attached_processor is not None:
+                # Already attached at the same endpoint — idempotent no-op.
+                return
+            # Either no prior attach OR endpoint changed — detach old first.
+            if attached_processor is not None:
+                self._detach_otlp_processor(provider, attached_processor)
+            new_processor = BatchSpanProcessor(self._backend._exporter)  # noqa: SLF001
+            provider.add_span_processor(new_processor)
+            provider._agenteval_otlp_processor = new_processor  # type: ignore[attr-defined]
+            provider._agenteval_otlp_endpoint = target_endpoint  # type: ignore[attr-defined]
+        else:
+            # Backend is now memory or jsonl — detach any previously-attached
+            # OTLP processor (NFR-SEC-05 compliance: opt-in egress only).
+            if attached_processor is not None:
+                self._detach_otlp_processor(provider, attached_processor)
+                provider._agenteval_otlp_processor = None  # type: ignore[attr-defined]
+                provider._agenteval_otlp_endpoint = None  # type: ignore[attr-defined]
+
+    def _detach_otlp_processor(self, provider: TracerProvider, processor: BatchSpanProcessor) -> None:
+        """Gracefully shut down + detach a BatchSpanProcessor from the provider.
+
+        Per Story 13.2 code-review fix: the OTel SDK's TracerProvider does
+        not expose a public processor-removal API. The composite span
+        processor at ``provider._active_span_processor`` carries a
+        ``_span_processors`` list (concrete type
+        `synchronous_multi_span_processor`); we drain via
+        ``processor.shutdown()`` then filter the composite's list.
+        """
+        with contextlib.suppress(Exception):  # shutdown must not raise into Listener
+            processor.shutdown()  # type: ignore[no-untyped-call]
+        composite = provider._active_span_processor  # noqa: SLF001
+        span_processors = getattr(composite, "_span_processors", None)
+        if span_processors is None:
+            return
+        # `_span_processors` is a tuple in some SDK versions, a list in
+        # others. Rebuild as a tuple (matches the type the composite
+        # accepts on iteration).
+        composite._span_processors = tuple(p for p in span_processors if p is not processor)  # noqa: SLF001
+
     # --------------------------------------------------------------- #
     # Robot Framework Listener v3 hooks
     # --------------------------------------------------------------- #
@@ -323,6 +420,11 @@ class Listener:
         self._configure_tracer_provider()
         # Resolve trace_backend + output_dir from RF context.
         self._resolve_backend(suite=data)
+        # Story 13.2 (Epic 13) — attach the OTLP BatchSpanProcessor AFTER
+        # backend selection. No-op for memory + jsonl backends; OTLP
+        # branch lights up the FR33b OTLP export path with the dual-export
+        # design (existing in-memory exporter remains attached).
+        self._attach_otlp_exporter_if_needed()
 
     def start_test(self, data: Any, result: Any) -> None:  # noqa: ARG002
         """RF Listener v3 ``start_test`` hook — set per-test scope.
@@ -799,14 +901,56 @@ class Listener:
             self._backend = JSONLBackend()
         elif backend_name == "memory":
             self._backend = MemoryBackend()
+        elif backend_name == "otlp":
+            # Story 13.2 (Epic 13) — OTLP backend dispatch per FR33b. When
+            # construction fails (typically: `[otlp]` extra missing), warn
+            # loud + gracefully degrade to memory rather than aborting the
+            # entire test run. Operators using `trace_backend=otlp` should
+            # see a DegradedTraceWarning that points them to the extra.
+            otlp_endpoint = config.get("otlp_endpoint")
+            try:
+                self._backend = OTLPBackend(endpoint=otlp_endpoint)
+            except ImportError as exc:
+                _msg = (
+                    f"AgentEval Listener: OTLP backend construction failed: {exc}; "
+                    "falling back to 'memory'. Install via: "
+                    "`uv pip install robotframework-agenteval[otlp]`."
+                )
+                _agenteval_warnings.record_warning(
+                    warning_type="AgentEval.errors.DegradedTraceWarning",
+                    message=_msg,
+                    source="telemetry.listener",
+                    remediation=(
+                        "Install the [otlp] optional extra via "
+                        "`uv pip install robotframework-agenteval[otlp]` OR "
+                        "set AGENTEVAL_TRACE_BACKEND=memory to bypass OTLP"
+                    ),
+                )
+                warnings.warn(_msg, DegradedTraceWarning, stacklevel=2)
+                self._backend = MemoryBackend()
+            except ValueError as exc:
+                # Bad URL scheme / empty endpoint — operator error. Same
+                # graceful-degrade posture as the import failure above.
+                _msg = f"AgentEval Listener: OTLP backend rejected endpoint: {exc}; falling back to 'memory'."
+                _agenteval_warnings.record_warning(
+                    warning_type="AgentEval.errors.DegradedTraceWarning",
+                    message=_msg,
+                    source="telemetry.listener",
+                    remediation=(
+                        "Set AGENTEVAL_OTLP_ENDPOINT to a URL with scheme http://, https://, grpc://, or grpcs://"
+                    ),
+                )
+                warnings.warn(_msg, DegradedTraceWarning, stacklevel=2)
+                self._backend = MemoryBackend()
         else:
             # Story 5.1 code-review Edge-cases M2 fix 2026-05-20: unknown
             # trace_backend silently fell back to memory pre-edit — operators
             # typoing `jsnol` or `jsonl1` would lose JSONL artifacts without
             # any signal. Warn loud + fall back to memory for safety.
+            # Story 13.2 (Epic 13): added 'otlp' to the valid-values list.
             _msg = (
                 f"AgentEval Listener: unknown trace_backend={backend_name!r}; "
-                "falling back to 'memory'. Valid values: {'memory', 'jsonl'}."
+                "falling back to 'memory'. Valid values: {'memory', 'jsonl', 'otlp'}."
             )
             # Story 5.4 code-review HIGH-C: record THEN warn so `-W error`
             # filter doesn't drop the structured channel.
@@ -815,8 +959,9 @@ class Listener:
                 message=_msg,
                 source="telemetry.listener",
                 remediation=(
-                    "Set AGENTEVAL_TRACE_BACKEND to one of {'memory', 'jsonl'}; "
-                    "the misspelled value silently falls back to memory backend"
+                    "Set AGENTEVAL_TRACE_BACKEND to one of "
+                    "{'memory', 'jsonl', 'otlp'}; the misspelled value "
+                    "silently falls back to memory backend"
                 ),
             )
             warnings.warn(_msg, DegradedTraceWarning, stacklevel=2)

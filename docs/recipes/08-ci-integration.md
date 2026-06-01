@@ -109,6 +109,63 @@ Pipe both into your observability backend (Jaeger / Honeycomb / Tempo)
 for cross-reference. See Recipe #N (OTel trace visual doc — coming with
 Story 8b.3 OTel doc) for the JSONL → Jaeger ingestion path.
 
+## OTLP trace export (Phase 2 — `[otlp]` extra)
+
+Shipping with Story 13.2 (Epic 13). The `[otlp]` optional extra wires the
+canonical OpenTelemetry OTLP exporter so spans flow directly into Jaeger /
+Honeycomb / Tempo / Grafana without the manual `otel-cli span replay`
+round-trip step documented in `docs/contracts/otel-trace-visual.md`.
+
+**Install the extra:**
+
+```bash
+uv pip install robotframework-agenteval[otlp]
+```
+
+**Configure via RF Library settings (HTTP to local Jaeger all-in-one):**
+
+```robotframework
+*** Settings ***
+Library    AgentEval    trace_backend=otlp    otlp_endpoint=http://localhost:4318/v1/traces
+```
+
+**Configure via RF Library settings (gRPC to Grafana Tempo):**
+
+```robotframework
+*** Settings ***
+Library    AgentEval    trace_backend=otlp    otlp_endpoint=grpc://tempo-distributor.observability.svc.cluster.local:4317
+```
+
+**Configure via env vars (Honeycomb HTTPS in CI):**
+
+```bash
+export AGENTEVAL_TRACE_BACKEND=otlp
+export AGENTEVAL_OTLP_ENDPOINT=https://api.honeycomb.io/v1/traces
+uv run robot --include smoke tests/
+```
+
+URL-scheme dispatch:
+
+- `http://` / `https://` → OTLP HTTP/protobuf exporter (default port 4318,
+  `/v1/traces` path).
+- `grpc://` / `grpcs://` → OTLP gRPC exporter (default port 4317). The
+  `grpc://` prefix triggers `insecure=True` (plaintext); `grpcs://`
+  triggers TLS.
+- Default (`otlp_endpoint` unset): `http://localhost:4318/v1/traces`.
+- Any other scheme: `ValueError` at Library construction; the Listener
+  gracefully degrades to the `memory` backend with a `DegradedTraceWarning`.
+
+**Phase 2 Status:** dual-export design — spans continue to populate the
+in-memory store (so `Metric.*` keywords still work) AND ship out to the
+configured OTLP endpoint via a `BatchSpanProcessor`. There is no
+OTLP-only mode that suppresses in-memory recording. The legacy
+`otel-cli span replay` JSONL-replay path (see
+`docs/contracts/otel-trace-visual.md`) remains useful for ad-hoc trace
+inspection without changing the `trace_backend` config.
+
+See `docs/contracts/stability-surface.md` for the `provisional`-labeled
+surface entries + Phase-2.5 carry-overs (DF-13.2-S1/S2/S3).
+
 ## Conformance report (FR57)
 
 For a separate machine-readable conformance pass alongside the RF run:

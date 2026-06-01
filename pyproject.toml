@@ -98,6 +98,16 @@ copilot = []
 # `mannwhitneyu`/`bootstrap` APIs; numpy 2.x permitted (scipy 1.11+
 # supports). Pre-approved per epics.md L2153 verbatim.
 agenteval-advanced = ["scipy>=1.11,<2.0", "numpy>=1.26,<3.0"]
+# Story 13.2 (Epic 13) — OTLP trace exporter (FR33b). Phase-2 backend
+# behind the `[otlp]` extra: when `trace_backend="otlp"`, agenteval
+# spans export to a configured OTLP collector (Jaeger / Honeycomb /
+# Tempo / Grafana) via `BatchSpanProcessor(OTLPSpanExporter)`.
+# `opentelemetry-exporter-otlp` is a metapackage pulling both
+# HTTP/protobuf and gRPC transports; URL-scheme dispatch at
+# OTLPBackend.__init__ time chooses between them. Pinned ranges
+# mirror the existing `opentelemetry-api` / `opentelemetry-sdk` floors
+# (>=1.27,<2.0 per architecture L1638 + Story 5.1 review fix).
+otlp = ["opentelemetry-exporter-otlp>=1.27,<2.0"]
 
 [project.urls]
 Homepage = "https://github.com/manykarim/robotframework-agenteval"

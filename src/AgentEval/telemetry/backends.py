@@ -46,7 +46,42 @@ if TYPE_CHECKING:
 __all__ = [
     "MemoryBackend",
     "JSONLBackend",
+    "OTLPBackend",
 ]
+
+# Story 13.2 (Epic 13) — Phase-2 `[otlp]` extra gate.
+# `opentelemetry-exporter-otlp` is a metapackage shipping BOTH the HTTP and
+# gRPC trace exporters. Probe both at gate time so a partial install (only
+# one transport available) is treated the same as no install — the operator
+# explicitly opted into the full `[otlp]` extra, so partial coverage is a
+# bug we want to surface loudly.
+try:
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+        OTLPSpanExporter as _OTLPSpanExporterGRPC,
+    )
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+        OTLPSpanExporter as _OTLPSpanExporterHTTP,
+    )
+
+    _OTLP_AVAILABLE = True
+    _OTLP_IMPORT_ERROR: ImportError | None = None
+except ImportError as _otlp_err:  # pragma: no cover  -- exercised via monkeypatch
+    _OTLPSpanExporterHTTP = None  # type: ignore[misc, assignment]
+    _OTLPSpanExporterGRPC = None  # type: ignore[misc, assignment]
+    _OTLP_AVAILABLE = False
+    _OTLP_IMPORT_ERROR = _otlp_err
+
+
+def _raise_otlp_extra_missing() -> None:
+    """Raise the canonical `[otlp]` extra-missing ImportError.
+
+    Per Story 13.2 D-5 + AC-13.2.1: the message MUST recommend
+    ``uv pip install robotframework-agenteval[otlp]`` so operators can
+    resolve the partial install in one command.
+    """
+    raise ImportError(
+        "OTLPBackend: opentelemetry-exporter-otlp required. Install via: uv pip install robotframework-agenteval[otlp]"
+    ) from _OTLP_IMPORT_ERROR
 
 
 # Allow alnum + `_-.` only; anything else collapses to `_` to avoid path traversal.
@@ -256,3 +291,117 @@ def _safe_dict(d: dict[str, object]) -> dict[str, object]:
             except Exception:  # noqa: BLE001 — last-resort serialization
                 safe[k] = repr(v)
     return safe
+
+
+# Default OTLP HTTP endpoint per OpenTelemetry SDK convention (local Jaeger
+# all-in-one + standalone collector listen on this port for HTTP/protobuf).
+_OTLP_DEFAULT_ENDPOINT_HTTP = "http://localhost:4318/v1/traces"
+
+
+class OTLPBackend:
+    """OTLP trace backend (opt-in via ``trace_backend="otlp"``; Phase-2 FR33b).
+
+    Exports spans via the canonical
+    ``opentelemetry.exporter.otlp.proto.{http,grpc}.OTLPSpanExporter`` based
+    on the URL scheme of ``endpoint``. Requires the ``[otlp]`` optional
+    extra (``opentelemetry-exporter-otlp``); raises ``ImportError`` on
+    construction when the extra is missing.
+
+    Export semantics: spans are routed via a ``BatchSpanProcessor`` attached
+    to the TracerProvider at TracerProvider-config time (NOT via
+    ``flush_test``). ``flush_test`` is a no-op here — included for API
+    uniformity with ``MemoryBackend`` / ``JSONLBackend`` (side-effecting,
+    not idempotent; documented per Story 13.2 D-2).
+
+    URL scheme dispatch (per Story 13.2 D-4 + AC-13.2.2):
+        - ``http://...`` / ``https://...`` → OTLP HTTP/protobuf exporter
+          (default port 4318, ``/v1/traces`` path).
+        - ``grpc://...`` / ``grpcs://...`` → OTLP gRPC exporter (default
+          port 4317). Scheme is stripped to bare ``host:port`` per gRPC SDK
+          convention; ``grpc://`` → ``insecure=True``; ``grpcs://`` → TLS.
+        - Default (``endpoint=None``) → ``http://localhost:4318/v1/traces``
+          per OpenTelemetry SDK convention (local Jaeger HTTP).
+        - Any other scheme → ``ValueError``.
+
+    Dual-export design rationale (Story 13.2 D-7): when ``OTLPBackend`` is
+    active the Listener attaches BOTH the existing in-memory exporter
+    (``SimpleSpanProcessor(InMemorySpanExporter)``) AND the OTLP exporter
+    (``BatchSpanProcessor(OTLPSpanExporter)``) to the TracerProvider, so
+    the existing ``Metric.*`` keyword surface stays functional while
+    spans also flow out to the observability backend.
+
+    Thread safety: the underlying ``OTLPSpanExporter`` is process-resident
+    + thread-safe per OpenTelemetry SDK guarantees. ``OTLPBackend`` itself
+    is read-only after construction; safe for the Listener's process-scope
+    sentinel sharing pattern (Story 5.1 HIGH-A precedent).
+    """
+
+    name = "otlp"
+
+    def __init__(self, endpoint: str | None = None) -> None:
+        if not _OTLP_AVAILABLE:
+            _raise_otlp_extra_missing()
+        # Reject explicit empty-string endpoint up-front (ambiguous: would
+        # the OTel SDK fall back to its env-var default? Prefer a loud
+        # ValueError so the operator notices the empty config).
+        if endpoint == "":
+            raise ValueError(
+                "otlp_endpoint must not be empty string; "
+                f"omit the value to use the default ({_OTLP_DEFAULT_ENDPOINT_HTTP}) "
+                "OR pass a fully-qualified URL"
+            )
+        resolved_endpoint = endpoint if endpoint is not None else _OTLP_DEFAULT_ENDPOINT_HTTP
+        # Parse the URL scheme. Use a simple prefix check rather than urllib
+        # so `grpc://` (not a registered scheme in urllib) parses cleanly.
+        lower = resolved_endpoint.lower()
+        # Annotate the exporter as the common SpanExporter ABC so mypy
+        # accepts both HTTP and gRPC exporter assignments (sibling concrete
+        # classes; mypy can't infer the common base from the first branch).
+        from opentelemetry.sdk.trace.export import SpanExporter as _SpanExporter
+
+        exporter: _SpanExporter
+        if lower.startswith(("http://", "https://")):
+            exporter = _OTLPSpanExporterHTTP(endpoint=resolved_endpoint)
+            self._transport: str = "http"
+        elif lower.startswith("grpcs://"):
+            # gRPC SDK expects bare host:port + insecure=False for TLS.
+            host_port = resolved_endpoint[len("grpcs://") :]
+            exporter = _OTLPSpanExporterGRPC(endpoint=host_port, insecure=False)
+            self._transport = "grpc"
+        elif lower.startswith("grpc://"):
+            # gRPC SDK expects bare host:port + insecure=True for plaintext.
+            host_port = resolved_endpoint[len("grpc://") :]
+            exporter = _OTLPSpanExporterGRPC(endpoint=host_port, insecure=True)
+            self._transport = "grpc"
+        else:
+            # Extract the scheme up to `://` for the error message; if no
+            # `://` present, show the prefix up to the first non-scheme char.
+            scheme_end = resolved_endpoint.find("://")
+            scheme_repr = resolved_endpoint[:scheme_end] if scheme_end >= 0 else resolved_endpoint
+            raise ValueError(
+                f"otlp_endpoint must use http://, https://, grpc://, or grpcs:// scheme; got {scheme_repr!r}"
+            )
+        self._exporter = exporter
+        self._endpoint = resolved_endpoint
+
+    def flush_test(
+        self,
+        test_id: str,
+        suite_id: str = "",
+        output_dir: Path | None = None,
+    ) -> None:
+        """No-op. OTLP export is batched via the SpanProcessor chain.
+
+        The actual export happens via ``BatchSpanProcessor`` attached to the
+        TracerProvider at TracerProvider-config time (per Story 13.2 D-7
+        dual-export design). ``flush_test`` is preserved for API uniformity
+        with ``MemoryBackend`` / ``JSONLBackend`` but does no work.
+
+        Args:
+            test_id: RF Listener v3 test identifier (unused for OTLP).
+            suite_id: RF Listener v3 suite identifier (unused for OTLP).
+            output_dir: Unused for OTLP; accepted for API uniformity.
+        """
+        _ = test_id
+        _ = suite_id
+        _ = output_dir

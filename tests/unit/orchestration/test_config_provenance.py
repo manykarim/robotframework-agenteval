@@ -111,7 +111,8 @@ def test_get_effective_config_with_provenance_returns_full_dict() -> None:
     config = agent.get_effective_config_with_provenance()
     assert isinstance(config, dict)
     assert all(isinstance(v, ConfigValue) for v in config.values())
-    # All FR42+FR11b keys present (10 after Story 5.1 added `trace_path`).
+    # All FR42+FR11b keys present (11 after Story 5.1 added `trace_path`
+    # + Story 13.2 added `otlp_endpoint`).
     expected_keys = {
         "provider",
         "telemetry",
@@ -123,6 +124,7 @@ def test_get_effective_config_with_provenance_returns_full_dict() -> None:
         "allow_external_mcp_blind",
         "max_cost_usd",
         "max_runtime_seconds",
+        "otlp_endpoint",
     }
     assert set(config.keys()) == expected_keys
 

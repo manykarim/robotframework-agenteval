@@ -821,6 +821,10 @@ _FR42_DEFAULTS: dict[str, Any] = {
     "allow_external_mcp_blind": False,
     "max_cost_usd": 5.00,
     "max_runtime_seconds": None,
+    # Story 13.2 (Epic 13) — OTLP trace exporter endpoint (FR33b). Default
+    # None; OTLPBackend falls back to `http://localhost:4318/v1/traces`
+    # (OpenTelemetry SDK convention for local Jaeger HTTP).
+    "otlp_endpoint": None,
 }
 
 # Mapping from FR42 + FR11b kwarg names to `AGENTEVAL_*` env-var names per
@@ -836,6 +840,7 @@ _ENV_VAR_NAMES: dict[str, str] = {
     "allow_external_mcp_blind": "AGENTEVAL_ALLOW_EXTERNAL_MCP_BLIND",
     "max_cost_usd": "AGENTEVAL_MAX_COST_USD",
     "max_runtime_seconds": "AGENTEVAL_MAX_RUNTIME_SECONDS",
+    "otlp_endpoint": "AGENTEVAL_OTLP_ENDPOINT",
 }
 
 # Reverse map for M8 unknown-env-var warning.
@@ -894,7 +899,7 @@ def _coerce_env_value(key: str, raw: str) -> Any:
             raise ValueError(f"{key}: expected float; got {raw!r}") from exc
     if key == "max_runtime_seconds":
         return _parse_optional_float(raw, key=key)
-    # provider, trace_backend — strings; pass through.
+    # provider, trace_backend, trace_path, otlp_endpoint — strings; pass through.
     return raw
 
 

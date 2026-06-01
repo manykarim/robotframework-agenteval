@@ -469,10 +469,11 @@ def test_build_minimized_env_overlays_spec_env(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_resolve_config_returns_all_9_fr42_fr11b_keys() -> None:
-    """Story 5.1 added `trace_path` (10th key) to support the JSONL backend.
+    """Story 5.1 added `trace_path` (10th key); Story 13.2 added `otlp_endpoint` (11th).
 
-    Test name preserved for git-blame continuity; the key count is now 10
-    after Story 5.1's `trace_path` addition (PRD FR33b JSONL backend + AC-5.1.6).
+    Test name preserved for git-blame continuity; the key count is now 11
+    after Story 13.2's `otlp_endpoint` addition (PRD FR33b OTLP backend +
+    AC-13.2.6).
     """
     cfg = resolve_config({}, dotenv_path=Path("/nonexistent/.env"))
     expected_keys = {
@@ -486,6 +487,7 @@ def test_resolve_config_returns_all_9_fr42_fr11b_keys() -> None:
         "allow_external_mcp_blind",
         "max_cost_usd",
         "max_runtime_seconds",
+        "otlp_endpoint",
     }
     assert set(cfg.keys()) == expected_keys
 
@@ -503,6 +505,7 @@ def test_resolve_config_layer4_defaults_match_fr42(monkeypatch: pytest.MonkeyPat
         "AGENTEVAL_ALLOW_EXTERNAL_MCP_BLIND",
         "AGENTEVAL_MAX_COST_USD",
         "AGENTEVAL_MAX_RUNTIME_SECONDS",
+        "AGENTEVAL_OTLP_ENDPOINT",
     ):
         monkeypatch.delenv(env_name, raising=False)
 
@@ -518,6 +521,8 @@ def test_resolve_config_layer4_defaults_match_fr42(monkeypatch: pytest.MonkeyPat
         "allow_external_mcp_blind": False,
         "max_cost_usd": 5.00,
         "max_runtime_seconds": None,
+        # Story 13.2 (Epic 13) — OTLP endpoint default per AC-13.2.6 FR33b.
+        "otlp_endpoint": None,
     }
 
 

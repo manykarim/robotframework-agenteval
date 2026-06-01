@@ -201,6 +201,14 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
             (FR11b + ADR-015). Default None = no cap (opt-in via explicit
             value). Sibling to `max_cost_usd`; catches slow MCP-server startup
             compounded across trials.
+        otlp_endpoint: OTLP collector endpoint URL (FR33b; Story 13.2).
+            Only consumed when ``trace_backend="otlp"``. URL scheme selects
+            transport: ``http://`` / ``https://`` → OTLP HTTP/protobuf
+            exporter (port 4318); ``grpc://`` / ``grpcs://`` → OTLP gRPC
+            exporter (port 4317). Default ``None`` → OTLPBackend falls back
+            to ``http://localhost:4318/v1/traces`` (local Jaeger HTTP).
+            Requires the ``[otlp]`` extra (``opentelemetry-exporter-otlp``);
+            constructing OTLPBackend without the extra raises ``ImportError``.
 
     FR41 precedence behavior (Story 1b.1):
         Each `__init__` parameter defaults to a private sentinel; if the caller
@@ -234,6 +242,7 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
         allow_external_mcp_blind: bool = _UNSET,
         max_cost_usd: float = _UNSET,
         max_runtime_seconds: float | None = _UNSET,
+        otlp_endpoint: str | None = _UNSET,
     ) -> None:
         # Story 1b.1 FR41 wiring: strip _UNSET sentinels, pass the remainder
         # to resolve_config() so the env-var / .env / defaults layers can fire
@@ -250,6 +259,7 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
             "allow_external_mcp_blind": allow_external_mcp_blind,
             "max_cost_usd": max_cost_usd,
             "max_runtime_seconds": max_runtime_seconds,
+            "otlp_endpoint": otlp_endpoint,
         }
         kwarg_overrides = {k: v for k, v in kwarg_overrides.items() if v is not _UNSET}
         resolved = resolve_config(kwarg_overrides)
@@ -267,6 +277,7 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
         self._allow_external_mcp_blind = resolved["allow_external_mcp_blind"]
         self._max_cost_usd = resolved["max_cost_usd"]
         self._max_runtime_seconds = resolved["max_runtime_seconds"]
+        self._otlp_endpoint = resolved["otlp_endpoint"]
 
         # Internal scope for MCP server lifecycle (Story 1b.1 _resolve_scope
         # translates the user-vocab `mcp_per_test` into the internal Scope enum).
@@ -443,6 +454,7 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
             "allow_external_mcp_blind": self._allow_external_mcp_blind,
             "max_cost_usd": self._max_cost_usd,
             "max_runtime_seconds": self._max_runtime_seconds,
+            "otlp_endpoint": self._otlp_endpoint,
         }
 
     @keyword(name="Get Keyword Tier")
