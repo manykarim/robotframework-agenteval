@@ -73,15 +73,12 @@ from typing import Any
 
 from robot.api.deco import keyword
 
-from AgentEval._kernel.discovery import get_adapter
 from AgentEval._kernel.tier import tier
 from AgentEval.discoverability.loader import load_discoverability_tasks
 from AgentEval.discoverability.schema import (
+    DiscoverabilityComparisonResult,
     DiscoverabilityResult,
-    DiscoverabilitySummary,
-    TaskResult,
 )
-from AgentEval.discoverability.wilson_ci import wilson_score_interval
 from AgentEval.mcp._parser import (
     get_tool_schema,
     parse_mcp_servers,
@@ -533,106 +530,251 @@ class MCPLibrary:
         # Load + validate the tasks YAML.
         task_list = load_discoverability_tasks(tasks)
 
-        # Resolve the adapter (Phase-1 simplified: route ALL kwargs to ctor
-        # like Story 4.3 pre-split-introspection — orchestration's split
-        # logic lives on OrchestrationLibrary, not MCPLibrary; MCPLibrary
-        # is a Phase-1 sub-library that doesn't yet inherit the split.
-        # DF-4.4-S2 carry-over for ctor/run split parity.).
-        adapter_cls = get_adapter(adapter)
-        adapter_ctor_kwargs: dict[str, Any] = dict(kwargs)
-        if model is not None:
-            adapter_ctor_kwargs["model"] = model
-        try:
-            adapter_instance = adapter_cls(**adapter_ctor_kwargs)
-        except TypeError as exc:
-            # Story 4.4 code-review MED-D fix 2026-05-20 (Blind): pre-edit
-            # comment claimed "fall back to no-kwarg construction + log the
-            # dropped kwargs" but the handler actually re-raises with no
-            # fallback. Fixed the comment-vs-code drift — re-raise is
-            # intentional + DF-4.4-S2 carry-over plumbs the real split.
-            raise TypeError(
-                f"Adapter {adapter!r} doesn't accept kwargs {sorted(adapter_ctor_kwargs)}; "
-                "DF-4.4-S2 carry-over (ctor/run split parity for MCPLibrary "
-                "lands in Phase-1.5 — mirroring Story 4.3's "
-                "`_split_adapter_kwargs` introspection on OrchestrationLibrary). "
-                "For now, pass kwargs the adapter accepts."
-            ) from exc
+        # Story 13.3 refactor: per-adapter logic extracted to
+        # `discoverability/_internal.run_single_adapter_discoverability` so
+        # the new `MCP.Compare Tool Discoverability` keyword reuses it
+        # without ~80 LoC duplication. Behavior MUST equal pre-refactor —
+        # verified by Story 4.4's 50+ existing tests passing unchanged.
+        from AgentEval.discoverability._internal import run_single_adapter_discoverability
 
-        # Per-call mcp_servers integration is DF-4.1-S2 / DF-4.2-S1; for now
-        # we DON'T forward the mcp_server name since the adapter would just
-        # raise NotImplementedError. Phase-1 dispatches WITHOUT MCP context;
-        # tool-call success is gated on what the model returns from prompt
-        # alone.
-        _ = mcp_server
+        return run_single_adapter_discoverability(
+            mcp_server=mcp_server,
+            adapter=adapter,
+            model=model,
+            task_list=task_list,
+            trials_per_task=trials_per_task,
+            max_cost_usd=max_cost_usd,
+            max_runtime_seconds=max_runtime_seconds,
+            extra_adapter_kwargs=dict(kwargs),
+            t_start=t_start,
+        )
 
-        per_task: list[TaskResult] = []
-        total_cost = 0.0
-        for task in task_list:
-            tool_calls_per_trial: list[list[Any]] = []
-            cost_per_trial: list[float] = []
-            success_count = 0
-            competing_set: set[str] = set()
-            for _ in range(trials_per_task):
-                run_result = adapter_instance.run(task.prompt)
-                tool_calls_per_trial.append(list(run_result.tool_calls))
-                cost_per_trial.append(run_result.cost_usd)
-                total_cost += run_result.cost_usd
-                called_names = {tc.name for tc in run_result.tool_calls}
-                # Story 4.4 code-review 3-way MED-A fix 2026-05-20 (Edge-cases
-                # M1 + Codex MED + Blind LOW-1): when expected_tools is empty,
-                # wildcard-success mode is active — ANY tool call counts AND
-                # ALL called names go into competing_tools_picked so the
-                # verdict matrix retains visibility into what the model
-                # picked. Pre-edit the `competing_set.update(...)` line was
-                # only reachable in the `if task.expected_tools` branch,
-                # leaving wildcard-mode tasks with permanently-empty
-                # competing_tools_picked.
-                if task.expected_tools:
-                    expected_set = set(task.expected_tools)
-                    if called_names & expected_set:
-                        success_count += 1
-                    competing_set.update(called_names - expected_set)
-                else:
-                    if called_names:
-                        success_count += 1
-                    competing_set.update(called_names)
-            lower, upper = wilson_score_interval(success_count, trials_per_task)
-            per_task.append(
-                TaskResult(
-                    task_id=task.id,
-                    task_prompt=task.prompt,
-                    trials_run=trials_per_task,
-                    success_count=success_count,
-                    tool_calls_per_trial=tool_calls_per_trial,
-                    competing_tools_picked=sorted(competing_set),
-                    cost_per_trial_usd=cost_per_trial,
-                    wilson_ci_lower=lower,
-                    wilson_ci_upper=upper,
-                )
+    # --------------------------------------------------------------- #
+    # Story 13.3: Cross-adapter comparison (PRD FR10b)
+    # --------------------------------------------------------------- #
+
+    @keyword(name="MCP.Compare Tool Discoverability")
+    @tier(3)
+    def get_tool_discoverability_comparison(
+        self,
+        mcp_server: str = "",
+        adapters: list[str] | None = None,
+        tasks: str = "",
+        trials_per_task: int = 3,
+        max_cost_usd: float = 20.00,
+        max_runtime_seconds: float | None = None,
+        model: str | None = None,
+        **kwargs: Any,
+    ) -> DiscoverabilityComparisonResult:
+        """Compares Tool Discoverability across ≥2 coding-agent adapters with statistical significance (PRD FR10b; Story 13.3).
+
+        [Tier 3 — Stochastic Fan-Out] — runs `Get Tool Discoverability`
+        once per adapter against the SAME task set, then computes
+        pairwise Mann-Whitney U deltas across the per-task pass-rate
+        distributions. Returns a `DiscoverabilityComparisonResult` with
+        per-adapter results + cross-adapter deltas + multi-column
+        cohort heatmap + aggregate summary.
+
+        Requires the ``[agenteval-advanced]`` optional extra (scipy +
+        numpy) for the Mann-Whitney U cross-adapter delta computation;
+        raises ``ImportError`` on invocation WITHOUT the extra (fail-fast
+        BEFORE running any per-adapter fan-out — operators discovering
+        the missing extra should not pay 3-adapter trial cost first).
+
+        | =Arguments= | =Description= |
+        | ``mcp_server`` | Name of the MCP server (per `Start Server`). Same Phase-1 carve-out as `Get Tool Discoverability` (DF-4.1-S2 + DF-4.2-S1). |
+        | ``adapters`` | REQUIRED ``list[str]`` of adapter names; ≥2 entries required. N=3+ enables ranking across Claude/GPT/Copilot/.... |
+        | ``tasks`` | Path to the discoverability tasks YAML (loaded ONCE; shared across adapters). |
+        | ``trials_per_task`` | Pass@k trials per task. Defaults to ``3``. |
+        | ``max_cost_usd`` | Budget cap. Defaults to ``20.00`` per epics.md L2186 (4× the single-adapter default reflecting N=3-adapter typical cost). Phase-1 carve-out DF-13.3-S1: tracked NOT enforced (same MCPLibrary architectural gap as DF-4.4-S1 / C20). |
+        | ``max_runtime_seconds`` | Runtime cap. Phase-1: tracked, NOT enforced. |
+        | ``model`` | Optional ``str`` forwarded to ALL adapters' ctor. Phase-2.5 (DF-13.3-S4): per-adapter model overrides via `adapter_models: dict[str, str]` kwarg. |
+        | ``**kwargs`` | Forward-compat kwargs routed to each adapter's ctor. |
+
+        Returns ``DiscoverabilityComparisonResult`` with ``adapters`` +
+        ``per_adapter_results`` (one ``DiscoverabilityResult`` per
+        adapter) + ``cross_adapter_deltas`` (C(N, 2) ``PairwiseAdapterDelta``
+        entries keyed ``f"{a1}_vs_{a2}"``) + ``heatmap`` (multi-column
+        ``CohortHeatmap`` via ``from_comparison``) + ``summary``
+        (``DiscoverabilityComparisonSummary``).
+
+        Raises ``ImportError`` when ``[agenteval-advanced]`` extra is
+        missing (Mann-Whitney U requires scipy/numpy). Raises
+        ``ValueError`` on missing/empty ``mcp_server`` / ``tasks`` /
+        ``adapters`` (≥2 required) / invalid ``trials_per_task``.
+        Raises ``InvalidDiscoverabilityTasksError`` on tasks YAML
+        parse/schema failure. Raises ``AdapterDiscoveryError`` on
+        unknown adapter name.
+
+        Example:
+        | ${comparison}=    `MCP.Compare Tool Discoverability`
+        | ...    mcp_server=rf-mcp
+        | ...    adapters=${{['generic', 'claude_code_cli', 'codex_cli']}}
+        | ...    tasks=${CURDIR}/tasks.yaml
+        | ...    trials_per_task=5
+        | ...    max_cost_usd=20.00
+        | Should Be Equal As Strings    ${comparison.summary.best_adapter}    claude_code_cli
+        | Should Be True    ${comparison.cross_adapter_deltas['generic_vs_codex_cli'].significant_at_alpha_05}
+
+        Notes:
+        - Story 13.3 (Epic 13) ships this Phase-2 keyword behind the ``[agenteval-advanced]`` optional extra (the Mann-Whitney U dependency from Story 13.1).
+        - PRD FR10b ratifies the ``DiscoverabilityComparisonResult`` shape; epics.md L2186-2189 ratifies the keyword signature + behavior.
+        - Math reference: ``AgentEval.stats.mannwhitney.compute_mann_whitney_u`` (Story 13.1 pure helper at ``src/AgentEval/stats/mannwhitney.py``). The keyword surface ``Stat.Mann Whitney U`` is NOT called here because the input is ``list[float]`` per-task pass rates (NOT ``list[KeywordRun]``).
+        - ``@tier(3)`` per fan-out semantics — stochastic by tier definition; no bit-identical FR31a guarantee (Story 13.1 HIGH-C concern doesn't apply at @tier(3)).
+        - Phase-1 carve-out DF-13.3-S1: ``@guarded_fanout`` enforcement DEFERRED (same MCPLibrary architectural gap as DF-4.4-S1 / C20).
+        - Phase-2.5 carry-overs: DF-13.3-S2 (per-adapter MCP attachment gated on C72 + C68/C69/C73/C75); DF-13.3-S3 (Bonferroni / Holm multi-pairwise correction).
+        - Sibling keyword: `MCP.Get Tool Discoverability` (Phase-1 single-adapter; this keyword's N=1 case is intentionally rejected via the ≥2 validation — single-adapter callers should use the simpler `Get` keyword).
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        t_start = time.monotonic()
+
+        # Validate args (mirrors single-adapter Get + adds N≥2 constraint).
+        if not mcp_server:
+            raise ValueError(
+                "MCP.Compare Tool Discoverability requires `mcp_server=<name>` kwarg "
+                "(name of an MCP server started via `MCP.Start Server`); empty "
+                "string is rejected even in Phase-1 where DF-4.1-S2 stubs the "
+                "adapter-side integration."
             )
+        if not tasks:
+            raise ValueError("MCP.Compare Tool Discoverability requires `tasks=<yaml-path>` kwarg")
+        if trials_per_task < 1:
+            raise ValueError(f"trials_per_task must be >= 1; got {trials_per_task}")
+        if adapters is None or len(adapters) < 2:
+            raise ValueError(
+                f"MCP.Compare Tool Discoverability requires adapters=[<adapter_1>, "
+                f"<adapter_2>, ...] with >= 2 entries; got {adapters!r}"
+            )
+        if len(set(adapters)) != len(adapters):
+            raise ValueError(
+                f"MCP.Compare Tool Discoverability requires distinct adapter names; got duplicates in {adapters!r}"
+            )
+
+        # `[agenteval-advanced]` extras gate (D-6 + L-2). Fail-fast BEFORE
+        # the per-adapter fan-out so operators discovering the missing
+        # extra don't pay N-adapter trial cost first. Direct raise per
+        # AC-13.3.4 in-flight decision (b) — the `Stat.`-prefixed helper
+        # `_raise_advanced_extra_missing` would mis-frame the message
+        # for an `MCP.`-prefixed keyword.
+        #
+        # Read the attribute via module-level access (NOT
+        # `from X import Y` which binds a local) so test
+        # `monkeypatch.setattr(stats_lib, "_ADVANCED_AVAILABLE", False)`
+        # is observed correctly even when this code path runs AFTER
+        # Story 13.1's `test_advanced_extras_gate.py` has run + cleaned
+        # up its own monkeypatch in the same pytest session.
+        from AgentEval.stats import library as _stats_lib
+
+        if not _stats_lib._ADVANCED_AVAILABLE:
+            raise ImportError(
+                "MCP.Compare Tool Discoverability: scipy + numpy required. "
+                "Install via: uv pip install robotframework-agenteval[agenteval-advanced]"
+            )
+
+        # Load tasks YAML ONCE (shared across adapters).
+        task_list = load_discoverability_tasks(tasks)
+
+        # Run per-adapter discoverability serially. Phase-2.5 may parallelize
+        # via thread pool / asyncio; Phase-2 ships serial for simplicity +
+        # safer cost accounting.
+        from AgentEval._heatmap.models import CohortHeatmap
+        from AgentEval.discoverability._internal import run_single_adapter_discoverability
+        from AgentEval.discoverability.schema import (
+            DiscoverabilityComparisonResult,
+            DiscoverabilityComparisonSummary,
+            PairwiseAdapterDelta,
+        )
+        from AgentEval.stats.mannwhitney import compute_mann_whitney_u
+
+        per_adapter_results: dict[str, DiscoverabilityResult] = {}
+        for adapter_name in adapters:
+            # Per-adapter timer measures only THIS adapter's slice — useful
+            # for per-adapter cost auditing. The comparison-level wall-clock
+            # is measured separately from the keyword-entry `t_start` below.
+            per_adapter_results[adapter_name] = run_single_adapter_discoverability(
+                mcp_server=mcp_server,
+                adapter=adapter_name,
+                model=model,
+                task_list=task_list,
+                trials_per_task=trials_per_task,
+                max_cost_usd=max_cost_usd,
+                max_runtime_seconds=max_runtime_seconds,
+                extra_adapter_kwargs=dict(kwargs),
+                t_start=time.monotonic(),
+            )
+
+        # Build C(N, 2) pairwise deltas. Ordering: itertools.combinations
+        # preserves input order so `adapter_a` always comes before
+        # `adapter_b` in the input list.
+        import itertools
+
+        cross_adapter_deltas: dict[str, PairwiseAdapterDelta] = {}
+        for adapter_a, adapter_b in itertools.combinations(adapters, 2):
+            rates_a = [t.pass_rate for t in per_adapter_results[adapter_a].per_task_results]
+            rates_b = [t.pass_rate for t in per_adapter_results[adapter_b].per_task_results]
+            # Empty per-task lists guard: skip the comparison if either is
+            # empty (would otherwise raise from `compute_mann_whitney_u`).
+            if not rates_a or not rates_b:
+                continue
+            mwu = compute_mann_whitney_u(rates_a, rates_b)
+            delta_key = f"{adapter_a}_vs_{adapter_b}"
+            mean_a = sum(rates_a) / len(rates_a)
+            mean_b = sum(rates_b) / len(rates_b)
+            import math as _math
+
+            cross_adapter_deltas[delta_key] = PairwiseAdapterDelta(
+                adapter_a=adapter_a,
+                adapter_b=adapter_b,
+                pass_rate_delta=mean_a - mean_b,
+                mann_whitney_result=mwu,
+                significant_at_alpha_05=(not _math.isnan(mwu.p_value)) and mwu.p_value < 0.05,
+            )
+
+        # Build summary aggregate.
+        pass_rate_per_adapter = {name: per_adapter_results[name].summary.overall_pass_rate for name in adapters}
+        best_adapter = max(pass_rate_per_adapter, key=lambda a: pass_rate_per_adapter[a])
+        worst_adapter = min(pass_rate_per_adapter, key=lambda a: pass_rate_per_adapter[a])
+        total_cost = sum(r.summary.total_cost_usd for r in per_adapter_results.values())
+        # Wall-clock measured from keyword-entry `t_start` — what the operator
+        # ACTUALLY waited for (serial execution Phase-2; Phase-2.5 parallel
+        # target). Story 13.3 code-review HIGH-A fix 2026-06-01 (Codex HIGH-1
+        # + Opus MED-2 2-way): pre-fix `max(per-adapter runtimes)` reported
+        # the slowest single adapter, underreporting actual wait time by
+        # ~N-1× under serial execution. Per-adapter runtimes remain in
+        # `per_adapter_results[adapter].summary.total_runtime_seconds`.
         total_runtime = time.monotonic() - t_start
+        summary = DiscoverabilityComparisonSummary(
+            total_cost_usd=total_cost,
+            total_runtime_seconds=total_runtime,
+            pass_rate_per_adapter=pass_rate_per_adapter,
+            best_adapter=best_adapter,
+            worst_adapter=worst_adapter,
+        )
 
-        # Overall pass rate: weighted by trials.
-        total_trials = sum(t.trials_run for t in per_task)
-        total_successes = sum(t.success_count for t in per_task)
-        overall_pass_rate = (total_successes / total_trials) if total_trials else 0.0
+        # Build a provisional comparison result so CohortHeatmap.from_comparison
+        # can read the per-adapter results. The CohortHeatmap construction
+        # happens AFTER per_adapter_results is populated; we pass a
+        # "placeholder" comparison via direct construction (the
+        # CohortHeatmap.from_comparison reads result.adapters + result.per_adapter_results
+        # only, NOT the heatmap field — no chicken-and-egg).
+        #
+        # Build the heatmap via a lightweight namespace stand-in: the
+        # classmethod accesses .adapters + .per_adapter_results.
+        class _ComparisonShim:
+            pass
 
-        # Phase-1: mcp_coverage hardcoded to "hosted_in_process" since
-        # Phase-1 doesn't yet attach real MCP via the adapter (DF-4.4-S3
-        # carry-over: Epic 5 hosted-MCP observer wires real coverage detection).
-        _ = max_cost_usd
-        _ = max_runtime_seconds
-        # Story 4.4 code-review HIGH-B fix 2026-05-20 (Auditor citation-drift
-        # catch): PRD FR10a L1499 ratifies `summary` nesting for the aggregate
-        # roll-up; pre-edit shape flattened the 3 summary fields into
-        # top-level result attributes. "Fix-the-losing-source-NOW" pattern
-        # per feedback_citation_drift_first_class — implementation realigned.
-        return DiscoverabilityResult(
-            per_task_results=per_task,
-            summary=DiscoverabilitySummary(
-                overall_pass_rate=overall_pass_rate,
-                total_cost_usd=total_cost,
-                total_runtime_seconds=total_runtime,
-            ),
-            mcp_coverage="hosted_in_process",
+        shim = _ComparisonShim()
+        shim.adapters = tuple(adapters)  # type: ignore[attr-defined]
+        shim.per_adapter_results = per_adapter_results  # type: ignore[attr-defined]
+        heatmap = CohortHeatmap.from_comparison(shim)  # type: ignore[arg-type]
+
+        # Track end-to-end runtime (caller-side; not stored separately
+        # but contributes to the per-adapter timers we MAX'd above).
+        _ = t_start
+
+        return DiscoverabilityComparisonResult(
+            adapters=tuple(adapters),
+            per_adapter_results=per_adapter_results,
+            cross_adapter_deltas=cross_adapter_deltas,
+            heatmap=heatmap,
+            summary=summary,
         )

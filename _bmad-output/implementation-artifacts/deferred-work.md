@@ -382,6 +382,14 @@ Added by Story 4.3 (Orchestration Keywords — Epic 4 Story 3). Pre-create-story
 
 - **DF-13.2-S3 (Phase-2.5 OTLP exporter circuit-breaker + JSONL fallback on sustained collector outage)** — Story 13.2 D-10 path-of-least-amendment decision 2026-06-01 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Story 13.2 ships `BatchSpanProcessor(OTLPSpanExporter)` with OpenTelemetry SDK built-in retry but NO circuit-breaker for sustained outages — if the collector is unreachable for N consecutive batches, the BatchSpanProcessor queue fills + drops spans silently. Phase-2.5 work: ship an `OTLPCircuitBreakerProcessor` wrapping `BatchSpanProcessor` that falls back to JSONL-on-disk persistence after `failure_threshold` consecutive batch failures + auto-resumes when the collector becomes reachable. Catalogued as C88. Effort: M. Phase-2.5.
 
+## Deferred from: story-13.3 dev (2026-06-01) — UPSTREAM pre-emptive per Epic 11 retro
+
+- **DF-13.3-S1 (Phase-2.5 `@guarded_fanout` enforcement on `MCP.Compare Tool Discoverability`)** — Story 13.3 D-10 path-of-least-amendment decision 2026-06-01 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Story 13.3 ships the cross-adapter compare keyword WITHOUT `@guarded_fanout` decorator — same MCPLibrary architectural gap as DF-4.4-S1 / C20. Cross-adapter fan-out compounds cost N× (N adapters × M tasks × trials), making this carve-out MORE expensive than the single-adapter case. Catalogued as C89. Effort: M. Shared resolution with C20. Phase-2.5.
+
+- **DF-13.3-S2 (Phase-2.5 real per-adapter MCP-server attachment in `MCP.Compare Tool Discoverability`)** — Story 13.3 D-10 path-of-least-amendment decision 2026-06-01 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Same `mcp_server` accepted-but-not-forwarded carve-out as `Get Tool Discoverability` (DF-4.1-S2 + DF-4.2-S1); for Phase-2 SDK + CLI adapters gated on C72 + C68/C69/C73/C75 per-adapter HostedMcpObserver wiring. Catalogued as C90. Effort: M. Phase-2.5.
+
+- **DF-13.3-S3 (Phase-2.5 multi-pairwise correction (Bonferroni / Holm) for cross-adapter delta significance)** — Story 13.3 D-10 path-of-least-amendment decision 2026-06-01 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Story 13.3 ships pairwise comparisons WITHOUT multiple-testing correction; for N=3 adapters there are C(3,2)=3 pairs and uncorrected α=0.05 inflates the family-wise error rate. Phase-2.5: add `correction_method: Literal["none", "bonferroni", "holm"]` kwarg + `summary.bonferroni_adjusted_alpha` + `delta.significant_at_corrected_alpha` fields. Catalogued as C91. Effort: S. Phase-2.5.
+
 ---
 
 *Update this file as new deferred items emerge from future reviews.*

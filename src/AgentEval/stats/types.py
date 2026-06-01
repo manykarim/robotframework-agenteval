@@ -64,14 +64,22 @@ class MannWhitneyResult:
     n_b: int
 
     def __post_init__(self) -> None:
+        import math
+
         if self.n_a < 1:
             raise ValueError(f"n_a must be >= 1; got {self.n_a!r}")
         if self.n_b < 1:
             raise ValueError(f"n_b must be >= 1; got {self.n_b!r}")
         if not (-1.0 <= self.effect_size_r <= 1.0):
             raise ValueError(f"effect_size_r must be in [-1.0, 1.0]; got {self.effect_size_r!r}")
-        if not (0.0 <= self.p_value <= 1.0):
-            raise ValueError(f"p_value must be in [0.0, 1.0]; got {self.p_value!r}")
+        # `p_value=nan` is the scipy convention when both samples have
+        # identical rank distributions (no variance → no test possible).
+        # Permit nan + the [0, 1] range; reject anything else.
+        if not (math.isnan(self.p_value) or 0.0 <= self.p_value <= 1.0):
+            raise ValueError(
+                f"p_value must be in [0.0, 1.0] or nan (scipy identical-samples convention); "
+                f"got {self.p_value!r}"
+            )
 
 
 @dataclass(frozen=True, slots=True)

@@ -20,7 +20,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AgentEval.discoverability.schema import DiscoverabilityResult
+    from AgentEval.discoverability.schema import (
+        DiscoverabilityComparisonResult,
+        DiscoverabilityResult,
+    )
 
 __all__ = ["CohortHeatmap"]
 
@@ -62,6 +65,42 @@ class CohortHeatmap:
         tasks = tuple(t.task_id for t in result.per_task_results)
         cells = tuple((t.task_id, model_name, t.pass_rate) for t in result.per_task_results)
         return cls(tasks=tasks, models=(model_name,), cells=cells)
+
+    @classmethod
+    def from_comparison(
+        cls,
+        result: DiscoverabilityComparisonResult,
+    ) -> CohortHeatmap:
+        """Build a multi-column heatmap from a cross-adapter comparison (Story 13.3 / FR10b).
+
+        Columns = adapter names (preserving input order from ``result.adapters``).
+        Rows = task IDs (union across all per-adapter results, preserving
+        first-encounter order — defensively handles the edge case where a
+        stub adapter dropped a task; in production all adapters run the
+        SAME task set so the union equals each adapter's task list).
+
+        Args:
+            result: Story 13.3 ``DiscoverabilityComparisonResult``.
+
+        Returns:
+            ``CohortHeatmap`` with one column per adapter + one row per task.
+        """
+        # Build the row list as the union preserving first-encounter order.
+        seen: set[str] = set()
+        tasks_list: list[str] = []
+        for adapter in result.adapters:
+            for task_result in result.per_adapter_results[adapter].per_task_results:
+                if task_result.task_id not in seen:
+                    seen.add(task_result.task_id)
+                    tasks_list.append(task_result.task_id)
+        tasks = tuple(tasks_list)
+        models = result.adapters
+        cells = tuple(
+            (task_result.task_id, adapter, task_result.pass_rate)
+            for adapter in result.adapters
+            for task_result in result.per_adapter_results[adapter].per_task_results
+        )
+        return cls(tasks=tasks, models=models, cells=cells)
 
     def as_dict(self) -> dict[str, dict[str, float]]:
         """Nested dict: ``{task_id: {model_name: pass_at_k}}``."""
