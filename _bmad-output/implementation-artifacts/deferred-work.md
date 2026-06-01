@@ -366,6 +366,14 @@ Added by Story 4.3 (Orchestration Keywords — Epic 4 Story 3). Pre-create-story
 
 - **DF-12.2-S2 (Phase-2 active-learning calibration set curation)** — Story 12.2 D-8 path-of-least-amendment decision 2026-05-27 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Phase-1 ships `load_calibration_set` reading a static human-curated YAML calibration set. Phase-2 work: auto-select diverse calibration examples from the operator's existing trace history (cluster by `cost_usd`/`latency`/`tool_count` distribution, pick representatives from each cluster); semi-supervised labeling UX where the human labels only the highest-uncertainty examples. Catalogued as C82. Effort: L (active-learning calibration set curator + semi-supervised labeling UX + uncertainty-sampling integration test). Phase-2.
 
+## Deferred from: story-13.1 dev (2026-06-01) — UPSTREAM pre-emptive per Epic 11 retro
+
+- **DF-13.1-S1 (Phase-2 one-sided alternatives for `Stat.Mann Whitney U`)** — Story 13.1 D-12 path-of-least-amendment decision 2026-06-01 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Phase-1 ships two-sided Mann-Whitney U only (matches PRD FR29a verbatim signature). Phase-2 work: extend the keyword with an `alternative: Literal["two-sided", "greater", "less"] = "two-sided"` kwarg per `scipy.stats.mannwhitneyu` signature; update `MannWhitneyResult` docstring to clarify which tail the `p_value` corresponds to under each alternative. Catalogued as C83. Effort: S. Phase-2.
+
+- **DF-13.1-S2 (Phase-2 BCa / BC-corrected Bootstrap CI methods)** — Story 13.1 D-12 path-of-least-amendment decision 2026-06-01 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Phase-1 ships percentile bootstrap only (`method="percentile"`). Phase-2 work: implement BCa (bias-corrected & accelerated) + BC (bias-corrected) variants per `scipy.stats.bootstrap(method=)` signature; add `method: Literal["percentile", "bca", "bc"] = "percentile"` kwarg to `Stat.Bootstrap Confidence Interval`. Catalogued as C84. Effort: M. Phase-2.
+
+- **DF-13.1-S3 (Phase-2 `MannWhitneyResult.effect_size_interpretation` Cohen-band Literal field)** — Story 13.1 D-12 path-of-least-amendment decision 2026-06-01 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Phase-1 ships raw `effect_size_r` only. Phase-2 work: add `effect_size_interpretation: Literal["negligible", "small", "medium", "large"]` field per Cohen's conventions (negligible: `|r| < 0.1`; small: `0.1 <= |r| < 0.3`; medium: `0.3 <= |r| < 0.5`; large: `|r| >= 0.5`); derive deterministically in `__post_init__`. Catalogued as C85. Effort: XS. Phase-2.
+
 ---
 
 *Update this file as new deferred items emerge from future reviews.*

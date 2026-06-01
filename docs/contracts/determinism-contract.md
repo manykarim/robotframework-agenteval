@@ -26,7 +26,7 @@ The following single-paragraph summary is **byte-identical** to PRD L1211 per FR
 
 ### Out-of-scope
 
-- Statistical primitives' mathematical formulas (`pass_at_k`, Mann-Whitney U, Cliff's δ, bootstrap) — that's the `Stat.` library docstrings + `stability-surface.md`.
+- Statistical primitives' mathematical formulas (`pass_at_k`, Mann-Whitney U, Cliff's δ, bootstrap) — that's the `Stat.` library docstrings + `stability-surface.md`. (Phase-2: `Stat.Mann Whitney U` / `Stat.Cliff Delta` / `Stat.Bootstrap Confidence Interval` shipped Story 13.1 under the `[agenteval-advanced]` extra; all Tier-1 per the closed-form / seed-deterministic computation classification.)
 - The specific seed-management strategy for `Stat.Run N Times` — Epic 6 Story 6.x owns the seed contract.
 
 ## Contract

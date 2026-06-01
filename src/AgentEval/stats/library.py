@@ -51,12 +51,39 @@ from AgentEval._kernel.redaction import redact
 from AgentEval._kernel.tier import tier
 from AgentEval.errors import TierViolationError
 from AgentEval.stats import _internal
-from AgentEval.stats.types import KeywordRun
+from AgentEval.stats.types import KeywordRun, MannWhitneyResult
 
 __all__ = ["StatsLibrary"]
 
 # Browser-Library-style docstring migration marker (Phase 2, 2026-05-26).
 _BROWSER_STYLE_MIGRATED = True
+
+# Story 13.1 — Phase-2 `[agenteval-advanced]` extra gate. scipy + numpy power
+# the 3 advanced keyword methods (Mann-Whitney U, Cliff Delta, Bootstrap CI).
+# The `StatsLibrary` class itself MUST remain importable WITHOUT the extra so
+# Phase-1 surface keywords stay functional; only the 3 Phase-2 methods raise
+# ImportError on invocation.
+try:
+    import numpy as _numpy_advanced  # noqa: F401
+    import scipy as _scipy_advanced  # noqa: F401
+
+    _ADVANCED_AVAILABLE = True
+    _ADVANCED_IMPORT_ERROR: ImportError | None = None
+except ImportError as _advanced_err:  # pragma: no cover  -- exercised via monkeypatch
+    _ADVANCED_AVAILABLE = False
+    _ADVANCED_IMPORT_ERROR = _advanced_err
+
+
+def _raise_advanced_extra_missing(keyword_name: str) -> None:
+    """Raise the canonical `[agenteval-advanced]` extra-missing ImportError.
+
+    Per Story 13.1 D-3 + epics.md L2153: the ImportError MUST recommend
+    ``uv pip install robotframework-agenteval[agenteval-advanced]``.
+    """
+    raise ImportError(
+        f"Stat.{keyword_name}: scipy + numpy required. "
+        f"Install via: uv pip install robotframework-agenteval[agenteval-advanced]"
+    ) from _ADVANCED_IMPORT_ERROR
 
 
 class StatsLibrary:
@@ -369,6 +396,201 @@ class StatsLibrary:
                     f"keyword={kw_name!r}.\n{diff_repr}"
                 )
             )
+
+    # ----------------------------------------------------------------- #
+    # FR29a/b/c — Phase-2 advanced statistical primitives (Story 13.1)  #
+    # Behind `[agenteval-advanced]` optional extra (scipy + numpy).     #
+    # ----------------------------------------------------------------- #
+
+    @keyword(name="Stat.Mann Whitney U")
+    @tier(1)
+    def compute_mann_whitney_u(
+        self,
+        runs_a: list[KeywordRun],
+        runs_b: list[KeywordRun],
+        predicate: Callable[[KeywordRun], float] | None = None,
+    ) -> MannWhitneyResult:
+        """Computes the two-sided Mann-Whitney U test on two independent run samples (PRD FR29a; Story 13.1).
+
+        [Tier 1 — Deterministic] — closed-form non-parametric test for
+        whether two independent samples were drawn from the same
+        distribution. Returns ``MannWhitneyResult`` with U statistic,
+        two-sided p-value, rank-biserial effect size, and sample sizes.
+
+        Requires the ``[agenteval-advanced]`` optional extra (scipy + numpy);
+        raises ``ImportError`` when invoked without it. The ``StatsLibrary``
+        class itself remains importable without the extra; only this Phase-2
+        keyword method raises on invocation.
+
+        | =Arguments= | =Description= |
+        | ``runs_a`` | ``list[KeywordRun]`` — first sample (typically the result of `Stat.Run N Times` against flow A). |
+        | ``runs_b`` | ``list[KeywordRun]`` — second sample (typically the result of `Stat.Run N Times` against flow B). |
+        | ``predicate`` | REQUIRED ``Callable[[KeywordRun], float]`` value-extractor producing the numeric quantity to compare (e.g., ``lambda r: r.latency_seconds``). Default ``None`` raises ``ValueError`` — no sensible default numeric metric across all ``KeywordRun`` shapes. NOTE: distinct from `Stat.Get Pass At K`'s boolean predicate. |
+
+        Raises ``ImportError`` when scipy/numpy are unavailable (missing
+        ``[agenteval-advanced]`` extra). Raises ``ValueError`` when
+        ``predicate`` is ``None`` OR when either ``runs_a`` / ``runs_b`` is
+        empty.
+
+        Example:
+        | @{runs_a} =    `Stat.Run N Times`    n=20    keyword=Send Prompt    keyword_args=${{['adapter=claude_code_cli']}}
+        | @{runs_b} =    `Stat.Run N Times`    n=20    keyword=Send Prompt    keyword_args=${{['adapter=codex_cli']}}
+        | ${cost_pred} =    Evaluate    lambda r: r.result.cost_usd
+        | ${mwu} =    `Stat.Mann Whitney U`    ${runs_a}    ${runs_b}    predicate=${cost_pred}
+        | Should Be True    ${mwu.p_value} < 0.05                                  # Reject the null at α=0.05.
+        | Should Be True    abs(${mwu.effect_size_r}) > 0.3                        # Medium-or-larger effect.
+
+        Notes:
+        - Story 13.1 (Epic 13) ships this Phase-2 keyword behind the ``[agenteval-advanced]`` optional extra.
+        - PRD FR29a ratifies the ``MannWhitneyResult`` dataclass with ``u_statistic`` / ``p_value`` / ``effect_size_r`` + ``n_a`` / ``n_b``.
+        - Math reference: ``scipy.stats.mannwhitneyu(alternative="two-sided", use_continuity=False)``. The returned ``p_value`` matches scipy exactly; the returned ``u_statistic`` is normalized to ``min(U1, U2)`` (smaller-U canonical form) and does NOT match scipy's ``.statistic`` directly — scipy returns ``U1``. Consumers needing scipy's U1 can recover it via ``U1 = (1 + effect_size_r) * n_a * n_b / 2``.
+        - Effect size: signed rank-biserial ``r = 2*U1/(n_a*n_b) - 1`` (where U1 is the M-W U for samples_a); positive r → samples_a tends to be larger; matches ``Stat.Cliff Delta`` sign convention.
+        - One-sided variants (``alternative="greater"``/``"less"``) deferred to Phase-2 (DF-13.1-S1).
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        if not _ADVANCED_AVAILABLE:
+            _raise_advanced_extra_missing("Mann Whitney U")
+        if predicate is None:
+            raise ValueError("predicate is required; pass a Callable[[KeywordRun], float] value-extractor")
+        # Import lazily so the keyword method body owns the import attempt.
+        from AgentEval.stats import mannwhitney as _mannwhitney
+
+        samples_a = [float(predicate(r)) for r in runs_a]
+        samples_b = [float(predicate(r)) for r in runs_b]
+        return _mannwhitney.compute_mann_whitney_u(samples_a, samples_b)
+
+    @keyword(name="Stat.Cliff Delta")
+    @tier(1)
+    def compute_cliff_delta(
+        self,
+        runs_a: list[KeywordRun],
+        runs_b: list[KeywordRun],
+        predicate: Callable[[KeywordRun], float] | None = None,
+    ) -> float:
+        """Computes Cliff's delta non-parametric effect size between two run samples (PRD FR29b; Story 13.1).
+
+        [Tier 1 — Deterministic] — closed-form Cliff (1993) brute-force
+        formula. Returns ``float ∈ [-1.0, 1.0]``. Positive values indicate
+        ``runs_a`` tends to produce larger values; negative values indicate
+        ``runs_b`` tends to produce larger values.
+
+        Requires the ``[agenteval-advanced]`` optional extra.
+
+        | =Arguments= | =Description= |
+        | ``runs_a`` | ``list[KeywordRun]`` — first sample. |
+        | ``runs_b`` | ``list[KeywordRun]`` — second sample. |
+        | ``predicate`` | REQUIRED ``Callable[[KeywordRun], float]`` value-extractor. ``None`` raises ``ValueError``. |
+
+        Raises ``ImportError`` when scipy/numpy unavailable; ``ValueError``
+        when ``predicate`` is ``None`` OR either sample is empty.
+
+        Example:
+        | ${latency_pred} =    Evaluate    lambda r: r.latency_seconds
+        | ${delta} =    `Stat.Cliff Delta`    ${runs_a}    ${runs_b}    predicate=${latency_pred}
+        | Should Be True    abs(${delta}) > 0.474                                  # Large effect per Romano-Coraggio-Smith conventions.
+
+        Notes:
+        - Story 13.1 (Epic 13) ships this Phase-2 keyword behind the ``[agenteval-advanced]`` optional extra.
+        - PRD FR29b ratifies the scalar ``float`` return type (NOT a dataclass) — preserves AssertionEngine matcher compatibility per Story 6.3 D-1 precedent.
+        - Math: ``δ = (#{a>b} - #{a<b}) / (n_a * n_b)``; ties contribute 0.
+        - Complexity: ``O(n_a * n_b)``. Fine for typical n ≤ 100 trials; Phase-2 perf carve-out for n_a + n_b > 1000.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        if not _ADVANCED_AVAILABLE:
+            _raise_advanced_extra_missing("Cliff Delta")
+        if predicate is None:
+            raise ValueError("predicate is required; pass a Callable[[KeywordRun], float] value-extractor")
+        from AgentEval.stats import cliffs_delta as _cliffs_delta
+
+        samples_a = [float(predicate(r)) for r in runs_a]
+        samples_b = [float(predicate(r)) for r in runs_b]
+        return _cliffs_delta.compute_cliff_delta(samples_a, samples_b)
+
+    @keyword(name="Stat.Bootstrap Confidence Interval")
+    @tier(1)
+    def compute_bootstrap_ci(
+        self,
+        samples: list[KeywordRun] | list[float],
+        seed: int,
+        statistic: Callable[[list[float]], float] | None = None,
+        predicate: Callable[[KeywordRun], float] | None = None,
+        alpha: float = 0.05,
+        n_resamples: int = 10_000,
+    ) -> tuple[float, float]:
+        """Computes a percentile bootstrap confidence interval for any statistic (PRD FR29c; Story 13.1).
+
+        [Tier 1 — Deterministic] — given fixed ``samples`` + ``seed``, the
+        result is bit-identical across calls (FR31a guarantee). Returns
+        ``(ci_lower, ci_upper)`` tuple at the ``(1 - alpha) * 100%`` percentile
+        level (default 95% CI).
+
+        Requires the ``[agenteval-advanced]`` optional extra.
+
+        | =Arguments= | =Description= |
+        | ``samples`` | Either ``list[KeywordRun]`` (then ``predicate`` extracts floats) OR ``list[float]`` (predicate ignored). Mixed-type lists raise ``TypeError`` — homogeneous types required. |
+        | ``seed`` | REQUIRED ``int`` seed for the numpy ``Generator``. No default — the ``@tier(1)`` bit-identical guarantee (FR31a) requires a fixed seed. Operators wanting OS-entropy randomness must pass an explicit seed (e.g., ``seed=random.randrange(2**32)``). |
+        | ``statistic`` | ``Callable[[list[float]], float]`` whose CI is computed. Default ``None`` → ``statistics.mean``. |
+        | ``predicate`` | Optional ``Callable[[KeywordRun], float]`` value-extractor (required when ``samples`` is ``list[KeywordRun]``). |
+        | ``alpha`` | Significance level; CI is at ``(1-alpha)*100%`` confidence. Must satisfy ``0.0 < alpha < 1.0``. Default ``0.05``. |
+        | ``n_resamples`` | Number of bootstrap resamples (with replacement). Must be ``>= 100``. Default ``10_000``. |
+
+        Raises ``ImportError`` when scipy/numpy unavailable; ``ValueError``
+        when ``samples`` is empty / ``alpha`` is out of range / ``n_resamples
+        < 100`` / ``predicate`` is missing for a ``list[KeywordRun]`` input.
+        Raises ``TypeError`` when ``samples`` mixes ``KeywordRun`` and raw
+        floats (homogeneous types required).
+
+        Example:
+        | @{runs} =    `Stat.Run N Times`    n=50    keyword=Send Prompt    keyword_args=${{['adapter=mock']}}
+        | ${cost_pred} =    Evaluate    lambda r: r.result.cost_usd
+        | ${ci_lo}    ${ci_hi} =    `Stat.Bootstrap Confidence Interval`    ${runs}    seed=42    predicate=${cost_pred}
+        | Should Be True    ${ci_lo} <= ${ci_hi}                                    # CI bounds well-ordered.
+        | ${median_stat} =    Evaluate    statistics.median    modules=statistics
+        | ${med_lo}    ${med_hi} =    `Stat.Bootstrap Confidence Interval`    ${runs}    seed=42    statistic=${median_stat}    predicate=${cost_pred}
+
+        Notes:
+        - Story 13.1 (Epic 13) ships this Phase-2 keyword behind the ``[agenteval-advanced]`` optional extra.
+        - PRD FR29c ratifies the ``(lo, hi)`` tuple return type — preserves AssertionEngine matcher compatibility per Story 6.3 D-1 precedent.
+        - Method: percentile bootstrap. BCa + BC-corrected variants deferred to Phase-2 (DF-13.1-S2).
+        - Math reference: ``scipy.stats.bootstrap(samples, statistic, rng=numpy.random.default_rng(seed), method="percentile")``. The local implementation uses the same ``numpy.random.default_rng(seed)`` source so reference equivalence is verifiable.
+        - Mandatory ``seed`` preserves the ``@tier(1)`` FR31a bit-identical guarantee (Story 13.1 code-review HIGH-C catch, Opus tier review).
+        - Resampling result determinism is pinned to a single ``numpy.random.Generator`` algorithm (PCG64). Major numpy ABI changes that retire PCG64 would shift CI bounds; track via ``_TESTED_UP_TO``-style pinning in Phase-2 if numpy 3.x ships a different default generator.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        if not _ADVANCED_AVAILABLE:
+            _raise_advanced_extra_missing("Bootstrap Confidence Interval")
+        import statistics as _statistics
+
+        from AgentEval.stats import bootstrap as _bootstrap
+
+        if statistic is None:
+            statistic = _statistics.mean
+        # Determine if samples are KeywordRun (need predicate) or raw floats.
+        if not samples:
+            raise ValueError("samples must be non-empty")
+        # Validate homogeneity up-front per Story 13.1 code-review Codex MED-1
+        # catch: silently filtering mixed-type elements produced wrong CIs
+        # without raising. Reject the mix at the boundary.
+        kw_count = sum(1 for s in samples if isinstance(s, KeywordRun))
+        if kw_count not in (0, len(samples)):
+            raise TypeError(
+                "samples must be a homogeneous list[KeywordRun] OR list[float]; "
+                f"got mixed types ({kw_count} KeywordRun + {len(samples) - kw_count} non-KeywordRun)"
+            )
+        numeric_samples: list[float]
+        if kw_count > 0:
+            if predicate is None:
+                raise ValueError(
+                    "predicate is required when samples is list[KeywordRun]; "
+                    "pass a Callable[[KeywordRun], float] value-extractor"
+                )
+            numeric_samples = [float(predicate(r)) for r in samples if isinstance(r, KeywordRun)]
+        else:
+            numeric_samples = [float(s) for s in samples if not isinstance(s, KeywordRun)]
+        return _bootstrap.compute_bootstrap_ci(
+            numeric_samples,
+            statistic,
+            alpha,
+            n_resamples,
+            seed,
+        )
 
 
 def _byte_identical(a: Any, b: Any) -> bool:

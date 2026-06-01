@@ -2148,7 +2148,7 @@ So that I can statistically compare two non-deterministic agent flows with prope
 
 **Given** two `Stat.Run N Times` result lists,
 **When** I call `${u}=    Stat.Mann Whitney U    ${results_a}    ${results_b}    predicate=lambda r: r.cost_usd`,
-**Then** the variable receives a `MannWhitneyResult` with `u_statistic`, `p_value`, `n_a`, `n_b`; analogous for `Cliff Delta` (effect size) and `Bootstrap CI` (confidence interval on any predicate).
+**Then** the variable receives a `MannWhitneyResult` with `u_statistic`, `p_value`, `effect_size_r`, `n_a`, `n_b`; `Cliff Delta` returns `float ∈ [-1, 1]` per PRD FR29b; `Bootstrap CI` returns `tuple[float, float]` (lo, hi) per PRD FR29c (NOT a dataclass — preserves AssertionEngine matcher compatibility per Story 6.3 D-1 precedent).
 
 **And** all advanced stats keywords are behind `[agenteval-advanced]` extra (requires `scipy + numpy`); ImportError on import without the extra has a clear message recommending `uv pip install robotframework-agenteval[agenteval-advanced]`.
 

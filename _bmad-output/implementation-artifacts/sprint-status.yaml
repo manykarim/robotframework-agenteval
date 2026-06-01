@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-17
-last_updated: 2026-05-20
+last_updated: 2026-06-01
 project: robotframework-agenteval
 project_key: NOKEY
 tracking_system: file-system
@@ -150,8 +150,8 @@ development_status:
   12-3-three-tier-stacked-validation-integration-completes-devons-journey-4: done  # Story 12.3 done 2026-05-27. Closes Epic 12 + Devon's Journey 4 Tier-2 slot. Recipe Gallery #4 Tier-2 populated with actual Judge.Get Score invocation; 5 integration tests at test_devon_three_tier_complete.py (Tier-1 + Tier-2 + Tier-3 + coherent-pass + coherent-fail). 2-tier Claude CLI review → 6 findings (2 HIGH + 2 MED + 2 LOW; 1 cross-tier 2-way agreement on recipe imports). All applied: class-path import migration retires SkillsLibrary dryrun-fail framing; full recipe dryrun-clean. Final: 1775 passed + 14 skipped (was 1770 + 14; +5 tests).
   epic-12-retrospective: done  # Epic 12 retro closed 2026-06-01. 3-tier cross-LLM critical review (Claude opus + Codex + Kilo/minimax-M2.7) — first full 3-of-3 retro-on-retro chain since CLAUDE.md ratification. 9 findings applied (7 HIGH + 5 MED + 2 Kilo-MED). 3 cross-tier 2-way HIGH agreements (memory file canonical-source drift, commit range 5-vs-4, ❌ tally 8-vs-7-with-⚠) + 4 reviewer-UNIQUE (Claude HIGH-1, Codex HIGH-4, Kilo MED-1+MED-2). Norms: 1 EXTENDED at N=5 (cross-story upstream — memory file ACTUALLY updated this time per Claude HIGH-1); 4 EXTENDED (spec-precheck 50 uses, catalog-gate 31 stories, monkeypatch-decorator-walk, n-way-agreement intra-family); 1 NEW + CONFIRMED at N=1 (libdoc namespace multi-word convention); 1 RETIRED (retro-debt-block — memory stub created for paper trail per Kilo MED-1).
 
-  epic-13: backlog
-  13-1-advanced-statistical-primitives-behind-agenteval-advanced-extra: backlog
+  epic-13: in-progress  # Story 13.1 ready-for-dev 2026-06-01; first Epic 13 story (Advanced Stats Phase-2 surface).
+  13-1-advanced-statistical-primitives-behind-agenteval-advanced-extra: done  # 2026-06-01 3-tier cross-LLM review applied v2 patches (6 HIGH + 4 MED). 3-way HIGH on stability-surface drift + u_statistic-vs-scipy docstring lie; 2-way HIGH on missing scipy.bootstrap reference test. Codex empirical probes caught: WITHOUT-extras gate tests fake-green via importorskip + Bootstrap CI silent mixed-type filter + mandatory-seed FR31a violation. 1826 passed + 14 skipped final.
   13-2-otlp-trace-backend: backlog
   13-3-compare-tool-discoverability-cross-adapter: backlog
   13-4-cohort-heatmap-html-rendering: backlog

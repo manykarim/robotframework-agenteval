@@ -88,6 +88,16 @@ codex = []
 # ADR-002 + ADR-010 (Copilot CLI version-pin original precedent), this
 # is GitHub Copilot's CLI-side ≤2-adapters slot.
 copilot = []
+# Story 13.1 (Epic 13) — Advanced statistical primitives (FR29a/b/c).
+# Phase-2 keywords behind the `[agenteval-advanced]` extra:
+# `Stat.Mann Whitney U`, `Stat.Cliff Delta`,
+# `Stat.Bootstrap Confidence Interval`. scipy is the math reference
+# (math-equivalence unit tests vs `scipy.stats.mannwhitneyu` /
+# `scipy.stats.bootstrap`); numpy powers the seeded Bootstrap CI
+# resampler. Floors: scipy 1.11+ has Python 3.12 wheels + stable
+# `mannwhitneyu`/`bootstrap` APIs; numpy 2.x permitted (scipy 1.11+
+# supports). Pre-approved per epics.md L2153 verbatim.
+agenteval-advanced = ["scipy>=1.11,<2.0", "numpy>=1.26,<3.0"]
 
 [project.urls]
 Homepage = "https://github.com/manykarim/robotframework-agenteval"
