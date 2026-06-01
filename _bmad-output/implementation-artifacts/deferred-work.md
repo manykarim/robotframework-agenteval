@@ -398,6 +398,16 @@ Added by Story 4.3 (Orchestration Keywords — Epic 4 Story 3). Pre-create-story
 
 - **DF-13.4-S3 (Phase-2.5 interactive HTML with embedded JavaScript for cell hover tooltips)** — Story 13.4 D-10 path-of-least-amendment decision 2026-06-01 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Story 13.4 ships embedded CSS only per D-3 explicit prohibition on `<script>` (offline-safety + email-safe sharing). Phase-2.5: opt-in interactive mode (`as_html(interactive=True)`) embeds vanilla JS for hover tooltips showing per-cell trial count + cost + Wilson-CI bounds. Default `interactive=False` preserves the script-free guarantee. Catalogued as C94. Effort: M. Phase-2.5.
 
+## Deferred from: story-13.5 dev (2026-06-01) — UPSTREAM pre-emptive per Epic 11 retro
+
+- **DF-13.5-S1 (Phase-2.5 unified host-instance budget plumbing for `Skill.Compare Discoverability`)** — Story 13.5 D-10 path-of-least-amendment decision 2026-06-01 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Story 13.5 ships the keyword with `@guarded_fanout()` decorator; SkillsLibrary host attrs gracefully fall back to None via `getattr` — different posture from MCPLibrary's C20 carve-out. Phase-2.5 unifies host-instance budget plumbing across MCPLibrary + SkillsLibrary + OrchestrationLibrary; shared resolution with C20 + C26 + C89. Catalogued as C95. Effort: M. Phase-2.5.
+
+- **DF-13.5-S2 (Phase-2.5 per-adapter MCP attachment for skills bridging to MCP tools)** — Story 13.5 D-10 path-of-least-amendment decision 2026-06-01 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Story 13.5 inherits the Phase-1 MCP-bridge carve-out. Gated on C72 + C68/C69/C73/C75 per-adapter HostedMcpObserver wiring. When skills invoke MCP-bridged tools, the cross-adapter comparison can claim "skill X reliably activates MCP-tool-Y across runtimes." Catalogued as C96. Effort: M. Phase-2.5.
+
+- **DF-13.5-S3 (Phase-2.5 Bonferroni / Holm multi-pairwise correction)** — Story 13.5 D-10 path-of-least-amendment decision 2026-06-01 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Mirrors DF-13.3-S3 / C91 for the Skill domain. Phase-2.5: add `correction_method: Literal["none", "bonferroni", "holm"]` kwarg + adjusted-α fields. Shared resolution with C91. Catalogued as C97. Effort: S. Phase-2.5.
+
+- **DF-13.5-S4 (Phase-1.5 `robotframework-agentskills` cross-adapter dogfood CI matrix)** — Story 13.5 D-8 path-of-least-amendment decision 2026-06-01 (UPSTREAM pre-emptive catalog enforcement per Epic 11 retro sub-pattern). Per epic L2227: ship the cross-adapter Skill Discoverability suite to the `robotframework-agentskills` downstream repo's CI matrix using Mock provider (routine CI) + a separate `weekly-cross-adapter-discoverability.yml` workflow against real APIs on a budget. Requires a PR to the downstream repo + budget-bounded API-key env. Catalogued as C98. Effort: M. Phase-1.5.
+
 ---
 
 *Update this file as new deferred items emerge from future reviews.*

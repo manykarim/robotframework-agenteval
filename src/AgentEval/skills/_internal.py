@@ -33,15 +33,28 @@ from decoys) and raises `InvalidSkillDiscoverabilityTasksError` instead of
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from AgentEval._kernel.discovery import get_adapter
 from AgentEval.errors import InvalidSkillDiscoverabilityTasksError
+from AgentEval.skills.types import (
+    SkillDiscoverabilityResult,
+    SkillDiscoverabilityTaskSummary,
+    SkillTaskResult,
+)
 
-__all__ = ["SkillDiscoverabilityTask", "load_skill_discoverability_tasks"]
+__all__ = [
+    "SkillDiscoverabilityTask",
+    "load_skill_discoverability_tasks",
+    # Story 13.5 (Epic 13) — shared per-adapter helper for FR4c.
+    "build_skill_discoverability_summary",
+    "run_single_adapter_skill_discoverability",
+]
 
 
 @dataclass(frozen=True)
@@ -189,3 +202,120 @@ def load_skill_discoverability_tasks(path: str | Path) -> list[SkillDiscoverabil
         tasks.append(SkillDiscoverabilityTask(id=task_id, prompt=prompt, should_activate=should_activate))
 
     return tasks
+
+
+# --------------------------------------------------------------------------- #
+# Story 13.5 (Epic 13) — Shared per-adapter helpers for FR4c                  #
+# --------------------------------------------------------------------------- #
+
+
+def build_skill_discoverability_summary(
+    task_results: list[SkillTaskResult], total_runtime: float
+) -> SkillDiscoverabilityTaskSummary:
+    """Compute aggregate `SkillDiscoverabilityTaskSummary` across task results.
+
+    Story 13.5 extraction of `SkillsLibrary._build_discoverability_summary`
+    (Story 7.2) to module scope so both `get_discoverability` (single
+    adapter) and `get_discoverability_comparison` (Story 13.5 N-adapter)
+    compute summaries identically.
+    """
+    total_trials = sum(r.trials_run for r in task_results)
+    total_correct = sum(
+        r.activations_observed if r.should_activate else (r.trials_run - r.activations_observed) for r in task_results
+    )
+    activation_accuracy = total_correct / total_trials if total_trials > 0 else 0.0
+
+    decoy_results = [r for r in task_results if not r.should_activate]
+    false_act_obs = sum(r.activations_observed for r in decoy_results)
+    false_act_denom = sum(r.trials_run for r in decoy_results)
+    false_activation_rate = false_act_obs / false_act_denom if false_act_denom > 0 else 0.0
+
+    should_act_results = [r for r in task_results if r.should_activate]
+    missed_obs = sum(r.trials_run - r.activations_observed for r in should_act_results)
+    missed_denom = sum(r.trials_run for r in should_act_results)
+    missed_activation_rate = missed_obs / missed_denom if missed_denom > 0 else 0.0
+
+    total_cost = sum(r.cost_per_trial_usd * r.trials_run for r in task_results)
+
+    return SkillDiscoverabilityTaskSummary(
+        activation_accuracy=activation_accuracy,
+        false_activation_rate=false_activation_rate,
+        missed_activation_rate=missed_activation_rate,
+        total_cost_usd=total_cost,
+        total_runtime_seconds=total_runtime,
+    )
+
+
+def run_single_adapter_skill_discoverability(
+    *,
+    skill_name: str,
+    task_list: list[SkillDiscoverabilityTask],
+    adapter: str,
+    model: str | None,
+    trials_per_task: int,
+    extra_adapter_kwargs: dict[str, Any],
+    t_start: float,
+) -> SkillDiscoverabilityResult:
+    """Run Skill discoverability against ONE adapter (Story 13.5 helper extraction).
+
+    Internal helper extracted from `SkillsLibrary.get_discoverability`
+    (Story 7.2) so the cross-adapter `Compare Discoverability` keyword
+    (Story 13.5) reuses the per-adapter logic. Behavior MUST equal
+    pre-refactor; verified by Story 7.2's existing tests passing
+    unchanged.
+
+    Args:
+        skill_name: Pre-parsed skill name (from frontmatter). Used for
+            case-insensitive substring match against `response_text`.
+        task_list: Already-loaded + schema-validated skill tasks.
+        adapter: Adapter name. Resolved via `_kernel.discovery.get_adapter`.
+        model: Optional model identifier; forwarded to adapter ctor.
+        trials_per_task: Trials per task; already validated >= 1.
+        extra_adapter_kwargs: Forward-compat kwargs routed to adapter ctor.
+        t_start: Wall-clock anchor (caller-provided). Single-adapter
+            captures before YAML load; comparison uses a per-adapter
+            anchor (comparison-level wall-clock measured separately
+            per Story 13.3 HIGH-A fix).
+
+    Returns:
+        ``SkillDiscoverabilityResult`` with per-task results + summary
+        + Phase-1 hardcoded ``adapter_coverage="in_process"`` (Story
+        7.2 D-2 ratified shape).
+    """
+    adapter_cls = get_adapter(adapter)
+    ctor_kwargs: dict[str, Any] = dict(extra_adapter_kwargs)
+    if model is not None:
+        ctor_kwargs["model"] = model
+
+    task_results: list[SkillTaskResult] = []
+    for task in task_list:
+        activations = 0
+        trial_costs: list[float] = []
+        for _ in range(trials_per_task):
+            adapter_instance = adapter_cls(**ctor_kwargs)
+            run_result = adapter_instance.run(task.prompt)
+            activated = bool(skill_name) and skill_name.lower() in run_result.response_text.lower()
+            if activated:
+                activations += 1
+            trial_costs.append(run_result.cost_usd)
+        pass_at_k = activations / trials_per_task if trials_per_task > 0 else 0.0
+        cost_per_trial = sum(trial_costs) / max(trials_per_task, 1)
+        task_results.append(
+            SkillTaskResult(
+                task_id=task.id,
+                task_prompt=task.prompt,
+                should_activate=task.should_activate,
+                trials_run=trials_per_task,
+                activations_observed=activations,
+                pass_at_k=pass_at_k,
+                competing_skills_picked={},
+                cost_per_trial_usd=cost_per_trial,
+            )
+        )
+    total_runtime = time.perf_counter() - t_start
+    summary = build_skill_discoverability_summary(task_results, total_runtime)
+    return SkillDiscoverabilityResult(
+        per_task_results=tuple(task_results),
+        summary=summary,
+        adapter_coverage="in_process",
+    )

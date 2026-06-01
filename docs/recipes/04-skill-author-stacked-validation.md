@@ -121,6 +121,46 @@ LLM call per representative prompt — calibrate the rubric first via
 `Judge.Calibrate Rubric` (Story 12.2) and gate CI on Cohen's kappa ≥ 0.7 per
 `architecture.md` L199.
 
+## Phase 2 cross-adapter Skill Discoverability (Story 13.5 / FR4c)
+
+As of Story 13.5 (Epic 13 — 2026-06-01), Devon can compare skill activation
+across multiple Tier-1 adapters in a single call to claim "skill X is reliably
+activated by Claude AND GPT AND Copilot" with empirical evidence — symmetric to
+Mei's cross-adapter Tool Discoverability (Story 13.3 / FR10b).
+
+```robotframework
+*** Settings ***
+Library    AgentEval.skills.library.SkillsLibrary    WITH NAME    Skill
+
+*** Test Cases ***
+Skill X Is Reliably Activated Across Claude And OpenAI
+    ${comparison}=    Skill.Compare Discoverability
+    ...    skill=${CURDIR}/skills/web-search.md
+    ...    tasks=${CURDIR}/discoverability/web-search-tasks.yaml
+    ...    adapters=${{['claude_code_cli', 'codex_cli']}}
+    ...    trials_per_task=5
+    ...    max_cost_usd=10.00
+    Should Be True    ${comparison.summary.activation_accuracy_per_adapter['claude_code_cli']} >= 0.7
+    Should Be True    ${comparison.summary.activation_accuracy_per_adapter['codex_cli']} >= 0.7
+    # Cross-adapter significance — was the skill consistently triggered
+    # OR did one adapter wildly outperform the other? (Extended-variable
+    # indexing per RF7 — no `Library Collections` import required.)
+    Should Be True    abs(${comparison.cross_adapter_deltas['claude_code_cli_vs_codex_cli'].pass_at_k_delta}) < 0.3
+```
+
+Behind the `[agenteval-advanced]` optional extra (scipy + numpy from Story 13.1
+for Mann-Whitney U significance). The keyword returns a
+`SkillDiscoverabilityComparisonResult` with per-adapter `SkillDiscoverabilityResult`
++ cross-adapter Pass@k differential + per-adapter false-activation /
+missed-activation rate comparison + multi-column `CohortHeatmap` (which can
+render to HTML via Story 13.4's `as_html()` for stakeholder sharing).
+
+**Phase-1.5 dogfood deferral (DF-13.5-S4 / C98):** the
+`robotframework-agentskills` downstream repo will adopt the cross-adapter suite
+in its CI matrix (Mock provider for routine CI; a separate
+`weekly-cross-adapter-discoverability.yml` workflow runs against real APIs on a
+budget per epic L2227). Tracked as a Phase-1.5 carry-over.
+
 ## See Also
 
 - Story 7.1: `Skill.Get Activation Decision` — single-prompt activation query

@@ -26,6 +26,7 @@ if TYPE_CHECKING:
         DiscoverabilityComparisonResult,
         DiscoverabilityResult,
     )
+    from AgentEval.skills.types import SkillDiscoverabilityComparisonResult
 
 __all__ = ["CohortHeatmap"]
 
@@ -148,6 +149,44 @@ class CohortHeatmap:
         models = result.adapters
         cells = tuple(
             (task_result.task_id, adapter, task_result.pass_rate)
+            for adapter in result.adapters
+            for task_result in result.per_adapter_results[adapter].per_task_results
+        )
+        return cls(tasks=tasks, models=models, cells=cells)
+
+    @classmethod
+    def from_skill_comparison(
+        cls,
+        result: SkillDiscoverabilityComparisonResult,
+    ) -> CohortHeatmap:
+        """Build a multi-column heatmap from a cross-adapter Skill comparison (Story 13.5 / FR4c).
+
+        Symmetric to ``from_comparison`` but reads the Skill-domain
+        ``pass_at_k`` field (NOT the MCP-domain ``pass_rate`` property).
+        Columns = adapter names (preserving input order). Rows = task IDs
+        (union across all per-adapter results, preserving first-encounter
+        order). Story 13.4 L-7 lesson applied: missing cells represented
+        by OMISSION from the ``cells`` tuple (NOT explicit ``None``) to
+        preserve the public ``cells: tuple[tuple[str, str, float], ...]``
+        type contract.
+
+        Args:
+            result: Story 13.5 ``SkillDiscoverabilityComparisonResult``.
+
+        Returns:
+            ``CohortHeatmap`` with one column per adapter + one row per task.
+        """
+        seen: set[str] = set()
+        tasks_list: list[str] = []
+        for adapter in result.adapters:
+            for task_result in result.per_adapter_results[adapter].per_task_results:
+                if task_result.task_id not in seen:
+                    seen.add(task_result.task_id)
+                    tasks_list.append(task_result.task_id)
+        tasks = tuple(tasks_list)
+        models = result.adapters
+        cells = tuple(
+            (task_result.task_id, adapter, task_result.pass_at_k)
             for adapter in result.adapters
             for task_result in result.per_adapter_results[adapter].per_task_results
         )

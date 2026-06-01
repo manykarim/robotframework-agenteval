@@ -131,6 +131,17 @@ Per Story 13.4 (PRD FR55) — Phase-2 standalone HTML rendering of `CohortHeatma
 - `AgentEval._heatmap.models._PASS_RATE_PALETTE` constant — `provisional` label per the Phase-2.5 DF-13.4-S2 / C93 color-blind palette carry-over. The 5-stop boundaries (0.0 / 0.2 / 0.4 / 0.6 / 0.8) are `stable`; the specific hex values are `provisional`.
 - `AgentEval._heatmap.models._color_for_pass_rate(rate) -> tuple[str, str]` helper — `provisional` label. Pure function; underscore-prefixed; not part of the public RF surface but consumable by Phase-2.5 plugins (e.g., color-blind palette overrides).
 
+### Cross-Adapter Skill Discoverability Surface (Phase-2 — FR4c)
+
+Per Story 13.5 (PRD FR4c) — Phase-2 cross-adapter Skill Discoverability comparison; depends on Story 13.1's `[agenteval-advanced]` extra (Mann-Whitney U). Symmetric to Story 13.3's MCP variant.
+
+- `Skill.Compare Discoverability` RF keyword + Python method `SkillsLibrary.get_discoverability_comparison` — `provisional` label. Signature: `skill=<path>, tasks=<yaml-path>, adapters=<list[str]>, trials_per_task=<int>, max_cost_usd=<float>, max_runtime_seconds=<float|None>, model=<str|None>, polling=<float|None>, **kwargs`. ≥2 distinct adapters required. RF keyword name + Python method name diverge intentionally (verb-allowlist convention; `get_discoverability_comparison`).
+- `AgentEval.skills.types.SkillDiscoverabilityComparisonResult` frozen dataclass — `provisional` label. 5 fields: `adapters: tuple[str, ...]`, `per_adapter_results: Mapping[str, SkillDiscoverabilityResult]`, `cross_adapter_deltas: Mapping[str, SkillPairwiseAdapterDelta]`, `heatmap: CohortHeatmap`, `summary: SkillDiscoverabilityComparisonSummary`. `__post_init__` 4-way cross-consistency validators (`adapters ↔ per_adapter_results.keys()` + `adapters ↔ heatmap.models` + `adapters ↔ summary.activation_accuracy_per_adapter.keys()` + `len(adapters) >= 2`) are `stable`.
+- `AgentEval.skills.types.SkillPairwiseAdapterDelta` frozen dataclass — `provisional` label. 7 fields: `adapter_a`, `adapter_b`, `pass_at_k_delta`, `pass_at_k_mann_whitney_result`, `false_activation_rate_delta`, `missed_activation_rate_delta`, `significant_at_alpha_05`. Skill-domain extension beyond Story 13.3's `PairwiseAdapterDelta` carries the 2 extra rate deltas because Skill discoverability has 2 failure modes (false-positive + false-negative).
+- `AgentEval.skills.types.SkillDiscoverabilityComparisonSummary` frozen dataclass — `provisional` label. 5 fields: `total_cost_usd`, `total_runtime_seconds` (end-to-end wall-clock per Story 13.3 HIGH-A fix), `activation_accuracy_per_adapter`, `best_adapter`, `worst_adapter`.
+- `CohortHeatmap.from_skill_comparison` classmethod — `provisional` label. Reads `result.per_adapter_results[adapter].per_task_results[i].pass_at_k` (NOT MCP-domain `pass_rate`). Story 13.4 L-7 lesson: missing cells via OMISSION (NOT explicit `None`) per public `cells: tuple[tuple[str, str, float], ...]` type contract.
+- `[agenteval-advanced]` extra requirement bubble-up — `Skill.Compare Discoverability` raises `ImportError("Skill.Compare Discoverability: scipy + numpy required. Install via: uv pip install robotframework-agenteval[agenteval-advanced]")` when invoked without the extra.
+
 ### Cross-Adapter Discoverability Surface (Phase-2 — FR10b)
 
 Per Story 13.3 (PRD FR10b) — Phase-2 cross-adapter Tool Discoverability comparison; depends on Story 13.1's `[agenteval-advanced]` extra (Mann-Whitney U):

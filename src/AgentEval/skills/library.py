@@ -30,10 +30,14 @@ PRD FR1 + epics.md Epic 2 Story 2.1):
   `@keyword`; full AssertionEngine matcher deferred to Phase-2 per
   ADR-022 catalog row).
 
-Every method is `@tier(1)`-annotated (deterministic, ≤50 ms per call on
-typical 5 KB inputs per NFR-PERF-02). Tier-1 keywords do NOT touch the
-provider, the trace store, or external services; they read the local
-`.md` file + parse YAML only.
+The 5 static-inspection keywords above are `@tier(1)`-annotated
+(deterministic, ≤50 ms per call on typical 5 KB inputs per NFR-PERF-02).
+Tier-1 keywords do NOT touch the provider, the trace store, or external
+services; they read the local `.md` file + parse YAML only. Stochastic
+fan-out keywords (`Get Activation Decision`, `Get Discoverability`,
+`Skill.Compare Discoverability`) are `@tier(3)` and `Should Activate For`
+is `@tier(2)` — these were added in later epics (7 / 12 / 13) and are
+NOT covered by the ≤50 ms NFR.
 
 Usage from a `.robot` file:
 
@@ -48,7 +52,7 @@ Usage from a `.robot` file:
 **NOTE (per Phase 6 review):** unlike other AgentEval sub-libraries,
 `SkillsLibrary` is NOT registered in `_SUB_LIBRARIES` and is NOT
 composed under the top-level `AgentEval` library (DF-7.1-S1 / name
-collision with `SubagentsLibrary.Get Frontmatter`). All 8 keywords
+collision with `SubagentsLibrary.Get Frontmatter`). All 9 keywords
 must be imported via the direct path shown in the Usage block above.
 
 Phase-1 limitations explicitly documented:
@@ -78,9 +82,10 @@ from AgentEval.skills._internal import load_skill_discoverability_tasks
 from AgentEval.skills._parser import parse_frontmatter, validate_frontmatter_structure
 from AgentEval.skills.types import (
     ActivationDecision,
+    SkillDiscoverabilityComparisonResult,
+    SkillDiscoverabilityComparisonSummary,
     SkillDiscoverabilityResult,
-    SkillDiscoverabilityTaskSummary,
-    SkillTaskResult,
+    SkillPairwiseAdapterDelta,
 )
 
 __all__ = ["SkillsLibrary"]
@@ -90,12 +95,18 @@ _BROWSER_STYLE_MIGRATED = True
 
 
 class SkillsLibrary:
-    """Static-inspection keywords for skill `.md` files [Tier 1 — Deterministic].
+    """Static-inspection + cross-adapter keywords for skill `.md` files.
 
-    All 5 public methods are `@keyword`-decorated + `@tier(1)`-annotated
-    per Story 1b.6 conventions. The class holds no mutable state; each
-    call re-parses the target file so the keywords are stateless +
-    parallel-safe under `pabot --processes N`.
+    All 9 public methods are `@keyword`-decorated per Story 1b.6
+    conventions, spanning mixed tiers: `@tier(1)` for deterministic
+    static-inspection (Get Frontmatter, Get Description, Get Allowed
+    Tools, Get Disable Model Invocation, Should Be Valid Frontmatter) —
+    these hold no mutable state and re-parse the target file per call
+    (stateless + parallel-safe under `pabot --processes N`); `@tier(2)`
+    for `Should Activate For` (declarative-match keyword); `@tier(3)`
+    for stochastic fan-out keywords delegating to coding-agent adapters
+    (`Get Activation Decision`, `Get Discoverability` Story 7.2,
+    `Skill.Compare Discoverability` Story 13.5).
     """
 
     @keyword(name="Get Frontmatter")
@@ -416,43 +427,239 @@ class SkillsLibrary:
 
         skill_tasks = load_skill_discoverability_tasks(tasks)
 
-        adapter_cls = get_adapter(adapter)
-        ctor_kwargs: dict[str, Any] = dict(kwargs)
-        if model is not None:
-            ctor_kwargs["model"] = model
+        # Story 13.5 refactor: per-adapter logic extracted to
+        # `skills/_internal.run_single_adapter_skill_discoverability` so
+        # the new `Skill.Compare Discoverability` keyword reuses it
+        # without duplication. Behavior MUST equal pre-refactor —
+        # verified by Story 7.2's existing tests passing unchanged.
+        from AgentEval.skills._internal import run_single_adapter_skill_discoverability
 
         t_start = time.perf_counter()
-        task_results: list[SkillTaskResult] = []
-        for task in skill_tasks:
-            activations = 0
-            trial_costs: list[float] = []
-            for _ in range(trials_per_task):
-                adapter_instance = adapter_cls(**ctor_kwargs)
-                result = adapter_instance.run(task.prompt)
-                activated = bool(skill_name) and skill_name.lower() in result.response_text.lower()
-                if activated:
-                    activations += 1
-                trial_costs.append(result.cost_usd)
-            pass_at_k = activations / trials_per_task if trials_per_task > 0 else 0.0
-            cost_per_trial = sum(trial_costs) / max(trials_per_task, 1)
-            task_results.append(
-                SkillTaskResult(
-                    task_id=task.id,
-                    task_prompt=task.prompt,
-                    should_activate=task.should_activate,
-                    trials_run=trials_per_task,
-                    activations_observed=activations,
-                    pass_at_k=pass_at_k,
-                    competing_skills_picked={},
-                    cost_per_trial_usd=cost_per_trial,
+        return run_single_adapter_skill_discoverability(
+            skill_name=skill_name,
+            task_list=skill_tasks,
+            adapter=adapter,
+            model=model,
+            trials_per_task=trials_per_task,
+            extra_adapter_kwargs=dict(kwargs),
+            t_start=t_start,
+        )
+
+    # --------------------------------------------------------------- #
+    # Story 13.5: Cross-adapter Skill Discoverability comparison      #
+    # (PRD FR4c). Symmetric to Story 13.3's `MCP.Compare Tool         #
+    # Discoverability` (FR10b). Behind the `[agenteval-advanced]`     #
+    # extra (Mann-Whitney U from Story 13.1).                         #
+    # --------------------------------------------------------------- #
+
+    @keyword(name="Skill.Compare Discoverability")
+    @tier(3)
+    @guarded_fanout()
+    def get_discoverability_comparison(
+        self,
+        skill: str | Path = "",
+        tasks: str | Path = "",
+        adapters: list[str] | None = None,
+        trials_per_task: int = 3,
+        max_cost_usd: float = 20.00,
+        max_runtime_seconds: float | None = None,
+        model: str | None = None,
+        polling: float | None = None,
+        **kwargs: Any,
+    ) -> SkillDiscoverabilityComparisonResult:
+        """Compares Skill Discoverability across ≥2 coding-agent adapters with statistical significance (PRD FR4c; Story 13.5).
+
+        [Tier 3 — Stochastic Fan-Out] — runs `Skill.Get Discoverability`
+        once per adapter against the SAME task set, then computes
+        pairwise Mann-Whitney U deltas across the per-task `pass_at_k`
+        distributions PLUS false-activation-rate + missed-activation-
+        rate deltas. Returns a `SkillDiscoverabilityComparisonResult`
+        with per-adapter results + cross-adapter deltas + multi-column
+        cohort heatmap + aggregate summary.
+
+        Requires the ``[agenteval-advanced]`` optional extra (scipy +
+        numpy) for the Mann-Whitney U cross-adapter delta computation;
+        raises ``ImportError`` on invocation WITHOUT the extra
+        (fail-fast BEFORE per-adapter fan-out — operators discovering
+        the missing extra should not pay N-adapter trial cost first).
+
+        | =Arguments= | =Description= |
+        | ``skill`` | Filesystem path to the skill ``.md`` file. |
+        | ``tasks`` | Filesystem path to the skill-discoverability tasks YAML (loaded ONCE; shared across adapters). |
+        | ``adapters`` | REQUIRED ``list[str]`` of adapter names; ≥2 entries required. |
+        | ``trials_per_task`` | Pass@k trials per task. Defaults to ``3``. |
+        | ``max_cost_usd`` | Budget cap. Defaults to ``20.00`` per epics.md L2218 (4× single-adapter typical). Phase-1 carve-out DF-13.5-S1 / C95: tracked NOT enforced (same SkillsLibrary architectural gap as DF-4.4-S1 / C20 and DF-13.3-S1). |
+        | ``max_runtime_seconds`` | Runtime cap. Phase-1: tracked, NOT enforced. |
+        | ``model`` | Optional ``str`` forwarded to ALL adapters' ctor. |
+        | ``polling`` | Must NOT be provided — raises ``PollingDisallowedError`` per FR28 (mirrors `Get Discoverability`). |
+        | ``**kwargs`` | Forward-compat kwargs routed to each adapter's ctor. |
+
+        Returns ``SkillDiscoverabilityComparisonResult`` with
+        ``adapters`` + ``per_adapter_results`` (one
+        ``SkillDiscoverabilityResult`` per adapter) +
+        ``cross_adapter_deltas`` (C(N, 2) ``SkillPairwiseAdapterDelta``
+        entries keyed ``f"{a1}_vs_{a2}"``) + ``heatmap`` (multi-column
+        ``CohortHeatmap`` via ``from_skill_comparison``) + ``summary``
+        (``SkillDiscoverabilityComparisonSummary``).
+
+        Raises ``ImportError`` when ``[agenteval-advanced]`` extra is
+        missing. Raises ``PollingDisallowedError`` when ``polling`` is
+        provided. Raises ``ValueError`` on missing ``skill`` / ``tasks``
+        / ``adapters`` (≥2 distinct required) / invalid
+        ``trials_per_task``.
+
+        Example:
+        | ${comparison}=    `Skill.Compare Discoverability`
+        | ...    skill=${CURDIR}/skills/example.md
+        | ...    tasks=${CURDIR}/discoverability/skill-tasks.yaml
+        | ...    adapters=${{['claude_code_cli', 'codex_cli']}}
+        | ...    trials_per_task=5
+        | Should Be True    ${comparison.summary.activation_accuracy_per_adapter['claude_code_cli']} >= 0.7
+        | Should Be True    abs(${comparison.cross_adapter_deltas['claude_code_cli_vs_codex_cli'].pass_at_k_delta}) < 0.3
+
+        Notes:
+        - Story 13.5 (Epic 13) ships this Phase-2 keyword closing Devon's cross-adapter analysis loop. Symmetric to Story 13.3's `MCP.Compare Tool Discoverability` (FR10b).
+        - PRD FR4c ratifies the cross-adapter Skill Discoverability surface; epics.md L2218-2219 ratifies the keyword signature + extended fields (per-adapter false-activation / missed-activation rate comparison).
+        - Math reference: ``AgentEval.stats.mannwhitney.compute_mann_whitney_u`` (Story 13.1 pure helper). Mann-Whitney U is computed on the per-task ``pass_at_k`` lists per adapter; false-activation + missed-activation deltas are aggregate-summary subtractions.
+        - ``@tier(3)`` per fan-out semantics — stochastic by tier definition.
+        - Phase-2.5 carry-overs: DF-13.5-S1 (`@guarded_fanout` cross-library budget plumbing); DF-13.5-S2 (per-adapter MCP attachment); DF-13.5-S3 (Bonferroni multi-pairwise correction); DF-13.5-S4 (`robotframework-agentskills` dogfood CI matrix).
+        - Sibling keyword: `Skill.Get Discoverability` (Phase-1 single-adapter). The ≥2-adapter validation rejects N=1 callers — use the simpler `Get` keyword for single-adapter runs.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        # Story 13.3 HIGH-A precedent (codex MED-2 13.5 fix): anchor the
+        # comparison-level wall-clock at keyword entry — BEFORE validation,
+        # extras gate, frontmatter parse, and per-adapter fan-out — so
+        # `summary.total_runtime_seconds` is end-to-end (what the operator
+        # waited), not "fan-out-only" (which would exclude real setup time).
+        compare_t_start = time.perf_counter()
+
+        # Validate args (mirrors single-adapter Get + adds N>=2 constraint).
+        if polling is not None:
+            raise PollingDisallowedError(
+                build_polling_disallowed_message(
+                    "Skill.Compare Discoverability",
+                    {"skill": str(skill), "tasks": str(tasks), "adapters": adapters},
                 )
             )
-        total_runtime = time.perf_counter() - t_start
-        summary = self._build_discoverability_summary(task_results, total_runtime)
-        return SkillDiscoverabilityResult(
-            per_task_results=tuple(task_results),
+        if not skill:
+            raise ValueError("Skill.Compare Discoverability requires `skill=<path>` kwarg")
+        if not tasks:
+            raise ValueError("Skill.Compare Discoverability requires `tasks=<yaml-path>` kwarg")
+        if trials_per_task < 1:
+            raise ValueError(f"trials_per_task must be >= 1; got {trials_per_task}")
+        if adapters is None or len(adapters) < 2:
+            raise ValueError(
+                f"Skill.Compare Discoverability requires adapters=[<adapter_1>, "
+                f"<adapter_2>, ...] with >= 2 entries; got {adapters!r}"
+            )
+        if len(set(adapters)) != len(adapters):
+            raise ValueError(
+                f"Skill.Compare Discoverability requires distinct adapter names; got duplicates in {adapters!r}"
+            )
+
+        # `[agenteval-advanced]` extras gate (Story 13.5 D-4 + L-2).
+        # Module-attr read per Story 13.3 amendment (NOT `from X import Y`
+        # which captures stale value across pytest session reload).
+        from AgentEval.stats import library as _stats_lib
+
+        if not _stats_lib._ADVANCED_AVAILABLE:
+            raise ImportError(
+                "Skill.Compare Discoverability: scipy + numpy required. "
+                "Install via: uv pip install robotframework-agenteval[agenteval-advanced]"
+            )
+
+        # Parse skill frontmatter + tasks YAML ONCE (shared across adapters).
+        fm = parse_frontmatter(skill)
+        name_raw = fm.get("name")
+        skill_name = name_raw if isinstance(name_raw, str) else ""
+        skill_tasks = load_skill_discoverability_tasks(tasks)
+
+        from AgentEval._heatmap.models import CohortHeatmap
+        from AgentEval.skills._internal import run_single_adapter_skill_discoverability
+        from AgentEval.stats.mannwhitney import compute_mann_whitney_u
+
+        per_adapter_results: dict[str, SkillDiscoverabilityResult] = {}
+        for adapter_name in adapters:
+            per_adapter_results[adapter_name] = run_single_adapter_skill_discoverability(
+                skill_name=skill_name,
+                task_list=skill_tasks,
+                adapter=adapter_name,
+                model=model,
+                trials_per_task=trials_per_task,
+                extra_adapter_kwargs=dict(kwargs),
+                t_start=time.perf_counter(),
+            )
+
+        # Build C(N, 2) pairwise deltas.
+        import itertools
+        import math as _math
+
+        cross_adapter_deltas: dict[str, SkillPairwiseAdapterDelta] = {}
+        for adapter_a, adapter_b in itertools.combinations(adapters, 2):
+            a_result = per_adapter_results[adapter_a]
+            b_result = per_adapter_results[adapter_b]
+            rates_a = [t.pass_at_k for t in a_result.per_task_results]
+            rates_b = [t.pass_at_k for t in b_result.per_task_results]
+            if not rates_a or not rates_b:
+                continue
+            mwu = compute_mann_whitney_u(rates_a, rates_b)
+            delta_key = f"{adapter_a}_vs_{adapter_b}"
+            mean_a = sum(rates_a) / len(rates_a)
+            mean_b = sum(rates_b) / len(rates_b)
+            cross_adapter_deltas[delta_key] = SkillPairwiseAdapterDelta(
+                adapter_a=adapter_a,
+                adapter_b=adapter_b,
+                pass_at_k_delta=mean_a - mean_b,
+                pass_at_k_mann_whitney_result=mwu,
+                false_activation_rate_delta=a_result.summary.false_activation_rate
+                - b_result.summary.false_activation_rate,
+                missed_activation_rate_delta=a_result.summary.missed_activation_rate
+                - b_result.summary.missed_activation_rate,
+                significant_at_alpha_05=(not _math.isnan(mwu.p_value)) and mwu.p_value < 0.05,
+            )
+
+        # Build summary.
+        activation_accuracy_per_adapter = {
+            name: per_adapter_results[name].summary.activation_accuracy for name in adapters
+        }
+        best_adapter = max(
+            activation_accuracy_per_adapter,
+            key=lambda a: activation_accuracy_per_adapter[a],
+        )
+        worst_adapter = min(
+            activation_accuracy_per_adapter,
+            key=lambda a: activation_accuracy_per_adapter[a],
+        )
+        total_cost = sum(r.summary.total_cost_usd for r in per_adapter_results.values())
+        # Story 13.3 HIGH-A: comparison wall-clock measured from
+        # `compare_t_start` (NOT MAX of per-adapter, which would
+        # under-report serial execution by ~N-1×).
+        total_runtime = time.perf_counter() - compare_t_start
+        summary = SkillDiscoverabilityComparisonSummary(
+            total_cost_usd=total_cost,
+            total_runtime_seconds=total_runtime,
+            activation_accuracy_per_adapter=activation_accuracy_per_adapter,
+            best_adapter=best_adapter,
+            worst_adapter=worst_adapter,
+        )
+
+        # Build heatmap via the new classmethod. Use a shim namespace
+        # (mirrors Story 13.3 D-5 pattern) so the classmethod can read
+        # `.adapters` + `.per_adapter_results` before the full result
+        # dataclass is constructed.
+        class _ComparisonShim:
+            pass
+
+        shim = _ComparisonShim()
+        shim.adapters = tuple(adapters)  # type: ignore[attr-defined]
+        shim.per_adapter_results = per_adapter_results  # type: ignore[attr-defined]
+        heatmap = CohortHeatmap.from_skill_comparison(shim)  # type: ignore[arg-type]
+
+        return SkillDiscoverabilityComparisonResult(
+            adapters=tuple(adapters),
+            per_adapter_results=per_adapter_results,
+            cross_adapter_deltas=cross_adapter_deltas,
+            heatmap=heatmap,
             summary=summary,
-            adapter_coverage="in_process",
         )
 
     @keyword(name="Should Activate For")
@@ -536,33 +743,9 @@ class SkillsLibrary:
                 ),
             )
 
-    def _build_discoverability_summary(
-        self, task_results: list[SkillTaskResult], total_runtime: float
-    ) -> SkillDiscoverabilityTaskSummary:
-        """Compute aggregate summary across all task results."""
-        total_trials = sum(r.trials_run for r in task_results)
-        total_correct = sum(
-            r.activations_observed if r.should_activate else (r.trials_run - r.activations_observed)
-            for r in task_results
-        )
-        activation_accuracy = total_correct / total_trials if total_trials > 0 else 0.0
-
-        decoy_results = [r for r in task_results if not r.should_activate]
-        false_act_obs = sum(r.activations_observed for r in decoy_results)
-        false_act_denom = sum(r.trials_run for r in decoy_results)
-        false_activation_rate = false_act_obs / false_act_denom if false_act_denom > 0 else 0.0
-
-        should_act_results = [r for r in task_results if r.should_activate]
-        missed_obs = sum(r.trials_run - r.activations_observed for r in should_act_results)
-        missed_denom = sum(r.trials_run for r in should_act_results)
-        missed_activation_rate = missed_obs / missed_denom if missed_denom > 0 else 0.0
-
-        total_cost = sum(r.cost_per_trial_usd * r.trials_run for r in task_results)
-
-        return SkillDiscoverabilityTaskSummary(
-            activation_accuracy=activation_accuracy,
-            false_activation_rate=false_activation_rate,
-            missed_activation_rate=missed_activation_rate,
-            total_cost_usd=total_cost,
-            total_runtime_seconds=total_runtime,
-        )
+    # `_build_discoverability_summary` removed Story 13.5 refactor 2026-06-01:
+    # logic extracted to `AgentEval.skills._internal.build_skill_discoverability_summary`
+    # so the new `Skill.Compare Discoverability` keyword reuses it. The
+    # only caller was `get_discoverability` which now delegates to the
+    # `run_single_adapter_skill_discoverability` helper (which calls
+    # `build_skill_discoverability_summary` internally).
