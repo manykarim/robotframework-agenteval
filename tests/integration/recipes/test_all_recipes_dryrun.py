@@ -22,7 +22,7 @@ Closes 3 retro action items (3 epics carryover chain) + 1 catalog row:
 - Epic 11 retro Action #7 (2026-05-27, original).
 - Epic 12 retro Action #9 (2026-06-01, carried).
 - Epic 13 retro Action #9 (2026-06-03, carried again).
-- C64 / DF-8b.3-S1 (catalog row at ``docs/phase-1-5-carry-overs.md`` L91).
+- C64 / DF-8b.3-S1 (catalog row at ``docs/phase-1-5-carry-overs.md`` L88).
 
 Block classification (per Story 14.3 D-1):
 - ``dryrun_eligible``: contains ``*** Test Cases ***``. Wrapped with
@@ -59,8 +59,6 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 RECIPES_DIR = REPO_ROOT / "docs" / "recipes"
-ROBOTFRAMEWORK_FENCE_OPEN = "```robotframework"
-ROBOTFRAMEWORK_FENCE_CLOSE = "```"
 
 _TEST_CASES_RE = re.compile(r"^\*\*\* Test Cases \*\*\*\s*$", re.MULTILINE)
 _SETTINGS_RE = re.compile(r"^\*\*\* Settings \*\*\*\s*$", re.MULTILINE)
@@ -215,9 +213,11 @@ _KNOWN_BROKEN_BLOCKS: dict[str, str] = {
         "`arguments=&{ARGS}` where ARGS is a Dictionary."
     ),
     "05-dogfood-replacing-custom-tests.md::block-1": (
-        "DF-14.3-S1: recipe pre-existing dependency — `Library "
-        "${CURDIR}/fixtures/agentskills_discoverability.py` not present "
-        "in temp dryrun dir; recipe requires an external fixture project."
+        "DF-14.3-S1: recipe pre-existing dependency — dryrun fails with "
+        "`No keyword with name 'Register Skill Stubs'` (from the library "
+        "path `${CURDIR}/fixtures/agentskills_discoverability.py` which "
+        "also doesn't exist in the temp dir). Both errors surface: "
+        "library-not-found in stderr, keyword-not-found in stdout."
     ),
     "07-first-mcp-server-test-tier-1.md::block-0": (
         "DF-14.3-S1: recipe pre-existing regression — `MCP.Get Server "
@@ -404,13 +404,20 @@ def test_extract_robotframework_blocks__returns_empty_for_md_with_no_blocks() ->
 
 
 def test_extract_robotframework_blocks__counts_match_grep() -> None:
-    """Per-recipe block count matches `grep -cE '^```robotframework' <recipe>`."""
+    """Per-recipe block count matches an independent grep over the open-fence form.
+
+    The grep pattern mirrors ``_ROBOT_FENCE_OPEN_RE`` (3+ backticks + ``robotframework``
+    + only trailing whitespace) so the independent cross-check stays faithful to the
+    parser's open-fence definition — a recipe using a 4-backtick outer fence (to embed
+    an inner ```` ```python ```` example) is parsed AND counted by grep, instead of
+    falsely failing this parity test (codex MED-1).
+    """
     import subprocess as _sp  # local to avoid polluting module scope
 
     for md_path in sorted(RECIPES_DIR.glob("*.md")):
         blocks = extract_robotframework_blocks(md_path)
         result = _sp.run(
-            ["grep", "-cE", "^```robotframework", str(md_path)],
+            ["grep", "-cE", "^`{3,}robotframework[[:space:]]*$", str(md_path)],
             check=False,
             capture_output=True,
             text=True,
@@ -421,6 +428,37 @@ def test_extract_robotframework_blocks__counts_match_grep() -> None:
             f"{md_path.name}: extracted {len(blocks)} blocks, grep counts "
             f"{grep_count}."
         )
+
+
+def test_known_broken_blocks__matches_actual_failing_set(tmp_path: Path) -> None:
+    """codex MED-2: pin BOTH halves of the `_KNOWN_BROKEN_BLOCKS` claim.
+
+    Dryruns every dryrun-eligible block WITHOUT consulting the skip-list, then asserts
+    the set that actually fails equals the skip-list. Guards against (a) a fixed recipe
+    whose skip entry was never removed (silent under-testing — the passing-floor math
+    still looks "correct") and (b) a newly-regressed eligible block hiding behind an
+    unchanged floor count.
+    """
+    if not _robot_module_available():  # pragma: no cover — `uv` env always ships robot
+        pytest.skip("robot module not importable; dryrun skip-list audit cannot run.")
+    actual_failing: set[str] = set()
+    for block in _ELIGIBLE_BLOCKS:
+        suite_text = wrap_block_for_dryrun(block)
+        suite_name = (
+            f"audit_{block.recipe.replace('.md', '')}_block_{block.block_index}.robot"
+        )
+        result = _run_robot_dryrun(suite_text, tmp_path, suite_name)
+        combined = (result.stdout or "") + "\n" + (result.stderr or "")
+        if result.returncode != 0 or "No keyword with name" in combined:
+            actual_failing.add(block.test_id)
+    assert actual_failing == set(_KNOWN_BROKEN_BLOCKS), (
+        "Skip-list drift: the set of eligible blocks that actually FAIL `robot "
+        "--dryrun` no longer matches `_KNOWN_BROKEN_BLOCKS`.\n"
+        "  unlisted-but-failing (NEW regressions to triage): "
+        f"{sorted(actual_failing - set(_KNOWN_BROKEN_BLOCKS))}\n"
+        "  listed-but-passing (recipe fixed — remove from skip-list): "
+        f"{sorted(set(_KNOWN_BROKEN_BLOCKS) - actual_failing)}\n"
+    )
 
 
 def _make_block(raw: str) -> FencedRobotBlock:

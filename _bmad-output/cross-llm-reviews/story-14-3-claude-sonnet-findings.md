@@ -1,251 +1,309 @@
-# Story 14.3 — Cross-LLM Adversarial Review — Claude Sonnet 4.6 Findings (v2)
+# Story 14.3 — Claude Sonnet 4.6 (Tier-1a) adversarial review findings — v3 (current-state pass)
 
-**Reviewer:** Claude Sonnet 4.6 (claude-sonnet-4-6) — Tier 1a (second pass; first pass at same path had errors — see below)
-**Date:** 2026-06-04
-**Story:** 14.3 — Recipe CI Extraction (`test_all_recipes_dryrun.py`)
+**Reviewer:** Claude Sonnet 4.6, in-session (Tier-1a substitute, second pass).
+**Date:** 2026-06-04.
+**Context:** Background `claude -p --model sonnet` CLI returned 0 bytes (documented empty-output failure
+mode). This is the **second** in-session Sonnet pass; the prior pass findings are in the same file
+(now superseded below). The prior pass found 7 HIGHs; the Opus/Kilo/v0.3.0 patch cycle addressed them.
+This pass reviews the **current post-v0.3.0 state** for what remains open.
 
-## Prior-pass correction notice
+**Method:** read all 12 source files; executed the negative-guard fixture under robot; re-derived retro
+citations by grep; reviewed diff between prior-pass findings and current harness state.
 
-An earlier version of this file (same path, prior session) made 4 errors:
-1. Marked Epic 11 retro L158 citation "CLEAN" — it is L157 (Opus + Codex both flagged independently).
-2. Missed `FileNotFoundError` dead-code bug (D-4 claim false — Codex HIGH-1).
-3. Missed ≥6-pass criterion unmet / closure overclaimed (Opus HIGH-1+2).
-4. Missed C64 L91→L88 citation drift in deployed docstring.
-This version corrects all four.
+**Applies to version:** `test_all_recipes_dryrun.py` post-v0.3.0 (untracked in `tests/integration/recipes/`).
 
-## Summary
+---
 
-**7 HIGH** (5 code/framing + 2 citation), **5 MED**, **3 LOW**. The harness machinery is empirically
-sound (skip-list exact, negative guards correct, catalog gate EXIT 0). The HIGH findings are a mix
-of: (a) a dead-code D-4 bug, (b) honest-framing overclaim on the retro-action closures, and (c) citation
-drifts. All are cheap fixes; none require architectural rework.
+## Status of prior-pass HIGH findings (all patched in v0.3.0)
+
+| Prior HIGH | Fix applied | Verified |
+| --- | --- | --- |
+| HIGH-1 (`FileNotFoundError` dead code for robot-absent skip) | `_robot_module_available()` added at L251; `except FileNotFoundError` removed from `test_recipe_block_dryruns` | ✓ L309 uses preflight |
+| HIGH-2 (retro closure overclaimed) | C64 row in carry-overs.md → PARTIAL; spec Change Log → PARTIAL framing | ✓ `carry-overs.md:88` reads "PARTIAL 2026-06-04" |
+| HIGH-3 (AC-14.3.3 eligible-vs-passing conflation) | `_AC_14_3_3_THRESHOLD` → `_DF_14_3_S1_PASSING_FLOOR`; v2 correction comment L229-236 | ✓ L237 |
+| HIGH-4 (C64 docstring cites L91) | `test_all_recipes_dryrun.py:25` → L88 | ✓ L25 reads L88 |
+| HIGH-5 (Epic 11 L158 → L157 in spec) | All 4 spec references corrected | ✓ spec L23, L68, L204, L206 read L157 |
+| HIGH-6 (no unclosed-block ValueError test) | Test added at L474-490 | ✓ `pytest.raises(ValueError, match="Unclosed")` |
+| HIGH-7 (module-load assert masks all tests) | Renamed to `_DF_14_3_S1_PASSING_FLOOR`; message improved | ⚠️ Assert still at L239; see LOW-4 below |
 
 ---
 
 ## HIGH
 
-### HIGH-1 — D-4 "SKIP gracefully when robot absent" is dead code; missing robot returns exit 1, not `FileNotFoundError`
+**No new HIGH findings.** All prior HIGH findings are patched. Independent re-verification of the
+three retro citations:
 
-**File:** `tests/integration/recipes/test_all_recipes_dryrun.py:283-287`
-**Source:** Codex HIGH-1 (independently verified here)
-
-```python
-except FileNotFoundError:  # pragma: no cover — `uv` env always ships robot
-    pytest.skip(...)
-```
-
-`_run_robot_dryrun` calls `subprocess.run([sys.executable, "-m", "robot", ...])`. `subprocess.run` raises `FileNotFoundError` only if the *executable* (`sys.executable`) is not found — which cannot happen since `sys.executable` is the currently-running Python interpreter. If the `robot` *module* is absent, Python returns `exit 1` with `stderr: No module named robot`. The harness then checks `result.returncode == 0` and FAILs the test (not SKIPs). D-4 claim ("SKIP gracefully when robot absent") is not implemented.
-
-**Fix**: Replace the `except FileNotFoundError` block with an explicit preflight:
-```python
-try:
-    result = _run_robot_dryrun(suite_text, tmp_path, suite_name)
-except FileNotFoundError:
-    pytest.skip("sys.executable not found — environment severely broken")
-if "No module named robot" in (result.stderr or ""):
-    pytest.skip("robot module not available in environment")
-```
-Or use `importlib.util.find_spec("robot") is None` as the preflight. The `pragma: no cover` comment must be removed if the branch becomes reachable via test.
-
----
-
-### HIGH-2 — Retro-action "≥6 passing" bar unmet; 3-epic carryover closure overclaimed
-
-**File:** `_bmad-output/implementation-artifacts/14-3-recipe-ci-extraction-test-all-recipes-dryrun.md`, `docs/phase-1-5-carry-overs.md` C64 row
-**Source:** Opus HIGH-1 (independently verified here)
-
-The three carried action items each specify a **passing** bar:
-- Epic 11 retro L157 Action #7: "…returns **≥6 passed** at HEAD CI."
-- Epic 12 retro L168 Action #9: "**≥6** fenced robotframework blocks **pass** dryrun in CI."
-- Epic 13 retro L186 Action #9: "ships with **≥6** fenced blocks **tested**."
-
-Empirical (`uv run pytest tests/integration/recipes/test_all_recipes_dryrun.py -v`):
-```
-PASS 02-pass-at-k-over-polling.md::block-0
-PASS 04-skill-author-stacked-validation.md::block-0
-PASS 04-skill-author-stacked-validation.md::block-1
-PASS 06-custom-protocol-adapter.md::block-0
-SKIP 03/05/05/07 (known-broken-DF-14.3-S1)
-=> 4 passing, 4 known-broken-skipped
-```
-
-**Only 4 blocks pass.** The story marks Epic 11 #7 / Epic 12 #9 / Epic 13 #9 "✅ Closing this" and C64 "DONE 2026-06-04". Per `feedback_honest_framing` this is overclaimed. The harness *ships* (one half of the criterion), but the ≥6-pass half is deferred to DF-14.3-S1.
-
-**Fix:** Reframe as *partial* closure in the spec, the C64 row, and the retro-action closures:
-> "✅ Partially closed by Story 14.3 — harness ships and is active; ≥6-pass criterion unmet (4/8 eligible pass; 4 skip as DF-14.3-S1 pre-existing regressions). Full ≥6-pass closure pending fix-recipe-rot story (DF-14.3-S1)."
-
----
-
-### HIGH-3 — AC-14.3.3 amendment conflates "eligible" vs "passing"; original bar was already met; amendment is manufactured
-
-**File:** `_bmad-output/implementation-artifacts/14-3-recipe-ci-extraction-test-all-recipes-dryrun.md` AC-14.3.3, `tests/integration/recipes/test_all_recipes_dryrun.py:220-229`
-**Source:** Opus HIGH-2
-
-AC-14.3.3 as written measures "≥6 **dryrun-eligible** blocks" (blocks containing `*** Test Cases ***`). Empirically there are **8 eligible** blocks → the original AC was met **without any amendment**. The dev amended ≥6→≥4 AND simultaneously switched the measured metric from *eligible* to *passing* (`_PASSING_BLOCKS_COUNT = _ELIGIBLE_COUNT - len(_KNOWN_BROKEN_BLOCKS)`). Two changes conflated into one amendment narrative.
-
-The bar that is actually NOT met is the **retro-actions' "≥6 passing"** (HIGH-2 above), not AC-14.3.3's "≥6 eligible." The amendment manufacture a threshold relaxation the original AC did not require.
-
-**Fix:** Keep AC-14.3.3's eligible bar (8 ≥ 6, no amendment needed). Add a *separate* named metric for the passing count: `_PASSING_BLOCKS_COUNT` is the one that doesn't meet the retro-action target. Rename the module-load assertion to make the distinction clear, and correct the AC text to show both metrics explicitly.
-
----
-
-### HIGH-4 — Citation drift: C64 catalog row cited at L91 in deployed docstring; actual row is L88
-
-**File:** `tests/integration/recipes/test_all_recipes_dryrun.py:26`
-
-```python
-- C64 / DF-8b.3-S1 (catalog row at ``docs/phase-1-5-carry-overs.md`` L91).
-```
-
-**Empirical check:** `grep -n "C64" docs/phase-1-5-carry-overs.md` → C64 is at **line 88**, not L91. L91 is C67 (ClaudeAgentSDKAdapter HostedMcpObserver). Off by 3.
-
-**Fix:** Change `L91` → `L88` in `test_all_recipes_dryrun.py:26`. Same error in story spec line 25.
-
----
-
-### HIGH-5 — Citation drift: Epic 11 retro Action #7 cited at L158; actual line is L157
-
-**File:** `_bmad-output/implementation-artifacts/14-3-recipe-ci-extraction-test-all-recipes-dryrun.md` (lines 23, 68, 204, 252), review prompt
-**Source:** Unanimous — all three reviewers found independently (Sonnet, Opus HIGH-3, Codex MED-2)
-
-The spec cites "Epic 11 retro **L158** Action #7." Empirical:
-- `epic-11-retro-2026-05-27.md:157` = Action #7 (C64 recipe CI extraction).
-- `epic-11-retro-2026-05-27.md:158` = **Action #8** (Story 7.1 Change Log backfill).
-
-The cited line points at the *wrong action*. L-1 of this story claims citations were "re-derived from source via direct grep before writing" — this one was not verified to the correct line. (Epic 12 L168 and Epic 13 L186 confirmed correct.)
-
-**Fix:** Change `L158` → `L157` in all references in the story spec.
-
----
-
-### HIGH-6 — Missing unit test for `extract_robotframework_blocks` unclosed-block `ValueError` path
-
-**File:** `tests/integration/recipes/test_all_recipes_dryrun.py` (no such test)
-**Source:** Sonnet + Opus MED-1 (both independent)
-
-The function docstring (line 86-88) documents "Unclosed blocks raise `ValueError`." The implementation at lines 120-123 is correct. But no unit test exercises this path. The `pytest.raises(ValueError)` calls at lines 421 and 427 test `wrap_block_for_dryrun`, not `extract_robotframework_blocks`. The review checklist explicitly required this test.
-
-**Fix:** Add after `test_extract_robotframework_blocks__counts_match_grep`:
-```python
-def test_extract_robotframework_blocks__unclosed_raises_value_error(tmp_path: Path) -> None:
-    md = tmp_path / "unclosed.md"
-    md.write_text("```robotframework\n*** Test Cases ***\nFoo\n    Log    hi\n")
-    with pytest.raises(ValueError, match="Unclosed"):
-        extract_robotframework_blocks(md)
-```
-
----
-
-### HIGH-7 — Module-load `assert` fires as cryptic collection error, masking all 33 test IDs
-
-**File:** `tests/integration/recipes/test_all_recipes_dryrun.py:222-229`
-**Source:** Sonnet + Opus LOW-3
-
-```python
-assert _PASSING_BLOCKS_COUNT >= _AC_14_3_3_THRESHOLD, (...)
-```
-
-This runs at import time. If it fires, pytest reports an `AssertionError` collection error and drops **all 33 test IDs** from the report — they disappear rather than failing. The dedicated test `test_collect_passable_blocks_meets_amended_ac_14_3_3_threshold` (line 443) covers the same condition with better UX (named test failure visible in CI output).
-
-**Fix:** Remove the module-load `assert`. Keep only the dedicated test. If an early-fail guard is truly needed, document the collection-error ergonomic explicitly.
+- Epic 11 retro `L157` Action #7: re-derived → C64 recipe CI extraction. ✓ (L158 = Action #8.)
+- Epic 12 retro `L168` Action #9: re-derived → "C64 recipe CI extraction (carried)." ✓
+- Epic 13 retro `L186` Action #9: re-derived → "C64 recipe CI extraction (Action #9 carried)." ✓
+- C64 row in `docs/phase-1-5-carry-overs.md` at **L88**: re-derived → C64 "PARTIAL 2026-06-04." ✓
 
 ---
 
 ## MED
 
-### MED-A — `feedback_executable_doc_precheck` memory file not annotated as CI-automated
+### MED-1 — `test_extract_robotframework_blocks__nested_inner_fence_preserved` assertion body does not verify content preservation (`feedback_test_name_assertion_match`)
 
-**File:** `memory/feedback_executable_doc_precheck.md`
-**Source:** Unanimous (Sonnet MED-B, Opus MED-3, Codex MED-3)
+**File:** `tests/integration/recipes/test_all_recipes_dryrun.py:493–513`
+**Finding type:** New (not in prior Sonnet pass or Opus/Codex/Kilo findings).
 
-Story 14.3 IS the CI automation of this Epic-7 norm for `docs/recipes/*.md` RF blocks. The memory file describes only the manual process. Future sessions will instruct operators to manually smoke-execute recipe RF blocks that the CI gate now covers automatically.
+The test name promises the inner fence is "preserved" in the extracted block. The body only checks:
 
-**Fix:** Append one-line update: "CI-enforced as of Story 14.3 via `tests/integration/recipes/test_all_recipes_dryrun.py` for `docs/recipes/*` robotframework blocks. Manual precheck still required for Python/shell blocks and non-recipe paths."
+```python
+blocks = extract_robotframework_blocks(md)
+assert len(blocks) == 1
+```
+
+A parser that returned 1 block with content TRUNCATED at the inner `` ``` `` close-line would pass
+this test — `len(blocks) == 1` is true whether the raw content includes `Log    after` or not.
+
+The test's synthetic recipe writes:
+```
+```robotframework
+*** Test Cases ***
+Outer Test
+    Log    before
+    ```python
+    print('this is documentation inside a robot block')
+    ```
+    Log    after
+```
+```
+If the inner `` ``` `` (at column 4, stripped: `    ````) had triggered the outer close, the block would
+contain everything up to `    ``` ` but NOT `Log    after`. `len(blocks)` would still be 1.
+
+Per `feedback_test_name_assertion_match` (ratified Epic 3 retro): "the assertion body must deliver on
+the test name's promise." The name says "preserved"; the body checks count.
+
+**Fix (concrete):** add content assertions after `len(blocks) == 1`:
+
+```python
+assert len(blocks) == 1
+assert "```python" in blocks[0].raw, "inner open-fence missing — inner content not preserved"
+assert "print(" in blocks[0].raw, "inner body missing"
+assert "Log    after" in blocks[0].raw, "content AFTER inner close-fence missing — outer block was truncated"
+```
+
+The third assertion is the load-bearing one: it fails if and only if the inner `` ``` `` prematurely
+closed the outer block.
 
 ---
 
-### MED-B — `05-dogfood-replacing-custom-tests.md::block-1` skip reason names secondary failure
+### MED-2 — grep-parity test uses 3-backtick pattern; parser now accepts 3+ via `_ROBOT_FENCE_OPEN_RE` (Codex MED-1, still open)
 
-**File:** `tests/integration/recipes/test_all_recipes_dryrun.py:201-205`, `deferred-work.md:417`
-**Source:** Codex MED-1
+**File:** `tests/integration/recipes/test_all_recipes_dryrun.py:406–423`
 
-Current reason: "Library `${CURDIR}/fixtures/agentskills_discoverability.py` not present in temp dryrun dir."  
-Actual first failure from dryrun: `No keyword with name 'Register Skill Stubs' found.` (the Library import fails before the keyword is even reached, but the fixture-not-found is not the triggering error).
+`_ROBOT_FENCE_OPEN_RE = re.compile(r"^(?P<fence>`{3,})robotframework\s*$")` (L83) accepts 3 OR MORE
+backtick fences. But `test_extract_robotframework_blocks__counts_match_grep` shells out to
+`grep -cE "^```robotframework"` which matches EXACTLY 3 backticks.
 
-**Fix:** Update `_KNOWN_BROKEN_BLOCKS` entry to lead with the first dryrun error surfaced by Robot, or list both in failure order.
+For the current 7-recipe corpus all fences use exactly 3 backticks → test passes today. But if a future
+recipe used a 4-backtick outer fence (valid GFM when a block embeds a 3-backtick inner example), the
+parser would extract 1 block and grep would count 0 → parity assertion fails spuriously.
 
----
+This is not hypothetical: `test_extract_robotframework_blocks__nested_inner_fence_preserved` was added
+precisely because the parser now supports multi-length fences. A recipe that actually uses that feature
+would break the parity test.
 
-### MED-C — Parametrize count "13 pytest IDs" in review prompt and spec is wrong; actual is 20
+**Fix (concrete):** replace the shell grep with a Python-only count using the same regex:
 
-**File:** `_bmad-output/cross-llm-reviews/story-14-3-review-prompt.md:16`, story spec
-**Source:** Sonnet MED-C, Opus MED-2, Codex LOW-1
+```python
+_PARITY_RE = re.compile(r"^`{3,}robotframework\s*$", re.MULTILINE)
+for md_path in sorted(RECIPES_DIR.glob("*.md")):
+    blocks = extract_robotframework_blocks(md_path)
+    python_count = len(_PARITY_RE.findall(md_path.read_text(encoding="utf-8")))
+    assert len(blocks) == python_count, (
+        f"{md_path.name}: extracted {len(blocks)} blocks, regex-count {python_count}."
+    )
+```
 
-Empirical `--collect-only`: **20 parametrized IDs** (one per block). Spec says "13 pytest IDs" (wrong) in one place and "33 parametrizations" in Task 1 (wrong — 33 is the total, only 20 are parametrized). Correct accounting: 20 parametrized + 2 negative + 11 helper = 33 total.
-
-**Fix:** Standardize to "20 parametrized block IDs + 2 negative + 11 helper = 33 total" in the story spec review-prompt and task notes.
-
----
-
-### MED-D — Nested-fence parser: longer outer fences (4+ backticks) not recognized; bare ``` inside RF block would prematurely close
-
-**File:** `tests/integration/recipes/test_all_recipes_dryrun.py:61-62, 97-103`
-**Source:** Codex HIGH-2 (empirically probed)
-
-The parser checks `line.strip() == "```robotframework"` (exact 3-backtick match). A fence written with 4+ backticks (valid Markdown for showing triple-backtick fences inside) is ignored. Also, any bare ` ``` ` line inside a robotframework block closes the block prematurely (before the actual closing fence). Neither case exists in the current corpus, but neither is tested.
-
-**Fix:** Either (a) document the parser limitations in the function docstring ("only recognizes exact 3-backtick fences; longer outer fences and nested triple-backtick closings are not handled"), or (b) use `re.match(r"^```robotframework\s*$", line)` / `re.match(r"^```\s*$", line)` for stricter boundary matching. Add a unit test for each limitation.
+This eliminates both the system-binary coupling and the 3-vs-3+ backtick mismatch.
 
 ---
 
-### MED-E — `feedback_executable_doc_precheck` norm propagation: memory update missing
+### MED-3 — `_KNOWN_BROKEN_BLOCKS` skip-list not audited against actual failing-block set (Codex MED-2, still open)
 
-*(Duplicate of MED-A — see above. Tracking separately to note it is unanimous across all 3 tiers.)*
+**File:** `tests/integration/recipes/test_all_recipes_dryrun.py:191–212, 307–308`
+
+`_PASSING_BLOCKS_COUNT = _ELIGIBLE_COUNT - len(_KNOWN_BROKEN_BLOCKS)` and `test_recipe_block_dryruns`
+unconditionally skip any `test_id` in `_KNOWN_BROKEN_BLOCKS`. No test verifies:
+
+1. Every entry in `_KNOWN_BROKEN_BLOCKS` STILL fails dryrun today (stale-skip risk).
+2. No OTHER eligible block fails beyond those listed (new-failure blindspot).
+
+The Codex and Opus independent dryrun probes verified the 4/4 split at review time, but this is a
+snapshot check — no code enforces it going forward. If recipe-3 block-0 is fixed but the skip entry
+stays, the harness silently under-tests (the block is skipped even though it would pass), and
+`_PASSING_BLOCKS_COUNT` becomes wrong.
+
+**Fix (concrete):** add an audit test that dryruns every eligible block directly:
+
+```python
+def test_known_broken_blocks_exact_match(tmp_path: Path) -> None:
+    """Audit: _KNOWN_BROKEN_BLOCKS must exactly equal the set that actually fails dryrun."""
+    if not _robot_module_available():
+        pytest.skip("robot unavailable")
+    actually_failing: set[str] = set()
+    for block in _ELIGIBLE_BLOCKS:
+        suite = wrap_block_for_dryrun(block)
+        suite_name = f"audit_{block.recipe.replace('.md', '')}_{block.block_index}.robot"
+        result = _run_robot_dryrun(suite, tmp_path / f"audit_{block.block_index}", suite_name)
+        if result.returncode != 0:
+            actually_failing.add(block.test_id)
+    assert actually_failing == set(_KNOWN_BROKEN_BLOCKS), (
+        f"Skip-list drift.\nActually failing: {sorted(actually_failing)}\n"
+        f"Skip-listed:      {sorted(_KNOWN_BROKEN_BLOCKS)}"
+    )
+```
+
+This test is expensive (runs 8 dryruns) and could be marked `@pytest.mark.slow` or gated behind an
+env var, but it is the only test that would catch a recipe-rot fix without a matching skip-list removal.
+
+---
+
+### MED-4 — VALIDATION-CEILING line absent from module docstring (Opus MED-3, still open)
+
+**File:** `tests/integration/recipes/test_all_recipes_dryrun.py:15–47`
+
+The ratified norm `feedback_dogfood_validation_ceiling` (Epic 7 retro) requires a top-of-file
+`VALIDATION-CEILING:` statement on any validation harness specifying what it DOES and DOES NOT verify.
+The module docstring (L15-47) describes block classification, wrapping, and closure items but never
+frames the ceiling.
+
+The ceiling is non-obvious: `robot --dryrun` verifies keyword-name resolution + argument-arity parsing
+ONLY. It does NOT verify: runtime values, network calls, actual adapter behavior, or whether the
+recipe's own `Library` import line is correct. Specifically, `06-custom-protocol-adapter.md::block-0`
+is test-cases-only and is wrapped with a synthetic `Library AgentEval` — if that recipe's documented
+import line were wrong, the dryrun would still pass because the synthetic import masks the recipe prose.
+
+**Fix:** add a `VALIDATION-CEILING` paragraph at the end of the module docstring:
+
+```
+VALIDATION-CEILING: ``robot --dryrun`` verifies keyword-name resolution and argument-arity
+parsing only — never runtime values, network calls, or actual adapter behavior.
+Test-cases-only blocks (e.g., recipe-6 block-0) are validated against a *synthetic*
+``Library AgentEval`` wrapper; a wrong import in the recipe's prose is out of scope.
+```
+
+---
+
+### MED-5 — Numeric drift: spec says "13 parametrized tests" / "10 helper tests"; actual counts are 20 / 11 (Opus MED-2, still open)
+
+**File:** `_bmad-output/implementation-artifacts/14-3-recipe-ci-extraction-test-all-recipes-dryrun.md`
+Task 5 (L164), File List (L258), Change Log v0.2.0 (L274).
+
+Empirical `pytest --collect-only`: **33** tests total = **20** parametrized `test_recipe_block_dryruns`
+IDs (one per block in `_ALL_BLOCKS`) + **2** negative + **11** helper (verified: `grep -cE '^def test_'`
+= 14 = 1 parametrized def + 2 negative + 11 helper).
+
+The spec says "13 parametrized tests" (self-contradicts Task 1's own "33 parametrizations covering all
+20 blocks" — one per block IS 20, not 13). The v0.3.0 Change Log entry does not correct these numbers.
+
+**Fix:** standardize spec to "20 parametrized block IDs + 2 negative + 11 helper = 33 total" in all
+three locations (Task 5 body, File List, and Change Log v0.2.0 parenthetical).
 
 ---
 
 ## LOW
 
-### LOW-A — Module docstring doesn't note the 4+4 eligible/skip split
+### LOW-1 — Module docstring L21 "Closes 3 retro action items" inconsistent with PARTIAL framing
 
-**File:** `tests/integration/recipes/test_all_recipes_dryrun.py:28-29`
+**File:** `tests/integration/recipes/test_all_recipes_dryrun.py:21`
+**Finding type:** New (not in prior passes).
 
-Says "runs `robot --dryrun` against each dryrun-eligible block" without noting 4 of 8 are `_KNOWN_BROKEN_BLOCKS`. Add one sentence.
+Line 21 says: `"Closes 3 retro action items (3 epics carryover chain) + 1 catalog row:"`
 
-### LOW-B — Story spec line 23 cites Epic 11 retro L158 (separate from HIGH-5 which is in deployed code)
+The Opus HIGH-1 patch updated the story spec and carry-overs.md to say "PARTIAL" (harness ships;
+≥6-passing bar deferred to DF-14.3-S1). The test file's own module docstring still says "Closes"
+unconditionally — a framing inconsistency in shipped code.
 
-Same L157/L158 drift in the spec narrative text; tracked in HIGH-5 for the code.
-
-### LOW-C — Module-load assertion duplicates dedicated test (ergonomics subissue)
-
-Tracked in HIGH-7. If HIGH-7 is applied (remove assertion), this LOW becomes N/A.
+**Fix:** change L21 to:
+```
+Partially closes 3 retro action items (mechanism delivered; ≥6-passing bar deferred to DF-14.3-S1):
+```
 
 ---
 
-## Verified CLEAN (empirically probed)
+### LOW-2 — `feedback_executable_doc_precheck` memory file not annotated as CI-automated (Opus MED-4, still open)
 
-- **Skip-list completeness**: `uv run pytest -v` → exactly 4 PASS (02::0, 04::0, 04::1, 06::0) + 4 SKIP (known-broken) + 12 SKIP (non-eligible). Zero unaccounted FAILures. ✓
-- **Story 13.5 HIGH-B guard**: `Get From Dictionary` fixture has no `Library Collections`; assertion checks exact error string; test PASSES empirically. ✓
-- **Catalog gate (AC-14.3.9)**: `scripts/check-catalog-references.py --all-tracked` EXIT 0. DF-14.3-S1 row resolves 4 inline refs. ✓
-- **Self-recursion guard**: harness globs `docs/recipes/*.md` only; never `tests/`. ✓
-- **Epic 12 L168 + Epic 13 L186 citations**: both confirmed correct via grep. ✓
-- **Pytest count**: 17 passed + 16 skipped, 4.63s. ✓
+**File:** `~/.claude/projects/-home-many-workspace-robotframework-agenteval/memory/feedback_executable_doc_precheck.md`
+
+Story 14.3 IS the CI automation of this Epic-7 norm for `docs/recipes/*` RF blocks. Future sessions
+will continue instructing operators to manually smoke-execute recipe RF blocks that the CI gate now
+covers. One-line append: "CI-enforced as of Story 14.3 via `tests/integration/recipes/test_all_recipes_dryrun.py`
+for `docs/recipes/*` robotframework blocks; manual precheck remains the first-line authoring guard."
+
+---
+
+### LOW-3 — Local `import subprocess as _sp` inside test function is redundant
+
+**File:** `tests/integration/recipes/test_all_recipes_dryrun.py:408`
+
+`test_extract_robotframework_blocks__counts_match_grep` does `import subprocess as _sp` locally
+"to avoid polluting module scope." `subprocess` is already imported at L53. The local import is
+misleading (implies `subprocess` is otherwise absent) and should be deleted; use the module-level
+import directly.
+
+---
+
+### LOW-4 — Module-load assert ergonomic: still fires as collection error (prior HIGH-7, partially addressed)
+
+**File:** `tests/integration/recipes/test_all_recipes_dryrun.py:239–248`
+
+The rename from `_AC_14_3_3_THRESHOLD` to `_DF_14_3_S1_PASSING_FLOOR` and the improved message
+in v0.3.0 substantially mitigate the "cryptic" concern — the error message is now:
+`"DF-14.3-S1 passing-floor regression: N dryrun-eligible blocks are PASSABLE in CI …"`
+This is informative, not cryptic.
+
+However: if it fires, ALL 33 test results from this file disappear from the pytest report (collection
+error). The dedicated test `test_collect_passable_blocks_meets_amended_ac_14_3_3_threshold` covers the
+same condition with a clean `FAILED` for one named test. Having both is redundant.
+
+**Fix (optional):** remove the module-load assert; keep only the dedicated test. Or keep both but document
+the ergonomic: the module-load assert is intentional early-fail for corpus-empty protection; the test
+provides the same check with better UX.
+
+---
+
+## Verified CLEAN (independently probed)
+
+- **Skip-list completeness (HIGH §`_KNOWN_BROKEN_BLOCKS`):** bash-executed `robot --dryrun` against the
+  `_BROKEN_GET_FROM_DICTIONARY_SUITE` fixture → `returncode=1`, output contains
+  `"No keyword with name 'Get From Dictionary' found."` Negative guard fidelity ✓
+- **Fence counts (D-1):** `grep -cE '^```robotframework' docs/recipes/*.md` → 20 total (recipe-2=5,
+  recipe-3=3, recipe-4=2, recipe-5=2, recipe-6=1, recipe-7=5, recipe-8=2, others=0). Matches
+  `_ALL_BLOCKS=20` from kilo probe. ✓
+- **`_robot_module_available()` correctness (HIGH-1 fix):** uses `importlib.util.find_spec("robot")`
+  (L260); `importlib.util` is imported at L51. Correctly handles the case where robot module is absent
+  vs Python executable missing. ✓
+- **Nested-fence close-fence semantics:** `stripped = line.rstrip()` + `stripped == open_fence`
+  (same-length match) correctly handles indented inner `` ``` `` lines (4-space indented
+  `"    ```"` stripped-right = `"    ```"` ≠ `"```"`). ✓ (MED-1 flags the missing CONTENT assertion.)
+- **Citation re-derivation:** Epic 11 L157, Epic 12 L168, Epic 13 L186, C64 at L88 all confirmed. ✓
+- **Unclosed-block test (HIGH-6 fix):** test at L474–490 writes a dangling `` ```robotframework `` to
+  `tmp_path` and asserts `pytest.raises(ValueError, match="Unclosed")`. ✓
+- **Catalog gate (AC-14.3.9):** DF-14.3-S1 row present in `deferred-work.md:415`; 4 inline refs in
+  `_KNOWN_BROKEN_BLOCKS` resolve to it. ✓
+- **Self-recursion guard (L-2):** harness globs `docs/recipes/*.md` only, never `tests/`. ✓
+- **`docs/recipes/README.md` stale content (Codex MED-3):** README:37 now describes the CI harness,
+  4-pass/4-skipped reality, and DF-14.3-S1 correctly. CLOSED ✓
 
 ---
 
 ## Triage summary
 
-| ID | Severity | Source | Action required before `done` |
+| ID | Severity | Status | Priority |
 | --- | --- | --- | --- |
-| HIGH-1 | HIGH | Codex | Fix `except FileNotFoundError` dead code or document limitation |
-| HIGH-2 | HIGH | Opus | Reframe retro closures as partial (≥6-pass unmet) |
-| HIGH-3 | HIGH | Opus | Separate AC-14.3.3 eligible bar from passing bar |
-| HIGH-4 | HIGH | Sonnet | Fix `L91` → `L88` in deployed docstring |
-| HIGH-5 | HIGH | All 3 | Fix `L158` → `L157` in spec |
-| HIGH-6 | HIGH | Sonnet+Opus | Add unclosed-block unit test |
-| HIGH-7 | HIGH | Sonnet+Opus | Remove/replace module-load assert |
-| MED-A | MED | All 3 | Update `feedback_executable_doc_precheck.md` |
-| MED-B | MED | Codex | Fix block-1 skip-reason to lead with actual first failure |
-| MED-C | MED | All 3 | Fix parametrize counts in spec/prompt |
-| MED-D | MED | Codex | Document parser limitations or harden parser |
-| LOW-A | LOW | Sonnet | Docstring 4+4 split note |
+| MED-1 | MED | New finding | Apply before `done` — 3 lines, closes `feedback_test_name_assertion_match` violation |
+| MED-2 | MED | Codex open | Apply before `done` — future-proofing; current corpus passes |
+| MED-3 | MED | Codex open | Apply at convenience — expensive audit test; MED not blocking |
+| MED-4 | MED | Opus open | Apply before `done` — one docstring paragraph; norm compliance |
+| MED-5 | MED | Opus open | Apply before `done` — spec-only number correction |
+| LOW-1 | LOW | New finding | Cheap one-word fix; framing consistency |
+| LOW-2 | LOW | Opus open | One-line memory file update |
+| LOW-3 | LOW | Style | Delete 1 line |
+| LOW-4 | LOW | Prior HIGH-7 partial | Optional cleanup |
+
+**No code-correctness defect in extraction/classification/wrap/dryrun machinery.** The harness is
+empirically sound. All 7 prior HIGH findings are patched. Remaining findings are test-coverage gaps,
+documentation hygiene, and minor framing inconsistencies.

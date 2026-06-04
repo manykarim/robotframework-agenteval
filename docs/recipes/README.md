@@ -34,11 +34,11 @@ Recipes are validated via:
 
 - The `docs-build.yml` per-file section-presence check (every recipe carries `## Use case` / `## Keywords used` / `## Walkthrough` headings)
 - Per-recipe smoke-execute precheck per `feedback_executable_doc_precheck` (Epic 7 retro NEW norm) — every fenced `robotframework` code block runs through `robot --dryrun` before the recipe is shipped
-- Phase-1.5 hygiene work-item: CI extraction harness for all 8 recipes (catalogued at C64 / `DF-8b.3-S1`). Phase-1 ships only Recipe #2 (Pass@k over polling) as a CI-extracted smoke test via `tests/integration/recipes/test_pass_at_k_recipe.py`.
+- **CI extraction harness (`tests/integration/recipes/test_all_recipes_dryrun.py`, shipped by Story 14.3):** walks every `docs/recipes/*.md` file, extracts all fenced `robotframework` blocks, and runs `robot --dryrun` on each **dryrun-eligible** block (those containing `*** Test Cases ***`). Non-eligible blocks (settings-only + standalone-fragment) are SKIPPED with explicit reasons. At HEAD, 4 of 8 eligible blocks pass; the other 4 are pre-existing recipe regressions skip-listed in `_KNOWN_BROKEN_BLOCKS` and catalogued as `DF-14.3-S1` (fix-recipe-rot follow-up). The earlier per-recipe `test_pass_at_k_recipe.py` (Recipe #2) is retained as redundant coverage.
 
 ## Cross-references
 
 - [Keyword reference (libdoc HTML)](../keywords/AgentEval.html) · [SkillsLibrary libdoc](../keywords/SkillsLibrary.html)
 - [Stability surface contract](../contracts/stability-surface.md) — which keyword surfaces are `stable` / `provisional` / `experimental`
 - [Conformance fixture format](../contracts/conformance-fixture-format.md) — the "fidelity oracle" mechanism per ADR-005
-- [Phase-1.5 carry-over catalog](../phase-1-5-carry-overs.md) — 71 entries at Phase-1 close
+- [Phase-1.5 carry-over catalog](../phase-1-5-carry-overs.md) — growing catalog of carry-over items (71 at Phase-1 close; see the file for the current count)
