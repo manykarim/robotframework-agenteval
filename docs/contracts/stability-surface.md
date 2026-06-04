@@ -131,6 +131,12 @@ Per Story 13.4 (PRD FR55) — Phase-2 standalone HTML rendering of `CohortHeatma
 - `AgentEval._heatmap.models._PASS_RATE_PALETTE` constant — `provisional` label per the Phase-2.5 DF-13.4-S2 / C93 color-blind palette carry-over. The 5-stop boundaries (0.0 / 0.2 / 0.4 / 0.6 / 0.8) are `stable`; the specific hex values are `provisional`.
 - `AgentEval._heatmap.models._color_for_pass_rate(rate) -> tuple[str, str]` helper — `provisional` label. Pure function; underscore-prefixed; not part of the public RF surface but consumable by Phase-2.5 plugins (e.g., color-blind palette overrides).
 
+### Skill Activation Pass@k Surface (Phase-2.5 — Story 14.5 / C59 closure)
+
+Per Story 14.5 — dedicated `Skill.Get Activation Pass At K` keyword closing C59 / DF-7.3-S1 (default-predicate incompatibility silently returns 0.0 on `ActivationDecision` runs; Story 7.3 D-1 empirical bug, 6 epics old).
+
+- `Skill.Get Activation Pass At K` RF keyword + Python method `SkillsLibrary.get_activation_pass_at_k(runs, k)` — `provisional` label. Tier-1 deterministic; HumanEval estimator (delegates to `AgentEval.stats._internal._compute_pass_at_k`). Pass-predicate is HARD-CODED to `isinstance(run.result, ActivationDecision) and run.result.activated` — **no `predicate=` kwarg by design** (removing the predicate-customization pitfall is the whole purpose). Operators needing a custom predicate call `Stat.Get Pass At K` directly. Raises `ValueError` on `k<1`, `k>len(runs)`, or `len(runs)==0`. Sibling of `Stat.Get Pass At K` (Tier-1, FR27); use `Skill.Get Activation Pass At K` for activation-decision runs and `Stat.Get Pass At K` for `AgentRunResult` runs.
+
 ### Cross-Adapter Skill Discoverability Surface (Phase-2 — FR4c)
 
 Per Story 13.5 (PRD FR4c) — Phase-2 cross-adapter Skill Discoverability comparison; depends on Story 13.1's `[agenteval-advanced]` extra (Mann-Whitney U). Symmetric to Story 13.3's MCP variant.

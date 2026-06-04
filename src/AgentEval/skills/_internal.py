@@ -36,12 +36,15 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
 from AgentEval._kernel.discovery import get_adapter
 from AgentEval.errors import InvalidSkillDiscoverabilityTasksError
+
+if TYPE_CHECKING:
+    from AgentEval.stats.types import KeywordRun
 from AgentEval.skills.types import (
     SkillDiscoverabilityResult,
     SkillDiscoverabilityTaskSummary,
@@ -319,3 +322,31 @@ def run_single_adapter_skill_discoverability(
         summary=summary,
         adapter_coverage="in_process",
     )
+
+
+# ---------------------------------------------------------------------------
+# Story 14.5 / C59 / DF-7.3-S1 closure: predicate helper for the new dedicated
+# `Skill.Get Activation Pass At K` keyword. Lives in this module (not in
+# `stats/_internal.py`) because the predicate is skill-domain specific —
+# `ActivationDecision` is a skills surface type.
+# ---------------------------------------------------------------------------
+
+
+def _activation_pass_predicate(run: KeywordRun) -> bool:
+    """Pass-predicate for ``Skill.Get Activation Pass At K`` (Story 14.5 / C59).
+
+    Returns ``True`` iff the wrapped keyword's result is an
+    ``ActivationDecision`` with ``activated=True``. Avoids the default
+    ``Stat.Get Pass At K`` predicate (``completeness == "complete"``)
+    silently returning ``False`` for activation results (Story 7.3 D-1;
+    C59 / DF-7.3-S1; documented as 6-epic-old silent-zero failure mode).
+
+    Local imports defer the dependency on ``stats.types.KeywordRun`` +
+    ``skills.types.ActivationDecision`` until call time to keep this module
+    import-light + avoid circulars (``ActivationDecision`` lives in
+    ``skills.types`` which is imported by ``skills.library`` which imports
+    this module).
+    """
+    from AgentEval.skills.types import ActivationDecision
+
+    return isinstance(run.result, ActivationDecision) and run.result.activated

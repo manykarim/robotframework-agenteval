@@ -69,9 +69,12 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from robot.api.deco import keyword
+
+if TYPE_CHECKING:
+    from AgentEval.stats.types import KeywordRun
 
 from AgentEval._kernel.discovery import get_adapter
 from AgentEval._kernel.guardrails import guarded_fanout
@@ -358,6 +361,64 @@ class SkillsLibrary:
             cost_usd=result.cost_usd,
             latency_seconds=result.latency_seconds,
         )
+
+    # ----------------------------------------------------------------- #
+    # FR27 specialised — Story 14.5 / C59 / DF-7.3-S1 closure             #
+    # ----------------------------------------------------------------- #
+
+    @keyword(name="Skill.Get Activation Pass At K")
+    @tier(1)
+    def get_activation_pass_at_k(
+        self,
+        runs: list[KeywordRun],
+        k: int,
+    ) -> float:
+        """[Tier 1 — Deterministic] HumanEval Pass@k unbiased estimator over activation-decision trials.
+
+        Specialised sibling of ``Stat.Get Pass At K`` with the
+        activation-decision pass-predicate HARD-CODED in. Returns
+        ``float ∈ [0, 1]`` — same HumanEval estimator math as
+        ``Stat.Get Pass At K`` (delegates to the same internal helper).
+
+        | =Arguments= | =Description= |
+        | ``runs`` | ``list[KeywordRun]`` — typically the result of ``Stat.Run N Times`` wrapping ``Skill.Get Activation Decision``. |
+        | ``k`` | Top-k parameter. Must satisfy ``1 <= k <= len(runs)``. |
+
+        Raises ``ValueError`` when ``k < 1``, ``k > len(runs)``, or
+        ``len(runs) == 0`` (delegated to ``_compute_pass_at_k`` validation).
+
+        Example:
+        | ${pass_at_5} =    `Skill.Get Activation Pass At K`    ${RUNS}    k=5
+        | Should Be True    ${pass_at_5} >= 0.7
+
+        Notes:
+        - PRD FR27 — Pass@k unbiased estimator math reused via
+          ``AgentEval.stats._internal._compute_pass_at_k``.
+        - Pass-predicate is HARD-CODED to
+          ``isinstance(run.result, ActivationDecision) and
+          run.result.activated``. The default ``Stat.Get Pass At K``
+          predicate (``completeness == "complete"``) returns ``False``
+          for ``ActivationDecision`` results because
+          ``ActivationDecision`` has no ``metadata.completeness``
+          attribute — the silent-zero failure mode Story 7.3 D-1
+          empirically confirmed (closes C59 / DF-7.3-S1).
+        - No ``predicate`` kwarg by design — removing the
+          predicate-customization pitfall is the whole purpose. Operators
+          needing a custom predicate call ``Stat.Get Pass At K`` directly.
+        - Sibling keyword: ``Stat.Get Pass At K`` (Tier-1) for generic
+          Pass@k on ``AgentRunResult`` runs.
+        - Closes Epic 12 retro Action #5 + Epic 13 retro Action #5 (the
+          C59 closure ratified 6 epics later in Story 14.5). The multi-word
+          post-dot keyword name complies with the ratified norm
+          ``feedback_libdoc_namespace_keyword_must_be_multiword``
+          (Epic 12 retro 2026-06-01) — single-word post-dot names trigger
+          the RF libdoc auto-split bug; multi-word names are immune.
+        """
+        from AgentEval.skills._internal import _activation_pass_predicate
+        from AgentEval.stats._internal import _compute_pass_at_k
+
+        c = sum(1 for r in runs if _activation_pass_predicate(r))
+        return _compute_pass_at_k(c, len(runs), k)
 
     @keyword(name="Get Discoverability")
     @tier(3)
