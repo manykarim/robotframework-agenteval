@@ -47,6 +47,7 @@ from typing import Any
 from robot.api.deco import keyword
 
 from AgentEval._kernel.discovery import get_adapter
+from AgentEval._kernel.guardrails import guarded_fanout
 from AgentEval._kernel.host_budget_plumbing import _HostBudgetPlumbing
 from AgentEval._kernel.tier import tier
 from AgentEval.scenarios.loader import load_scenario
@@ -238,6 +239,7 @@ class OrchestrationLibrary(_HostBudgetPlumbing):
 
     @keyword(name="Run Scenario")
     @tier(3)
+    @guarded_fanout()
     def run_scenario(
         self,
         adapter: str | _Unset = _UNSET,

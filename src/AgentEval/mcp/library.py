@@ -457,18 +457,16 @@ class MCPLibrary(_HostBudgetPlumbing):
         | ``model`` | Model identifier (e.g., ``"anthropic/claude-sonnet-4-6"``). |
         | ``tasks`` | Path to the discoverability tasks YAML. |
         | ``trials_per_task`` | Number of trials per task (Pass@k semantics). Defaults to ``3``. |
-        | ``max_cost_usd`` | Budget cap. Phase-1: tracked, NOT enforced (DF-4.4-S1 carry-over). Defaults to ``5.00``. |
-        | ``max_runtime_seconds`` | Runtime cap. Phase-1: tracked, NOT enforced. Defaults to ``None``. |
+        | ``max_cost_usd`` | Budget cap. Defaults to ``5.00``. Enforced via `@guarded_fanout()` per Story 14.6 (C20 closure) — MCPLibrary inherits `_HostBudgetPlumbing` so budgets passed at RF `Library` import time are honored end-to-end. |
+        | ``max_runtime_seconds`` | Runtime cap. Defaults to ``None``. Enforced via `@guarded_fanout()` (Story 14.6 / C20 closure). |
         | ``**kwargs`` | Provider/adapter forward-compat kwargs. |
 
-        Phase-1 carve-out (DF-4.4-S1): ``@guarded_fanout`` enforcement
-        of ``max_cost_usd`` + ``max_runtime_seconds`` is DEFERRED —
-        same architectural gap as Story 4.3 DF-4.3-S6 (MCPLibrary is
-        excluded from ``_SUB_LIBRARIES`` per Story 2.2 norm; no clean
-        path to inject library-level budgets without architectural
-        change). The kwargs are accepted + tracked on the result but
-        NOT enforced. Operators must bound cost manually until
-        Phase-1.5 plumbs the cross-library config.
+        Budget enforcement (Story 14.6 / C20 closure): `@guarded_fanout()`
+        reads `_max_cost_usd` + `_max_runtime_seconds` from the
+        MCPLibrary host instance via the `_HostBudgetPlumbing` mixin
+        (`_kernel/host_budget_plumbing.py`). Operators pass budgets at
+        RF `Library` import time per Story 2.2 `_SUB_LIBRARIES`
+        exclusion — see the mixin's module docstring for the RF syntax.
 
         Phase-1 carve-out (DF-4.1-S2 + DF-4.2-S1): ``mcp_server=`` is
         NOT forwarded to ``adapter.run(mcp_servers=...)`` because both
@@ -508,9 +506,9 @@ class MCPLibrary(_HostBudgetPlumbing):
 
         Notes:
         - PRD FR10a ratifies the keyword + ``DiscoverabilityResult`` shape.
-        - Tier-3 stochastic; budgets tracked but NOT enforced in Phase-1 (DF-4.4-S1).
-        - Story 4.3 + Story 4.4 ratify the carve-out (architectural budget-injection gap shared with `MetricsLibrary` family).
-        - Story 2.2 ratifies the ``_SUB_LIBRARIES`` composition norm (which excludes ``MCPLibrary`` — driver of the carve-out).
+        - Tier-3 stochastic; `max_cost_usd` + `max_runtime_seconds` budgets enforced via `@guarded_fanout()` (Story 14.6 / C20 closure).
+        - Story 4.3 + Story 4.4 carve-out (architectural budget-injection gap) closed by Story 14.6's unified `_HostBudgetPlumbing` mixin.
+        - Story 2.2 ratifies the ``_SUB_LIBRARIES`` composition norm (which excludes ``MCPLibrary``); operators pass budgets at RF `Library` import time per the mixin's documented RF syntax.
         - Sibling keywords (same library): `Call Tool`, `List Tools`, `Start Server`.
         - Downstream keyword (separately composed sub-library): `HeatmapLibrary.Get Cohort Heatmap` consumes ``DiscoverabilityResult`` to render the FR55 cohort heatmap.
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
