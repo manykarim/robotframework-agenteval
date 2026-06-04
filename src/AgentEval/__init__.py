@@ -345,7 +345,17 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
             # actually routes through the mock provider. Pre-edit broke
             # PRD FR41 precedence at the orchestration boundary.
             if cls_name == "OrchestrationLibrary":
-                components.append(cls(default_provider=self._provider))
+                # Story 14.6 (C26 closure): forward `max_cost_usd` +
+                # `max_runtime_seconds` for `Run Scenario` Tier-3
+                # `@guarded_fanout` enforcement via the unified
+                # `_HostBudgetPlumbing` mixin. Mirrors Stats / Judge pattern.
+                components.append(
+                    cls(
+                        default_provider=self._provider,
+                        max_cost_usd=self._max_cost_usd,
+                        max_runtime_seconds=self._max_runtime_seconds,
+                    )
+                )
             elif cls_name == "MetricsLibrary":
                 # Story 6.1 AC-6.1.2: propagate library-level
                 # `allow_external_mcp_blind` to MetricsLibrary so the

@@ -131,6 +131,18 @@ Per Story 13.4 (PRD FR55) — Phase-2 standalone HTML rendering of `CohortHeatma
 - `AgentEval._heatmap.models._PASS_RATE_PALETTE` constant — `provisional` label per the Phase-2.5 DF-13.4-S2 / C93 color-blind palette carry-over. The 5-stop boundaries (0.0 / 0.2 / 0.4 / 0.6 / 0.8) are `stable`; the specific hex values are `provisional`.
 - `AgentEval._heatmap.models._color_for_pass_rate(rate) -> tuple[str, str]` helper — `provisional` label. Pure function; underscore-prefixed; not part of the public RF surface but consumable by Phase-2.5 plugins (e.g., color-blind palette overrides).
 
+### Unified Host-Instance Budget Plumbing Surface (Phase-2.5 — Story 14.6 / C20+C26+C89+C95 closure)
+
+Per Story 14.6 — `_HostBudgetPlumbing` mixin closing 4 catalog rows (C20+C26+C89+C95) + 3 retro action items (Epic 11 #2 + Epic 12 #3 + Epic 13 #6). Most architectural blast radius of any Epic 14 story.
+
+- `AgentEval._kernel.host_budget_plumbing._HostBudgetPlumbing` mixin class — `provisional` label. Constructor signature: `__init__(*, max_cost_usd: float | None = None, max_runtime_seconds: float | None = None, **kwargs)`. Keyword-only args; cooperative-multiple-inheritance `super().__init__(**kwargs)` forwarding pattern. Sets `_max_cost_usd` + `_max_runtime_seconds` instance attributes that `@guarded_fanout()` reads via `getattr` per `_kernel/guardrails.py:265-266`.
+- `MCPLibrary(_HostBudgetPlumbing)` inheritance (`src/AgentEval/mcp/library.py`) — `stable` label on the inheritance pattern. Operators MUST pass budgets at RF `Library` import time (per Story 2.2 `_SUB_LIBRARIES` exclusion): `Library    AgentEval.mcp.library.MCPLibrary    max_cost_usd=10.00    WITH NAME    MCP`.
+- `SkillsLibrary(_HostBudgetPlumbing)` inheritance (`src/AgentEval/skills/library.py`) — same RF-import pattern as MCPLibrary.
+- `OrchestrationLibrary(_HostBudgetPlumbing)` inheritance (`src/AgentEval/orchestration/library.py`) — auto-wired by `AgentEval._build_components` (per AC-14.6.5; mirrors StatsLibrary + JudgeLibrary patterns). `default_provider` becomes **keyword-only** to match the mixin's discipline.
+- `@guarded_fanout()` decoration added to `MCPLibrary.get_tool_discoverability` (closes C20) and `MCPLibrary.get_tool_discoverability_comparison` (closes C89). `SkillsLibrary.get_discoverability_comparison` + `OrchestrationLibrary.run_scenario` already had the decorator pre-Story-14.6.
+
+**Honest-framing constraint (per Story 14.6 D-6 in-flight amendment):** Story 14.6 ships the MECHANISM (mixin + library inheritance + decorator addition) FULL. Live-keyword Layer 1 pre-flight refusal requires adding `estimator=callable` to the 4 decorations + per-keyword cost-estimation logic — deferred to DF-14.6-S1 (Phase-1.5).
+
 ### Skill Activation Pass@k Surface (Phase-2.5 — Story 14.5 / C59 closure)
 
 Per Story 14.5 — dedicated `Skill.Get Activation Pass At K` keyword closing C59 / DF-7.3-S1 (default-predicate incompatibility silently returns 0.0 on `ActivationDecision` runs; Story 7.3 D-1 empirical bug, 6 epics old).

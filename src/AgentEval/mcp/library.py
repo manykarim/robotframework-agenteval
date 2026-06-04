@@ -73,6 +73,8 @@ from typing import Any
 
 from robot.api.deco import keyword
 
+from AgentEval._kernel.guardrails import guarded_fanout
+from AgentEval._kernel.host_budget_plumbing import _HostBudgetPlumbing
 from AgentEval._kernel.tier import tier
 from AgentEval.discoverability.loader import load_discoverability_tasks
 from AgentEval.discoverability.schema import (
@@ -103,8 +105,16 @@ __all__ = ["MCPLibrary"]
 _BROWSER_STYLE_MIGRATED = True
 
 
-class MCPLibrary:
-    """Static-inspection keywords for `.mcp.json` files [Tier 1 — Deterministic]."""
+class MCPLibrary(_HostBudgetPlumbing):
+    """Static-inspection + cross-adapter keywords for `.mcp.json` files.
+
+    Inherits ``_HostBudgetPlumbing`` (Story 14.6 / C20+C89 closure) so
+    ``MCP.Get Tool Discoverability`` + ``MCP.Compare Tool Discoverability``
+    enforce ``max_cost_usd`` + ``max_runtime_seconds`` budgets via
+    ``@guarded_fanout()``. Operators MUST pass the budgets at RF
+    ``Library`` import time per Story 2.2 ``_SUB_LIBRARIES`` exclusion —
+    see the mixin's module docstring for the RF syntax.
+    """
 
     @keyword(name="Get Server Config")
     @tier(1)
@@ -423,6 +433,7 @@ class MCPLibrary:
 
     @keyword(name="Get Tool Discoverability")
     @tier(3)
+    @guarded_fanout()
     def get_tool_discoverability(
         self,
         mcp_server: str = "",
@@ -555,6 +566,7 @@ class MCPLibrary:
 
     @keyword(name="MCP.Compare Tool Discoverability")
     @tier(3)
+    @guarded_fanout()
     def get_tool_discoverability_comparison(
         self,
         mcp_server: str = "",
@@ -586,7 +598,7 @@ class MCPLibrary:
         | ``adapters`` | REQUIRED ``list[str]`` of adapter names; ≥2 entries required. N=3+ enables ranking across Claude/GPT/Copilot/.... |
         | ``tasks`` | Path to the discoverability tasks YAML (loaded ONCE; shared across adapters). |
         | ``trials_per_task`` | Pass@k trials per task. Defaults to ``3``. |
-        | ``max_cost_usd`` | Budget cap. Defaults to ``20.00`` per epics.md L2186 (4× the single-adapter default reflecting N=3-adapter typical cost). Phase-1 carve-out DF-13.3-S1: tracked NOT enforced (same MCPLibrary architectural gap as DF-4.4-S1 / C20). |
+        | ``max_cost_usd`` | Budget cap. Defaults to ``20.00`` per epics.md L2186 (4× the single-adapter default reflecting N=3-adapter typical cost). Enforced via `@guarded_fanout()` per Story 14.6 (C89 closure) — MCPLibrary inherits `_HostBudgetPlumbing` so budgets passed at RF `Library` import time are honored end-to-end. |
         | ``max_runtime_seconds`` | Runtime cap. Phase-1: tracked, NOT enforced. |
         | ``model`` | Optional ``str`` forwarded to ALL adapters' ctor. Phase-2.5 (DF-13.3-S4): per-adapter model overrides via `adapter_models: dict[str, str]` kwarg. |
         | ``**kwargs`` | Forward-compat kwargs routed to each adapter's ctor. |

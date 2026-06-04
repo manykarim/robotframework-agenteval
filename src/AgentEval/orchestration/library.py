@@ -47,6 +47,7 @@ from typing import Any
 from robot.api.deco import keyword
 
 from AgentEval._kernel.discovery import get_adapter
+from AgentEval._kernel.host_budget_plumbing import _HostBudgetPlumbing
 from AgentEval._kernel.tier import tier
 from AgentEval.scenarios.loader import load_scenario
 from AgentEval.scenarios.schema import Scenario
@@ -108,10 +109,25 @@ def _split_adapter_kwargs(adapter_cls: type, kwargs: dict[str, Any]) -> tuple[di
     return ctor_kwargs, run_kwargs
 
 
-class OrchestrationLibrary:
-    """`Send Prompt` + `Run Scenario` keywords (Story 4.3 / PRD FR14 + FR15)."""
+class OrchestrationLibrary(_HostBudgetPlumbing):
+    """`Send Prompt` + `Run Scenario` keywords (Story 4.3 / PRD FR14 + FR15).
 
-    def __init__(self, default_provider: str | None = None) -> None:
+    Inherits ``_HostBudgetPlumbing`` (Story 14.6 / C26 closure) so
+    ``Run Scenario`` (Tier-3 fan-out) enforces ``max_cost_usd`` +
+    ``max_runtime_seconds`` budgets via ``@guarded_fanout()``. Unlike
+    MCPLibrary + SkillsLibrary, this library IS in ``_SUB_LIBRARIES``
+    (composed under the top-level ``AgentEval`` library) so the budgets
+    are auto-wired from ``AgentEval._build_components`` per AC-14.6.5.
+    """
+
+    def __init__(
+        self,
+        *,
+        default_provider: str | None = None,
+        max_cost_usd: float | None = None,
+        max_runtime_seconds: float | None = None,
+        **kwargs: Any,
+    ) -> None:
         """Story 4.3 code-review 2-way HIGH-C fix 2026-05-20 (Blind H3 + Codex HIGH-1):
         accept a `default_provider` to receive the AgentEval library's resolved
         config. Without this, `AgentEval(provider='mock').send_prompt(prompt='hi')`
@@ -119,7 +135,17 @@ class OrchestrationLibrary:
         (raising ValueError). The AgentEval `_build_components()` now passes
         `self._provider` here so PRD FR41 precedence propagates to the
         orchestration surface.
+
+        Story 14.6 (C26 closure): added `max_cost_usd` + `max_runtime_seconds`
+        keyword-only args (cooperatively forwarded to `_HostBudgetPlumbing`
+        via `super().__init__()`). `default_provider` becomes keyword-only
+        to match the mixin's discipline + avoid positional-arg MRO conflicts.
         """
+        super().__init__(
+            max_cost_usd=max_cost_usd,
+            max_runtime_seconds=max_runtime_seconds,
+            **kwargs,
+        )
         self._default_provider: str | None = default_provider
 
     @keyword(name="Send Prompt")

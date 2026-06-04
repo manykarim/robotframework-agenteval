@@ -78,6 +78,7 @@ if TYPE_CHECKING:
 
 from AgentEval._kernel.discovery import get_adapter
 from AgentEval._kernel.guardrails import guarded_fanout
+from AgentEval._kernel.host_budget_plumbing import _HostBudgetPlumbing
 from AgentEval._kernel.tier import tier
 from AgentEval._kernel.tier_acl import build_polling_disallowed_message
 from AgentEval.errors import PollingDisallowedError, SkillDidNotActivateError
@@ -97,8 +98,15 @@ __all__ = ["SkillsLibrary"]
 _BROWSER_STYLE_MIGRATED = True
 
 
-class SkillsLibrary:
+class SkillsLibrary(_HostBudgetPlumbing):
     """Static-inspection + cross-adapter keywords for skill `.md` files.
+
+    Inherits ``_HostBudgetPlumbing`` (Story 14.6 / C95 closure) so
+    ``Skill.Compare Discoverability`` (and any future @guarded_fanout
+    keyword) enforces ``max_cost_usd`` + ``max_runtime_seconds`` budgets.
+    Operators MUST pass the budgets at RF ``Library`` import time per
+    Story 2.2 ``_SUB_LIBRARIES`` exclusion — see the mixin's module
+    docstring for the RF syntax.
 
     All 9 public methods are `@keyword`-decorated per Story 1b.6
     conventions, spanning mixed tiers: `@tier(1)` for deterministic
@@ -549,7 +557,7 @@ class SkillsLibrary:
         | ``tasks`` | Filesystem path to the skill-discoverability tasks YAML (loaded ONCE; shared across adapters). |
         | ``adapters`` | REQUIRED ``list[str]`` of adapter names; ≥2 entries required. |
         | ``trials_per_task`` | Pass@k trials per task. Defaults to ``3``. |
-        | ``max_cost_usd`` | Budget cap. Defaults to ``20.00`` per epics.md L2218 (4× single-adapter typical). Phase-1 carve-out DF-13.5-S1 / C95: tracked NOT enforced (same SkillsLibrary architectural gap as DF-4.4-S1 / C20 and DF-13.3-S1). |
+        | ``max_cost_usd`` | Budget cap. Defaults to ``20.00`` per epics.md L2218 (4× single-adapter typical). Enforced via `@guarded_fanout()` per Story 14.6 (C95 closure) — SkillsLibrary inherits `_HostBudgetPlumbing` so budgets passed at RF `Library` import time are honored end-to-end. |
         | ``max_runtime_seconds`` | Runtime cap. Phase-1: tracked, NOT enforced. |
         | ``model`` | Optional ``str`` forwarded to ALL adapters' ctor. |
         | ``polling`` | Must NOT be provided — raises ``PollingDisallowedError`` per FR28 (mirrors `Get Discoverability`). |
