@@ -1,7 +1,19 @@
 # ADR-018: Sandbox Policy in Phase 1 — Policy + Gate + Protocol (Backends Deferred to Phase 3)
 
-**Status:** accepted
+**Status:** accepted — **security/ package withdrawn pre-1.0 (2026-07-08, `remove-dead-machinery`); see Withdrawal note below**
 **Date:** 2026-05-17
+
+> **Withdrawal note (2026-07-08, `remove-dead-machinery`):** The Phase-1 code
+> artifacts named in this ADR — the `SandboxBackend` Protocol, `NullSandbox`,
+> the sandbox policy module, and `SandboxRequiredError`/`SANDBOX_REQUIRED` — were
+> deleted. They had zero functional callers and `NullSandbox.execute` only ever
+> raised a placeholder `NotImplementedError` (the planned `SandboxRequiredError`
+> swap never happened because nothing invoked it). A speculative Protocol with no
+> implementations is cheaper to re-introduce in Phase 3, shaped by the first real
+> backend, than to carry as dead API pre-1.0. **What survives:** the
+> `agenteval.sandboxes` entry-point group and `_kernel.discovery.discover_sandboxes()`
+> — the Phase-3 extension seam. The policy/gate/Protocol decision below stands as
+> the Phase-3 design intent; only its premature Phase-1 code lands were withdrawn.
 **Renumbering history:** Originally proposed as ADR-A8 in `_bmad-output/planning-artifacts/adr-backlog-from-architecture.md` §ADR-A8. Renumbered to ADR-018 per architecture.md project tree (`docs/adr/` subsection of the Complete Project Directory Structure). **No spike-driven amendments to ADR-A8's substance.** Story 0.2 cross-cutting confirmation only; see §Cross-cutting forward references below for separately-flagged Phase-3 carry-overs that are NOT part of ADR-A8's ratified text.
 
 ## Context

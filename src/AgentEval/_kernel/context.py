@@ -947,10 +947,9 @@ class ConfigValue:
     """Story 4.3 / PRD FR41: per-setting resolved value + provenance.
 
     Returned by `resolve_config_with_provenance()` + the AgentEval
-    Library's `Get Effective Config setting=<key>` / `Get Effective
-    Config With Provenance` keywords. The `source` field names which
-    precedence-chain level "won" for that setting per PRD FR41 L1563
-    enum: `init_arg` / `env` / `dotenv` / `default`.
+    Library's `Get Effective Config setting=<key>` keyword. The `source`
+    field names which precedence-chain level "won" for that setting per
+    PRD FR41 L1563 enum: `init_arg` / `env` / `dotenv` / `default`.
 
     Story 4.3 code-review 2-way MED-B fix 2026-05-20 (Blind M4 +
     Edge-cases M2): `__post_init__` validates `source` against the
@@ -978,9 +977,12 @@ def resolve_config_with_provenance(
 ) -> dict[str, ConfigValue]:
     """Story 4.3 / PRD FR41: resolve config + track per-setting source.
 
-    Same precedence chain as `resolve_config()`; returns `ConfigValue`
-    instead of bare value so consumers can audit which level "won"
-    for each setting (debugging "why isn't my .env value applied?").
+    remove-dead-machinery D3: this is the SINGLE implementation of the 4-layer
+    precedence chain (kwarg > env > `.env` > default), coercion, dotenv load, and
+    unknown-`AGENTEVAL_*`-key warnings. `resolve_config()` is a pure value
+    projection over this function. Returns `ConfigValue` (value + source) so
+    consumers can audit which level "won" for each setting (debugging "why isn't
+    my .env value applied?").
     """
     dotenv_values = _load_dotenv(dotenv_path)
     _warn_on_unknown_agenteval_keys(dotenv_values, source=str(dotenv_path))
@@ -1040,34 +1042,16 @@ def resolve_config(
         in `_ENV_VAR_NAMES.values()` is flagged via `warnings.warn` with
         `UserWarning` so typos like `AGENTEVAL_PROVDER` surface visibly
         instead of silently falling back to defaults.
+
+    Implementation (remove-dead-machinery D3 — closes DF-4.3-S1/DF-4.3-S7 in-code
+        TODO): this is a pure value projection over
+        `resolve_config_with_provenance` — the single owner of the precedence
+        chain, coercion, dotenv load, and unknown-key warnings. No independent
+        resolution logic lives here, so the two entry points cannot drift and a
+        `.env` file is loaded once per call, not twice.
     """
-    dotenv_values = _load_dotenv(dotenv_path)
-    _warn_on_unknown_agenteval_keys(dotenv_values, source=str(dotenv_path))
-    _warn_on_unknown_agenteval_keys(os.environ, source="os.environ")
-    resolved: dict[str, Any] = {}
-
-    for key, default_value in _FR42_DEFAULTS.items():
-        # Layer 1 — kwarg override. H3: presence in the dict is the override
-        # signal; explicit None IS a real user value (e.g., max_runtime_seconds=None
-        # disables a wall-clock cap). Callers strip _UNSET sentinels before
-        # passing; absence from this dict means "not passed".
-        if key in kwarg_overrides:
-            resolved[key] = kwarg_overrides[key]
-            continue
-        # Layer 2 — environment variable.
-        env_name = _ENV_VAR_NAMES[key]
-        env_raw = os.environ.get(env_name)
-        if env_raw is not None:
-            resolved[key] = _coerce_env_value(key, env_raw)
-            continue
-        # Layer 3 — .env file.
-        if env_name in dotenv_values:
-            resolved[key] = _coerce_env_value(key, dotenv_values[env_name])
-            continue
-        # Layer 4 — FR42 default.
-        resolved[key] = default_value
-
-    return resolved
+    provenance = resolve_config_with_provenance(kwarg_overrides, dotenv_path=dotenv_path)
+    return {key: cv.value for key, cv in provenance.items()}
 
 
 def _warn_on_unknown_agenteval_keys(env_like: Any, *, source: str) -> None:

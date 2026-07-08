@@ -52,7 +52,6 @@ EXIT_CODE_FALLBACK: Final[int] = 70
 # 1a.4 code-review HIGH-6.
 _ERROR_EXIT_CODES: Final[dict[str, int]] = {
     # AgentEvalSafetyError family — EX_NOPERM (77).
-    "SANDBOX_REQUIRED": 77,  # ADR-018 / planned per error-class-hierarchy.md L66.
     "VALIDATE_OPERATOR_DISALLOWED": 77,  # Story 6.3 — IMPLEMENTED per L67.
     # AgentEvalBudgetError family.
     "COST_EXCEEDED": 66,  # epics.md L1660 pinned.

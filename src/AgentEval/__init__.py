@@ -60,7 +60,6 @@ from robotlibcore import DynamicCore
 from AgentEval._kernel.context import (
     ConfigValue,
     _resolve_scope,
-    resolve_config,
     resolve_config_with_provenance,
 )
 from AgentEval._kernel.host_budget_plumbing import _HostBudgetPlumbing
@@ -70,9 +69,9 @@ __version__ = "0.0.1"
 __all__: list[str] = ["AgentEval"]
 
 # Browser-Library-style docstring migration marker (Phase 5, 2026-05-26).
-# This module hosts the top-level `AgentEval` class which carries 3
-# `@keyword`-decorated methods (Get Effective Config / Get Keyword Tier
-# / Get Effective Config With Provenance). The marker enables the
+# This module hosts the top-level `AgentEval` class which carries 2
+# `@keyword`-decorated methods (Get Effective Config / Get Keyword Tier).
+# The marker enables the
 # conventions-test suite to discover + enforce Browser-style structure
 # on the methods within this file. The composed sub-libraries each carry
 # their own marker in their respective `library.py` files.
@@ -236,7 +235,7 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
         otlp_endpoint: str | None = _UNSET,
     ) -> None:
         # Story 1b.1 FR41 wiring: strip _UNSET sentinels, pass the remainder
-        # to resolve_config() so the env-var / .env / defaults layers can fire
+        # to the resolver so the env-var / .env / defaults layers can fire
         # for kwargs the caller did NOT pass. Explicit None IS a user-passed
         # value (e.g., max_runtime_seconds=None) and takes precedence over
         # env-vars.
@@ -253,11 +252,14 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
             "otlp_endpoint": otlp_endpoint,
         }
         kwarg_overrides = {k: v for k, v in kwarg_overrides.items() if v is not _UNSET}
-        resolved = resolve_config(kwarg_overrides)
-        # Story 4.3 (PRD FR41 ConfigValue surface): also compute the
-        # provenance map for `Get Effective Config setting=key` +
-        # `Get Effective Config With Provenance` keywords.
+        # remove-dead-machinery D3: ONE resolution pass per instantiation. The
+        # precedence chain (kwarg > env > .env > default), coercion, and the
+        # unknown-`AGENTEVAL_*`-key warnings all run once here; bare values are
+        # projected from the stored provenance map. Previously `__init__` called
+        # both `resolve_config` and `resolve_config_with_provenance`, resolving
+        # the 4-layer chain twice and emitting each unknown-key warning twice.
         self._config_provenance: dict[str, ConfigValue] = resolve_config_with_provenance(kwarg_overrides)
+        resolved: dict[str, Any] = {key: cv.value for key, cv in self._config_provenance.items()}
 
         self._provider = resolved["provider"]
         self._telemetry = resolved["telemetry"]
@@ -435,8 +437,7 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
 
         Notes:
         - PRD FR41 ratifies the ConfigValue surface; FR42 ratifies the 9 settings.
-        - Story 4.3 DF-4.3-S1 carry-over: full ``dict[str, ConfigValue]`` migration of the no-arg form is Phase-1.5.
-        - Sibling keyword: `Get Effective Config With Provenance` for the FR41-compliant full-surface form.
+        - The per-setting ``setting=<key>`` form IS the provenance surface (returns ``ConfigValue(value, source)``). remove-dead-machinery D3 REJECTED DF-4.3-S1's proposed migration of the no-arg form to ``dict[str, ConfigValue]``: it would force ``.value`` on the common case to serve a debugging need the ``setting=`` form already serves. The `Get Effective Config With Provenance` twin keyword was deleted.
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         if setting is not None:
             if setting not in self._config_provenance:
@@ -446,18 +447,12 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
                 # keyword boundary.
                 raise ValueError(f"unknown config setting {setting!r}; known: {sorted(self._config_provenance.keys())}")
             return self._config_provenance[setting]
-        return {
-            "provider": self._provider,
-            "telemetry": self._telemetry,
-            "trace_backend": self._trace_backend,
-            "allow_validate_operator": self._allow_validate_operator,
-            "default_temperature": self._default_temperature,
-            "mcp_per_test": self._mcp_per_test,
-            "allow_external_mcp_blind": self._allow_external_mcp_blind,
-            "max_cost_usd": self._max_cost_usd,
-            "max_runtime_seconds": self._max_runtime_seconds,
-            "otlp_endpoint": self._otlp_endpoint,
-        }
+        # remove-dead-machinery D3: derive the no-arg `dict[str, Any]` from the
+        # stored provenance map instead of a hand-maintained key literal (which
+        # was a drift-prone shadow copy of the config keys). Same values as the
+        # `self._<key>` instance attributes — those are projected from this same
+        # map at `__init__` — so the ratified no-arg shape is unchanged.
+        return {key: cv.value for key, cv in self._config_provenance.items()}
 
     @keyword(name="Get Keyword Tier")
     @tier(1)
@@ -525,40 +520,6 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
                 f"valid tiers are 1, 2, 3 per PRD FR30a."
             )
         return tier_value
-
-    @keyword(name="Get Effective Config With Provenance")
-    @tier(1)
-    def get_effective_config_with_provenance(self) -> dict[str, ConfigValue]:
-        """Returns the full settings map with per-key provenance as a ``dict[str, ConfigValue]`` (PRD FR41).
-
-        [Tier 1 — Deterministic] — FR41-compliant surface. Each
-        ``ConfigValue`` carries ``value`` + ``source`` per FR41 L1563.
-        Source is one of ``"init_arg"`` / ``"env"`` / ``"dotenv"`` /
-        ``"default"``.
-
-        | =Arguments= | =Description= |
-        | (none) | Returns the full settings map; no arguments. |
-
-        Defensive shallow-copy of the underlying provenance dict — caller
-        mutations don't propagate to the Library's internal state.
-
-        Example:
-        | Library    AgentEval    max_cost_usd=5.0
-        | ${settings} =    `Get Effective Config With Provenance`
-        | ${cost} =    Set Variable    ${settings}[max_cost_usd]
-        | Should Be Equal As Numbers    ${cost.value}    5.0
-        | Should Be Equal    ${cost.source}    init_arg                              # Constructor kwarg won.
-        | ${temp} =    Set Variable    ${settings}[default_temperature]
-        | Should Be Equal    ${temp.source}    default                               # Not overridden — uses FR42 default.
-
-        Notes:
-        - PRD FR41 ratifies the ``dict[str, ConfigValue]`` shape.
-        - This is the FR41-compliant surface DF-4.3-S1 will migrate ``Get Effective Config`` (no-arg) to once tier-1 tests update.
-        - Sibling keyword: `Get Effective Config` for the simpler ``dict[str, Any]`` or per-setting form.
-        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
-        # M_R6 shallow-copy pattern: protect against caller mutating
-        # the returned dict.
-        return dict(self._config_provenance)
 
     def _get_rf_test_id(self) -> str | None:
         """Read the current RF Listener v3 `test_id` from RF context.

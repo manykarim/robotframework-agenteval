@@ -42,8 +42,9 @@ def _load_checker():
 
 def test_libdoc_derives_expected_count() -> None:
     checker = _load_checker()
-    # Sanity: the derived count is the sum of the 4 disjoint libraries.
-    assert checker.derive_keyword_count() == 56
+    # Composed `AgentEval` surface: 55 keywords after `remove-dead-machinery`
+    # deleted the `Get Effective Config With Provenance` keyword (was 56).
+    assert checker.derive_keyword_count() == 55
 
 
 def test_readme_and_index_counts_match_libdoc() -> None:

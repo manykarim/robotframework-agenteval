@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from AgentEval.stats.wilson import _standard_normal_quantile, wilson_score_interval
@@ -88,3 +90,57 @@ def test_standard_normal_quantile_out_of_range_raises() -> None:
         _standard_normal_quantile(0.0)
     with pytest.raises(ValueError, match=r"p must be in"):
         _standard_normal_quantile(1.0)
+
+
+# ================================================================== #
+# Folded from the deleted `discoverability/test_wilson_ci.py`        #
+# (remove-dead-machinery Wilson dedup — D2). The discoverability     #
+# path now routes through THIS implementation; these assertions were #
+# unique to the old duplicate's test file and are preserved here.    #
+# ================================================================== #
+
+
+def test_wilson_half_success_100_trials_pinned() -> None:
+    """50/100 at 95% CI: interval centered on 0.5, bounds ≈ (0.4038, 0.5962).
+
+    Folded from `test_wilson_ci_half_success_centered`. The stats and (former)
+    discoverability implementations agree to ~1e-9, comfortably within the
+    0.001 tolerance the original assertion used.
+    """
+    lower, upper = wilson_score_interval(50, 100, confidence=0.95)
+    assert math.isclose(lower, 0.4038, abs_tol=0.001)
+    assert math.isclose(upper, 0.5962, abs_tol=0.001)
+
+
+def test_wilson_90_percent_narrower_than_95() -> None:
+    """90% CI is narrower than 95% CI for the same data (folded from the duplicate)."""
+    l90, u90 = wilson_score_interval(5, 10, confidence=0.90)
+    l95, u95 = wilson_score_interval(5, 10, confidence=0.95)
+    assert (u90 - l90) < (u95 - l95)
+
+
+def test_wilson_bounds_in_unit_interval_for_range_of_inputs() -> None:
+    """For any valid input, 0.0 <= lower <= upper <= 1.0 (folded from the duplicate)."""
+    for s, t in [(0, 1), (1, 1), (1, 10), (5, 10), (10, 10), (50, 100), (99, 100)]:
+        lower, upper = wilson_score_interval(s, t)
+        assert 0.0 <= lower <= upper <= 1.0
+
+
+def test_wilson_routed_through_discoverability_call_path() -> None:
+    """The discoverability internals compute CI via the stats implementation.
+
+    After the Wilson dedup (remove-dead-machinery D2), `discoverability._internal`
+    imports `wilson_score_interval` from `AgentEval.stats.wilson`. This test
+    asserts the symbol identity AND pins bounds computed through that module's
+    reference so the discoverability call path stays covered (package-pruning
+    spec: "at least one test exercising the computation through the
+    discoverability call path").
+    """
+    from AgentEval.discoverability import _internal as disc_internal
+
+    assert disc_internal.wilson_score_interval is wilson_score_interval
+    # Pinned (successes=3, trials=3) at the discoverability default confidence
+    # (0.95). Value stable to 1e-9 vs the pre-dedup duplicate implementation.
+    lower, upper = disc_internal.wilson_score_interval(3, 3)
+    assert upper == 1.0
+    assert math.isclose(lower, 0.4385029678, abs_tol=1e-6)

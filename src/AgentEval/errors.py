@@ -47,18 +47,15 @@ addition, no refactor of Story 1b.2's classes):
   `_kernel/guardrails.@guarded_fanout` Layer 1 + Layer 2.
 - `RuntimeBudgetExceededError(AgentEvalBudgetError)` — raised by Layer 1 + Layer 3.
 - `AdapterDiscoveryError(AgentEvalCompatError)` — raised by
-  `_kernel/discovery.{_discover_entry_point_group, get_adapter}` on partial-install
-  + lookup-miss. Exposes a `loaded_so_far: dict[str, type]` attribute so
-  callers can recover the successfully-loaded adapters from a partial-failure
-  scan (per ADR-013 L42 verbatim contract, restored after Story 1b.3 code
-  review caught the docstring vs implementation drift).
-- `DuplicateRegistrationError(AdapterDiscoveryError)` — raised by
-  `_kernel/discovery._cached_coding_agents` when the same adapter name is
-  declared across `agenteval.coding_agents` (primary) AND
-  `robotframework_agenteval.adapters` (legacy) — per ADR-013 L43's
-  "agenteval refuses to silently pick one" contract. Exposes the conflicting
-  source-package names via `sources: tuple[str, str]` (primary first, legacy
-  second).
+  `_kernel/discovery.{_discover_entry_point_group, get_adapter, _cached_coding_agents}`
+  on partial-install, lookup-miss, AND cross-package name collision (per ADR-013
+  L43's "agenteval refuses to silently pick one" contract — the message names the
+  colliding entry-point name and both registration sources). Exposes a
+  `loaded_so_far: dict[str, type]` attribute so callers can recover the
+  successfully-loaded adapters from a partial-failure scan (per ADR-013 L42
+  verbatim contract). The former `DuplicateRegistrationError` leaf was folded
+  into this class by `remove-dead-machinery` (single raise site, no dedicated
+  exit code — collisions already exited through `ADAPTER_DISCOVERY_ERROR`).
 
 The remaining 6 leaves from `docs/contracts/error-class-hierarchy.md` (Story
 1a.4 ratified catalog) are added to this module as subsequent stories need them:
@@ -67,13 +64,11 @@ The remaining 6 leaves from `docs/contracts/error-class-hierarchy.md` (Story
 - `ValidateOperatorDisallowed` — Epic 6 Story 6.2 (assertion gate enforcement)
 - `AdapterVersionDriftWarning` — Epic 11 Story 11.3 (warning, not error)
 
-Special case (separate paragraph because the Phase-1 home differs):
-
-- `SandboxRequiredError` — currently lives at `src/AgentEval/security/policy.py`
-  per Story 1a.1's pre-`errors.py` baseline; does NOT yet inherit from
-  `AgentEvalError`. Re-homing into this module under `AgentEvalSafetyError`
-  is a Phase-1.5 hygiene carry-over tracked in
-  `_bmad-output/implementation-artifacts/deferred-work.md`.
+(`SandboxRequiredError` was planned as a `security/` sandbox leaf but never
+shipped; the `security/` package was withdrawn pre-1.0 by the
+`remove-dead-machinery` change. A `SandboxBackend` Protocol + its error surface
+are re-introduced when a real Phase-3 sandbox backend lands — see
+`docs/contracts/stability-surface.md`.)
 
 The 3-class structure in this story is extension-friendly: future stories
 ADD leaves (and, if needed, the other 3 sub-bases `AgentEvalSafetyError`,
@@ -124,7 +119,6 @@ __all__ = [
     "CostExceededError",
     "RuntimeBudgetExceededError",
     "AdapterDiscoveryError",
-    "DuplicateRegistrationError",
     "UnsupportedBinaryVersionError",
     "UnsupportedMCPVersionError",
     "MCPConnectionLostError",
@@ -247,8 +241,11 @@ class AgentEvalSafetyError(AgentEvalError):
 
     - `ValidateOperatorDisallowed` — `validate` AssertionEngine operator used
       without `allow_validate_operator=True` opt-in (FR43); Story 6.3 enforces.
-    - `SandboxRequiredError` — currently lives at `src/AgentEval/security/policy.py`
-      per Story 1a.1 baseline; Phase-1.5 hygiene carry-over to re-home here.
+
+    (`SandboxRequiredError` was planned under this sub-base but never shipped;
+    the `security/` package was withdrawn pre-1.0 by `remove-dead-machinery`
+    and the Protocol/backend are re-introduced when a real Phase-3 sandbox
+    lands — see `docs/contracts/stability-surface.md`.)
     """
 
 
@@ -576,7 +573,7 @@ class AgentEvalCompatError(AgentEvalError):
 class AdapterDiscoveryError(AgentEvalCompatError):
     """Raised by `_kernel/discovery.py` on entry-points discovery failures.
 
-    Two raise sites per Story 1b.3:
+    Three raise sites:
         1. **Partial-install detection** (ADR-013 L42): one or more entry-points
            in `agenteval.coding_agents` (or another agenteval.* group) point at
            modules that can't be imported (e.g., the adapter package's extras
@@ -589,6 +586,13 @@ class AdapterDiscoveryError(AgentEvalCompatError):
            the given name across the programmatic + primary + legacy lookup
            precedence. Error message lists the known adapter names. (For this
            case `loaded_so_far` is the empty dict.)
+        3. **Cross-package name collision** (ADR-013 L43): the same adapter name
+           is declared in BOTH `agenteval.coding_agents` (primary) AND
+           `robotframework_agenteval.adapters` (legacy). agenteval refuses to
+           silently pick one; the message names the colliding entry-point name
+           and both registration sources. (Folded here from the former
+           `DuplicateRegistrationError` leaf by `remove-dead-machinery` — single
+           raise site, no dedicated exit code.)
 
     `UnknownAdapterError` (used in the pre-edit story spec) is NOT in the
     ratified catalog; this single leaf covers both cases per the Story 1b.3
@@ -608,42 +612,6 @@ class AdapterDiscoveryError(AgentEvalCompatError):
     def __init__(self, message: str, *, loaded_so_far: dict[str, type] | None = None) -> None:
         super().__init__(message)
         self.loaded_so_far: dict[str, type] = dict(loaded_so_far) if loaded_so_far else {}
-
-
-class DuplicateRegistrationError(AdapterDiscoveryError):
-    """Raised when the same adapter name is declared in BOTH primary + legacy groups.
-
-    Per ADR-013 L43 verbatim: "Duplicate-name collisions across packages
-    produce a `DuplicateRegistrationError(AdapterDiscoveryError)` with both
-    source package names; agenteval refuses to silently pick one."
-
-    Story 1b.3 code review caught the pre-edit implementation's drift from
-    this contract — the original code used `warnings.warn` + primary-wins,
-    which the ADR explicitly forbids. Cross-package collisions now raise this
-    typed error fail-closed so consumers cannot accidentally depend on a
-    non-deterministic resolution.
-
-    Intra-group collisions within ONE entry-point group (same name declared
-    twice in `agenteval.coding_agents`, for example) are a different
-    operational class — handled by the PyPA installer's metadata uniqueness
-    rules, not this exception. If the installer accepts such a duplicate
-    anyway, the `_cached_coding_agents` scan emits a UserWarning + lets the
-    last-wins (which is what stdlib `dict.update` semantics already do).
-
-    `sources` attribute: 2-tuple of `(primary_dist_name, legacy_dist_name)`
-    or `("primary", "legacy")` if dist names cannot be resolved from the
-    entry-point metadata. Inherits `loaded_so_far` from the parent.
-    """
-
-    def __init__(
-        self,
-        message: str,
-        *,
-        sources: tuple[str, str] = ("primary", "legacy"),
-        loaded_so_far: dict[str, type] | None = None,
-    ) -> None:
-        super().__init__(message, loaded_so_far=loaded_so_far)
-        self.sources: tuple[str, str] = sources
 
 
 class UnsupportedBinaryVersionError(AgentEvalCompatError):
@@ -671,8 +639,7 @@ class UnsupportedBinaryVersionError(AgentEvalCompatError):
     `detected`, `min_version`, `max_version` are exposed alongside the
     string message so callers can react programmatically (e.g., suggest
     `pip install '<binary>>=<min_version>'`) without string-parsing the
-    error message. Sibling `DuplicateRegistrationError` / `AdapterDiscoveryError`
-    follow the same pattern.
+    error message. Sibling `AdapterDiscoveryError` follows the same pattern.
 
     `error_code = "UNSUPPORTED_BINARY_VERSION"`; exit code 78 (EX_CONFIG).
     """

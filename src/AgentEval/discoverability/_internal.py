@@ -38,7 +38,7 @@ from AgentEval.discoverability.schema import (
     DiscoverabilitySummary,
     TaskResult,
 )
-from AgentEval.discoverability.wilson_ci import wilson_score_interval
+from AgentEval.stats.wilson import wilson_score_interval
 
 if TYPE_CHECKING:
     from AgentEval.discoverability.schema import DiscoverabilityTask

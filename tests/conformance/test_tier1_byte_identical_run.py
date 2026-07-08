@@ -48,7 +48,6 @@ _BYTE_IDENTICAL_EXEMPT: dict[str, str] = {
     # it's an exemption from THIS fixture because the call has side-effects
     # (reads ContextVar) that the fixture-level harness doesn't reset.
     "Get Effective Config": "context-dependent: reads ContextVar",
-    "Get Effective Config With Provenance": "context-dependent: reads ContextVar",
     "Get Keyword Tier": "intentional ValueError on unknown kw; conformance covered by stats unit tests",
     # Sub-library getters that require pre-bound state (HookContext / MCP
     # server handle / TraceStore-bound runs) are exempted from the no-args

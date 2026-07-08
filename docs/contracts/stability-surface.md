@@ -81,8 +81,7 @@ Per architecture L853 (top-level shared types) + L1184 (top-level errors module)
 - `AgentEval.errors.IncompleteTraceError` leaf — `stable` label. `error_code = "INCOMPLETE_TRACE"` is `stable` per ADR-014.
 - `AgentEval.errors.CostExceededError` leaf (Story 1b.3) — `stable` label. `error_code = "COST_EXCEEDED"` is `stable` per ADR-014; FR50 exit code 66 (sysexits-extended; pinned by epics.md Story 8a.1 L1660 + contract L73).
 - `AgentEval.errors.RuntimeBudgetExceededError` leaf (Story 1b.3) — `stable` label. `error_code = "RUNTIME_BUDGET_EXCEEDED"` is `stable` per ADR-014; FR50 exit code 75 (EX_TEMPFAIL; contract L74).
-- `AgentEval.errors.AdapterDiscoveryError` leaf (Story 1b.3) — `stable` label. `error_code = "ADAPTER_DISCOVERY_ERROR"` is `stable` per ADR-014; FR50 exit code 78 (EX_CONFIG; contract L82). Exposes a `loaded_so_far: dict[str, type]` attribute per ADR-013 L42 verbatim — `stable`.
-- `AgentEval.errors.DuplicateRegistrationError` leaf (Story 1b.3 code-review patch per Codex STAR catch) — `stable` label. Subclass of `AdapterDiscoveryError` per ADR-013 L43 verbatim. Same `error_code` as the parent; same FR50 exit code 78. Exposes `sources: tuple[str, str]` (primary, legacy dist names) — `stable`.
+- `AgentEval.errors.AdapterDiscoveryError` leaf (Story 1b.3) — `stable` label. `error_code = "ADAPTER_DISCOVERY_ERROR"` is `stable` per ADR-014; FR50 exit code 78 (EX_CONFIG; contract L82). Exposes a `loaded_so_far: dict[str, type]` attribute per ADR-013 L42 verbatim — `stable`. Also raised on cross-package adapter-name collisions (ADR-013 L43): the former `DuplicateRegistrationError` leaf was **folded into this class** by `remove-dead-machinery` (single raise site, no dedicated exit code); the collision message names the colliding entry-point name and both registration sources.
 - `AgentEval.errors.UnsupportedBinaryVersionError` leaf (Story 1b.4) — `stable` label. `error_code = "UNSUPPORTED_BINARY_VERSION"` is `stable` per ADR-014; FR50 exit code 78 (EX_CONFIG; contract L81). Class declaration ships in Story 1b.4; per-adapter raise sites in Epic 4 Story 4.2 (Claude Code CLI) + Epic 11 Story 11.3 (Copilot CLI). FR47 error-message format `<binary> version <X> outside tested range <range>` is `stable`.
 - `AgentEval.types.{ToolCallTrace, Usage, RunManifest}` dataclasses — `provisional` label. Phase-1 stdlib `@dataclass(frozen=True)` (deviation from architecture's "Pydantic dataclasses" wording — documented in `types.py` docstring + Phase-1.5 carry-over). Field set is `provisional` (field additions are minor bumps; field renames are major bumps).
 - `AgentEval.types.{AgentRunResult, AgentRunMetadata}` dataclasses (Story 1b.4) — `provisional` label. Phase-1 stdlib `@dataclass(frozen=True)`. `AgentRunResult` 7-field shape is `provisional` (subsequent stories may add optional fields like `cancellation_reason`; existing field renames are major bumps). `AgentRunMetadata` 3-state Literal value spaces (`completeness` + `mcp_coverage`) are `stable` per ADR-006 L15 + ADR-016 §Decision L24-28. The `.metadata.{completeness, mcp_coverage}` nesting itself is `stable` per ADR-006.
@@ -194,12 +193,19 @@ Per Story 13.1 (PRD FR29a/b/c) — Phase-2 advanced statistical primitives gated
 
 ### Sandbox Protocol Surface
 
-Per ADR-018 (`adopt` from agentguard ADR-013 with significant divergence — see `docs/adr/ADR-001-architectural-influences-catalog.md` agentguard ADR-013 row):
+**Withdrawn pre-1.0 (remove-dead-machinery, 2026-07-08).** The `security/`
+package — the `SandboxBackend` Protocol, the `NullSandbox` default, the sandbox
+policy module, and the never-shipped `SandboxRequiredError`/`SANDBOX_REQUIRED`
+exit-code row — had zero functional callers and shipped no working backend
+(`NullSandbox.execute` only ever raised a placeholder `NotImplementedError`). A
+speculative Protocol with no implementations is not a stable surface to depend
+on, so the whole subsection is withdrawn rather than carried as dead API.
 
-- `SandboxBackend(Protocol)` at `src/AgentEval/security/protocols.py` — `provisional` label in Phase 1. Methods: `execute(code, language, timeout) -> SandboxResult`. Signature may evolve in Phase 2 as real backends ship; `provisional` label warns consumers.
-- `NullSandbox` default backend at `src/AgentEval/security/null_sandbox.py` — `stable` label. Refuses every `execute()` call by raising `SandboxRequiredError`. Backwards-compat guarantee: a `NullSandbox()` instance always raises; never silently executes.
-- `agenteval.sandboxes` entry-points group — `stable` label. The discovery mechanism for backends is fixed; the Protocol surface backends MUST implement is `provisional`.
-- `SandboxRequiredError` — `stable` label. `error_code = "SANDBOX_REQUIRED"`; FR50 exit code 77 (EX_NOPERM; contract L66). **Phase-1 home: `src/AgentEval/security/policy.py`** per Story 1a.1's pre-`errors.py` baseline; the class does NOT yet inherit from `AgentEvalSafetyError` (re-homing into `src/AgentEval/errors.py` under `AgentEvalSafetyError` is a Phase-1.5 hygiene carry-over tracked in `_bmad-output/implementation-artifacts/deferred-work.md`). The Story 1b.3 code-review caught a contract-self-disagreement where this row previously claimed the `errors.py` home was already in effect — corrected per the citation-drift fix-the-losing-source norm.
+Re-ratified when a real Phase-3 sandbox backend lands: the `SandboxBackend`
+Protocol is re-introduced then, shaped by the actual backend's needs. Until
+then, only the discovery seam survives:
+
+- `agenteval.sandboxes` entry-points group + `_kernel.discovery.discover_sandboxes()` — retained as the Phase-3 extension seam (ADR-018). With no sandbox entry points installed, `discover_sandboxes()` returns an empty mapping.
 
 Phase-3 sandbox backend implementations (Docker, ephemeral worktree, gVisor optionally) live in separate packages and manage their own stability.
 
@@ -213,8 +219,8 @@ This contract evolves per its own labels (the meta-rule: this contract is `stabl
 
 ## References
 
-- ADR-018: Sandbox Phase 1 Policy — the `SandboxBackend` Protocol + `NullSandbox` default
+- ADR-018: Sandbox Phase 1 Policy — the `SandboxBackend` Protocol + `NullSandbox` default (both withdrawn pre-1.0 by `remove-dead-machinery`; the entry-point seam survives)
 - ADR-013: Entry-Points Discovery Infrastructure — `agenteval.sandboxes` registration
-- ADR-014: Error-Class Hierarchy — `SandboxRequiredError` leaf
+- ADR-014: Error-Class Hierarchy — `SandboxRequiredError` was planned here but never shipped; withdrawn pre-1.0
 - FR64 (PRD): Stability Surface metadata; NFR-MAINT-05: per-element labels
 - `agentguard ADR-013` row in `docs/adr/ADR-001-architectural-influences-catalog.md`: the `adapt` decision for sandbox policy

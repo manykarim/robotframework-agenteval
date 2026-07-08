@@ -108,11 +108,11 @@ Exit codes from `python -m AgentEval.conformance` follow the sysexits-style 24-l
 
 ## Keywords at a glance
 
-**56 keywords across 11 libraries — one import.** A single `Library    AgentEval` line composes every shipped sub-library (skills, subagents, hooks, MCP, stats, judge, plus the core run-measure-assert loop) and exposes all 56 keywords with no `WITH NAME` incantation. **Naming rule:** keywords that operate on a specific artifact or engine — skills, subagents, hooks, MCP servers, statistics, LLM-judge — carry that namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`); the shared run-measure-assert loop (`Send Prompt`, `Get Tool Call Count`, `Trajectory Should Match`, `Get Effective Config`, …) is unprefixed. The tables below group the keywords by originating sub-library, but every one of them resolves under the single top-level import. Each sub-library remains importable standalone by module path (`Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0`) for per-library budget scoping — the baked prefixes make the call sites identical under both styles, so no `WITH NAME` is needed (and adding it produces a pointless double prefix like `Skill.Skill.Get Frontmatter`).
+**55 keywords across 11 libraries — one import.** A single `Library    AgentEval` line composes every shipped sub-library (skills, subagents, hooks, MCP, stats, judge, plus the core run-measure-assert loop) and exposes all 55 keywords with no `WITH NAME` incantation. **Naming rule:** keywords that operate on a specific artifact or engine — skills, subagents, hooks, MCP servers, statistics, LLM-judge — carry that namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`); the shared run-measure-assert loop (`Send Prompt`, `Get Tool Call Count`, `Trajectory Should Match`, `Get Effective Config`, …) is unprefixed. The tables below group the keywords by originating sub-library, but every one of them resolves under the single top-level import. Each sub-library remains importable standalone by module path (`Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0`) for per-library budget scoping — the baked prefixes make the call sites identical under both styles, so no `WITH NAME` is needed (and adding it produces a pointless double prefix like `Skill.Skill.Get Frontmatter`).
 
-### `AgentEval` — core-loop keywords (35 of the 56)
+### `AgentEval` — core-loop keywords (34 of the 55)
 
-The composed `AgentEval` library holds all 56 keywords. The 35 below are the unprefixed run-measure-assert loop plus the `Stat.*`, `Judge.*`, and `Hook.Get Config` keywords; the remaining 21 (`Skill.*`, `MCP.*`, `Subagent.Get Frontmatter`) are listed in the sub-library sections further down and resolve under the same single import.
+The composed `AgentEval` library holds all 55 keywords. The 34 below are the unprefixed run-measure-assert loop plus the `Stat.*`, `Judge.*`, and `Hook.Get Config` keywords; the remaining 21 (`Skill.*`, `MCP.*`, `Subagent.Get Frontmatter`) are listed in the sub-library sections further down and resolve under the same single import.
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html](https://manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html)** (GitHub Pages) · local: [`docs/keywords/AgentEval.html`](./docs/keywords/AgentEval.html)
 
@@ -153,8 +153,7 @@ Library    AgentEval
 | **Get Last Warnings** | 1 | Warnings emitted during the run |
 | **Get Cohort Heatmap** | 1 | Pass@k cohort heatmap (ASCII + dict) |
 | **Hook.Get Config** | 1 | Parse a Claude Code `settings.json` hook configuration |
-| **Get Effective Config** | 1 | Resolved config dict or single `ConfigValue` |
-| **Get Effective Config With Provenance** | 1 | Full settings map with per-key provenance |
+| **Get Effective Config** | 1 | Resolved config dict, or single `ConfigValue(value, source)` via `setting=<key>` |
 | **Judge.Get Score** | 2 | LLM-judge scoring of an `AgentRunResult` against a Markdown rubric |
 | **Judge.Calibrate Rubric** | 2 | Run the judge against a YAML calibration set; compute Cohen's kappa + threshold-tuning + bias diagnostics (κ ≥ 0.7 hard-fail) |
 
