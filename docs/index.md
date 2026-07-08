@@ -6,18 +6,20 @@ This site hosts the project's keyword reference + architectural decision records
 
 ## Keyword reference (libdoc)
 
-6 libraries · 56 keywords total. Regenerated per release via `python -m robot.libdoc`.
+11 libraries · 56 keywords total, all reachable through a single `Library    AgentEval` import. Regenerated per release via `python -m robot.libdoc`.
+
+Since the `compose-single-library-import` change, every shipped sub-library is composed into the top-level `AgentEval` library via `_SUB_LIBRARIES`, so all 56 keywords are callable after one `Library    AgentEval` line — no `WITH NAME` needed. Each sub-library is still importable standalone (by module path) for per-library budget scoping; the baked namespace prefixes (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`) make the call sites identical under both import styles.
 
 | Library | Keywords | Reference |
 | --- | --- | --- |
-| `AgentEval` (top-level — metrics + assertions + stats + orchestration + telemetry + heatmap + composed judge/hook keywords) | 35 | [`AgentEval.html`](./keywords/AgentEval.html) |
-| `AgentEval.skills.library.SkillsLibrary` — skill `.md` static + activation + discoverability | 10 | [`SkillsLibrary.html`](./keywords/SkillsLibrary.html) |
-| `AgentEval.mcp.library.MCPLibrary` — MCP server lifecycle + tool inspection | 10 | [`MCPLibrary.html`](./keywords/MCPLibrary.html) |
-| `AgentEval.judge.library.JudgeLibrary` — LLM-judge scoring + rubric calibration (composed into `AgentEval`) | 2 | [`JudgeLibrary.html`](./keywords/JudgeLibrary.html) |
-| `AgentEval.subagents.library.SubagentsLibrary` — subagent `.md` static | 1 | [`SubagentsLibrary.html`](./keywords/SubagentsLibrary.html) |
-| `AgentEval.hooks.library.HooksLibrary` — hook `settings.json` config | 1 | [`HooksLibrary.html`](./keywords/HooksLibrary.html) |
+| `AgentEval` (composed top-level — all 56 keywords) | 56 | [`AgentEval.html`](./keywords/AgentEval.html) |
+| `AgentEval.skills.library.SkillsLibrary` — `Skill.*` skill `.md` static + activation + discoverability | 10 | [`SkillsLibrary.html`](./keywords/SkillsLibrary.html) |
+| `AgentEval.mcp.library.MCPLibrary` — `MCP.*` server lifecycle + tool inspection | 10 | [`MCPLibrary.html`](./keywords/MCPLibrary.html) |
+| `AgentEval.judge.library.JudgeLibrary` — `Judge.*` LLM-judge scoring + rubric calibration | 2 | [`JudgeLibrary.html`](./keywords/JudgeLibrary.html) |
+| `AgentEval.subagents.library.SubagentsLibrary` — `Subagent.Get Frontmatter` static | 1 | [`SubagentsLibrary.html`](./keywords/SubagentsLibrary.html) |
+| `AgentEval.hooks.library.HooksLibrary` — `Hook.Get Config` static | 1 | [`HooksLibrary.html`](./keywords/HooksLibrary.html) |
 
-The total counts unique keywords: `JudgeLibrary`'s 2 keywords and `HooksLibrary`'s 1 keyword are composed into (re-exported through) the top-level `AgentEval` library, so they are counted once (35 + 10 + 10 + 1 = 56).
+The 56-keyword total is the composed `AgentEval` surface; the per-sub-library rows show the same keywords available standalone (the counts overlap because the sub-libraries are composed into `AgentEval`, not additive to it).
 
 ## Architecture decisions
 

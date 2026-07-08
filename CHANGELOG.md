@@ -15,6 +15,42 @@ notes, completion notes, and (when applicable) Senior Developer Review
 
 ## [Unreleased]
 
+### Changed — `compose-single-library-import` (OpenSpec change)
+
+- **BREAKING (pre-1.0, unreleased on PyPI — no deprecation aliases).** All
+  artifact/engine keywords were renamed to a uniform namespace-prefixed form
+  so a single `Library    AgentEval` import composes every shipped
+  sub-library. Renames: the 8 `SkillsLibrary` keywords → `Skill.*`
+  (`Get Frontmatter` → `Skill.Get Frontmatter`, `Get Description` →
+  `Skill.Get Description`, `Get Allowed Tools` → `Skill.Get Allowed Tools`,
+  `Get Disable Model Invocation` → `Skill.Get Disable Model Invocation`,
+  `Should Be Valid Frontmatter` → `Skill.Should Be Valid Frontmatter`,
+  `Get Activation Decision` → `Skill.Get Activation Decision`,
+  `Get Discoverability` → `Skill.Get Discoverability`, `Should Activate For`
+  → `Skill.Should Activate For`); `SubagentsLibrary.Get Frontmatter` →
+  `Subagent.Get Frontmatter`; `HooksLibrary.Get Config` → `Hook.Get Config`;
+  the 9 `MCPLibrary` keywords → `MCP.*` (`Get Server Config`, `Get Tool
+  Schema`, `Validate Tool Schema`, `Start Server`, `Connect To Server`,
+  `Stop Server`, `List Tools`, `Call Tool`, `Get Tool Discoverability`).
+  Every post-dot portion stays multi-word per the ratified libdoc
+  auto-split norm.
+- **`Library    AgentEval` now composes ALL 11 sub-libraries** — `SkillsLibrary`,
+  `SubagentsLibrary`, and `MCPLibrary` were added to `_SUB_LIBRARIES`,
+  removing the Story 2.2 / 2.3 carve-out (the former `Get Frontmatter`
+  collision is resolved by the renames). No `WITH NAME` incantation is
+  needed; standalone module-path imports still work (with baked prefixes,
+  so call sites are identical) for per-library budget scoping.
+- **Budget forwarding closes carry-over C55.** `AgentEval._build_components`
+  now forwards `max_cost_usd` / `max_runtime_seconds` to every
+  `_HostBudgetPlumbing` subclass (Skills, MCP, Stats, Judge, Orchestration),
+  so `Skill.Get Activation Decision`'s `@guarded_fanout` finally enforces the
+  library-level budget under a single `Library    AgentEval    max_cost_usd=…`
+  import. `StatsLibrary` + `JudgeLibrary` now subclass `_HostBudgetPlumbing`
+  (was a dedicated class-name branch).
+- New `tests/unit/conventions/test_keyword_namespace_prefix.py` enforces the
+  naming rule mechanically (prefixed artifact libraries / unprefixed core-loop
+  libraries / multi-word-after-dot / no libdoc auto-split).
+
 ### Phase 2 — launched 2026-05-25
 
 #### Epic 10 — Native Agent SDK Adapters (FR13c + FR13d)

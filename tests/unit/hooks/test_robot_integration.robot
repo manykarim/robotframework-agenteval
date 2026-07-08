@@ -3,7 +3,7 @@ Documentation    Story 2.2 RF integration test — imports the `Hook`
 ...              sub-library directly + verifies `Get Config` works
 ...              end-to-end inside an RF execution context.
 
-Library    AgentEval.hooks.library.HooksLibrary    WITH NAME    Hook
+Library    AgentEval
 
 *** Variables ***
 ${VALID_FIXTURE}    ${CURDIR}/../../fixtures/hooks/settings-valid.json

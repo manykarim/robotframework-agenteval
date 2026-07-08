@@ -316,16 +316,17 @@ def test_validate_tool_schema_unknown_tool_raises(lib: MCPLibrary) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# AC-2.3.5: MCPLibrary EXCLUDED from DynamicCore composition
+# MCPLibrary IS composed into DynamicCore (compose-single-library-import change)
 # --------------------------------------------------------------------------- #
 
 
-def test_agenteval_does_not_expose_mcp_library_via_dynamic_core() -> None:
-    """`MCPLibrary` is EXCLUDED from `_SUB_LIBRARIES` per Story 2.2 collision-prevention."""
+def test_agenteval_exposes_mcp_library_via_dynamic_core() -> None:
+    """`MCPLibrary` IS composed into `_SUB_LIBRARIES` after the MCP.* namespace renames."""
     from AgentEval import AgentEval as AgentEvalLib
 
     library = AgentEvalLib()
-    assert "MCPLibrary" not in library._loaded_components
+    assert "MCPLibrary" in library._loaded_components
+    assert "MCP.Get Server Config" in library.get_keyword_names()
 
 
 def test_mcp_library_callable_standalone(lib: MCPLibrary) -> None:

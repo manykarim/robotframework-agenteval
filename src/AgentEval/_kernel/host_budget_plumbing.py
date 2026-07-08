@@ -33,24 +33,24 @@ Closing 3 retro action items + 4 catalog rows = 7 closures (the most of
 any Epic 14 story; appropriate for the final Epic 14 story with the
 biggest architectural blast radius).
 
-**Honest-framing constraint (per Story 14.6 D-1):** MCPLibrary +
-SkillsLibrary are explicitly excluded from ``_SUB_LIBRARIES`` in
-``AgentEval.__init__`` per the Story 2.2 keyword-name collision norm
-(both expose ``Get Frontmatter`` which collides with
-``SubagentsLibrary.Get Frontmatter``). Operators MUST pass budgets at RF
-``Library`` import time for those 2 libraries:
+**Composition update (``compose-single-library-import`` change):**
+MCPLibrary + SkillsLibrary are now composed into ``_SUB_LIBRARIES`` in
+``AgentEval.__init__`` (the former ``Get Frontmatter`` collision was
+resolved by namespace-prefix renames). ``AgentEval._build_components``
+forwards ``max_cost_usd`` + ``max_runtime_seconds`` to every
+``_HostBudgetPlumbing`` subclass, so under a plain ``Library AgentEval``
+import all budget-aware libraries inherit the top-level config-resolved
+budgets automatically. A standalone module-path import still accepts the
+budgets at RF ``Library`` import time (no ``WITH NAME`` needed — the
+namespace prefix is baked into each keyword name):
 
     *** Settings ***
-    Library    AgentEval.mcp.library.MCPLibrary    max_cost_usd=10.00    WITH NAME    MCP
-    Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=20.00    WITH NAME    Skill
+    Library    AgentEval.mcp.library.MCPLibrary    max_cost_usd=10.00
+    Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=20.00
 
-``OrchestrationLibrary`` is auto-wired by ``AgentEval._build_components``
-(per AC-14.6.5) and inherits the top-level config-resolved budgets.
-
-This split is an inherent consequence of the Story 2.2 collision norm and
-is NOT operator-side deferred work — the mixin DOES enable enforcement on
-all 3 libraries; only the *injection path* differs (auto vs RF-Library-
-import-kwargs).
+``OrchestrationLibrary`` is likewise auto-wired by
+``AgentEval._build_components`` and inherits the top-level config-resolved
+budgets.
 """
 
 from __future__ import annotations

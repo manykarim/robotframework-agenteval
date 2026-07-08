@@ -47,12 +47,13 @@ from AgentEval._kernel.tier import get_keyword_tier
 # carve-out registry AND this allowlist with explicit ratification.
 _PHASE_1_SHOULD_CARVE_OUTS: frozenset[tuple[str, str]] = frozenset(
     {
-        ("SkillsLibrary", "Should Be Valid Frontmatter"),
-        # Story 7.2 (2026-05-21) — FR4d `Skill Should Activate For` assertion:
+        ("SkillsLibrary", "Skill.Should Be Valid Frontmatter"),
+        # Story 7.2 (2026-05-21) — FR4d `Skill.Should Activate For` assertion:
         # single-prompt activation assertion mirroring `Tool Call Should Have Occurred`
         # (FR24). Uses `Should *` pattern verbatim from PRD FR4d. Tier-2 single-shot
-        # assertion; raises SkillDidNotActivateError per FR4d contract.
-        ("SkillsLibrary", "Should Activate For"),
+        # assertion; raises SkillDidNotActivateError per FR4d contract. The
+        # `compose-single-library-import` change prefixed these to `Skill.*`.
+        ("SkillsLibrary", "Skill.Should Activate For"),
         # Story 6.2 (2026-05-20) — PRD FR23a/FR23b/FR24/FR25 assertion library:
         # the BFCL three-layer evidence framing (trajectory / tool-call / response)
         # uses `Should *` keyword names verbatim from the PRD. AssertionEngine

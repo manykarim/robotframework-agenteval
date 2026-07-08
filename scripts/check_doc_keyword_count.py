@@ -19,14 +19,13 @@ documented counts in `README.md` and `docs/index.md` match it. Run in the
 docs-build CI path so a new keyword shipped without a doc update fails the
 build.
 
-The unique-keyword total is the sum of the libdoc keyword counts for the
-libraries that contribute distinct keywords a user can call:
-
-    AgentEval + SkillsLibrary + MCPLibrary + SubagentsLibrary
-
-`JudgeLibrary` and `HooksLibrary` are composed into (re-exported through) the
-top-level `AgentEval` library, so their keywords are already counted in
-`AgentEval` and must NOT be added again. There are 6 libraries in total.
+The unique-keyword total is now simply the libdoc keyword count of the
+top-level `AgentEval` library. The `compose-single-library-import` change
+composes ALL shipped sub-libraries (Skills, Subagents, MCP included) into
+`AgentEval` via `_SUB_LIBRARIES`, so every public keyword is reachable
+through a single `Library    AgentEval` import and counted exactly once in
+`AgentEval`'s libdoc. Standalone sub-library imports re-expose the same
+keywords (same baked names) — they must NOT be added again.
 """
 
 from __future__ import annotations
@@ -39,18 +38,15 @@ from robot.libdocpkg import LibraryDocumentation
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Libraries whose keyword sets are disjoint and together form the unique
-# callable surface. Judge + Hooks are excluded because they are composed into
-# AgentEval (their keywords are already present in AgentEval's count).
-_COUNTED_LIBRARIES = (
-    "AgentEval",
-    "AgentEval.skills.library.SkillsLibrary",
-    "AgentEval.mcp.library.MCPLibrary",
-    "AgentEval.subagents.library.SubagentsLibrary",
-)
+# The composed top-level library holds the entire unique callable surface
+# (compose-single-library-import change). Every sub-library is composed into
+# it, so counting `AgentEval` alone avoids the pre-change double-count.
+_COUNTED_LIBRARIES = ("AgentEval",)
 
-# Total number of importable libraries (the 4 above + JudgeLibrary + HooksLibrary).
-_LIBRARY_COUNT = 6
+# Number of sub-libraries composed into `AgentEval` via `_SUB_LIBRARIES`
+# (equals `len(AgentEval._SUB_LIBRARIES)`); all reachable through the single
+# `Library    AgentEval` import.
+_LIBRARY_COUNT = 11
 
 
 def derive_keyword_count() -> int:

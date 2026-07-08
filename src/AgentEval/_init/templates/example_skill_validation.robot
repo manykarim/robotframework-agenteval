@@ -2,7 +2,7 @@
 Documentation    Example: validate a skill file's frontmatter.
 ...              This is a static check — it reads the skill Markdown and
 ...              inspects its YAML frontmatter, so it needs no API keys.
-Library    AgentEval.skills.library.SkillsLibrary    WITH NAME    Skill
+Library    AgentEval
 
 *** Test Cases ***
 Example Skill Has Valid Frontmatter

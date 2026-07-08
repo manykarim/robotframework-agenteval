@@ -108,9 +108,11 @@ Exit codes from `python -m AgentEval.conformance` follow the sysexits-style 24-l
 
 ## Keywords at a glance
 
-**56 keywords across 6 libraries.** The top-level `AgentEval` library exposes 35 keywords drawn from the metrics, assertions, statistics, orchestration, telemetry, and heatmap surfaces — plus the composed `Judge.*` keywords and the hook `Get Config` keyword. Four libraries (`SkillsLibrary`, `SubagentsLibrary`, `HooksLibrary`, `MCPLibrary`) are imported directly; they are not composed into the top-level library. `JudgeLibrary` is composed into `AgentEval` (its `Judge.*` keywords surface through the top-level import) and can also be imported directly.
+**56 keywords across 11 libraries — one import.** A single `Library    AgentEval` line composes every shipped sub-library (skills, subagents, hooks, MCP, stats, judge, plus the core run-measure-assert loop) and exposes all 56 keywords with no `WITH NAME` incantation. **Naming rule:** keywords that operate on a specific artifact or engine — skills, subagents, hooks, MCP servers, statistics, LLM-judge — carry that namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`); the shared run-measure-assert loop (`Send Prompt`, `Get Tool Call Count`, `Trajectory Should Match`, `Get Effective Config`, …) is unprefixed. The tables below group the keywords by originating sub-library, but every one of them resolves under the single top-level import. Each sub-library remains importable standalone by module path (`Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0`) for per-library budget scoping — the baked prefixes make the call sites identical under both styles, so no `WITH NAME` is needed (and adding it produces a pointless double prefix like `Skill.Skill.Get Frontmatter`).
 
-### `AgentEval` library — 35 keywords
+### `AgentEval` — core-loop keywords (35 of the 56)
+
+The composed `AgentEval` library holds all 56 keywords. The 35 below are the unprefixed run-measure-assert loop plus the `Stat.*`, `Judge.*`, and `Hook.Get Config` keywords; the remaining 21 (`Skill.*`, `MCP.*`, `Subagent.Get Frontmatter`) are listed in the sub-library sections further down and resolve under the same single import.
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html](https://manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html)** (GitHub Pages) · local: [`docs/keywords/AgentEval.html`](./docs/keywords/AgentEval.html)
 
@@ -150,7 +152,7 @@ Library    AgentEval
 | **Get Run Manifest** | 1 | `RunManifest` for a test run (7+ fields) |
 | **Get Last Warnings** | 1 | Warnings emitted during the run |
 | **Get Cohort Heatmap** | 1 | Pass@k cohort heatmap (ASCII + dict) |
-| **Get Config** | 1 | Parse a Claude Code `settings.json` hook configuration |
+| **Hook.Get Config** | 1 | Parse a Claude Code `settings.json` hook configuration |
 | **Get Effective Config** | 1 | Resolved config dict or single `ConfigValue` |
 | **Get Effective Config With Provenance** | 1 | Full settings map with per-key provenance |
 | **Judge.Get Score** | 2 | LLM-judge scoring of an `AgentRunResult` against a Markdown rubric |
@@ -160,10 +162,10 @@ Library    AgentEval
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/JudgeLibrary.html](https://manykarim.github.io/robotframework-agenteval/keywords/JudgeLibrary.html)** (GitHub Pages) · local: [`docs/keywords/JudgeLibrary.html`](./docs/keywords/JudgeLibrary.html)
 
-Composed into `AgentEval` via `_SUB_LIBRARIES` — keywords surface as `Judge.Get Score` + `Judge.Calibrate Rubric` through the top-level import. The standalone import works too (and lets operators pass `max_cost_usd` / `max_runtime_seconds` budgets directly):
+Composed into `AgentEval` via `_SUB_LIBRARIES` — `Judge.Get Score` + `Judge.Calibrate Rubric` resolve under the plain `Library    AgentEval` import. The standalone module-path import works too (and lets operators pass `max_cost_usd` / `max_runtime_seconds` budgets directly — no `WITH NAME`, the `Judge.` prefix is already baked in):
 
 ```robotframework
-Library    AgentEval.judge.library.JudgeLibrary    WITH NAME    Judge
+Library    AgentEval.judge.library.JudgeLibrary    max_cost_usd=1.0
 ```
 
 | Keyword | Tier | What it does |
@@ -177,20 +179,22 @@ Calibration discipline (κ ≥ 0.7 hard-fail) — see the [Judge calibration coo
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/SkillsLibrary.html](https://manykarim.github.io/robotframework-agenteval/keywords/SkillsLibrary.html)** (GitHub Pages) · local: [`docs/keywords/SkillsLibrary.html`](./docs/keywords/SkillsLibrary.html)
 
+Reachable under the plain `Library    AgentEval` import. Standalone module-path import (for budget scoping) works too — no `WITH NAME`, the `Skill.` prefix is baked in:
+
 ```robotframework
-Library    AgentEval.skills.library.SkillsLibrary    WITH NAME    Skill
+Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0
 ```
 
 | Keyword | Tier | What it does |
 |---|---|---|
-| **Get Frontmatter** | 1 | Parse YAML frontmatter from a skill `.md` file |
-| **Get Description** | 1 | Return the `description` field |
-| **Get Allowed Tools** | 1 | Return the `allowed-tools` list |
-| **Get Disable Model Invocation** | 1 | Return the `disable-model-invocation` bool |
-| **Should Be Valid Frontmatter** | 1 | Assert the 4 required fields + correct types |
-| **Get Activation Decision** | 2 | Query an agent; infer whether the skill was activated |
-| **Should Activate For** | 2 | Assert that the skill activates for a given prompt |
-| **Get Discoverability** | 3 | Cohort discoverability — N trials × M tasks + per-task activation rates + aggregate summary |
+| **Skill.Get Frontmatter** | 1 | Parse YAML frontmatter from a skill `.md` file |
+| **Skill.Get Description** | 1 | Return the `description` field |
+| **Skill.Get Allowed Tools** | 1 | Return the `allowed-tools` list |
+| **Skill.Get Disable Model Invocation** | 1 | Return the `disable-model-invocation` bool |
+| **Skill.Should Be Valid Frontmatter** | 1 | Assert the 4 required fields + correct types |
+| **Skill.Get Activation Decision** | 2 | Query an agent; infer whether the skill was activated |
+| **Skill.Should Activate For** | 2 | Assert that the skill activates for a given prompt |
+| **Skill.Get Discoverability** | 3 | Cohort discoverability — N trials × M tasks + per-task activation rates + aggregate summary |
 | **Skill.Get Activation Pass At K** | 1 | Pass@k activation rate for a skill from a discoverability result |
 | **Skill.Compare Discoverability** | 3 | Compare skill discoverability across ≥2 adapters with statistical significance |
 
@@ -198,34 +202,36 @@ Library    AgentEval.skills.library.SkillsLibrary    WITH NAME    Skill
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/MCPLibrary.html](https://manykarim.github.io/robotframework-agenteval/keywords/MCPLibrary.html)** (GitHub Pages) · local: [`docs/keywords/MCPLibrary.html`](./docs/keywords/MCPLibrary.html)
 
+Reachable under the plain `Library    AgentEval` import. Standalone module-path import (for budget scoping) works too — no `WITH NAME`, the `MCP.` prefix is baked in:
+
 ```robotframework
-Library    AgentEval.mcp.library.MCPLibrary    WITH NAME    MCP
+Library    AgentEval.mcp.library.MCPLibrary    max_cost_usd=10.0
 ```
 
 | Keyword | Tier | What it does |
 |---|---|---|
-| **Get Server Config** | 1 | Parse a `.mcp.json` file's `mcpServers` declarations |
-| **Start Server** | 1 | Build an `MCPServerHandle` (no spawn yet — Phase-1 per-call-session design) |
-| **Connect To Server** | 1 | Actual MCP spawn + handshake (per-test scope) |
-| **Stop Server** | 1 | Cleanup + process-group SIGTERM |
-| **List Tools** | 1 | Enumerate tools advertised by a running MCP server |
-| **Call Tool** | 1 | Roundtrip a tool call; returns `MCPToolResult` |
-| **Get Tool Schema** | 1 | Tool input-schema JSON Schema dict |
-| **Validate Tool Schema** | 1 | Assert a tool's input-schema satisfies a contract |
-| **Get Tool Discoverability** | 3 | Cohort probe of whether the agent + MCP combo discovers the expected tools across N trials |
+| **MCP.Get Server Config** | 1 | Parse a `.mcp.json` file's `mcpServers` declarations |
+| **MCP.Start Server** | 1 | Build an `MCPServerHandle` (no spawn yet — Phase-1 per-call-session design) |
+| **MCP.Connect To Server** | 1 | Actual MCP spawn + handshake (per-test scope) |
+| **MCP.Stop Server** | 1 | Cleanup + process-group SIGTERM |
+| **MCP.List Tools** | 1 | Enumerate tools advertised by a running MCP server |
+| **MCP.Call Tool** | 1 | Roundtrip a tool call; returns `MCPToolResult` |
+| **MCP.Get Tool Schema** | 1 | Tool input-schema JSON Schema dict |
+| **MCP.Validate Tool Schema** | 1 | Assert a tool's input-schema satisfies a contract |
+| **MCP.Get Tool Discoverability** | 3 | Cohort probe of whether the agent + MCP combo discovers the expected tools across N trials |
 | **MCP.Compare Tool Discoverability** | 3 | Compare Tool Discoverability across ≥2 adapters with Mann-Whitney U significance |
 
 ### `AgentEval.subagents.library.SubagentsLibrary` — 1 keyword
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/SubagentsLibrary.html](https://manykarim.github.io/robotframework-agenteval/keywords/SubagentsLibrary.html)** (GitHub Pages) · local: [`docs/keywords/SubagentsLibrary.html`](./docs/keywords/SubagentsLibrary.html)
 
-`Get Frontmatter` — parallel to `SkillsLibrary.Get Frontmatter` for subagent `.md` files. Direct import; not composed into the top-level `AgentEval` library because of the name collision with `Skill.Get Frontmatter`.
+`Subagent.Get Frontmatter` — parallel to `Skill.Get Frontmatter` for subagent `.md` files. Composed into the top-level `AgentEval` library; the former `Get Frontmatter` collision with `Skill.Get Frontmatter` was resolved by the namespace-prefix renames, so both resolve under a single `Library    AgentEval` import.
 
 ### `AgentEval.hooks.library.HooksLibrary` — 1 keyword
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/HooksLibrary.html](https://manykarim.github.io/robotframework-agenteval/keywords/HooksLibrary.html)** (GitHub Pages) · local: [`docs/keywords/HooksLibrary.html`](./docs/keywords/HooksLibrary.html)
 
-`Get Config` — Claude Code `settings.json` hook configuration parsing (also re-exported through the top-level `AgentEval.Get Config`).
+`Hook.Get Config` — Claude Code `settings.json` hook configuration parsing. Composed into the top-level `AgentEval` library, so it resolves under a plain `Library    AgentEval` import.
 
 ## Keyword tiers
 
@@ -271,11 +277,11 @@ disable-model-invocation: false
 Replace this with your own skill instructions.
 ```
 
-Validate it with the `SkillsLibrary` keywords:
+Validate it with the `Skill.*` keywords (composed into the single import):
 
 ```robotframework
 *** Settings ***
-Library    AgentEval.skills.library.SkillsLibrary    WITH NAME    Skill
+Library    AgentEval
 
 *** Test Cases ***
 Skill Frontmatter Is Valid
@@ -285,7 +291,7 @@ Skill Frontmatter Is Valid
 
 ## Hook configuration
 
-`HooksLibrary.Get Config` (also `AgentEval.Get Config`) parses a `settings.json`
+`Hook.Get Config` (composed into `AgentEval`) parses a `settings.json`
 hook file in the real Claude Code schema: a top-level `hooks` mapping where each
 key is an event name (`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`, ...)
 and the value is a list of **matcher groups**. Each group has an optional
@@ -312,18 +318,18 @@ of `command`, `http`, `mcp_tool`, `prompt`, `agent`):
 }
 ```
 
-`Get Config` **flattens** matcher groups: each inner hook definition becomes one
+`Hook.Get Config` **flattens** matcher groups: each inner hook definition becomes one
 entry keyed by the plain event name, with the group's `matcher` copied onto it
 and a `type` field always present:
 
 ```robotframework
 *** Settings ***
-Library    AgentEval.hooks.library.HooksLibrary    WITH NAME    Hook
+Library    AgentEval
 
 *** Test Cases ***
 Hook Config Parses
     ${config}=    Hook.Get Config    ${CURDIR}/settings.json
-    # Get Config returns entries keyed by the plain event name.
+    # Hook.Get Config returns entries keyed by the plain event name.
     Should Contain    ${config}    PreToolUse
     Should Be Equal    ${config}[PreToolUse][0][type]    command
 ```
@@ -361,7 +367,7 @@ Per-recipe details + cross-references live at [`docs/recipes/README.md`](./docs/
 
 - **macOS validation deferred.** Phase 1 + Phase 2 validate on Linux only. Community macOS reproductions welcome.
 - **Exact version pins.** `mcp==1.27.1` + `robotframework==7.4.2` + `robotframework-pabot==5.2.2` + `anyio==4.13.0` are spike-validated. An adapter-version-drift warning will detect future MCP SDK refactors that break the `request_handlers` wrap pattern.
-- **`SkillsLibrary` + `SubagentsLibrary` + `HooksLibrary` + `MCPLibrary` not in the top-level `AgentEval` import.** They must be imported directly (see Quick start examples). The name collision on `Get Frontmatter` prevents composition.
+- **Breaking keyword renames (pre-1.0).** The `compose-single-library-import` change renamed every artifact/engine keyword to its namespace-prefixed form (`Skill.*`, `Subagent.Get Frontmatter`, `Hook.Get Config`, `MCP.*`) and composed all sub-libraries into the single `Library    AgentEval` import. There are no deprecation aliases for the old bare names — acceptable because the package is unreleased on PyPI.
 - **No PyPI release yet.** Phase 1 is foundational. Public release + semver stability are gated on the exit criteria at [`exit-criteria-0x-to-1x.md`](./docs/contracts/exit-criteria-0x-to-1x.md).
 - **Phase-2 SDK adapters at `experimental`.** `ClaudeAgentSDKAdapter` + `OpenAIAgentsSDKAdapter` carry pre-1.0 SDK pins (`claude-agent-sdk>=0.1.0,<1.0`, `openai-agents>=0.1.0,<1.0`); their shape may shift.
 - **Terminal run summary pass/fail counts not populated yet.** The listener does not snapshot per-test pass/fail state yet; the display shows a `"—"` sentinel until that lands.

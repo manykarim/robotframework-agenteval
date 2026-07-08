@@ -5,7 +5,7 @@ Documentation    Story 2.3 + 3.1 RF integration test — imports the
 ...              Tier-1 lifecycle keywords (Story 3.1) work
 ...              end-to-end inside an RF execution context.
 
-Library    AgentEval.mcp.library.MCPLibrary    WITH NAME    MCP
+Library    AgentEval
 
 *** Variables ***
 ${VALID_FIXTURE}    ${CURDIR}/../../fixtures/mcp/mcp-valid.json

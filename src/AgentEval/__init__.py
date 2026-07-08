@@ -63,6 +63,7 @@ from AgentEval._kernel.context import (
     resolve_config,
     resolve_config_with_provenance,
 )
+from AgentEval._kernel.host_budget_plumbing import _HostBudgetPlumbing
 from AgentEval._kernel.tier import tier
 
 __version__ = "0.0.1"
@@ -89,44 +90,34 @@ _logger = logging.getLogger("AgentEval.library")
 # top-level `AgentEval` import remains green even while later Epic
 # sub-libraries are not yet shipped. Story 2.1 ships entry 1 (skills);
 # future Epics extend this tuple.
-# Story 2.2 code-review fix (2026-05-19, 3-way HIGH from Edge-cases+Blind+Codex
-# implicit): `Get Frontmatter` collides between `SkillsLibrary` and
-# `SubagentsLibrary` under `DynamicCore` last-wins flattening, silently
-# shadowing Story 2.1's validation surface. Resolution per the PRD-documented
-# canonical user pattern (PRD FR1/FR3 both use `<prefix>.Get Frontmatter`
-# syntax → user pattern is `Library X WITH NAME prefix`, NOT flat
-# `Library AgentEval`): sub-libraries with parallel keyword names are
-# excluded from the top-level DynamicCore composition. Users access them
-# via the WITH-NAME pattern.
+# Naming rule (`compose-single-library-import` change): every keyword of an
+# artifact/engine sub-library (skills, subagents, hooks, mcp, stats, judge)
+# bakes its namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` /
+# `Stat.` / `Judge.`) into its `@keyword(name=...)` value; core-loop
+# sub-libraries (orchestration, telemetry, metrics, assertions, heatmap) and
+# the top-level config/tier keywords carry no prefix. This makes every
+# keyword name globally unique, so ALL shipped sub-libraries — including
+# SkillsLibrary, SubagentsLibrary, and MCPLibrary, which the Story 2.2
+# carve-out formerly excluded over the `Get Frontmatter` collision — compose
+# cleanly into the flat `Library AgentEval` namespace via `DynamicCore`.
 #
-# Carve-out registry (extend per future story with explicit ratification):
-# - `SkillsLibrary` — EXCLUDED (collides with `SubagentsLibrary` on
-#   `Get Frontmatter`). User pattern: `Library AgentEval.skills.library.SkillsLibrary
-#   WITH NAME Skill`.
-# - `SubagentsLibrary` — EXCLUDED (same collision). User pattern:
-#   `Library AgentEval.subagents.library.SubagentsLibrary WITH NAME Subagent`.
-# - `HooksLibrary` — INCLUDED. `Get Config` is unique across all Phase-1
-#   sub-libraries; flattening into `Library AgentEval` is safe.
-# - `MCPLibrary` — EXCLUDED preemptively (Story 2.3 code-review Auditor
-#   MED-2 ratification 2026-05-19; norm-inheritance from Story 2.2 HIGH-1).
-#   `Get Server Config` / `Get Tool Schema` / `Validate Tool Schema` are
-#   unique across Phase-1 sub-libraries, but the precedent matters: future
-#   Tier-1 sub-libraries will inevitably introduce `Get *` collisions.
-#   User pattern: `Library AgentEval.mcp.library.MCPLibrary WITH NAME MCP`.
-#
-# A runtime collision-detector in `_build_components()` raises loudly if
-# future stories accidentally register two components with overlapping
-# `@keyword(name=...)` values — preventing the silent last-wins regression
-# from recurring.
+# The runtime collision-detector in `_build_components()` still raises loudly
+# if two components ever declare the same `@keyword(name=...)` value, guarding
+# the rule mechanically against a future sub-library that forgets its prefix.
+# `tests/unit/conventions/test_keyword_namespace_prefix.py` enforces the rule
+# at unit-test time.
 _SUB_LIBRARIES: tuple[tuple[str, str], ...] = (
     ("AgentEval.hooks.library", "HooksLibrary"),
     ("AgentEval.orchestration.library", "OrchestrationLibrary"),
     ("AgentEval.telemetry.library", "TelemetryLibrary"),
     ("AgentEval.metrics.library", "MetricsLibrary"),
     ("AgentEval._assertions.library", "AssertionsLibrary"),
-    ("AgentEval.stats.library", "StatsLibrary"),  # NEW per Story 6.3 (PRD FR26-31a)
-    ("AgentEval._heatmap.library", "HeatmapLibrary"),  # NEW per Story 8b.2 (FR55-ASCII + dict)
-    ("AgentEval.judge.library", "JudgeLibrary"),  # NEW per Story 12.1 (PRD FR48 — Tier-2 LLM-judge)
+    ("AgentEval.stats.library", "StatsLibrary"),  # Story 6.3 (PRD FR26-31a)
+    ("AgentEval._heatmap.library", "HeatmapLibrary"),  # Story 8b.2 (FR55-ASCII + dict)
+    ("AgentEval.judge.library", "JudgeLibrary"),  # Story 12.1 (PRD FR48 — Tier-2 LLM-judge)
+    ("AgentEval.skills.library", "SkillsLibrary"),  # compose-single-library-import (was Story 2.2 carve-out)
+    ("AgentEval.subagents.library", "SubagentsLibrary"),  # compose-single-library-import (was Story 2.2 carve-out)
+    ("AgentEval.mcp.library", "MCPLibrary"),  # compose-single-library-import (was Story 2.3 carve-out)
 )
 
 
@@ -366,19 +357,18 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
                 # MetricsLibrary — FR37 default-deny gate on tool-call-
                 # bearing assertions (Trajectory + Tool Call).
                 components.append(cls(allow_external_mcp_blind=self._allow_external_mcp_blind))
-            elif cls_name == "StatsLibrary":
-                # Story 6.3 AC-6.3.8: forward `max_cost_usd` + `max_runtime_seconds`
-                # for `Stat.Run N Times` Tier-3 `@guarded_fanout` enforcement (ADR-015).
-                components.append(
-                    cls(
-                        max_cost_usd=self._max_cost_usd,
-                        max_runtime_seconds=self._max_runtime_seconds,
-                    )
-                )
-            elif cls_name == "JudgeLibrary":
-                # Story 12.1 AC-12.1.5 (PRD FR48): forward `max_cost_usd` +
-                # `max_runtime_seconds` for `Judge.Get Score` Tier-2
-                # `@guarded_fanout` enforcement. Mirrors StatsLibrary pattern.
+            elif isinstance(cls, type) and issubclass(cls, _HostBudgetPlumbing):
+                # `compose-single-library-import` change: forward
+                # `max_cost_usd` + `max_runtime_seconds` to ANY component
+                # subclassing `_HostBudgetPlumbing` — covers StatsLibrary
+                # (Story 6.3 AC-6.3.8 / `Stat.Run N Times`), JudgeLibrary
+                # (Story 12.1 AC-12.1.5 / `Judge.Get Score`), SkillsLibrary
+                # (`Skill.Get Activation Decision` / C55 closure), MCPLibrary
+                # (`MCP.Get Tool Discoverability`), and any future mixin
+                # adopter, without adding a new class-name branch each time.
+                # OrchestrationLibrary also subclasses the mixin but is
+                # handled by its explicit branch above (it needs
+                # `default_provider` too).
                 components.append(
                     cls(
                         max_cost_usd=self._max_cost_usd,
@@ -386,6 +376,8 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
                     )
                 )
             else:
+                # No constructor kwargs — e.g. SubagentsLibrary, HooksLibrary,
+                # TelemetryLibrary, HeatmapLibrary.
                 components.append(cls())
 
         # Collision detector — raise loudly on duplicate keyword names

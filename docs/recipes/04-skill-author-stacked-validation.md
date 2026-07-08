@@ -33,10 +33,7 @@ Validate a skill `.md` file using a three-tier stacked pattern:
 
 ```robotframework
 *** Settings ***
-Library    AgentEval.skills.library.SkillsLibrary                  WITH NAME    Skill
-Library    AgentEval.stats.library.StatsLibrary                    WITH NAME    Stat
-Library    AgentEval.judge.library.JudgeLibrary                    WITH NAME    Judge
-Library    AgentEval.orchestration.library.OrchestrationLibrary
+Library    AgentEval
 
 *** Variables ***
 ${SKILL_PATH}     skills/my-search-skill.md
@@ -127,7 +124,7 @@ cross-adapter Tool Discoverability.
 
 ```robotframework
 *** Settings ***
-Library    AgentEval.skills.library.SkillsLibrary    WITH NAME    Skill
+Library    AgentEval
 
 *** Test Cases ***
 Skill X Is Reliably Activated Across Claude And OpenAI

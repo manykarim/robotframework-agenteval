@@ -3,7 +3,7 @@ Documentation    Story 2.2 RF integration test — imports the `Subagent`
 ...              sub-library directly + verifies `Get Frontmatter`
 ...              works end-to-end inside an RF execution context.
 
-Library    AgentEval.subagents.library.SubagentsLibrary    WITH NAME    Subagent
+Library    AgentEval
 
 *** Variables ***
 ${VALID_FIXTURE}    ${CURDIR}/../../fixtures/subagents/example-valid.md

@@ -20,41 +20,50 @@
 """MCP sub-library — `.mcp.json` static-inspection + Phase-1 lifecycle + discoverability keywords.
 
 Static-inspection keywords (Story 2.3 / PRD FR5 + FR6):
-- `Get Server Config` — parse a `.mcp.json` server-config file into a
+- `MCP.Get Server Config` — parse a `.mcp.json` server-config file into a
   dict mapping `<server_name>` → entry (`command`, `args`, `env`,
   `transport`, `tools`).
-- `Get Tool Schema` — return the JSON Schema for a declared tool from
+- `MCP.Get Tool Schema` — return the JSON Schema for a declared tool from
   the Phase-1 `.mcp.json:tools` extension (Phase-2 + Epic 3 add
   runtime retrieval).
-- `Validate Tool Schema` — verify the tool's schema is well-formed
+- `MCP.Validate Tool Schema` — verify the tool's schema is well-formed
   per the jsonschema Draft 2020-12 meta-schema; raise
   `InvalidMCPToolSchemaError` with an RFC 6901 JSON Pointer + the
   wrapped jsonschema error message.
 
 Lifecycle keywords (Story 3.1 + 3.2 / PRD FR7 + FR8 + FR9a + FR9b):
-- `Start Server` — pure handle construction over the 3-transport enum.
-- `Connect To Server` — open session, run `initialize()`, gate on the
+- `MCP.Start Server` — pure handle construction over the 3-transport enum.
+- `MCP.Connect To Server` — open session, run `initialize()`, gate on the
   agenteval-supported protocol range, then close.
-- `Stop Server` — Phase-1 no-op cleanup hook.
-- `List Tools` — per-call MCP `list_tools` projection.
-- `Call Tool` — per-call MCP tool invocation (tool-error-as-data).
+- `MCP.Stop Server` — Phase-1 no-op cleanup hook.
+- `MCP.List Tools` — per-call MCP `list_tools` projection.
+- `MCP.Call Tool` — per-call MCP tool invocation (tool-error-as-data).
 
 Discoverability keyword (Story 4.4 / PRD FR10a):
-- `Get Tool Discoverability` — Tier-3 N-trial Pass@k evaluation with
+- `MCP.Get Tool Discoverability` — Tier-3 N-trial Pass@k evaluation with
   Wilson CI bounds.
 
-Per Story 2.2 code-review HIGH-1 ratification (DynamicCore composition
-keyword-name collision prevention): `MCPLibrary` is NOT registered in
-`src/AgentEval/__init__.py:_SUB_LIBRARIES`. Users access via standalone
-import:
+Every MCPLibrary keyword bakes its `MCP.` namespace prefix into its
+`@keyword(name=...)` value (the artifact/engine-library rule from the
+`compose-single-library-import` change). `MCPLibrary` is registered in
+`src/AgentEval/__init__.py:_SUB_LIBRARIES`, so a plain `Library AgentEval`
+import reaches every keyword; the call site is identical under a
+standalone module-path import.
 
     *** Settings ***
-    Library    AgentEval.mcp.library.MCPLibrary    WITH NAME    MCP
+    Library    AgentEval
 
     *** Test Cases ***
     Echo Server Declares Stdio Transport
         ${servers}=    MCP.Get Server Config    ${CURDIR}/.mcp.json
         Should Be Equal    ${servers["echo"]["transport"]}    stdio
+
+For per-library budget scoping, import standalone (no `WITH NAME` needed —
+the `MCP.` prefix is already baked in; adding `WITH NAME MCP` would produce
+`MCP.MCP.Get Server Config`, which is harmless but pointless):
+
+    *** Settings ***
+    Library    AgentEval.mcp.library.MCPLibrary    max_cost_usd=10.00
 
 Phase-1 limitations:
 - Tool schemas come from the declarative `.mcp.json:tools` extension
@@ -111,12 +120,13 @@ class MCPLibrary(_HostBudgetPlumbing):
     Inherits ``_HostBudgetPlumbing`` (Story 14.6 / C20+C89 closure) so
     ``MCP.Get Tool Discoverability`` + ``MCP.Compare Tool Discoverability``
     enforce ``max_cost_usd`` + ``max_runtime_seconds`` budgets via
-    ``@guarded_fanout()``. Operators MUST pass the budgets at RF
-    ``Library`` import time per Story 2.2 ``_SUB_LIBRARIES`` exclusion —
-    see the mixin's module docstring for the RF syntax.
+    ``@guarded_fanout()``. Under the composed ``Library AgentEval`` import
+    these budgets are forwarded automatically from the top-level config; a
+    standalone ``Library AgentEval.mcp.library.MCPLibrary max_cost_usd=...``
+    import passes them at RF ``Library`` import time.
     """
 
-    @keyword(name="Get Server Config")
+    @keyword(name="MCP.Get Server Config")
     @tier(1)
     def get_server_config(self, path: str | Path) -> dict[str, dict[str, Any]]:
         """Parses a ``.mcp.json`` file's ``mcpServers`` declarations (PRD FR5).
@@ -137,18 +147,18 @@ class MCPLibrary(_HostBudgetPlumbing):
         6901 JSON Pointer into the offending location.
 
         Example:
-        | ${servers} =    `Get Server Config`    ${CURDIR}/.mcp.json
+        | ${servers} =    `MCP.Get Server Config`    ${CURDIR}/.mcp.json
         | Should Be Equal    ${servers}[echo][transport]    stdio
         | Should Contain    ${servers}[echo][args]    -m
 
         Notes:
         - PRD FR5 ratifies the ``.mcp.json`` parse contract; FR7 ratifies the transport enum.
         - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
-        - Sibling keywords: `Get Tool Schema` + `Validate Tool Schema` for tool-schema introspection.
+        - Sibling keywords: `MCP.Get Tool Schema` + `MCP.Validate Tool Schema` for tool-schema introspection.
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return parse_mcp_servers(path)
 
-    @keyword(name="Get Tool Schema")
+    @keyword(name="MCP.Get Tool Schema")
     @tier(1)
     def get_tool_schema(
         self,
@@ -173,17 +183,17 @@ class MCPLibrary(_HostBudgetPlumbing):
         the tool is not declared on any candidate server.
 
         Example:
-        | ${schema} =    `Get Tool Schema`    ${CURDIR}/.mcp.json    tool_name=echo
+        | ${schema} =    `MCP.Get Tool Schema`    ${CURDIR}/.mcp.json    tool_name=echo
         | Should Be Equal    ${schema}[type]    object
         | Should Contain    ${schema}[required]    message
 
         Notes:
         - PRD FR6 ratifies the tool-schema retrieval contract; Phase-1 scope per Story 2.3 D-D drift-check.
-        - Sibling keywords: `Get Server Config` (full ``.mcp.json`` parse); `Validate Tool Schema` (Draft 2020-12 well-formedness check).
+        - Sibling keywords: `MCP.Get Server Config` (full ``.mcp.json`` parse); `MCP.Validate Tool Schema` (Draft 2020-12 well-formedness check).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return get_tool_schema(config_path, tool_name=tool_name, server_name=server_name)
 
-    @keyword(name="Validate Tool Schema")
+    @keyword(name="MCP.Validate Tool Schema")
     @tier(1)
     def validate_tool_schema(
         self,
@@ -201,7 +211,7 @@ class MCPLibrary(_HostBudgetPlumbing):
         | =Arguments= | =Description= |
         | ``config_path`` | Filesystem path to the ``.mcp.json`` file. |
         | ``tool_name`` | Tool whose schema to validate. |
-        | ``server_name`` | Optional server scoping (see `Get Tool Schema`). |
+        | ``server_name`` | Optional server scoping (see `MCP.Get Tool Schema`). |
 
         Raises ``InvalidMCPServerConfigError`` on ``.mcp.json``
         structural failure. Raises ``InvalidMCPToolSchemaError`` when
@@ -211,13 +221,13 @@ class MCPLibrary(_HostBudgetPlumbing):
         available via ``__cause__``.
 
         Example:
-        | `Validate Tool Schema`    ${CURDIR}/.mcp.json    tool_name=echo
-        | Run Keyword And Expect Error    InvalidMCPToolSchemaError*    `Validate Tool Schema`    ${CURDIR}/.mcp.json    tool_name=nonexistent
+        | `MCP.Validate Tool Schema`    ${CURDIR}/.mcp.json    tool_name=echo
+        | Run Keyword And Expect Error    InvalidMCPToolSchemaError*    `MCP.Validate Tool Schema`    ${CURDIR}/.mcp.json    tool_name=nonexistent
 
         Notes:
         - Validates schema well-formedness, NOT argument conformance — that's runtime/Epic 3.
         - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
-        - Sibling keyword: `Get Tool Schema` for retrieving the schema dict.
+        - Sibling keyword: `MCP.Get Tool Schema` for retrieving the schema dict.
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         validate_tool_schema(config_path, tool_name=tool_name, server_name=server_name)
 
@@ -225,7 +235,7 @@ class MCPLibrary(_HostBudgetPlumbing):
     # Story 3.1: MCP server lifecycle keywords (PRD FR7 + FR8 + FR46)
     # --------------------------------------------------------------- #
 
-    @keyword(name="Start Server")
+    @keyword(name="MCP.Start Server")
     @tier(1)
     def start_server(
         self,
@@ -241,7 +251,7 @@ class MCPLibrary(_HostBudgetPlumbing):
         [Tier 1 — Deterministic] — pure handle construction. For
         ``stdio`` + ``in_memory`` transports, does NOT spawn the server
         yet (per Story 3.1 per-call-session design); the actual server
-        start happens during `Connect To Server`. The ``streamable_http``
+        start happens during `MCP.Connect To Server`. The ``streamable_http``
         transport is accepted as a Phase-1 passthrough; full HTTP
         round-trip lands Phase-1.5 or Story 3.2.
 
@@ -257,15 +267,15 @@ class MCPLibrary(_HostBudgetPlumbing):
         missing (e.g. ``transport="stdio"`` without ``command``).
 
         Example:
-        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
-        | ${session} =    `Connect To Server`    ${handle}
-        | @{tools} =    `List Tools`    ${handle}
-        | `Stop Server`    ${handle}
+        | ${handle} =    `MCP.Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
+        | ${session} =    `MCP.Connect To Server`    ${handle}
+        | @{tools} =    `MCP.List Tools`    ${handle}
+        | `MCP.Stop Server`    ${handle}
 
         Notes:
         - PRD FR7 ratifies the 3-transport enum; Story 3.1 ratifies the per-call-session design.
         - Story 3.2 lands the full ``streamable_http`` round-trip (Phase-1 currently passthrough).
-        - Sibling keywords: `Connect To Server` (handshake + version check); `List Tools`, `Call Tool`, `Stop Server`.
+        - Sibling keywords: `MCP.Connect To Server` (handshake + version check); `MCP.List Tools`, `MCP.Call Tool`, `MCP.Stop Server`.
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return start_server(
             name=name,
@@ -276,7 +286,7 @@ class MCPLibrary(_HostBudgetPlumbing):
             server_factory=server_factory,
         )
 
-    @keyword(name="Connect To Server")
+    @keyword(name="MCP.Connect To Server")
     @tier(1)
     def connect_to_server(self, handle: MCPServerHandle) -> MCPSession:
         """Opens + initializes an MCP ``ClientSession`` and gate-checks the version (PRD FR8 + FR46).
@@ -289,7 +299,7 @@ class MCPLibrary(_HostBudgetPlumbing):
         **NOT a live SDK session**.
 
         | =Arguments= | =Description= |
-        | ``handle`` | An ``MCPServerHandle`` from `Start Server`. |
+        | ``handle`` | An ``MCPServerHandle`` from `MCP.Start Server`. |
 
         Raises ``UnsupportedMCPVersionError`` when the negotiated
         protocol version is outside the supported range. Raises
@@ -297,8 +307,8 @@ class MCPLibrary(_HostBudgetPlumbing):
         (Phase-1 passthrough; not yet implemented).
 
         Example:
-        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
-        | ${session} =    `Connect To Server`    ${handle}
+        | ${handle} =    `MCP.Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
+        | ${session} =    `MCP.Connect To Server`    ${handle}
         | Should Not Be Empty    ${session.protocol_version}
         | Should Contain    ${session.server_info}[name]    echo
 
@@ -306,11 +316,11 @@ class MCPLibrary(_HostBudgetPlumbing):
         - PRD FR8 + FR46 ratify the version-gate + per-call-session contract.
         - Story 3.1 ratifies per-call-session design (no live session returned).
         - NFR-COMPAT-04 pins the MCP SDK at ``mcp>=1.0,<2.0``.
-        - Sibling keywords: `Start Server` (handle construction); `Stop Server` (Phase-1 no-op cleanup); `List Tools` / `Call Tool` (per-call session-internal).
+        - Sibling keywords: `MCP.Start Server` (handle construction); `MCP.Stop Server` (Phase-1 no-op cleanup); `MCP.List Tools` / `MCP.Call Tool` (per-call session-internal).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return connect_to_server(handle)
 
-    @keyword(name="Stop Server")
+    @keyword(name="MCP.Stop Server")
     @tier(1)
     def stop_server(self, handle: MCPServerHandle) -> None:
         """Tears down any per-handle MCP resources.
@@ -322,23 +332,23 @@ class MCPLibrary(_HostBudgetPlumbing):
         that need explicit teardown.
 
         | =Arguments= | =Description= |
-        | ``handle`` | The ``MCPServerHandle`` from `Start Server`. |
+        | ``handle`` | The ``MCPServerHandle`` from `MCP.Start Server`. |
 
         Returns ``None``. Never raises in Phase-1 (no-op).
 
         Example:
-        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
+        | ${handle} =    `MCP.Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
         | TRY
-        |     ${result} =    `Call Tool`    ${handle}    echo    arguments=${{ {"message": "hi"} }}
+        |     ${result} =    `MCP.Call Tool`    ${handle}    echo    arguments=${{ {"message": "hi"} }}
         |     Should Be True    ${result.is_error} == False
         | FINALLY
-        |     `Stop Server`    ${handle}
+        |     `MCP.Stop Server`    ${handle}
         | END
 
         Notes:
         - Phase-1 no-op per Story 3.1 design (per-call sessions self-clean).
-        - The canonical 3-step lifecycle (`Start Server` → `Connect To Server` → `Stop Server`) is ratified now to avoid breakage when Phase-1.5 introduces pooled sessions.
-        - Sibling keywords: `Start Server` + `Connect To Server` (companion lifecycle steps).
+        - The canonical 3-step lifecycle (`MCP.Start Server` → `MCP.Connect To Server` → `MCP.Stop Server`) is ratified now to avoid breakage when Phase-1.5 introduces pooled sessions.
+        - Sibling keywords: `MCP.Start Server` + `MCP.Connect To Server` (companion lifecycle steps).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         stop_server(handle)
 
@@ -346,7 +356,7 @@ class MCPLibrary(_HostBudgetPlumbing):
     # Story 3.2: MCP tool inspection keywords (PRD FR9a + FR9b)
     # --------------------------------------------------------------- #
 
-    @keyword(name="List Tools")
+    @keyword(name="MCP.List Tools")
     @tier(1)
     def list_tools(self, handle: MCPServerHandle) -> list[MCPTool]:
         """Lists the tools advertised by the MCP server at ``handle`` (PRD FR9a).
@@ -359,7 +369,7 @@ class MCPLibrary(_HostBudgetPlumbing):
         ``description``, ``input_schema``, and optional ``output_schema``.
 
         | =Arguments= | =Description= |
-        | ``handle`` | An ``MCPServerHandle`` from `Start Server`. |
+        | ``handle`` | An ``MCPServerHandle`` from `MCP.Start Server`. |
 
         Raises ``ValueError`` when transport is ``streamable_http``
         (Phase-1 passthrough). Raises ``UnsupportedMCPVersionError``
@@ -368,8 +378,8 @@ class MCPLibrary(_HostBudgetPlumbing):
         fails mid-call.
 
         Example:
-        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
-        | @{tools} =    `List Tools`    ${handle}
+        | ${handle} =    `MCP.Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
+        | @{tools} =    `MCP.List Tools`    ${handle}
         | Should Not Be Empty    ${tools}
         | Should Contain    ${{ [t.name for t in $tools] }}    echo_back
 
@@ -377,11 +387,11 @@ class MCPLibrary(_HostBudgetPlumbing):
         - PRD FR9a ratifies the list-tools contract.
         - Story 3.1 ratifies per-call-session design.
         - Pooled-session optimization is Phase-1.5; Phase-1 pays per-call handshake.
-        - Sibling keyword: `Call Tool` (invoke a tool by name); `Get Tool Schema` (declarative — reads from ``.mcp.json``).
+        - Sibling keyword: `MCP.Call Tool` (invoke a tool by name); `MCP.Get Tool Schema` (declarative — reads from ``.mcp.json``).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return list_tools(handle)
 
-    @keyword(name="Call Tool")
+    @keyword(name="MCP.Call Tool")
     @tier(1)
     def call_tool(
         self,
@@ -411,7 +421,7 @@ class MCPLibrary(_HostBudgetPlumbing):
            ``tool_name``, ``arguments`` — reserved names).
 
         | =Arguments= | =Description= |
-        | ``handle`` | An ``MCPServerHandle`` from `Start Server`. |
+        | ``handle`` | An ``MCPServerHandle`` from `MCP.Start Server`. |
         | ``tool_name`` | The tool name as advertised by the server. |
         | ``arguments`` | Optional dict of tool-specific arguments. Defaults to ``{}``. Mutually exclusive with named-argument form. |
         | ``**kwargs`` | Tool arguments passed as natural named arguments. Mutually exclusive with ``arguments=``. |
@@ -434,30 +444,30 @@ class MCPLibrary(_HostBudgetPlumbing):
         ``arguments=`` dict form.
 
         Example (natural named-argument form):
-        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
-        | ${result} =    `Call Tool`    ${handle}    echo_back    text=hello
+        | ${handle} =    `MCP.Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
+        | ${result} =    `MCP.Call Tool`    ${handle}    echo_back    text=hello
         | Should Be Equal    ${result.is_error}    ${FALSE}
         | Should Contain    ${result.content}[0][text]    hello
-        | `Stop Server`    ${handle}
+        | `MCP.Stop Server`    ${handle}
 
         Example (explicit dict form — needed for non-string / reserved-name arguments):
-        | ${result} =    `Call Tool`    ${handle}    echo_back    arguments=${{ {"text": "hi"} }}
+        | ${result} =    `MCP.Call Tool`    ${handle}    echo_back    arguments=${{ {"text": "hi"} }}
         | Should Be Equal    ${result.is_error}    ${FALSE}
 
         Notes:
         - PRD FR9b ratifies the tool-call contract; tool-error-as-data per AC-MCP-CALL-01.
-        - Sibling keywords: `List Tools`, `Start Server`, `Stop Server`.
+        - Sibling keywords: `MCP.List Tools`, `MCP.Start Server`, `MCP.Stop Server`.
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         if kwargs and arguments is not None:
             raise ValueError(
-                "Call Tool: cannot combine the `arguments=` dict form with free "
+                "MCP.Call Tool: cannot combine the `arguments=` dict form with free "
                 "named arguments — supplying both is ambiguous, so no tool call "
                 "was made.\n"
                 f"  Field: arguments={arguments!r} AND named args {sorted(kwargs)!r}\n"
                 "  Fix: use exactly ONE form — either "
-                "`Call Tool    ${handle}    tool    name=value` (natural named "
+                "`MCP.Call Tool    ${handle}    tool    name=value` (natural named "
                 "arguments) OR "
-                '`Call Tool    ${handle}    tool    arguments=${{ {"name": value} }}` '
+                '`MCP.Call Tool    ${handle}    tool    arguments=${{ {"name": value} }}` '
                 "(explicit dict). Use the dict form for non-string values or when "
                 "a tool argument is named `handle`, `tool_name`, or `arguments`."
             )
@@ -468,7 +478,7 @@ class MCPLibrary(_HostBudgetPlumbing):
     # Story 4.4: MVP Tool Discoverability (PRD FR10a + AC-DISCOVER-01)
     # --------------------------------------------------------------- #
 
-    @keyword(name="Get Tool Discoverability")
+    @keyword(name="MCP.Get Tool Discoverability")
     @tier(3)
     @guarded_fanout()
     def get_tool_discoverability(
@@ -489,7 +499,7 @@ class MCPLibrary(_HostBudgetPlumbing):
         inspects ``tool_calls`` to compute Pass@k with Wilson CI bounds.
 
         | =Arguments= | =Description= |
-        | ``mcp_server`` | Name of the MCP server (per `Start Server`). Must be a non-empty string. Phase-1: accepted but NOT forwarded to ``adapter.run()`` (DF-4.1-S2 + DF-4.2-S1). |
+        | ``mcp_server`` | Name of the MCP server (per `MCP.Start Server`). Must be a non-empty string. Phase-1: accepted but NOT forwarded to ``adapter.run()`` (DF-4.1-S2 + DF-4.2-S1). |
         | ``adapter`` | Adapter name. Defaults to ``"generic"``. |
         | ``model`` | Model identifier (e.g., ``"anthropic/claude-sonnet-4-6"``). |
         | ``tasks`` | Path to the discoverability tasks YAML. |
@@ -501,9 +511,10 @@ class MCPLibrary(_HostBudgetPlumbing):
         Budget enforcement (Story 14.6 / C20 closure): `@guarded_fanout()`
         reads `_max_cost_usd` + `_max_runtime_seconds` from the
         MCPLibrary host instance via the `_HostBudgetPlumbing` mixin
-        (`_kernel/host_budget_plumbing.py`). Operators pass budgets at
-        RF `Library` import time per Story 2.2 `_SUB_LIBRARIES`
-        exclusion — see the mixin's module docstring for the RF syntax.
+        (`_kernel/host_budget_plumbing.py`). Under `Library AgentEval`
+        these are forwarded automatically from the top-level config; a
+        standalone MCPLibrary import passes them at RF `Library` import
+        time.
 
         Phase-1 carve-out (DF-4.1-S2 + DF-4.2-S1): ``mcp_server=`` is
         NOT forwarded to ``adapter.run(mcp_servers=...)`` because both
@@ -531,7 +542,7 @@ class MCPLibrary(_HostBudgetPlumbing):
         kwargs are missing/empty.
 
         Example (illustrative — assumes a real adapter or fixture stub):
-        | ${result} =    `Get Tool Discoverability`
+        | ${result} =    `MCP.Get Tool Discoverability`
         | ...    mcp_server=echo
         | ...    adapter=generic
         | ...    provider=mock
@@ -545,8 +556,8 @@ class MCPLibrary(_HostBudgetPlumbing):
         - PRD FR10a ratifies the keyword + ``DiscoverabilityResult`` shape.
         - Tier-3 stochastic; `max_cost_usd` + `max_runtime_seconds` budgets enforced via `@guarded_fanout()` (Story 14.6 / C20 closure).
         - Story 4.3 + Story 4.4 carve-out (architectural budget-injection gap) closed by Story 14.6's unified `_HostBudgetPlumbing` mixin.
-        - Story 2.2 ratifies the ``_SUB_LIBRARIES`` composition norm (which excludes ``MCPLibrary``); operators pass budgets at RF `Library` import time per the mixin's documented RF syntax.
-        - Sibling keywords (same library): `Call Tool`, `List Tools`, `Start Server`.
+        - The ``compose-single-library-import`` change composes ``MCPLibrary`` into ``_SUB_LIBRARIES``; under ``Library AgentEval`` budgets are forwarded from the top-level config, and a standalone import passes them at RF `Library` import time.
+        - Sibling keywords (same library): `MCP.Call Tool`, `MCP.List Tools`, `MCP.Start Server`.
         - Downstream keyword (separately composed sub-library): `HeatmapLibrary.Get Cohort Heatmap` consumes ``DiscoverabilityResult`` to render the FR55 cohort heatmap.
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         # Story 4.4 code-review MED-B fix 2026-05-20 (Codex empirical probe):
@@ -563,13 +574,13 @@ class MCPLibrary(_HostBudgetPlumbing):
         # input now so existing callers don't lock in a no-op default.
         if not mcp_server:
             raise ValueError(
-                "Get Tool Discoverability requires `mcp_server=<name>` kwarg "
+                "MCP.Get Tool Discoverability requires `mcp_server=<name>` kwarg "
                 "(name of an MCP server started via `MCP.Start Server`); empty "
                 "string is rejected even in Phase-1 where DF-4.1-S2 stubs the "
                 "adapter-side integration."
             )
         if not tasks:
-            raise ValueError("Get Tool Discoverability requires `tasks=<yaml-path>` kwarg")
+            raise ValueError("MCP.Get Tool Discoverability requires `tasks=<yaml-path>` kwarg")
         if trials_per_task < 1:
             raise ValueError(f"trials_per_task must be >= 1; got {trials_per_task}")
 
@@ -615,7 +626,7 @@ class MCPLibrary(_HostBudgetPlumbing):
     ) -> DiscoverabilityComparisonResult:
         """Compares Tool Discoverability across ≥2 coding-agent adapters with statistical significance (PRD FR10b; Story 13.3).
 
-        [Tier 3 — Stochastic Fan-Out] — runs `Get Tool Discoverability`
+        [Tier 3 — Stochastic Fan-Out] — runs `MCP.Get Tool Discoverability`
         once per adapter against the SAME task set, then computes
         pairwise Mann-Whitney U deltas across the per-task pass-rate
         distributions. Returns a `DiscoverabilityComparisonResult` with
@@ -629,7 +640,7 @@ class MCPLibrary(_HostBudgetPlumbing):
         the missing extra should not pay 3-adapter trial cost first).
 
         | =Arguments= | =Description= |
-        | ``mcp_server`` | Name of the MCP server (per `Start Server`). Same Phase-1 carve-out as `Get Tool Discoverability` (DF-4.1-S2 + DF-4.2-S1). |
+        | ``mcp_server`` | Name of the MCP server (per `MCP.Start Server`). Same Phase-1 carve-out as `MCP.Get Tool Discoverability` (DF-4.1-S2 + DF-4.2-S1). |
         | ``adapters`` | REQUIRED ``list[str]`` of adapter names; ≥2 entries required. N=3+ enables ranking across Claude/GPT/Copilot/.... |
         | ``tasks`` | Path to the discoverability tasks YAML (loaded ONCE; shared across adapters). |
         | ``trials_per_task`` | Pass@k trials per task. Defaults to ``3``. |

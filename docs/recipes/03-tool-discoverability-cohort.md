@@ -10,7 +10,6 @@ Run a task cohort against your MCP tools and visualize the Pass@k matrix:
 ```robotframework
 *** Settings ***
 Library    AgentEval
-Library    AgentEval.mcp.library.MCPLibrary    WITH NAME    MCP
 
 *** Test Cases ***
 Echo Tool Cohort Discoverability

@@ -7,7 +7,7 @@ validation of its `.mcp.json` config and tool schemas.
 
 ```robotframework
 *** Settings ***
-Library    AgentEval.mcp.library.MCPLibrary    WITH NAME    MCP
+Library    AgentEval
 
 *** Test Cases ***
 Echo Server Config Is Valid
@@ -57,14 +57,16 @@ drift before any Tier-2 / Tier-3 runtime call:
 }
 ```
 
-### 2. Import the MCP library with a prefix
+### 2. Import the library
 
 ```robotframework
-Library    AgentEval.mcp.library.MCPLibrary    WITH NAME    MCP
+Library    AgentEval
 ```
 
-`MCPLibrary` is not composed into the top-level `AgentEval` library, so import
-it directly and give it a prefix with `WITH NAME`.
+`MCPLibrary` is composed into the top-level `AgentEval` library, and every MCP
+keyword bakes its `MCP.` prefix into its name — so a single `Library    AgentEval`
+import reaches `MCP.Get Server Config`, `MCP.Get Tool Schema`, and the rest. No
+`WITH NAME` needed.
 
 ### 3. Read + assert the config
 
@@ -73,7 +75,7 @@ ${servers}=    MCP.Get Server Config    ${CURDIR}/fixtures/.mcp.json
 Should Be Equal As Strings    ${servers}[bundled-echo][command]    python
 ```
 
-`Get Server Config` returns a dict keyed by server name. If the config is
+`MCP.Get Server Config` returns a dict keyed by server name. If the config is
 malformed (missing required field, invalid transport, unknown JSON Pointer),
 `InvalidMCPServerConfigError` raises with a structured diagnostic message.
 

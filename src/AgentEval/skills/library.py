@@ -22,11 +22,11 @@
 Story 2.1 ships 5 Tier-1 keywords (per architecture L620 Decision-1 +
 PRD FR1 + epics.md Epic 2 Story 2.1):
 
-- `Get Frontmatter` — parse a skill `.md`'s YAML frontmatter into a dict.
-- `Get Description` — return the `description` field.
-- `Get Allowed Tools` — return the `allowed-tools` list.
-- `Get Disable Model Invocation` — return the `disable-model-invocation` bool.
-- `Should Be Valid Frontmatter` — structural validator (Phase-1 plain
+- `Skill.Get Frontmatter` — parse a skill `.md`'s YAML frontmatter into a dict.
+- `Skill.Get Description` — return the `description` field.
+- `Skill.Get Allowed Tools` — return the `allowed-tools` list.
+- `Skill.Get Disable Model Invocation` — return the `disable-model-invocation` bool.
+- `Skill.Should Be Valid Frontmatter` — structural validator (Phase-1 plain
   `@keyword`; full AssertionEngine matcher deferred to Phase-2 per
   ADR-022 catalog row).
 
@@ -34,29 +34,39 @@ The 5 static-inspection keywords above are `@tier(1)`-annotated
 (deterministic, ≤50 ms per call on typical 5 KB inputs per NFR-PERF-02).
 Tier-1 keywords do NOT touch the provider, the trace store, or external
 services; they read the local `.md` file + parse YAML only. Stochastic
-fan-out keywords (`Get Activation Decision`, `Get Discoverability`,
-`Skill.Compare Discoverability`) are `@tier(3)` and `Should Activate For`
+fan-out keywords (`Skill.Get Activation Decision`, `Skill.Get Discoverability`,
+`Skill.Compare Discoverability`) are `@tier(3)` and `Skill.Should Activate For`
 is `@tier(2)` — these were added in later epics (7 / 12 / 13) and are
 NOT covered by the ≤50 ms NFR.
 
-Usage from a `.robot` file:
+Naming rule: every SkillsLibrary keyword bakes its `Skill.` namespace
+prefix into its `@keyword(name=...)` value (the artifact/engine-library
+rule from the `compose-single-library-import` change), so the call sites
+below are identical whether the library is reached through the composed
+`Library AgentEval` import or a standalone module-path import.
+
+Usage from a `.robot` file (composed import — recommended):
 
     *** Settings ***
-    Library    AgentEval.skills.library    WITH NAME    Skill
+    Library    AgentEval
 
     *** Test Cases ***
     Skill File Has Correct Description
         ${desc}=    Skill.Get Description    skills/example.md
         Should Be Equal    ${desc}    Example skill for testing.
 
-**NOTE (per Phase 6 review):** unlike other AgentEval sub-libraries,
-`SkillsLibrary` is NOT registered in `_SUB_LIBRARIES` and is NOT
-composed under the top-level `AgentEval` library (DF-7.1-S1 / name
-collision with `SubagentsLibrary.Get Frontmatter`). All 9 keywords
-must be imported via the direct path shown in the Usage block above.
+Standalone import for budget scoping (no `WITH NAME` needed — the
+`Skill.` prefix is already baked in):
+
+    *** Settings ***
+    Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0
+
+Do NOT add `WITH NAME    Skill` to that import: RF stacks the assigned
+name on top of the baked prefix, so `Skill.Get Frontmatter` would become
+`Skill.Skill.Get Frontmatter` — harmless but pointless and confusing.
 
 Phase-1 limitations explicitly documented:
-- `Should Be Valid Frontmatter` is a plain `@keyword`-decorated function,
+- `Skill.Should Be Valid Frontmatter` is a plain `@keyword`-decorated function,
   NOT a `robotframework-assertion-engine` matcher. The Phase-1 manual-
   validation contract is load-bearing; Phase-2 (ADR-022 adoption) re-
   wires it with the full operator-chain idiom.
@@ -104,9 +114,10 @@ class SkillsLibrary(_HostBudgetPlumbing):
     Inherits ``_HostBudgetPlumbing`` (Story 14.6 / C95 closure) so
     ``Skill.Compare Discoverability`` (and any future @guarded_fanout
     keyword) enforces ``max_cost_usd`` + ``max_runtime_seconds`` budgets.
-    Operators MUST pass the budgets at RF ``Library`` import time per
-    Story 2.2 ``_SUB_LIBRARIES`` exclusion — see the mixin's module
-    docstring for the RF syntax.
+    Under the composed ``Library AgentEval`` import these budgets are
+    forwarded automatically from the top-level config; a standalone
+    ``Library AgentEval.skills.library.SkillsLibrary max_cost_usd=...``
+    import passes them at RF ``Library`` import time.
 
     All 9 public methods are `@keyword`-decorated per Story 1b.6
     conventions, spanning mixed tiers: `@tier(1)` for deterministic
@@ -114,13 +125,13 @@ class SkillsLibrary(_HostBudgetPlumbing):
     Tools, Get Disable Model Invocation, Should Be Valid Frontmatter) —
     these hold no mutable state and re-parse the target file per call
     (stateless + parallel-safe under `pabot --processes N`); `@tier(2)`
-    for `Should Activate For` (declarative-match keyword); `@tier(3)`
+    for `Skill.Should Activate For` (declarative-match keyword); `@tier(3)`
     for stochastic fan-out keywords delegating to coding-agent adapters
-    (`Get Activation Decision`, `Get Discoverability` Story 7.2,
+    (`Skill.Get Activation Decision`, `Skill.Get Discoverability` Story 7.2,
     `Skill.Compare Discoverability` Story 13.5).
     """
 
-    @keyword(name="Get Frontmatter")
+    @keyword(name="Skill.Get Frontmatter")
     @tier(1)
     def get_frontmatter(self, path: str | Path) -> dict[str, Any]:
         """Parses the YAML frontmatter at the head of a skill ``.md`` file (PRD FR1).
@@ -128,9 +139,9 @@ class SkillsLibrary(_HostBudgetPlumbing):
         [Tier 1 — Deterministic] — pure file-read + YAML parse; no
         provider, no trace store. Returns the raw parsed YAML as a
         ``dict[str, Any]``. Does NOT enforce the required-fields
-        contract — see `Should Be Valid Frontmatter` for structural
-        validation, OR the typed getters (`Get Description`,
-        `Get Allowed Tools`, etc.) which validate during projection.
+        contract — see `Skill.Should Be Valid Frontmatter` for structural
+        validation, OR the typed getters (`Skill.Get Description`,
+        `Skill.Get Allowed Tools`, etc.) which validate during projection.
         Median ≤ 50 ms per call on the 5 KB reference fixture.
 
         | =Arguments= | =Description= |
@@ -142,7 +153,7 @@ class SkillsLibrary(_HostBudgetPlumbing):
         `docs/contracts/error-class-hierarchy.md` L96-104.
 
         Example:
-        | ${frontmatter} =    `Get Frontmatter`    ${CURDIR}/skills/example.md
+        | ${frontmatter} =    `Skill.Get Frontmatter`    ${CURDIR}/skills/example.md
         | Should Be Equal    ${frontmatter}[name]    example-skill
         | Should Contain    ${frontmatter}[allowed-tools]    Bash
 
@@ -150,17 +161,17 @@ class SkillsLibrary(_HostBudgetPlumbing):
         - PRD FR1 ratifies the YAML frontmatter parse + dict-return contract.
         - Performance budget: NFR-PERF-02 (median ≤ 50 ms per call).
         - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
-        - Sibling keywords: `Get Description`, `Get Allowed Tools`, `Get Disable Model Invocation` (typed-validated projections); `Should Be Valid Frontmatter` (structural validator).
+        - Sibling keywords: `Skill.Get Description`, `Skill.Get Allowed Tools`, `Skill.Get Disable Model Invocation` (typed-validated projections); `Skill.Should Be Valid Frontmatter` (structural validator).
         - Parallel surface: `SubagentsLibrary.Get Frontmatter` for sub-agent ``.md`` files (different validation rules).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return parse_frontmatter(path)
 
-    @keyword(name="Get Description")
+    @keyword(name="Skill.Get Description")
     @tier(1)
     def get_description(self, path: str | Path) -> str:
         """Returns the ``description`` field from a skill ``.md`` file's frontmatter (PRD FR1).
 
-        [Tier 1 — Deterministic] — pure projection of `Get Frontmatter`
+        [Tier 1 — Deterministic] — pure projection of `Skill.Get Frontmatter`
         with a ``description``-field non-empty-string check.
 
         | =Arguments= | =Description= |
@@ -171,23 +182,23 @@ class SkillsLibrary(_HostBudgetPlumbing):
         empty.
 
         Example:
-        | ${desc} =    `Get Description`    ${CURDIR}/skills/example.md
+        | ${desc} =    `Skill.Get Description`    ${CURDIR}/skills/example.md
         | Should Contain    ${desc}    example skill
         | Should Be True    len('${desc}') > 0
 
         Notes:
         - PRD FR1 ratifies the description-field projection contract.
         - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
-        - Sibling keywords: `Get Frontmatter` (raw dict); `Should Be Valid Frontmatter` (all-fields validator).
+        - Sibling keywords: `Skill.Get Frontmatter` (raw dict); `Skill.Should Be Valid Frontmatter` (all-fields validator).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return str(self._read_and_validate(path)["description"])
 
-    @keyword(name="Get Allowed Tools")
+    @keyword(name="Skill.Get Allowed Tools")
     @tier(1)
     def get_allowed_tools(self, path: str | Path) -> list[str]:
         """Returns the ``allowed-tools`` list from a skill ``.md`` file's frontmatter (PRD FR1).
 
-        [Tier 1 — Deterministic] — pure projection of `Get Frontmatter`
+        [Tier 1 — Deterministic] — pure projection of `Skill.Get Frontmatter`
         with a ``list[str]`` type check. The list MAY be empty (a skill
         with no tool allowlist is valid).
 
@@ -198,7 +209,7 @@ class SkillsLibrary(_HostBudgetPlumbing):
         invalid OR ``allowed-tools`` is not a list of strings.
 
         Example:
-        | @{tools} =    `Get Allowed Tools`    ${CURDIR}/skills/example.md
+        | @{tools} =    `Skill.Get Allowed Tools`    ${CURDIR}/skills/example.md
         | Should Contain    ${tools}    Bash
         | Should Contain    ${tools}    Read
         | Length Should Be    ${tools}    3
@@ -206,16 +217,16 @@ class SkillsLibrary(_HostBudgetPlumbing):
         Notes:
         - PRD FR1 ratifies the allowed-tools projection contract.
         - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
-        - Sibling keywords: `Get Frontmatter` (raw dict); `Get Disable Model Invocation` (companion projection).
+        - Sibling keywords: `Skill.Get Frontmatter` (raw dict); `Skill.Get Disable Model Invocation` (companion projection).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return list(self._read_and_validate(path)["allowed-tools"])
 
-    @keyword(name="Get Disable Model Invocation")
+    @keyword(name="Skill.Get Disable Model Invocation")
     @tier(1)
     def get_disable_model_invocation(self, path: str | Path) -> bool:
         """Returns the ``disable-model-invocation`` bool from a skill ``.md`` file's frontmatter (PRD FR1).
 
-        [Tier 1 — Deterministic] — pure projection of `Get Frontmatter`
+        [Tier 1 — Deterministic] — pure projection of `Skill.Get Frontmatter`
         with a strict bool type check. YAML coercion rules:
 
         - ``true``/``false``/``yes``/``no``/``on``/``off`` parse to Python
@@ -231,16 +242,16 @@ class SkillsLibrary(_HostBudgetPlumbing):
         invalid OR ``disable-model-invocation`` is not a bool.
 
         Example:
-        | ${disabled} =    `Get Disable Model Invocation`    ${CURDIR}/skills/example.md
+        | ${disabled} =    `Skill.Get Disable Model Invocation`    ${CURDIR}/skills/example.md
         | Should Be Equal    ${disabled}    ${FALSE}                                      # Default for most skills.
-        | ${disabled} =    `Get Disable Model Invocation`    ${CURDIR}/skills/static-only.md
+        | ${disabled} =    `Skill.Get Disable Model Invocation`    ${CURDIR}/skills/static-only.md
         | Should Be Equal    ${disabled}    ${TRUE}
 
         Notes:
         - PRD FR1 ratifies the disable-model-invocation projection contract.
         - Strict bool typing — int / string forms rejected. The PyYAML 1.1 coercion of unquoted ``true``/``yes`` etc. to Python bool IS accepted.
         - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
-        - Sibling keyword: `Get Allowed Tools` (companion projection).
+        - Sibling keyword: `Skill.Get Allowed Tools` (companion projection).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return bool(self._read_and_validate(path)["disable-model-invocation"])
 
@@ -248,7 +259,7 @@ class SkillsLibrary(_HostBudgetPlumbing):
         """Parse + structurally-validate a skill `.md` file once per call.
 
         Internal helper that consolidates the parse + validate steps
-        shared by `Get Description` / `Get Allowed Tools` / `Get
+        shared by `Skill.Get Description` / `Skill.Get Allowed Tools` / `Get
         Disable Model Invocation`. Story 2.1 code-review B2 fix: the
         earlier per-keyword `parse_frontmatter` + `validate_frontmatter_structure`
         call pair iterated `REQUIRED_FIELDS` once per call; this
@@ -256,8 +267,8 @@ class SkillsLibrary(_HostBudgetPlumbing):
         sweep per public-keyword invocation, matching the NFR-PERF-02
         budget framing.
 
-        Tier-1 callers that need ALL fields should call `Get Frontmatter`
-        once + `Should Be Valid Frontmatter` on the result; chained
+        Tier-1 callers that need ALL fields should call `Skill.Get Frontmatter`
+        once + `Skill.Should Be Valid Frontmatter` on the result; chained
         per-field getters each incur ONE I/O + parse cycle (cache-free
         by design — `SkillsLibrary` is stateless under `pabot --processes N`).
         """
@@ -265,7 +276,7 @@ class SkillsLibrary(_HostBudgetPlumbing):
         validate_frontmatter_structure(frontmatter, file_path=str(path))
         return frontmatter
 
-    @keyword(name="Should Be Valid Frontmatter")
+    @keyword(name="Skill.Should Be Valid Frontmatter")
     @tier(1)
     def should_be_valid_frontmatter(self, frontmatter: dict[str, Any]) -> None:
         """Asserts a parsed frontmatter dict has the 4 required fields with correct types (PRD FR1).
@@ -277,7 +288,7 @@ class SkillsLibrary(_HostBudgetPlumbing):
         matcher deferred to Phase-2.
 
         | =Arguments= | =Description= |
-        | ``frontmatter`` | The dict returned by `Get Frontmatter`. |
+        | ``frontmatter`` | The dict returned by `Skill.Get Frontmatter`. |
 
         Raises ``InvalidSkillFrontmatterError`` when any required field
         is missing OR has the wrong type. The error message lists the
@@ -286,20 +297,20 @@ class SkillsLibrary(_HostBudgetPlumbing):
         L96-104.
 
         Example:
-        | ${frontmatter} =    `Get Frontmatter`    ${CURDIR}/skills/example.md
-        | `Should Be Valid Frontmatter`    ${frontmatter}
+        | ${frontmatter} =    `Skill.Get Frontmatter`    ${CURDIR}/skills/example.md
+        | `Skill.Should Be Valid Frontmatter`    ${frontmatter}
         | ${fm_broken} =    Create Dictionary    name=just-a-name
-        | Run Keyword And Expect Error    InvalidSkillFrontmatterError*    `Should Be Valid Frontmatter`    ${fm_broken}
+        | Run Keyword And Expect Error    InvalidSkillFrontmatterError*    `Skill.Should Be Valid Frontmatter`    ${fm_broken}
 
         Notes:
         - PRD FR1 ratifies the required-fields contract.
         - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
         - ADR-019 ratifies the Phase-1 plain-``@keyword`` form; Phase-2 will adopt the AssertionEngine matcher idiom.
-        - Sibling keyword: `Get Frontmatter` (raw dict — feed its return into this validator).
+        - Sibling keyword: `Skill.Get Frontmatter` (raw dict — feed its return into this validator).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         validate_frontmatter_structure(frontmatter)
 
-    @keyword(name="Get Activation Decision")
+    @keyword(name="Skill.Get Activation Decision")
     @tier(3)
     @guarded_fanout()
     def get_activation_decision(
@@ -336,7 +347,7 @@ class SkillsLibrary(_HostBudgetPlumbing):
         here — missing ``name`` silently yields ``activated=False``.
 
         Example (illustrative — assumes a real adapter):
-        | ${decision} =    `Get Activation Decision`    ${CURDIR}/skills/web-search.md    prompt=Find news about Robot Framework
+        | ${decision} =    `Skill.Get Activation Decision`    ${CURDIR}/skills/web-search.md    prompt=Find news about Robot Framework
         | Should Be True    ${decision.activated}
         | Should Be True    ${decision.cost_usd} >= 0.0
 
@@ -344,12 +355,12 @@ class SkillsLibrary(_HostBudgetPlumbing):
         - PRD FR1 ratifies the skill-activation surface; AC-7.1 ratifies the keyword contract.
         - Phase-1 heuristic per AC-7.1.4 — substring check on skill ``name`` in response text. Phase-2 classifier deferred per DF-7.1-S1 / C55.
         - FR28 prohibits polling — use `Stat.Run N Times` for statistical assertions instead.
-        - Sibling keyword: `Should Activate For` (assertion wrapper); `Get Discoverability` (multi-task cohort evaluation).
+        - Sibling keyword: `Skill.Should Activate For` (assertion wrapper); `Skill.Get Discoverability` (multi-task cohort evaluation).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         if polling is not None:
             raise PollingDisallowedError(
                 build_polling_disallowed_message(
-                    "Get Activation Decision",
+                    "Skill.Get Activation Decision",
                     {"skill": str(skill), "prompt": prompt, "adapter": adapter},
                 )
             )
@@ -428,7 +439,7 @@ class SkillsLibrary(_HostBudgetPlumbing):
         c = sum(1 for r in runs if _activation_pass_predicate(r))
         return _compute_pass_at_k(c, len(runs), k)
 
-    @keyword(name="Get Discoverability")
+    @keyword(name="Skill.Get Discoverability")
     @tier(3)
     @guarded_fanout()
     def get_discoverability(
@@ -469,7 +480,7 @@ class SkillsLibrary(_HostBudgetPlumbing):
         is structurally invalid.
 
         Example (illustrative — assumes a real adapter):
-        | ${disc} =    `Get Discoverability`    ${CURDIR}/skills/web-search.md    ${CURDIR}/tasks/web-search.yaml    trials_per_task=5
+        | ${disc} =    `Skill.Get Discoverability`    ${CURDIR}/skills/web-search.md    ${CURDIR}/tasks/web-search.yaml    trials_per_task=5
         | Should Be True    ${disc.summary.activation_accuracy} >= 0.6
         | FOR    ${task_result}    IN    @{disc.per_task_results}
         |     Log    ${task_result.task_id}: ${task_result.pass_at_k}
@@ -479,12 +490,12 @@ class SkillsLibrary(_HostBudgetPlumbing):
         - PRD FR4b ratifies the cohort-discoverability contract; AC-7.2 ratifies the keyword surface.
         - Phase-1 activation heuristic per AC-7.2.4. Phase-2 structured-response classifier deferred per DF-7.2-S1 / C56.
         - FR28 prohibits polling — fan-out via this keyword's own ``trials_per_task`` or via `Stat.Run N Times`.
-        - Sibling keywords: `Get Activation Decision` (single-task variant); `Should Activate For` (assertion wrapper).
+        - Sibling keywords: `Skill.Get Activation Decision` (single-task variant); `Skill.Should Activate For` (assertion wrapper).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         if polling is not None:
             raise PollingDisallowedError(
                 build_polling_disallowed_message(
-                    "Get Discoverability",
+                    "Skill.Get Discoverability",
                     {"skill": str(skill), "tasks": str(tasks), "adapter": adapter},
                 )
             )
@@ -560,7 +571,7 @@ class SkillsLibrary(_HostBudgetPlumbing):
         | ``max_cost_usd`` | Budget cap. Defaults to ``20.00`` per epics.md L2218 (4× single-adapter typical). Enforced via `@guarded_fanout()` per Story 14.6 (C95 closure) — SkillsLibrary inherits `_HostBudgetPlumbing` so budgets passed at RF `Library` import time are honored end-to-end. |
         | ``max_runtime_seconds`` | Runtime cap. Phase-1: tracked, NOT enforced. |
         | ``model`` | Optional ``str`` forwarded to ALL adapters' ctor. |
-        | ``polling`` | Must NOT be provided — raises ``PollingDisallowedError`` per FR28 (mirrors `Get Discoverability`). |
+        | ``polling`` | Must NOT be provided — raises ``PollingDisallowedError`` per FR28 (mirrors `Skill.Get Discoverability`). |
         | ``**kwargs`` | Forward-compat kwargs routed to each adapter's ctor. |
 
         Returns ``SkillDiscoverabilityComparisonResult`` with
@@ -731,7 +742,7 @@ class SkillsLibrary(_HostBudgetPlumbing):
             summary=summary,
         )
 
-    @keyword(name="Should Activate For")
+    @keyword(name="Skill.Should Activate For")
     @tier(2)
     def should_activate_for(
         self,
@@ -748,7 +759,7 @@ class SkillsLibrary(_HostBudgetPlumbing):
         adapter once and asserts the skill name appears in the response
         text. Phase-1 activation heuristic per AC-7.2.5: case-insensitive
         substring check of the skill ``name`` field in
-        ``result.response_text`` (same heuristic as `Get Activation Decision`).
+        ``result.response_text`` (same heuristic as `Skill.Get Activation Decision`).
 
         | =Arguments= | =Description= |
         | ``prompt`` | Natural-language prompt to test. |
@@ -768,22 +779,22 @@ class SkillsLibrary(_HostBudgetPlumbing):
         Note: missing / empty / non-string ``name`` field causes the
         activation check to always evaluate False — this keyword raises
         ``SkillDidNotActivateError`` unconditionally in that case
-        (same as `Get Activation Decision` per AC-7.1.4).
+        (same as `Skill.Get Activation Decision` per AC-7.1.4).
 
         Example (illustrative — assumes a real adapter):
-        | `Should Activate For`    Find news about Robot Framework    ${CURDIR}/skills/web-search.md
-        | Run Keyword And Expect Error    SkillDidNotActivateError*    `Should Activate For`    Calculate 2+2    ${CURDIR}/skills/web-search.md
+        | `Skill.Should Activate For`    Find news about Robot Framework    ${CURDIR}/skills/web-search.md
+        | Run Keyword And Expect Error    SkillDidNotActivateError*    `Skill.Should Activate For`    Calculate 2+2    ${CURDIR}/skills/web-search.md
 
         Notes:
         - PRD FR4d ratifies the activation-assertion contract; AC-7.2.5 + AC-7.2.6 ratify the keyword surface.
         - Phase-1 heuristic per AC-7.1.4 — substring check on skill ``name`` in response text.
         - FR28 prohibits polling — fan-out via `Stat.Run N Times` if statistical evidence is needed.
-        - Sibling keywords: `Get Activation Decision` (returns decision instead of raising); `Get Discoverability` (multi-task cohort).
+        - Sibling keywords: `Skill.Get Activation Decision` (returns decision instead of raising); `Skill.Get Discoverability` (multi-task cohort).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         if polling is not None:
             raise PollingDisallowedError(
                 build_polling_disallowed_message(
-                    "Should Activate For",
+                    "Skill.Should Activate For",
                     {"prompt": prompt, "skill": str(skill), "adapter": adapter},
                 )
             )

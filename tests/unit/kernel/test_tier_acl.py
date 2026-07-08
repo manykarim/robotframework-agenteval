@@ -37,7 +37,7 @@ class _Tier1FakeLib:
         enforce_tier1_no_llm()
 
     kw._agenteval_tier = 1  # type: ignore[attr-defined]
-    kw.robot_name = "Get Frontmatter"  # type: ignore[attr-defined]
+    kw.robot_name = "Skill.Get Frontmatter"  # type: ignore[attr-defined]
 
 
 class _Tier2FakeLib:
@@ -58,7 +58,7 @@ class _Tier3FakeLib:
 
 def test_enforce_tier1_no_llm_tier_1_raises() -> None:
     """Tier-1 frame on stack → TierViolationError."""
-    with pytest.raises(TierViolationError, match=r"Tier-1 keyword 'Get Frontmatter'"):
+    with pytest.raises(TierViolationError, match=r"Tier-1 keyword 'Skill.Get Frontmatter'"):
         _Tier1FakeLib().kw()
 
 

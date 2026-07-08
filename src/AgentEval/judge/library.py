@@ -73,6 +73,7 @@ from robot.api.deco import keyword, library
 
 from AgentEval._kernel.discovery import get_adapter
 from AgentEval._kernel.guardrails import guarded_fanout
+from AgentEval._kernel.host_budget_plumbing import _HostBudgetPlumbing
 from AgentEval._kernel.tier import tier
 from AgentEval.errors import JudgeOutputParseError
 from AgentEval.judge.calibration import (
@@ -88,28 +89,18 @@ __all__ = ["JudgeLibrary"]
 
 
 @library(scope="GLOBAL")
-class JudgeLibrary:
+class JudgeLibrary(_HostBudgetPlumbing):
     """`Judge.Get Score` Tier-2 LLM-judge keyword surface (Story 12.1 / PRD FR48).
 
     Wired via `AgentEval._SUB_LIBRARIES` standard composition path.
-    Host-instance budgets (`max_cost_usd` / `max_runtime_seconds`)
-    forwarded from `AgentEval.__init__` via `_build_components` (mirrors
-    `StatsLibrary` precedent per Story 6.3 AC-6.3.8).
+    Inherits `_HostBudgetPlumbing` for the `_max_cost_usd` +
+    `_max_runtime_seconds` instance attrs consumed by `@guarded_fanout`
+    on `Judge.Get Score` (Tier-2 LLM-call keyword). Budgets are forwarded
+    from `AgentEval.__init__` via `_build_components`' unified
+    `_HostBudgetPlumbing` subclass check (`compose-single-library-import`
+    change; formerly a dedicated class-name branch mirroring `StatsLibrary`
+    per Story 6.3 AC-6.3.8).
     """
-
-    def __init__(
-        self,
-        max_cost_usd: float | None = None,
-        max_runtime_seconds: float | None = None,
-    ) -> None:
-        """Library-level cost/runtime budgets per Story 1a.6 + ADR-015.
-
-        Forwarded from top-level `AgentEval(max_cost_usd=...,
-        max_runtime_seconds=...)` via `_build_components`. Consumed by
-        `@guarded_fanout` on `Judge.Get Score` (Tier-2 LLM-call keyword).
-        """
-        self._max_cost_usd = max_cost_usd
-        self._max_runtime_seconds = max_runtime_seconds
 
     @keyword(name="Judge.Get Score")
     @tier(2)

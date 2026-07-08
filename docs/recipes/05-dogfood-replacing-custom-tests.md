@@ -40,7 +40,7 @@ Ports to a `.robot` suite:
 
 ```robotframework
 *** Settings ***
-Library    AgentEval.mcp.library.MCPLibrary    WITH NAME    MCP
+Library    AgentEval
 Suite Setup       Start Echo Server
 Suite Teardown    Stop Echo Server
 
@@ -71,7 +71,6 @@ A cohort-discoverability test ports to `Skill.Get Discoverability`:
 ```robotframework
 *** Settings ***
 Library    AgentEval
-Library    AgentEval.skills.library.SkillsLibrary    WITH NAME    Skill
 
 *** Test Cases ***
 Skill Cohort Discoverability

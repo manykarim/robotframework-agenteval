@@ -663,7 +663,7 @@ def test_dynamic_core_loads_hooks_library() -> None:
 
     library = AgentEvalLib()
     assert "HooksLibrary" in library._loaded_components
-    assert "Get Config" in library.get_keyword_names()
+    assert "Hook.Get Config" in library.get_keyword_names()
 
 
 def test_build_pointer_escapes_special_chars() -> None:

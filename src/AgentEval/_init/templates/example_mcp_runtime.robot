@@ -3,7 +3,6 @@ Documentation    Example: call a tool on the bundled echo MCP server.
 ...              Runs with no API keys — the echo server ships with agenteval
 ...              and simply returns whatever text you send it.
 Library    AgentEval
-Library    AgentEval.mcp.library.MCPLibrary    WITH NAME    MCP
 Suite Setup       Start Bundled Echo Server
 Suite Teardown    Stop Bundled Echo Server
 
@@ -20,7 +19,7 @@ Echo Tool Roundtrips A Message
 
 *** Keywords ***
 Start Bundled Echo Server
-    # The bundled echo server runs as a subprocess over stdio. Start Server
+    # The bundled echo server runs as a subprocess over stdio. MCP.Start Server
     # builds the connection handle; each tool call opens and closes its own
     # session. Using the current interpreter keeps the example runnable from
     # any environment where agenteval is installed.

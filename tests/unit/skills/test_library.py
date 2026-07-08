@@ -468,26 +468,23 @@ def test_rendered_str_first_line_matches_fr59_header(lib: SkillsLibrary) -> None
     assert len(lines) == 5, f"expected 5 lines; got {len(lines)}: {rendered!r}"
 
 
-def test_agenteval_does_not_expose_skills_library_via_dynamic_core() -> None:
-    """`SkillsLibrary` is EXCLUDED from top-level DynamicCore composition.
+def test_agenteval_exposes_skills_library_via_dynamic_core() -> None:
+    """`SkillsLibrary` IS composed into top-level DynamicCore composition.
 
-    Story 2.2 code-review HIGH-1 fix (Edge-cases + Blind): the
-    `SkillsLibrary.Get Frontmatter` keyword collided with
-    `SubagentsLibrary.Get Frontmatter` under DynamicCore's last-wins
-    flattening, silently shadowing Story 2.1's validation surface.
-    Resolution per the PRD-documented canonical user pattern (PRD FR1
-    uses `Skill.Get Frontmatter` syntax → user pattern is `Library X
-    WITH NAME prefix`): `SkillsLibrary` is excluded from `_SUB_LIBRARIES`.
-    Users access via `Library AgentEval.skills.library.SkillsLibrary
-    WITH NAME Skill` (which the Story 2.1 RF integration test exercises).
+    The `compose-single-library-import` change resolved the former
+    `SkillsLibrary.Get Frontmatter` / `SubagentsLibrary.Get Frontmatter`
+    collision via namespace-prefix renames (`Skill.Get Frontmatter` /
+    `Subagent.Get Frontmatter`). SkillsLibrary is now registered in
+    `_SUB_LIBRARIES`, so a plain `Library AgentEval` import reaches every
+    `Skill.*` keyword; the bare (unprefixed) name no longer resolves.
     """
     from AgentEval import AgentEval as AgentEvalLib
 
     library = AgentEvalLib()
-    assert "SkillsLibrary" not in library._loaded_components
-    # Skill keywords are NOT in the top-level keyword registry; they're
-    # reachable only via the standalone-import path.
+    assert "SkillsLibrary" in library._loaded_components
     keyword_names = library.get_keyword_names()
+    # Prefixed name IS in the composed registry; the bare name is gone.
+    assert "Skill.Get Frontmatter" in keyword_names
     assert "Get Frontmatter" not in keyword_names
 
 

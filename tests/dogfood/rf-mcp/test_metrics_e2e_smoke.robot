@@ -25,7 +25,7 @@ Documentation    DF-RFMCP-E2E-01 smoke suite — drives minimax M2.7 through
 ...              Skips cleanly when ``MINIMAX_API_KEY`` is unset so CI runs
 ...              without credentials don't false-fail.
 
-Library          AgentEval.mcp.library.MCPLibrary    WITH NAME    MCP
+Library          AgentEval.mcp.library.MCPLibrary
 Library          AgentEval.metrics.library.MetricsLibrary    allow_external_mcp_blind=True    WITH NAME    Metrics
 Library          OperatingSystem
 Library          Collections

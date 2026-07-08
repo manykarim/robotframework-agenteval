@@ -17,7 +17,7 @@ Documentation    Story 3.3 dogfood parity suite — ports a REPRESENTATIVE
 ...              cd's into the rf-mcp directory at lifecycle setup so
 ...              `uv run -m robotmcp.server` resolves correctly.
 
-Library          AgentEval.mcp.library.MCPLibrary    WITH NAME    MCP
+Library          AgentEval
 Library          OperatingSystem
 Library          Collections
 

@@ -47,6 +47,7 @@ from robot.api.deco import keyword
 
 from AgentEval._kernel.context import current_context
 from AgentEval._kernel.guardrails import guarded_fanout
+from AgentEval._kernel.host_budget_plumbing import _HostBudgetPlumbing
 from AgentEval._kernel.redaction import redact
 from AgentEval._kernel.tier import tier
 from AgentEval.errors import TierViolationError
@@ -86,22 +87,17 @@ def _raise_advanced_extra_missing(keyword_name: str) -> None:
     ) from _ADVANCED_IMPORT_ERROR
 
 
-class StatsLibrary:
-    """4 `@keyword`-decorated statistical primitives (Story 6.3 / PRD FR26-FR31a)."""
+class StatsLibrary(_HostBudgetPlumbing):
+    """4 `@keyword`-decorated statistical primitives (Story 6.3 / PRD FR26-FR31a).
 
-    def __init__(
-        self,
-        max_cost_usd: float | None = None,
-        max_runtime_seconds: float | None = None,
-    ) -> None:
-        """Library-level cost/runtime budgets per Story 1a.6 + ADR-015.
-
-        Forwarded from top-level `AgentEval(max_cost_usd=..., max_runtime_seconds=...)`
-        via `_build_components` per Story 4.3 pattern. Consumed by `@guarded_fanout`
-        on `Stat.Run N Times` (Tier-3 fan-out keyword).
-        """
-        self._max_cost_usd = max_cost_usd
-        self._max_runtime_seconds = max_runtime_seconds
+    Inherits `_HostBudgetPlumbing` for the `_max_cost_usd` +
+    `_max_runtime_seconds` instance attrs consumed by `@guarded_fanout`
+    on `Stat.Run N Times` (Tier-3 fan-out keyword). Budgets are forwarded
+    from top-level `AgentEval(max_cost_usd=..., max_runtime_seconds=...)`
+    via `_build_components`' unified `_HostBudgetPlumbing` subclass check
+    (`compose-single-library-import` change; formerly a dedicated
+    class-name branch per Story 6.3 AC-6.3.8).
+    """
 
     # ----------------------------------------------------------------- #
     # FR26 — Stat.Run N Times (Tier-3 fan-out)                          #

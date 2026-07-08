@@ -15,14 +15,18 @@
 """Subagent sub-library — static-inspection keyword for sub-agent `.md` files.
 
 Story 2.2 ships 1 Tier-1 keyword per PRD FR3:
-- `Get Frontmatter` — parse a sub-agent `.md` file's YAML frontmatter
+- `Subagent.Get Frontmatter` — parse a sub-agent `.md` file's YAML frontmatter
   into a dict (required: `name`, `description`; optional: `tools`,
   `model`).
+
+The keyword bakes its `Subagent.` namespace prefix into its
+`@keyword(name=...)` value, so the call site is identical under the
+composed `Library AgentEval` import and a standalone module-path import.
 
 Usage from a `.robot` file:
 
     *** Settings ***
-    Library    AgentEval.subagents.library.SubagentsLibrary    WITH NAME    Subagent
+    Library    AgentEval
 
     *** Test Cases ***
     Subagent Has Correct Name
@@ -31,7 +35,9 @@ Usage from a `.robot` file:
 
 Composition: registered in `AgentEval.__init__._SUB_LIBRARIES` so
 `Library AgentEval` flattens the keyword into the parent namespace via
-`robotlibcore.DynamicCore`.
+`robotlibcore.DynamicCore`. Do NOT add `WITH NAME Subagent` to a
+standalone import — RF would stack the name on top of the baked prefix
+(`Subagent.Subagent.Get Frontmatter`); harmless but pointless.
 """
 
 from __future__ import annotations
@@ -59,7 +65,7 @@ _BROWSER_STYLE_MIGRATED = True
 class SubagentsLibrary:
     """Static-inspection keyword for sub-agent `.md` files [Tier 1 — Deterministic]."""
 
-    @keyword(name="Get Frontmatter")
+    @keyword(name="Subagent.Get Frontmatter")
     @tier(1)
     def get_frontmatter(self, path: str | Path) -> dict[str, Any]:
         """Parses the YAML frontmatter at the head of a sub-agent ``.md`` file.
@@ -78,14 +84,15 @@ class SubagentsLibrary:
         Error format per FR59 + `docs/contracts/error-class-hierarchy.md`
         L96-104.
 
-        Note: this library is NOT composed into the top-level ``AgentEval``
-        keyword surface because of the name collision with
-        `Get Frontmatter` on `SkillsLibrary` (DF-7.1-S1 — see
-        `docs/phase-1-5-carry-overs.md`). Import directly with
-        ``Library    AgentEval.subagents.library.SubagentsLibrary    WITH NAME    Subagent``.
+        Note: this keyword is composed into the top-level ``AgentEval``
+        library and resolves as ``Subagent.Get Frontmatter``. The former
+        ``Get Frontmatter`` collision with `SkillsLibrary` (DF-7.1-S1 /
+        C55) was resolved by the namespace-prefix renames in the
+        ``compose-single-library-import`` change, so the ``WITH NAME``
+        carve-out is no longer needed.
 
         Example:
-        | ${frontmatter} =    `Get Frontmatter`    ${CURDIR}/agents/code-reviewer.md
+        | ${frontmatter} =    `Subagent.Get Frontmatter`    ${CURDIR}/agents/code-reviewer.md
         | Should Be Equal    ${frontmatter}[name]    code-reviewer
         | Should Contain    ${frontmatter}[description]    Reviews diffs
         | Should Contain    ${frontmatter}[tools]    Bash                            # When `tools` is present.

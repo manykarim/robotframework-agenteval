@@ -15,7 +15,7 @@
 """Hook sub-library — static-inspection keyword for `settings.json` files.
 
 Story 2.2 ships 1 Tier-1 keyword per PRD FR4 (real-format rewrite 2026-07-08):
-- `Get Config` — parse a Claude Code `settings.json` hook configuration
+- `Hook.Get Config` — parse a Claude Code `settings.json` hook configuration
   into a dict mapping each PLAIN event name (`PreToolUse`, ...) → list of
   normalized hook entries. Accepts the real nested Claude Code schema
   (matcher groups of typed hook definitions) as primary, and the deprecated
@@ -24,10 +24,14 @@ Story 2.2 ships 1 Tier-1 keyword per PRD FR4 (real-format rewrite 2026-07-08):
   Inline-skill-frontmatter hooks surface as an extra `inline_skill: dict`
   field on `command`-type entries.
 
+The keyword bakes its `Hook.` namespace prefix into its
+`@keyword(name=...)` value, so the call site is identical under the
+composed `Library AgentEval` import and a standalone module-path import.
+
 Usage from a `.robot` file:
 
     *** Settings ***
-    Library    AgentEval.hooks.library.HooksLibrary    WITH NAME    Hook
+    Library    AgentEval
 
     *** Test Cases ***
     PreToolUse Has Audit Hook
@@ -36,7 +40,9 @@ Usage from a `.robot` file:
 
 Composition: registered in `AgentEval.__init__._SUB_LIBRARIES` so
 `Library AgentEval` flattens the keyword into the parent namespace via
-`robotlibcore.DynamicCore`.
+`robotlibcore.DynamicCore`. Do NOT add `WITH NAME Hook` to a standalone
+import — RF would stack the name on top of the baked prefix
+(`Hook.Hook.Get Config`); harmless but pointless.
 """
 
 from __future__ import annotations
@@ -64,7 +70,7 @@ _BROWSER_STYLE_MIGRATED = True
 class HooksLibrary:
     """Static-inspection keyword for `settings.json` hook configs [Tier 1 — Deterministic]."""
 
-    @keyword(name="Get Config")
+    @keyword(name="Hook.Get Config")
     @tier(1)
     def get_config(self, path: str | Path) -> dict[str, list[dict[str, Any]]]:
         """Parses a Claude Code ``settings.json`` hook configuration.
@@ -112,13 +118,13 @@ class HooksLibrary:
         for a real-format definition field) pinpointing the source location.
         Format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
 
-        This keyword is re-exported through the top-level ``AgentEval``
-        library, so ``AgentEval.Get Config`` and ``Hook.Get Config`` (when
-        imported as ``WITH NAME    Hook``) resolve to the same
-        implementation.
+        This keyword is composed into the top-level ``AgentEval`` library
+        and resolves as ``Hook.Get Config`` under a plain ``Library
+        AgentEval`` import (no ``WITH NAME`` needed — the ``Hook.`` prefix
+        is baked into the keyword name).
 
         Example:
-        | ${config} =    `Get Config`    ${CURDIR}/.claude/settings.json
+        | ${config} =    `Hook.Get Config`    ${CURDIR}/.claude/settings.json
         | Length Should Be    ${config}[PreToolUse]    1
         | Should Be Equal    ${config}[PreToolUse][0][command]    /usr/local/bin/audit-hook
         | Should Be Equal    ${config}[PreToolUse][0][type]    command
