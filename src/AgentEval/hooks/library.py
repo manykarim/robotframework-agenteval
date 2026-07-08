@@ -14,12 +14,15 @@
 
 """Hook sub-library — static-inspection keyword for `settings.json` files.
 
-Story 2.2 ships 1 Tier-1 keyword per PRD FR4:
+Story 2.2 ships 1 Tier-1 keyword per PRD FR4 (real-format rewrite 2026-07-08):
 - `Get Config` — parse a Claude Code `settings.json` hook configuration
-  into a dict mapping `hooks.<event>` → list of validated hook entries.
-  Each entry has `command` (required) + optional `args` / `timeout` /
-  `matcher`. Inline-skill-frontmatter hooks surface as an extra
-  `inline_skill: dict` field on the entry.
+  into a dict mapping each PLAIN event name (`PreToolUse`, ...) → list of
+  normalized hook entries. Accepts the real nested Claude Code schema
+  (matcher groups of typed hook definitions) as primary, and the deprecated
+  legacy flat entry shape as an alias. Every entry carries `type`, the group's
+  `matcher` when present, and any optional fields (`args` / `timeout` / ...).
+  Inline-skill-frontmatter hooks surface as an extra `inline_skill: dict`
+  field on `command`-type entries.
 
 Usage from a `.robot` file:
 
@@ -29,7 +32,7 @@ Usage from a `.robot` file:
     *** Test Cases ***
     PreToolUse Has Audit Hook
         ${config}=    Hook.Get Config    .claude/settings.json
-        Length Should Be    ${config["hooks.PreToolUse"]}    1
+        Length Should Be    ${config}[PreToolUse]    1
 
 Composition: registered in `AgentEval.__init__._SUB_LIBRARIES` so
 `Library AgentEval` flattens the keyword into the parent namespace via
@@ -67,27 +70,47 @@ class HooksLibrary:
         """Parses a Claude Code ``settings.json`` hook configuration.
 
         [Tier 1 — Deterministic] — pure file-read + JSON parse + per-entry
-        validation per PRD FR4. Returns a dict mapping ``hooks.<event>`` →
-        list of validated hook entries. Covered events: ``PreToolUse``,
-        ``PostToolUse``, ``Stop``; other events are passed through with the
-        same validation. Median ≤ 50 ms on typical hook configs per
-        NFR-PERF-02.
+        validation. Accepts the REAL nested Claude Code schema (primary) and
+        the DEPRECATED legacy flat shape (alias). Returns a dict mapping each
+        PLAIN event name (``PreToolUse``, ``PostToolUse``, ``Stop``, and any
+        other event such as ``SessionStart``) → list of normalized hook
+        entries. Median ≤ 50 ms on typical hook configs per NFR-PERF-02.
 
         | =Arguments= | =Description= |
         | ``path`` | Filesystem path to the ``settings.json`` file. Accepts ``str`` OR ``pathlib.Path``. |
 
-        Each returned entry has ``command`` (required) plus any of the
-        optional fields ``args`` / ``timeout`` / ``matcher`` that were
-        present in the source JSON. Entries whose command contains an
-        inline YAML frontmatter block additionally surface an
-        ``inline_skill: dict`` field with the parsed frontmatter.
+        *Real (primary) input schema* — a top-level ``hooks`` mapping from
+        event name to a list of matcher groups; each group has an optional
+        ``matcher`` string and a required ``hooks`` list of typed hook
+        definitions (``type`` one of ``command`` / ``http`` / ``mcp_tool`` /
+        ``prompt`` / ``agent``)::
 
-        Raises ``InvalidHookConfigError`` on any structural failure (file
-        not found, malformed JSON, missing ``command``, wrong-type optional
-        field). The error's ``field_name`` attribute carries an RFC 6901
-        JSON Pointer (e.g. ``/hooks/PreToolUse/0/command``) pinpointing the
-        nested location. Format per FR59 +
-        `docs/contracts/error-class-hierarchy.md` L96-104.
+            {"hooks": {"PreToolUse": [
+                {"matcher": "Bash", "hooks": [
+                    {"type": "command", "command": "echo hi"}
+                ]}
+            ]}}
+
+        *Legacy flat input (DEPRECATED)* — an event-array item that is itself
+        a flat entry with a ``command`` key and no ``hooks`` list. Still
+        accepted, but emits a single ``DeprecationWarning`` per parse call.
+
+        *Normalized return shape* — matcher groups are FLATTENED: each inner
+        hook definition becomes one entry, with the group's ``matcher`` (when
+        present) copied onto it, preserving source order. Every returned entry
+        carries a ``type`` field; keys the parser does not validate (``if``,
+        ``async``, ``url``, ``server``, ``model``, future fields...) pass
+        through unmodified. Entries are keyed by PLAIN event name — use
+        ``${config}[PreToolUse]``, NOT the former ``${config}[hooks.PreToolUse]``.
+        Entries whose ``command`` contains a canonical inline YAML frontmatter
+        block additionally surface an ``inline_skill: dict`` field.
+
+        Raises ``InvalidHookConfigError`` on any structural failure (file not
+        found, malformed JSON, ambiguous item, missing per-type required field,
+        wrong-type optional field). The error's ``field_name`` attribute carries
+        an RFC 6901 JSON Pointer (e.g. ``/hooks/PreToolUse/0/hooks/1/command``
+        for a real-format definition field) pinpointing the source location.
+        Format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
 
         This keyword is re-exported through the top-level ``AgentEval``
         library, so ``AgentEval.Get Config`` and ``Hook.Get Config`` (when
@@ -96,13 +119,15 @@ class HooksLibrary:
 
         Example:
         | ${config} =    `Get Config`    ${CURDIR}/.claude/settings.json
-        | Length Should Be    ${config}[hooks.PreToolUse]    1
-        | Should Be Equal    ${config}[hooks.PreToolUse][0][command]    /usr/local/bin/audit-hook
-        | Should Be Equal As Integers    ${config}[hooks.PostToolUse][0][timeout]    30
+        | Length Should Be    ${config}[PreToolUse]    1
+        | Should Be Equal    ${config}[PreToolUse][0][command]    /usr/local/bin/audit-hook
+        | Should Be Equal    ${config}[PreToolUse][0][type]    command
+        | Should Be Equal As Integers    ${config}[PostToolUse][0][timeout]    30
 
         Notes:
-        - PRD FR4 ratifies the canonical events (PreToolUse / PostToolUse / Stop).
-          Unknown events are validated with the same shape contract.
+        - Real Claude Code schema (nested matcher groups) is the primary input;
+          the legacy flat shape is accepted with a ``DeprecationWarning``.
+        - Unknown events + unknown hook ``type`` values pass through unvalidated.
         - Performance budget: NFR-PERF-02 (median ≤ 50 ms per call).
         - Error format: FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
           The ``field_name`` attribute on raised errors carries an RFC 6901 JSON Pointer.

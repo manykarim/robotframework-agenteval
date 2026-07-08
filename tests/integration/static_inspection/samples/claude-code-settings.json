@@ -2,25 +2,42 @@
   "hooks": {
     "PreToolUse": [
       {
-        "command": "scripts/audit_pre_tool_use.sh",
-        "args": ["--mode=structured"],
-        "timeout": 10,
-        "matcher": "shell|file_write"
-      },
-      {
-        "command": "echo '[hook] pre-tool-use'"
+        "matcher": "shell|file_write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "scripts/audit_pre_tool_use.sh",
+            "args": ["--mode=structured"],
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "echo '[hook] pre-tool-use'"
+          }
+        ]
       }
     ],
     "PostToolUse": [
       {
-        "command": "scripts/audit_post_tool_use.sh",
-        "args": ["--emit-otlp"],
-        "timeout": 5
+        "matcher": "shell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "scripts/audit_post_tool_use.sh",
+            "args": ["--emit-otlp"],
+            "timeout": 5
+          }
+        ]
       }
     ],
     "Stop": [
       {
-        "command": "scripts/cleanup_artifacts.sh"
+        "hooks": [
+          {
+            "type": "command",
+            "command": "scripts/cleanup_artifacts.sh"
+          }
+        ]
       }
     ]
   }

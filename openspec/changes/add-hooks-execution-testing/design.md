@@ -235,6 +235,12 @@ annotation, libdoc render) which pick up new keywords automatically.
 - Exact normalized entry shape produced by `accept-real-claude-hook-config`
   (field name for hook `type`; whether matcher-group nesting is flattened) —
   resolve when the sibling lands; Task 1 re-checks this before implementation.
+  - **RESOLVED (sibling landed 2026-07-08):** `Get Config` returns
+    `dict[str, list[dict]]` keyed by PLAIN event name (e.g. `config["PreToolUse"]`).
+    Matcher groups are FLATTENED — each entry is one hook definition with a
+    `type` field always present and the group's `matcher` copied on when present.
+    This change consumes that flattened per-entry shape and MUST be implemented
+    only after `accept-real-claude-hook-config` is applied.
 - Whether v1 should ship convenience assertions for `updatedInput` /
   `additionalContext` (PreToolUse input-rewriting hooks) — deferred; raw
   `stdout_json` access covers it, and demand should drive the sugar.

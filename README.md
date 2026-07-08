@@ -286,25 +286,35 @@ Skill Frontmatter Is Valid
 ## Hook configuration
 
 `HooksLibrary.Get Config` (also `AgentEval.Get Config`) parses a `settings.json`
-hook file. The accepted schema is a top-level `hooks` mapping where each key is
-an event name (`PreToolUse`, `PostToolUse`, `Stop`) and the value is a list of
-flat entries. Each entry requires `command`; `args`, `timeout`, and `matcher`
-are optional:
+hook file in the real Claude Code schema: a top-level `hooks` mapping where each
+key is an event name (`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`, ...)
+and the value is a list of **matcher groups**. Each group has an optional
+`matcher` and a required `hooks` list of typed hook definitions (`type` is one
+of `command`, `http`, `mcp_tool`, `prompt`, `agent`):
 
 ```json
 {
   "hooks": {
     "PreToolUse": [
       {
-        "command": "./scripts/guard.sh",
-        "args": ["--strict"],
-        "timeout": 30,
-        "matcher": "Write"
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./scripts/guard.sh",
+            "args": ["--strict"],
+            "timeout": 30
+          }
+        ]
       }
     ]
   }
 }
 ```
+
+`Get Config` **flattens** matcher groups: each inner hook definition becomes one
+entry keyed by the plain event name, with the group's `matcher` copied onto it
+and a `type` field always present:
 
 ```robotframework
 *** Settings ***
@@ -313,15 +323,14 @@ Library    AgentEval.hooks.library.HooksLibrary    WITH NAME    Hook
 *** Test Cases ***
 Hook Config Parses
     ${config}=    Hook.Get Config    ${CURDIR}/settings.json
-    # Get Config returns entries keyed by `hooks.<event>`.
-    Should Contain    ${config}    hooks.PreToolUse
+    # Get Config returns entries keyed by the plain event name.
+    Should Contain    ${config}    PreToolUse
+    Should Be Equal    ${config}[PreToolUse][0][type]    command
 ```
 
-> **Note:** a real Claude Code `settings.json` nests hooks differently (each
-> matcher group holds its own `hooks` list of `{"type": "command", ...}`
-> entries) and is **not yet accepted** by `Get Config` — it will currently be
-> rejected with `InvalidHookConfigError`. Support for the real Claude Code hook
-> format is tracked in a separate change (`accept-real-claude-hook-config`).
+> **Note:** the legacy flat entry shape (a `command` directly in the event list,
+> no matcher group) is still accepted for backward compatibility but emits a
+> `DeprecationWarning` — migrate configs to the nested Claude Code schema above.
 
 ## Recipes
 

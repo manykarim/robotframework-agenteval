@@ -154,36 +154,65 @@ def test_subagent_optional_model_present(subagents: SubagentsLibrary) -> None:
 # --------------------------------------------------------------------------- #
 
 
+HOOK_REAL_WORLD_SAMPLE = (
+    Path(__file__).resolve().parents[2] / "fixtures" / "hooks" / "settings-real-world.json"
+)
+
+
 def test_hook_get_config_three_events(hooks: HooksLibrary) -> None:
     config = hooks.get_config(HOOK_SAMPLE)
-    assert "hooks.PreToolUse" in config
-    assert "hooks.PostToolUse" in config
-    assert "hooks.Stop" in config
+    assert "PreToolUse" in config
+    assert "PostToolUse" in config
+    assert "Stop" in config
 
 
 def test_hook_pretooluse_has_multiple_entries(hooks: HooksLibrary) -> None:
     config = hooks.get_config(HOOK_SAMPLE)
-    pre = config["hooks.PreToolUse"]
+    pre = config["PreToolUse"]
     assert len(pre) == 2
     assert pre[0]["timeout"] == 10
     assert pre[0]["matcher"] == "shell|file_write"
+    # Group matcher is copied onto every flattened definition.
+    assert pre[1]["matcher"] == "shell|file_write"
+    assert all(entry["type"] == "command" for entry in pre)
 
 
 def test_hook_pretooluse_args_list(hooks: HooksLibrary) -> None:
     config = hooks.get_config(HOOK_SAMPLE)
-    pre = config["hooks.PreToolUse"][0]
+    pre = config["PreToolUse"][0]
     assert pre["args"] == ["--mode=structured"]
 
 
 def test_hook_stop_minimal_entry(hooks: HooksLibrary) -> None:
-    """Stop hook has only the required `command` field — verifies the
-    optional-field passthrough idiom against a real-world shape.
+    """Stop hook is a matcher-less group with only the required `command`
+    field — verifies the optional-field passthrough idiom + that a
+    matcher-less group forces no `matcher` onto its entries.
     """
     config = hooks.get_config(HOOK_SAMPLE)
-    stop = config["hooks.Stop"][0]
+    stop = config["Stop"][0]
     assert stop["command"] == "scripts/cleanup_artifacts.sh"
+    assert stop["type"] == "command"
     assert "args" not in stop
     assert "timeout" not in stop
+    assert "matcher" not in stop
+
+
+def test_hook_real_world_fixture_all_events_and_types_survive(hooks: HooksLibrary) -> None:
+    """The verbatim real-world fixture (dossier E2 scenario) parses; every
+    event survives normalization and non-command hook types are preserved.
+    """
+    config = hooks.get_config(HOOK_REAL_WORLD_SAMPLE)
+    assert set(config) == {"PreToolUse", "SessionStart"}
+    types = {entry["type"] for entries in config.values() for entry in entries}
+    assert {"command", "http", "prompt"} <= types
+    # Unknown / passthrough fields survive normalization.
+    pre = config["PreToolUse"]
+    command_entry = next(e for e in pre if e["type"] == "command")
+    assert command_entry["async"] is True
+    assert command_entry["statusMessage"] == "formatting..."
+    http_entry = next(e for e in pre if e["type"] == "http")
+    assert http_entry["url"] == "https://audit.example.com/pre-tool"
+    assert http_entry["matcher"] == "mcp__memory__.*"
 
 
 # --------------------------------------------------------------------------- #
@@ -196,6 +225,7 @@ def test_all_samples_present() -> None:
     assert SKILL_SAMPLE.exists()
     assert SUBAGENT_SAMPLE.exists()
     assert HOOK_SAMPLE.exists()
+    assert HOOK_REAL_WORLD_SAMPLE.exists()
 
 
 def test_dogfood_prep_epic_3_unblocked(mcp: MCPLibrary) -> None:
