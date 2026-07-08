@@ -42,9 +42,10 @@ def _load_checker():
 
 def test_libdoc_derives_expected_count() -> None:
     checker = _load_checker()
-    # Composed `AgentEval` surface: 55 keywords after `remove-dead-machinery`
-    # deleted the `Get Effective Config With Provenance` keyword (was 56).
-    assert checker.derive_keyword_count() == 55
+    # Composed `AgentEval` surface: 59 keywords after `add-budget-assertion-keywords`
+    # added the 4 Tier-1 budget assertions (`Cost/Latency/Latency P95/Token Usage
+    # Should Be Below`) to the 55-keyword post-`remove-dead-machinery` surface.
+    assert checker.derive_keyword_count() == 59
 
 
 def test_readme_and_index_counts_match_libdoc() -> None:

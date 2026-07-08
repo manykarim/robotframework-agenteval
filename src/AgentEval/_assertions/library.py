@@ -19,11 +19,15 @@
 
 """Assertion RF-keyword surface (Story 6.2 / PRD FR23a + FR23b + FR24 + FR25).
 
-Ships 5 assertion keywords reading from `AgentRunResult` instances:
+Ships 9 assertion keywords reading from `AgentRunResult` instances:
 
 - FR23a + FR23b: `Trajectory Should Match` (4 modes: exact, subsequence, set, regex).
 - FR24: `Tool Call Should Have Occurred` (name + optional dict-subset args).
 - FR25: `Agent Response Should Contain` + `Should Match Regex` + `Should Match Schema`.
+- PRD 10-keyword-core debt (add-budget-assertion-keywords change): `Cost Should
+  Be Below` + `Latency Should Be Below` + `Latency P95 Should Be Below` + `Token
+  Usage Should Be Below` — Tier-1 threshold assertions over the FR22 metric
+  scalars, dispatching through `_assertions/adapter.assert_value()` per ADR-019.
 
 Each keyword:
 - Carries `@tier(1)` Tier-1 badge + `[Tier 1 — Deterministic]` docstring
@@ -45,16 +49,20 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import jsonschema
+from robot.api import logger
 from robot.api.deco import keyword
 
 from AgentEval._assertions import _internal
+from AgentEval._assertions.adapter import assert_value
 from AgentEval._kernel.coverage import _check_mcp_coverage
 from AgentEval._kernel.redaction import redact
 from AgentEval._kernel.tier import tier
+from AgentEval.metrics import _internal as _metrics_internal
 from AgentEval.types import AgentRunResult
 
 __all__ = ["AssertionsLibrary"]
@@ -67,7 +75,7 @@ _VALID_TRAJECTORY_MODES = ("exact", "subsequence", "set", "regex")
 
 
 class AssertionsLibrary:
-    """5 `@keyword`-decorated assertion methods (Story 6.2 / PRD FR23-25)."""
+    """9 `@keyword`-decorated assertion methods (Story 6.2 FR23-25 + budget assertions)."""
 
     def __init__(self, allow_external_mcp_blind: bool = False) -> None:
         """Library-level `allow_external_mcp_blind` per Story 6.1 precedent.
@@ -340,3 +348,243 @@ class AssertionsLibrary:
             # the 200-char response-text excerpt before echoing.
             raise AssertionError(redact(f"response_text is not valid JSON: {result.response_text[:200]!r}")) from exc
         jsonschema.validate(instance=parsed, schema=resolved)
+
+    # ----------------------------------------------------------------- #
+    # Budget assertions — Cost / Latency / Latency P95 / Token Usage    #
+    # (add-budget-assertion-keywords change / PRD 10-keyword-core debt) #
+    #                                                                    #
+    # No mcp_coverage gate — cost/latency/token are provider-reported   #
+    # scalars, observer-independent (FR22 / AC-6.1.1 parity). Dispatch  #
+    # routes through `assert_value()` per ADR-019 so this new surface   #
+    # starts on the canonical AssertionEngine path (not the deferred    #
+    # hand-rolled-AssertionError debt of the 5 keywords above).         #
+    # ----------------------------------------------------------------- #
+
+    def _assert_budget_below(
+        self,
+        *,
+        result: AgentRunResult | list[AgentRunResult],
+        threshold: float,
+        unit: str,
+        label: str,
+        keyword_name: str,
+        compute: Callable[[AgentRunResult], float],
+        aggregate: Callable[[list[AgentRunResult]], float],
+    ) -> None:
+        """Shared flow for the four budget assertion keywords.
+
+        Order (design D6): threshold validation → empty-list fake-green guard
+        → compute observed → `assert_value()` strict-`<` dispatch → pass-side
+        evidence log. Both `ValueError` gates fire BEFORE any assertion
+        dispatch.
+        """
+        _internal._validate_budget_threshold(threshold, unit=unit)
+        _internal._guard_non_empty_result(result)
+        observed = aggregate(result) if isinstance(result, list) else compute(result)
+        run_count = _internal._budget_run_count(result)
+        assert_value(
+            observed,
+            "<",
+            threshold,
+            keyword_name=keyword_name,
+            tier=1,
+            message=_internal._budget_message_prefix(label, unit, run_count),
+        )
+        logger.info(_internal._budget_pass_evidence(label, unit, observed, threshold, run_count))
+
+    @keyword(name="Cost Should Be Below")
+    @tier(1)
+    def cost_should_be_below(
+        self,
+        result: AgentRunResult | list[AgentRunResult],
+        max_usd: float,
+    ) -> None:
+        """Asserts total provider-reported cost is strictly below a USD threshold (PRD 10-keyword-core).
+
+        [Tier 1 — Deterministic] — strict ``<``: observed ``< max_usd`` passes,
+        observed ``== max_usd`` fails (an at-budget run has spent the budget).
+        Wraps the same computation as `Get Cost Total` (single run: ``cost_usd``;
+        list: sum across trials). Dispatch routes through the AssertionEngine
+        ``<`` operator per ADR-019; NOT ``mcp_coverage``-gated (provider-reported
+        scalar). On pass, an info-level evidence line (observed, threshold, unit,
+        run count) is logged.
+
+        | =Arguments= | =Description= |
+        | ``result`` | Single ``AgentRunResult`` OR ``list[AgentRunResult]`` (multi-trial cost is summed, matching `Get Cost Total`). |
+        | ``max_usd`` | USD budget threshold. Must be finite and ``> 0`` (else ``ValueError``). |
+
+        Mock-provider runs report ``cost_usd=0.0``, so this keyword trivially
+        passes on the Mock provider — use a real adapter for a meaningful budget
+        gate.
+
+        Raises ``ValueError`` when ``result`` is an empty list (fake-green guard —
+        deliberate divergence from `Get Cost Total`'s empty-list ``0.0``
+        vacuous-truth convention) or when ``max_usd`` is not finite / ``<= 0``
+        (caller-typo gate fires BEFORE assertion dispatch). Raises
+        ``AssertionError`` (AssertionEngine format) when the observed total is
+        not below ``max_usd``.
+
+        Example:
+        | ${result} =    `Send Prompt`    prompt=Robot Framework rocks    adapter=generic    provider=mock
+        | `Cost Should Be Below`    ${result}    0.10                                          # Mock cost is 0.0 — trivially under budget.
+
+        Notes:
+        - Closes the PRD 10-keyword-core debt for `Cost Should Be Below`.
+        - Wraps `Get Cost Total`; zero duplicated math (same `metrics._internal` cost helpers).
+        - Dispatch via `assert_value()` per ADR-019; strict ``<`` semantics.
+        - Sibling keywords: `Latency Should Be Below`, `Latency P95 Should Be Below`, `Token Usage Should Be Below`.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        self._assert_budget_below(
+            result=result,
+            threshold=max_usd,
+            unit="USD",
+            label="Cost",
+            keyword_name="Cost Should Be Below",
+            compute=_metrics_internal._compute_cost_total,
+            aggregate=_metrics_internal._aggregate_cost_total,
+        )
+
+    @keyword(name="Latency Should Be Below")
+    @tier(1)
+    def latency_should_be_below(
+        self,
+        result: AgentRunResult | list[AgentRunResult],
+        max_ms: float,
+    ) -> None:
+        """Asserts mean turn-level latency is strictly below a millisecond threshold (PRD 10-keyword-core).
+
+        [Tier 1 — Deterministic] — strict ``<``: observed ``< max_ms`` passes,
+        observed ``== max_ms`` fails. Wraps the same computation as `Get Latency`
+        (per-tool-call mean; fallback ``latency_seconds * 1000.0`` when a run has
+        no tool calls; multi-trial: union-then-mean). Dispatch routes through the
+        AssertionEngine ``<`` operator per ADR-019; NOT ``mcp_coverage``-gated. On
+        pass, an info-level evidence line (observed, threshold, unit, run count)
+        is logged.
+
+        | =Arguments= | =Description= |
+        | ``result`` | Single ``AgentRunResult`` OR ``list[AgentRunResult]`` (multi-trial: union-then-mean, matching `Get Latency`). |
+        | ``max_ms`` | Millisecond latency budget. Must be finite and ``> 0`` (else ``ValueError``). |
+
+        Raises ``ValueError`` when ``result`` is an empty list (fake-green guard —
+        deliberate divergence from `Get Latency`'s empty-list ``0.0`` convention)
+        or when ``max_ms`` is not finite / ``<= 0`` (caller-typo gate fires BEFORE
+        assertion dispatch). Raises ``AssertionError`` (AssertionEngine format)
+        when the observed mean is not below ``max_ms``.
+
+        Example:
+        | ${result} =    `Send Prompt`    prompt=Robot Framework rocks    adapter=generic    provider=mock
+        | `Latency Should Be Below`    ${result}    2000                                      # Mean turn latency under 2 seconds.
+
+        Notes:
+        - Closes the PRD 10-keyword-core debt for `Latency Should Be Below`.
+        - Wraps `Get Latency`; zero duplicated math (same `metrics._internal` latency helpers).
+        - Dispatch via `assert_value()` per ADR-019; strict ``<`` semantics.
+        - Sibling keywords: `Cost Should Be Below`, `Latency P95 Should Be Below`, `Token Usage Should Be Below`.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        self._assert_budget_below(
+            result=result,
+            threshold=max_ms,
+            unit="ms",
+            label="Latency",
+            keyword_name="Latency Should Be Below",
+            compute=_metrics_internal._compute_latency_mean,
+            aggregate=_metrics_internal._aggregate_latency_mean,
+        )
+
+    @keyword(name="Latency P95 Should Be Below")
+    @tier(1)
+    def latency_p95_should_be_below(
+        self,
+        result: AgentRunResult | list[AgentRunResult],
+        max_ms: float,
+    ) -> None:
+        """Asserts P95 latency is strictly below a millisecond threshold (PRD 10-keyword-core).
+
+        [Tier 1 — Deterministic] — strict ``<``: observed ``< max_ms`` passes,
+        observed ``== max_ms`` fails. Wraps the same computation as
+        `Get Latency P95` (AC-6.1.8 boundary rules: 0 tool calls → ``0.0``; 1 →
+        that latency; ≥2 → ``statistics.quantiles(n=100)[94]``; multi-trial: P95
+        over the union of all tool-call latencies). Dispatch routes through the
+        AssertionEngine ``<`` operator per ADR-019; NOT ``mcp_coverage``-gated. On
+        pass, an info-level evidence line (observed, threshold, unit, run count)
+        is logged.
+
+        | =Arguments= | =Description= |
+        | ``result`` | Single ``AgentRunResult`` OR ``list[AgentRunResult]`` (multi-trial: union-P95, matching `Get Latency P95`). |
+        | ``max_ms`` | Millisecond P95-latency budget. Must be finite and ``> 0`` (else ``ValueError``). |
+
+        Raises ``ValueError`` when ``result`` is an empty list (fake-green guard)
+        or when ``max_ms`` is not finite / ``<= 0`` (caller-typo gate fires BEFORE
+        assertion dispatch). Raises ``AssertionError`` (AssertionEngine format)
+        when the observed P95 is not below ``max_ms``.
+
+        Example:
+        | @{results} =    `Stat.Run N Times`    n=20    keyword=Send Prompt    keyword_args=${{['adapter=generic', 'provider=mock']}}
+        | `Latency P95 Should Be Below`    ${results}    3000                                  # Tail latency under 3 seconds.
+
+        Notes:
+        - Closes the PRD 10-keyword-core debt (tail-latency complement to `Latency Should Be Below`).
+        - Wraps `Get Latency P95`; zero duplicated math (same `metrics._internal` p95 helpers).
+        - Dispatch via `assert_value()` per ADR-019; strict ``<`` semantics.
+        - Sibling keywords: `Latency Should Be Below`, `Cost Should Be Below`, `Token Usage Should Be Below`.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        self._assert_budget_below(
+            result=result,
+            threshold=max_ms,
+            unit="ms",
+            label="Latency P95",
+            keyword_name="Latency P95 Should Be Below",
+            compute=_metrics_internal._compute_latency_p95,
+            aggregate=_metrics_internal._aggregate_latency_p95,
+        )
+
+    @keyword(name="Token Usage Should Be Below")
+    @tier(1)
+    def token_usage_should_be_below(
+        self,
+        result: AgentRunResult | list[AgentRunResult],
+        max_tokens: int,
+    ) -> None:
+        """Asserts total token usage is strictly below an integer threshold (PRD 10-keyword-core).
+
+        [Tier 1 — Deterministic] — strict ``<``: observed ``< max_tokens``
+        passes, observed ``== max_tokens`` fails. Total tokens =
+        ``usage.input_tokens + usage.output_tokens`` (same per-field summing as
+        `Get Token Usage` for multi-trial input). ``cached_input_tokens`` and
+        ``reasoning_output_tokens`` are accounting sub-fields (cached input is a
+        subset view of input; reasoning is reported inside ``output_tokens``) and
+        are NOT added separately — that would double-count. Dispatch routes
+        through the AssertionEngine ``<`` operator per ADR-019; NOT
+        ``mcp_coverage``-gated. On pass, an info-level evidence line (observed,
+        threshold, unit, run count) is logged.
+
+        | =Arguments= | =Description= |
+        | ``result`` | Single ``AgentRunResult`` OR ``list[AgentRunResult]`` (multi-trial: per-field token sum, matching `Get Token Usage`). |
+        | ``max_tokens`` | Integer token budget (compared against ``input_tokens + output_tokens``). Must be finite and ``> 0`` (else ``ValueError``). |
+
+        Raises ``ValueError`` when ``result`` is an empty list (fake-green guard —
+        deliberate divergence from `Get Token Usage`'s empty-list ``Usage(0,0,0)``
+        convention) or when ``max_tokens`` is not finite / ``<= 0`` (caller-typo
+        gate fires BEFORE assertion dispatch). Raises ``AssertionError``
+        (AssertionEngine format) when the observed total is not below
+        ``max_tokens``.
+
+        Example:
+        | ${result} =    `Send Prompt`    prompt=Robot Framework rocks    adapter=generic    provider=mock
+        | `Token Usage Should Be Below`    ${result}    100000                                # input + output tokens under 100k.
+
+        Notes:
+        - Closes the PRD 10-keyword-core debt (token-budget complement to `Cost Should Be Below`).
+        - Wraps `Get Token Usage`; total = input + output (no double-count of cached / reasoning sub-fields).
+        - Dispatch via `assert_value()` per ADR-019; strict ``<`` semantics.
+        - Sibling keywords: `Cost Should Be Below`, `Latency Should Be Below`, `Latency P95 Should Be Below`.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        self._assert_budget_below(
+            result=result,
+            threshold=max_tokens,
+            unit="tokens",
+            label="Token Usage",
+            keyword_name="Token Usage Should Be Below",
+            compute=_internal._compute_token_total,
+            aggregate=_internal._aggregate_token_total,
+        )

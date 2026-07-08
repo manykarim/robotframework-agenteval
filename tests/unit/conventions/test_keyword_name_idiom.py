@@ -64,6 +64,13 @@ _VERB_ALLOWLIST: frozenset[str] = frozenset(
         "agent",
         # Story 12.2 — Tier-2 judge calibration:
         "calibrate",
+        # add-budget-assertion-keywords — PRD 10-keyword-core budget assertions
+        # (`Cost/Latency/Token ... Should Be Below`). The metric-noun-as-subject
+        # spelling is load-bearing (PRD 10-keyword-core names) and can't be
+        # coerced into a generic verb without breaking the promised keyword names.
+        "cost",
+        "latency",
+        "token",
     }
 )
 

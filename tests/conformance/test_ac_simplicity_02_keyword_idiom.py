@@ -203,6 +203,12 @@ def test_keyword_names_use_snake_case_method_names() -> None:
         "agent",
         # Story 12.2 — Tier-2 judge calibration:
         "calibrate",
+        # add-budget-assertion-keywords — PRD 10-keyword-core budget assertions
+        # (`Cost/Latency/Token ... Should Be Below`); metric-noun-as-subject
+        # spelling is load-bearing per the PRD 10-keyword-core names.
+        "cost",
+        "latency",
+        "token",
     }
     violations: list[str] = []
     for cls in _all_library_classes():

@@ -6,13 +6,13 @@ This site hosts the project's keyword reference + architectural decision records
 
 ## Keyword reference (libdoc)
 
-11 libraries · 55 keywords total, all reachable through a single `Library    AgentEval` import. Regenerated per release via `python -m robot.libdoc`.
+11 libraries · 59 keywords total, all reachable through a single `Library    AgentEval` import. Regenerated per release via `python -m robot.libdoc`.
 
-Since the `compose-single-library-import` change, every shipped sub-library is composed into the top-level `AgentEval` library via `_SUB_LIBRARIES`, so all 55 keywords are callable after one `Library    AgentEval` line — no `WITH NAME` needed. Each sub-library is still importable standalone (by module path) for per-library budget scoping; the baked namespace prefixes (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`) make the call sites identical under both import styles.
+Since the `compose-single-library-import` change, every shipped sub-library is composed into the top-level `AgentEval` library via `_SUB_LIBRARIES`, so all 59 keywords are callable after one `Library    AgentEval` line — no `WITH NAME` needed. Each sub-library is still importable standalone (by module path) for per-library budget scoping; the baked namespace prefixes (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`) make the call sites identical under both import styles.
 
 | Library | Keywords | Reference |
 | --- | --- | --- |
-| `AgentEval` (composed top-level — all 55 keywords) | 55 | [`AgentEval.html`](./keywords/AgentEval.html) |
+| `AgentEval` (composed top-level — all 59 keywords) | 59 | [`AgentEval.html`](./keywords/AgentEval.html) |
 | `AgentEval.skills.library.SkillsLibrary` — `Skill.*` skill `.md` static + activation + discoverability | 10 | [`SkillsLibrary.html`](./keywords/SkillsLibrary.html) |
 | `AgentEval.mcp.library.MCPLibrary` — `MCP.*` server lifecycle + tool inspection | 10 | [`MCPLibrary.html`](./keywords/MCPLibrary.html) |
 | `AgentEval.judge.library.JudgeLibrary` — `Judge.*` LLM-judge scoring + rubric calibration | 2 | [`JudgeLibrary.html`](./keywords/JudgeLibrary.html) |
