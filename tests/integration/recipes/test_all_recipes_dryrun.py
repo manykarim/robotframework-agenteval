@@ -191,40 +191,12 @@ _ALL_BLOCKS = _collect_all_blocks()
 _ELIGIBLE_BLOCKS = _collect_eligible_blocks()
 _ELIGIBLE_COUNT = len(_ELIGIBLE_BLOCKS)
 
-# In-flight spec amendment per feedback_in_flight_spec_amendment (AC-14.3.1 D-6,
-# filed 2026-06-04): the harness surfaced 4 real pre-existing recipe regressions
-# at first run — `MCP.` namespace missing in recipe-3 block-0, `arguments=`
-# kwarg syntax broken in recipe-5 block-0, fixture file dependency in recipe-5
-# block-1, and `MCP.Get Server Config` signature drift in recipe-7 block-0.
-# Fixing the 4 recipes is OUT OF Story 14.3 scope (4-epic-old documentation
-# debt; dedicated fix-recipe-rot story needed). They are catalogued as
-# DF-14.3-S1 (Phase-1.5) and SKIPPED here with explicit reasons. The gate
-# remains active for the OTHER 4 eligible blocks (recipes 2, 4 ×2, 6) — any
-# REGRESSION in those is still a fail.
-_KNOWN_BROKEN_BLOCKS: dict[str, str] = {
-    "03-tool-discoverability-cohort.md::block-0": (
-        "DF-14.3-S1: recipe pre-existing regression — `MCP.Get Tool "
-        "Discoverability` called without `MCP` namespace Library import "
-        "(`Library AgentEval` only)."
-    ),
-    "05-dogfood-replacing-custom-tests.md::block-0": (
-        "DF-14.3-S1: recipe pre-existing regression — `MCP.Call Tool` "
-        "called with bare `message=hello` positional arg; should be "
-        "`arguments=&{ARGS}` where ARGS is a Dictionary."
-    ),
-    "05-dogfood-replacing-custom-tests.md::block-1": (
-        "DF-14.3-S1: recipe pre-existing dependency — dryrun fails with "
-        "`No keyword with name 'Register Skill Stubs'` (from the library "
-        "path `${CURDIR}/fixtures/agentskills_discoverability.py` which "
-        "also doesn't exist in the temp dir). Both errors surface: "
-        "library-not-found in stderr, keyword-not-found in stdout."
-    ),
-    "07-first-mcp-server-test-tier-1.md::block-0": (
-        "DF-14.3-S1: recipe pre-existing regression — `MCP.Get Server "
-        "Config` expects 1 argument but recipe passes 2 (path + "
-        "server_name). Keyword signature drifted since recipe was authored."
-    ),
-}
+# The 4 previously-broken recipe blocks (recipe-3 block-0 missing the `MCP`
+# namespace import, recipe-5 block-0/block-1, recipe-7 block-0 `Get Server
+# Config` arity) were fixed against the shipped keyword surface, so the skip
+# list is empty. It stays as the mechanism for triaging any future breakage:
+# add a `"<recipe>.md::block-N": "<reason>"` entry to skip a block deliberately.
+_KNOWN_BROKEN_BLOCKS: dict[str, str] = {}
 
 # Cross-LLM review v2 correction (Opus HIGH-2): the v0.2.0 framing
 # "AC-14.3.3 threshold relaxed ≥6→≥4" was a spurious amendment — it

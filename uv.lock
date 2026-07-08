@@ -2142,7 +2142,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6,<1.0" },
     { name = "scipy", marker = "extra == 'agenteval-advanced'", specifier = ">=1.11,<2.0" },
 ]
-provides-extras = ["dev", "claude-code", "claude-sdk", "openai-agents", "codex", "copilot", "agenteval-advanced", "otlp"]
+provides-extras = ["dev", "claude-code", "claude-sdk", "openai-agents", "codex", "copilot", "opencode", "agenteval-advanced", "otlp"]
 
 [[package]]
 name = "robotframework-assertion-engine"

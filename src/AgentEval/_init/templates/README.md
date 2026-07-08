@@ -1,47 +1,51 @@
 # agenteval starter project
 
-Scaffolded by `agenteval init` (Story 8b.1).
+Scaffolded by `agenteval init`. Everything here runs with no API keys — the
+examples use the mock provider and a bundled echo MCP server.
 
 ## Running the example tests
 
 ```bash
-robot --listener AgentEval.telemetry.listener.Listener \
-      --xunit junit.xml \
-      tests/
+robot --listener AgentEval.telemetry.listener.Listener --xunit junit.xml tests/
 ```
 
-**The `--listener AgentEval.telemetry.listener.Listener` flag is REQUIRED.**
-Without it:
+The `--listener AgentEval.telemetry.listener.Listener` flag turns on agenteval's
+tracing and JUnit XML enrichment. Without it the tests still pass, but:
 
 - Per-test trace IDs do not surface in `output.xml`.
-- The `--xunit junit.xml` file is NOT enriched with `agenteval.*` properties
-  (cost, tokens, latency, coverage, completeness, trace_id, adapter, model,
-  tier, tier_breakdown).
-- The JSONL trace backend does NOT write per-test trace files.
+- The `--xunit junit.xml` file is not enriched with `agenteval.*` properties
+  (cost, tokens, latency, coverage, completeness, trace id, adapter, model).
+- The JSONL trace backend does not write per-test trace files.
 
-Use the **explicit `Module.Class`** path (`AgentEval.telemetry.listener.Listener`).
-The shorter `AgentEval.telemetry.listener` (module-path-only) form is accepted
-by RF without error but the listener's hooks do NOT fire on RF 7.x (empirical
-finding from Story 8a.2 dev 2026-05-25).
+Use the full `Module.Class` path (`AgentEval.telemetry.listener.Listener`). The
+shorter `AgentEval.telemetry.listener` form is accepted by Robot Framework but
+does not fire the listener hooks.
 
 ## What's in this project
 
 | Path | Purpose |
 | --- | --- |
-| `tests/example_skill_validation.robot` | Static skill-frontmatter inspection (Epic 2). |
-| `tests/example_mcp_runtime.robot` | Bundled echo-MCP-server roundtrip (Epic 3). |
-| `tests/example_agent_run.robot` | `Send Prompt` against the Mock provider (Epic 4). |
+| `tests/example_skill_validation.robot` | Validate a skill file's frontmatter (static check). |
+| `tests/example_mcp_runtime.robot` | Call a tool on the bundled echo MCP server. |
+| `tests/example_agent_run.robot` | `Send Prompt` against the mock provider. |
 | `tests/fixtures/example-skill.md` | Sample skill with valid frontmatter. |
 | `tests/fixtures/.mcp.json` | Sample MCP config pointing at the bundled echo server. |
-| `tests/fixtures/scenario.yaml` | Sample scenario YAML for `Run Scenario` (Story 4.3). |
+| `tests/fixtures/scenario.yaml` | Sample scenario for `Load Scenario` / `Run Scenario`. |
 | `agenteval.yaml` | Config defaults (model, budgets, trace backend). |
 
 ## Next steps
 
-- **Recipes:** [`docs/recipes/01-first-eval-in-five-minutes.md`](https://github.com/manykarim/robotframework-agenteval/blob/main/docs/recipes/01-first-eval-in-five-minutes.md) walks through this scaffolded project. Other recipes in the gallery cover Pass@k, Tool Discoverability, Skill Author validation, CI integration, etc.
-- **Custom adapters:** Run `agenteval new-adapter --name my-adapter` (lands Story 8b.2) to scaffold a custom adapter package.
-- **CI integration:** the `--xunit junit.xml` output is consumed by GitHub Actions test-reporter, Jenkins JUnit plugin, GitLab CI, and Allure — no extra configuration needed.
+- **Run against a real model:** the examples use the mock provider. To switch to
+  a live model, see the
+  [Running against a real model](https://github.com/manykarim/robotframework-agenteval/blob/main/docs/running-against-a-real-model.md)
+  guide.
+- **Recipes:** the
+  [recipe gallery](https://github.com/manykarim/robotframework-agenteval/tree/main/docs/recipes)
+  covers Pass@k, tool discoverability, skill-author validation, CI integration,
+  and more.
+- **Custom adapters:** run `agenteval new-adapter <name>` to scaffold a custom
+  coding-agent adapter package.
 
 ## Documentation
 
-Full library docs at <https://github.com/manykarim/robotframework-agenteval>.
+Full library docs: <https://github.com/manykarim/robotframework-agenteval>.

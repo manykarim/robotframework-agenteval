@@ -362,6 +362,78 @@ def test_library_call_tool_arguments_default(lib: MCPLibrary, in_memory_handle: 
 
 
 # --------------------------------------------------------------------------- #
+# Call Tool natural-kwargs form (fix-first-run-experience — D1)
+# --------------------------------------------------------------------------- #
+
+
+def _innermost(func: Any) -> Any:
+    """Walk the `__wrapped__` chain to the innermost function.
+
+    Per the project's decorator-chain lesson: assert the kwargs form is
+    honored through the FULL `@keyword`/`@tier` decorator chain, not just
+    the inner function. `@keyword` + `@tier` attach attributes and return
+    the function unchanged, so the chain is trivial here — but we walk it
+    explicitly so the test stays correct if a wrapping decorator is added.
+    """
+    while hasattr(func, "__wrapped__"):
+        func = func.__wrapped__
+    return func
+
+
+def test_call_tool_kwargs_form_invokes_tool(lib: MCPLibrary, in_memory_handle: MCPServerHandle) -> None:
+    """`Call Tool    handle    echo_back    text=hello` (natural kwargs) reaches the tool."""
+    result = lib.call_tool(in_memory_handle, "echo_back", text="hello")
+    assert isinstance(result, MCPToolResult)
+    assert result.is_error is False
+    assert any("hello" in str(block.get("text", "")) for block in result.content)
+
+
+def test_call_tool_kwargs_form_through_decorator_chain(lib: MCPLibrary, in_memory_handle: MCPServerHandle) -> None:
+    """Invoke via the keyword surface (`MCPLibrary.call_tool`) AND the innermost — both honor kwargs."""
+    # Keyword surface (what RF invokes).
+    via_keyword = lib.call_tool(in_memory_handle, "echo_back", text="viakw")
+    assert via_keyword.is_error is False
+    # Innermost function reached by walking `__wrapped__`.
+    inner = _innermost(MCPLibrary.call_tool)
+    via_inner = inner(lib, in_memory_handle, "echo_back", text="viakw")
+    assert via_inner.is_error is False
+
+
+def test_call_tool_dict_form_regression(lib: MCPLibrary, in_memory_handle: MCPServerHandle) -> None:
+    """The existing `arguments=` dict form behaves exactly as before."""
+    result = lib.call_tool(in_memory_handle, "echo_back", arguments={"text": "dictform"})
+    assert result.is_error is False
+    assert any("dictform" in str(block.get("text", "")) for block in result.content)
+
+
+def test_call_tool_both_forms_raises_and_makes_no_call(
+    lib: MCPLibrary, in_memory_handle: MCPServerHandle, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Supplying both `arguments=` and free kwargs raises before any tool call is made."""
+    from AgentEval.mcp import library as _library
+
+    called = False
+
+    def _boom(*args: Any, **kwargs: Any) -> Any:
+        nonlocal called
+        called = True
+        raise AssertionError("call_tool lifecycle helper must not run on the both-forms error path")
+
+    # Patch the reference the keyword actually calls (library-module namespace).
+    monkeypatch.setattr(_library, "call_tool", _boom)
+    with pytest.raises(ValueError, match="exactly ONE form"):
+        lib.call_tool(in_memory_handle, "echo_back", arguments={"text": "a"}, text="b")
+    assert called is False
+
+
+def test_call_tool_stdio_kwargs_form(lib: MCPLibrary, stdio_handle: MCPServerHandle) -> None:
+    """Integration: kwargs form over the real stdio bundled echo subprocess."""
+    result = lib.call_tool(stdio_handle, "echo_back", text="stdio-kw")
+    assert result.is_error is False
+    assert any("stdio-kw" in str(block.get("text", "")) for block in result.content)
+
+
+# --------------------------------------------------------------------------- #
 # Streamable HTTP passthrough still rejected on Story 3.2 keywords (AC-3.2.3 + 3.2.4)
 # --------------------------------------------------------------------------- #
 

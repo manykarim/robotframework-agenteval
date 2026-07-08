@@ -1,7 +1,7 @@
 # Recipe #8: CI integration with enriched xunit + JUnit XML + exit codes
 
-**Persona:** Priya / CI operator — any team running agenteval suites in GitHub Actions, GitLab CI, Jenkins, Allure.
-**FR coverage:** FR49 (JUnit XML enrichment), FR50 (sysexits exit-code mapping), FR51 (trace_id in output.xml), FR64 (Stability Surface).
+**Use case:** any team running agenteval suites in GitHub Actions, GitLab CI, Jenkins, Allure.
+**What it covers:** JUnit XML enrichment, sysexits exit-code mapping, trace_id in output.xml, and the Stability Surface.
 
 ## TL;DR
 
@@ -48,8 +48,8 @@ Per `docs/contracts/junit-xml-enrichment.md`, each `<testcase>` carries:
         <property name="agenteval.total_tokens" value="3421"/>
         <property name="agenteval.trace_id" value="01HRMK..."/>
     </properties>
-    <system-out><![CDATA[ evidence block (Story 5.3) ]]></system-out>
-    <system-err><![CDATA[ DegradedTraceWarning content (Story 5.4) ]]></system-err>
+    <system-out><![CDATA[ evidence block ]]></system-out>
+    <system-err><![CDATA[ DegradedTraceWarning content ]]></system-err>
 </testcase>
 ```
 
@@ -58,13 +58,13 @@ CI tools that consume JUnit XML expose the `<properties>` block natively
 Allure both render properties as a key-value table in the test detail
 view.**
 
-## Exit codes (FR50)
+## Exit codes
 
 The agenteval CLI exit-code mapping uses sysexits.h-style per-leaf codes:
 
 | Failure scenario | Exit code | Constant |
 | --- | --- | --- |
-| Cost budget exceeded | 66 | `COST_EXCEEDED` (epics.md L1660 pinned) |
+| Cost budget exceeded | 66 | `COST_EXCEEDED` |
 | Runtime budget exceeded | 75 | `RUNTIME_BUDGET_EXCEEDED` (EX_TEMPFAIL) |
 | Polling-ban violation | 65 | `POLLING_DISALLOWED` (EX_DATAERR) |
 | MCP version mismatch | 68 | `UNSUPPORTED_MCP_VERSION` |
@@ -90,9 +90,9 @@ Pipe these through your CI's failure-categorization system:
 ```
 
 See `docs/contracts/error-class-hierarchy.md` L66-L101 for the full per-leaf
-table (21 leaves as of Story 8a.1 close).
+table.
 
-## trace_id linkage (FR51)
+## trace_id linkage
 
 Each test's `<test>` element in `output.xml` carries a
 `<tag>trace_id:<full_name></tag>` for linking RF reports to JSONL trace
@@ -106,12 +106,12 @@ xmlstarlet sel -t -v "//test[@name='My Test']/tag" output.xml
 The `trace_id` value is the canonical RF `full_name` — also the filename
 of the JSONL trace at `${OUTPUTDIR}/agenteval/trace__<suite>__<test>.jsonl`.
 Pipe both into your observability backend (Jaeger / Honeycomb / Tempo)
-for cross-reference. See Recipe #N (OTel trace visual doc — coming with
-Story 8b.3 OTel doc) for the JSONL → Jaeger ingestion path.
+for cross-reference. See `docs/contracts/otel-trace-visual.md` for the
+JSONL → Jaeger ingestion path.
 
 ## OTLP trace export (Phase 2 — `[otlp]` extra)
 
-Shipping with Story 13.2 (Epic 13). The `[otlp]` optional extra wires the
+Shipping in Phase 2. The `[otlp]` optional extra wires the
 canonical OpenTelemetry OTLP exporter so spans flow directly into Jaeger /
 Honeycomb / Tempo / Grafana without the manual `otel-cli span replay`
 round-trip step documented in `docs/contracts/otel-trace-visual.md`.
@@ -164,9 +164,9 @@ OTLP-only mode that suppresses in-memory recording. The legacy
 inspection without changing the `trace_backend` config.
 
 See `docs/contracts/stability-surface.md` for the `provisional`-labeled
-surface entries + Phase-2.5 carry-overs (DF-13.2-S1/S2/S3).
+surface entries + Phase-2.5 carry-overs.
 
-## Conformance report (FR57)
+## Conformance report
 
 For a separate machine-readable conformance pass alongside the RF run:
 
@@ -189,5 +189,3 @@ needed beyond the standard `allure generate junit.xml -o allure-report/`.
 - `docs/contracts/junit-xml-enrichment.md` — full property table + value semantics.
 - `docs/contracts/error-class-hierarchy.md` L66-L101 — per-leaf exit-code mapping.
 - Recipe #1 (5-min path) — the local-dev invocation that produces the same enriched output.
-- Story 8a.1 — JUnit XML enrichment via Listener `xunit_file` hook.
-- Story 8a.2 — `trace_id` tag + conformance CLI.

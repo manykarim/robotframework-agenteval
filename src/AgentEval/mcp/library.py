@@ -388,6 +388,7 @@ class MCPLibrary(_HostBudgetPlumbing):
         handle: MCPServerHandle,
         tool_name: str,
         arguments: dict[str, Any] | None = None,
+        **kwargs: Any,
     ) -> MCPToolResult:
         """Invokes a tool by name on the MCP server at ``handle`` (PRD FR9b).
 
@@ -399,33 +400,69 @@ class MCPLibrary(_HostBudgetPlumbing):
         exceptions. Infrastructure failures raise
         ``MCPConnectionLostError``.
 
+        Two ways to pass the tool's arguments:
+
+        1. *Natural named arguments* (recommended for simple, string
+           values): write each argument as a normal Robot Framework
+           named argument.
+        2. *Explicit ``arguments=`` dict*: pass a single dict. Use this
+           when an argument value is not a string, or when an argument's
+           name collides with this keyword's own parameters (``handle``,
+           ``tool_name``, ``arguments`` — reserved names).
+
         | =Arguments= | =Description= |
         | ``handle`` | An ``MCPServerHandle`` from `Start Server`. |
         | ``tool_name`` | The tool name as advertised by the server. |
-        | ``arguments`` | Optional dict of tool-specific arguments. Defaults to ``{}``. |
+        | ``arguments`` | Optional dict of tool-specific arguments. Defaults to ``{}``. Mutually exclusive with named-argument form. |
+        | ``**kwargs`` | Tool arguments passed as natural named arguments. Mutually exclusive with ``arguments=``. |
 
         Returns ``MCPToolResult`` with ``content`` (list of content
         blocks), ``is_error``, ``error_message``, ``latency_ms``, and
-        ``correlation_id`` (Phase-1 uuid4 placeholder).
+        ``correlation_id``.
 
-        Raises ``ValueError`` on ``streamable_http`` transport (Phase-1
-        passthrough). Raises ``UnsupportedMCPVersionError`` on version
-        gate failure. Raises ``MCPConnectionLostError`` on transport-
-        layer failure mid-call (subprocess crash, etc.).
+        Raises ``ValueError`` when both the ``arguments=`` dict form and
+        named arguments are supplied together (pick one form — no tool
+        call is made). Raises ``ValueError`` on ``streamable_http``
+        transport. Raises ``UnsupportedMCPVersionError`` on version gate
+        failure. Raises ``MCPConnectionLostError`` on transport-layer
+        failure mid-call (subprocess crash, etc.).
 
-        Example:
+        Robot Framework passes free named arguments as *strings* unless
+        you use the typed ``${...}`` syntax — e.g. ``count=${5}`` sends
+        the integer ``5``, while ``count=5`` sends the string ``"5"``.
+        For non-string values, use the typed syntax or the
+        ``arguments=`` dict form.
+
+        Example (natural named-argument form):
         | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
+        | ${result} =    `Call Tool`    ${handle}    echo_back    text=hello
+        | Should Be Equal    ${result.is_error}    ${FALSE}
+        | Should Contain    ${result.content}[0][text]    hello
+        | `Stop Server`    ${handle}
+
+        Example (explicit dict form — needed for non-string / reserved-name arguments):
         | ${result} =    `Call Tool`    ${handle}    echo_back    arguments=${{ {"text": "hi"} }}
         | Should Be Equal    ${result.is_error}    ${FALSE}
-        | Should Contain    ${result.content}[0][text]    hi
-        | `Stop Server`    ${handle}
 
         Notes:
         - PRD FR9b ratifies the tool-call contract; tool-error-as-data per AC-MCP-CALL-01.
-        - ``correlation_id`` Phase-1 placeholder; Epic 5 wires real trace-id lookup.
         - Sibling keywords: `List Tools`, `Start Server`, `Stop Server`.
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
-        return call_tool(handle, tool_name, arguments)
+        if kwargs and arguments is not None:
+            raise ValueError(
+                "Call Tool: cannot combine the `arguments=` dict form with free "
+                "named arguments — supplying both is ambiguous, so no tool call "
+                "was made.\n"
+                f"  Field: arguments={arguments!r} AND named args {sorted(kwargs)!r}\n"
+                "  Fix: use exactly ONE form — either "
+                "`Call Tool    ${handle}    tool    name=value` (natural named "
+                "arguments) OR "
+                '`Call Tool    ${handle}    tool    arguments=${{ {"name": value} }}` '
+                "(explicit dict). Use the dict form for non-string values or when "
+                "a tool argument is named `handle`, `tool_name`, or `arguments`."
+            )
+        effective_arguments = arguments if arguments is not None else (dict(kwargs) if kwargs else None)
+        return call_tool(handle, tool_name, effective_arguments)
 
     # --------------------------------------------------------------- #
     # Story 4.4: MVP Tool Discoverability (PRD FR10a + AC-DISCOVER-01)

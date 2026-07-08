@@ -1,7 +1,7 @@
 # Recipe #2: Pass@k over polling
 
-**Persona:** Priya (QA Engineer) — anyone testing a non-deterministic agent.
-**FR coverage:** FR26 (statistical primitives), FR28 (polling ban), ADR-019 (AssertionEngine adoption).
+**Use case:** anyone testing a non-deterministic agent.
+**What it covers:** statistical primitives + the polling ban ([why polling is banned](../adr/ADR-019-assertion-engine-adoption.md)).
 
 ## TL;DR
 
@@ -27,7 +27,7 @@ Agent Activation Pass At K
 ## Why no polling?
 
 Tier-2 (single-call) + Tier-3 (fan-out) keywords are non-deterministic by
-construction (FR28). Retrying the same call until it succeeds masks real
+construction. Retrying the same call until it succeeds masks real
 failure modes — a flaky keyword that passes 1 in 10 runs is NOT
 "eventually consistent"; it's broken.
 
@@ -35,7 +35,7 @@ failure modes — a flaky keyword that passes 1 in 10 runs is NOT
 `polling=` kwarg (or the AssertionEngine `validate` operator without
 explicit `allow_validate_operator=True` opt-in). See
 [`docs/contracts/error-class-hierarchy.md`](../contracts/error-class-hierarchy.md)
-FR56 polling-ban regex contract for the message-format pinning.
+polling-ban regex contract for the message-format pinning.
 
 ## Step-by-step
 
@@ -75,9 +75,7 @@ trials, sampling 5 at a time."
 
 Some Tier-2/3 keywords (e.g., `Skill.Get Activation Decision`) return
 custom dataclasses without a `metadata.completeness` field — the default
-predicate would return 0.0 silently. See
-[deferred-work `DF-7.3-S1`](../../_bmad-output/implementation-artifacts/deferred-work.md)
-for the documented incompatibility.
+predicate would return 0.0 silently.
 
 **Custom predicate workaround:**
 
@@ -91,12 +89,12 @@ RF `Set Variable` if needed.)
 
 ## Cross-references
 
-- Recipe #4 (Devon's stacked validation) — applies the Pass@k pattern to
+- Recipe #4 (stacked validation) — applies the Pass@k pattern to
   skill activation reliability.
 - [`docs/contracts/error-class-hierarchy.md`](../contracts/error-class-hierarchy.md)
-  FR56 — polling-ban message contract.
-- ADR-019 — AssertionEngine adoption + polling ban + validate disabled by
-  default.
+  — polling-ban message contract.
+- [Why polling is banned](../adr/ADR-019-assertion-engine-adoption.md) —
+  AssertionEngine adoption + polling ban + validate disabled by default.
 
 ## Troubleshooting
 

@@ -1,8 +1,6 @@
-# Recipe 4: Devon's Stacked Skill Validation Pattern
+# Recipe 4: Stacked Skill Validation Pattern
 
-**Persona:** Devon (Agent Surface Author)
-**Epic:** Epic 7 — Skill Author Validation Flow + Skill Discoverability (Tier-1 + Tier-3); Epic 12 — Tier-2 LLM-Judge completion.
-**Status:** Complete — Story 7.3 stub + Story 8b.3 polish + Story 12.3 Tier-2 completion (2026-05-27).
+**Use case:** validate a skill `.md` file with a stacked three-tier pattern — a static frontmatter check, LLM-judge scoring, and cohort activation reliability.
 
 ## Listener invocation (REQUIRED)
 
@@ -14,22 +12,22 @@ robot --listener AgentEval.telemetry.listener.Listener \
 
 Use the **explicit `Module.Class` listener path**. The shorter
 `--listener AgentEval.telemetry.listener` (module-path-only) form is
-accepted by RF 7.x but the `Listener` class hooks do NOT fire (Story 8a.2
-D-6 empirical finding). The listener is required for trace capture +
+accepted by RF 7.x but the `Listener` class hooks do NOT fire. The listener
+is required for trace capture +
 xunit enrichment — see Recipes #1 + #8.
 
 ## Overview
 
-Devon validates a skill `.md` file using a three-tier stacked pattern:
+Validate a skill `.md` file using a three-tier stacked pattern:
 
-| Tier | Keyword | Story | Notes |
-|------|---------|-------|-------|
-| 1 — Static | `Skill.Should Be Valid Frontmatter` | 2.1 | Deterministic; no LLM call |
-| 2 — Judge | `Judge.Get Score` | Epic 12.3 | Phase 2 — LLM-deterministic at `seed + temperature=0`; rubric ratifies pass/fail at threshold |
-| 3 — Cohort | `Skill.Get Discoverability` | 7.2 | 10 trials/task; assert Pass@k ≥ 0.8 |
-| 3 — Spot | `Skill.Should Activate For` | 7.2 | Single-prompt assertion |
-| Stat | `Stat.Run N Times` + `Stat.Get Pass At K` | 6.3 | Composition with Tier-3 |
-| Calibration | `Judge.Calibrate Rubric` | Epic 12.2 | Pre-deployment — verify Cohen's κ ≥ 0.7 against human labels before relying on Tier-2 |
+| Tier | Keyword | Notes |
+|------|---------|-------|
+| 1 — Static | `Skill.Should Be Valid Frontmatter` | Deterministic; no LLM call |
+| 2 — Judge | `Judge.Get Score` | Phase 2 — LLM-deterministic at `seed + temperature=0`; rubric ratifies pass/fail at threshold |
+| 3 — Cohort | `Skill.Get Discoverability` | 10 trials/task; assert Pass@k ≥ 0.8 |
+| 3 — Spot | `Skill.Should Activate For` | Single-prompt assertion |
+| Stat | `Stat.Run N Times` + `Stat.Get Pass At K` | Composition with Tier-3 |
+| Calibration | `Judge.Calibrate Rubric` | Pre-deployment — verify Cohen's κ ≥ 0.7 against human labels before relying on Tier-2 |
 
 ## Robot Framework Example
 
@@ -49,16 +47,16 @@ ${JUDGE_MODEL}    anthropic/claude-sonnet-4-6
 ${REPRESENTATIVE_PROMPT}    Search for Python tutorials on the web
 
 *** Test Cases ***
-Devon Validates Skill: Stacked Three-Tier Pattern
+Skill Passes Stacked Three-Tier Validation
     # ── Tier 1: Static frontmatter validation (deterministic, fast) ──
     ${fm}=    Skill.Get Frontmatter    ${SKILL_PATH}
     Skill.Should Be Valid Frontmatter    ${fm}
 
-    # ── Tier 2: LLM-judge scoring at seed + temperature=0 (Story 12.3) ──
+    # ── Tier 2: LLM-judge scoring at seed + temperature=0 ──
     # Run the agent once against a representative prompt, then judge the
     # response against the rubric. Tier-2 is a SEPARATE LLM call from any
-    # Tier-3 cohort run — Devon pays for it explicitly. Calibrate the rubric
-    # first via `Judge.Calibrate Rubric` (Story 12.2) — see docs/recipes/judge-calibration.md.
+    # Tier-3 cohort run — you pay for it explicitly. Calibrate the rubric
+    # first via `Judge.Calibrate Rubric` — see docs/recipes/judge-calibration.md.
     ${run}=    Send Prompt    prompt=${REPRESENTATIVE_PROMPT}    adapter=${ADAPTER}
     ${score}=    Judge.Get Score
     ...    result=${run}
@@ -84,7 +82,7 @@ Devon Validates Skill: Stacked Three-Tier Pattern
     END
 
     # ── Stat.* composition: Run N times + Pass@5 ──
-    # NOTE: Must use custom predicate — see DF-7.3-S1/C59 in deferred-work.md
+    # NOTE: Must use custom predicate here
     # (ActivationDecision has no metadata.completeness → default predicate fails)
     ${kwargs}=    Create Dictionary
     ...    skill=${SKILL_PATH}
@@ -109,24 +107,23 @@ Devon Validates Skill: Stacked Three-Tier Pattern
 
 ## Phase 2 Status
 
-As of Story 12.3 (Epic 12 — 2026-05-27), the full three-tier stacked validation
-flow is shipping. Devon's Journey 4 from PRD L394-401 is end-to-end exercisable:
+As of Phase 2, the full three-tier stacked validation flow is shipping and is
+end-to-end exercisable:
 
-- **Tier 1 + Tier 3** ship in Phase 1 (Epic 7).
-- **Tier 2** ships in Phase 2 (Epic 12 — Stories 12.1 + 12.2 + 12.3).
+- **Tier 1 + Tier 3** ship in Phase 1.
+- **Tier 2** ships in Phase 2.
 
 Operators may opt out of Tier-2 by leaving the section commented out; Tier-1 +
 Tier-3 remain the Phase-1 ceiling for budget-constrained users. Tier-2 adds one
 LLM call per representative prompt — calibrate the rubric first via
-`Judge.Calibrate Rubric` (Story 12.2) and gate CI on Cohen's kappa ≥ 0.7 per
-`architecture.md` L199.
+`Judge.Calibrate Rubric` and gate CI on Cohen's kappa ≥ 0.7.
 
-## Phase 2 cross-adapter Skill Discoverability (Story 13.5 / FR4c)
+## Phase 2 cross-adapter Skill Discoverability
 
-As of Story 13.5 (Epic 13 — 2026-06-01), Devon can compare skill activation
+As of Phase 2, you can compare skill activation
 across multiple Tier-1 adapters in a single call to claim "skill X is reliably
 activated by Claude AND GPT AND Copilot" with empirical evidence — symmetric to
-Mei's cross-adapter Tool Discoverability (Story 13.3 / FR10b).
+cross-adapter Tool Discoverability.
 
 ```robotframework
 *** Settings ***
@@ -148,25 +145,25 @@ Skill X Is Reliably Activated Across Claude And OpenAI
     Should Be True    abs(${comparison.cross_adapter_deltas['claude_code_cli_vs_codex_cli'].pass_at_k_delta}) < 0.3
 ```
 
-Behind the `[agenteval-advanced]` optional extra (scipy + numpy from Story 13.1
+Behind the `[agenteval-advanced]` optional extra (scipy + numpy
 for Mann-Whitney U significance). The keyword returns a
 `SkillDiscoverabilityComparisonResult` with per-adapter `SkillDiscoverabilityResult`
 + cross-adapter Pass@k differential + per-adapter false-activation /
 missed-activation rate comparison + multi-column `CohortHeatmap` (which can
-render to HTML via Story 13.4's `as_html()` for stakeholder sharing).
+render to HTML via `as_html()` for stakeholder sharing).
 
-**Phase-1.5 dogfood deferral (DF-13.5-S4 / C98):** the
+**Phase-1.5 dogfood deferral:** the
 `robotframework-agentskills` downstream repo will adopt the cross-adapter suite
 in its CI matrix (Mock provider for routine CI; a separate
 `weekly-cross-adapter-discoverability.yml` workflow runs against real APIs on a
-budget per epic L2227). Tracked as a Phase-1.5 carry-over.
+budget). Tracked as a Phase-1.5 carry-over.
 
 ## See Also
 
-- Story 7.1: `Skill.Get Activation Decision` — single-prompt activation query
-- Story 7.2: `Skill.Get Discoverability` + `Skill.Should Activate For`
-- Story 6.3: `Stat.Run N Times` + `Stat.Get Pass At K`
-- Story 12.1: `Judge.Get Score` — Tier-2 LLM-judge keyword
-- Story 12.2: `Judge.Calibrate Rubric` + `docs/recipes/judge-calibration.md` — calibrate rubrics against human labels
-- Story 12.3: `tests/integration/skills/test_devon_three_tier_complete.py` — Python pytest example
-- `tests/integration/skills/test_devon_stacked_validation.py` — Tier-1 + Tier-3 subset (Story 7.3)
+- `Skill.Get Activation Decision` — single-prompt activation query
+- `Skill.Get Discoverability` + `Skill.Should Activate For`
+- `Stat.Run N Times` + `Stat.Get Pass At K`
+- `Judge.Get Score` — Tier-2 LLM-judge keyword
+- `Judge.Calibrate Rubric` + `docs/recipes/judge-calibration.md` — calibrate rubrics against human labels
+- `tests/integration/skills/test_devon_three_tier_complete.py` — Python pytest example
+- `tests/integration/skills/test_devon_stacked_validation.py` — Tier-1 + Tier-3 subset

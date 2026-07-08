@@ -1,0 +1,3 @@
+Findings written to `_bmad-output/cross-llm-reviews/add-opencode-support-kilo-findings.md`.
+
+**Summary:** 8 findings (1 HIGH, 4 MED, 2 LOW). The most significant is **HIGH-1**: the `step_tokens` docstring at line 55-56 claims `part.tokens` carries `{total, input, output, reasoning, cache{write, read}}` — but `total` is never extracted by the code (only `input/output/reasoning/cache.read` are summed), and the `cache` structure in the fixture is `{read, write}`, not nested `{write, read}`. **MED-3** is also load-bearing: `is_terminal` only checks `finish_reason == "stop"` and ignores tool errors, so a failed tool call followed by a terminal `step_finish` would be incorrectly marked `"complete"`.

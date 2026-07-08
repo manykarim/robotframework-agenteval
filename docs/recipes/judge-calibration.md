@@ -20,7 +20,7 @@ agreement is beyond chance — a kappa of 1.0 is perfect, 0 is chance-level, and
 negative is systematic disagreement.
 
 **Phase-1 ships single-judge Cohen's kappa only.** Multi-judge ensemble and
-Krippendorff's alpha are Phase-2 carry-overs (`DF-12.2-S1` / C81).
+Krippendorff's alpha are Phase-2 carry-overs.
 
 ## Step 1 — Author the rubric
 
