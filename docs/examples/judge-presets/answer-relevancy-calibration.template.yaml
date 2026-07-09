@@ -1,0 +1,33 @@
+# Answer Relevancy preset — calibration-set TEMPLATE (add-judge-criteria-shortcuts D5)
+#
+# Presets ship UNCALIBRATED by default. This is a TEMPLATE for YOU to fill with
+# YOUR own human-labeled examples — the rows below are placeholders, not shipped
+# ground truth. There is NO kappa claim here (kappa is a joint property of your
+# rubric x judge model x domain x labelers).
+#
+# Graduation path:
+#   ${rubric}=   Judge.Get Preset Rubric      name=answer_relevancy
+#   ${report}=   Judge.Calibrate Rubric       rubric=${rubric}    calibration_set=<this file, filled in>
+#   Should Be True    ${report.passes_hard_fail}    # kappa >= 0.7
+#
+# Labeling task for ANSWER RELEVANCY: given the `question` the agent was asked
+# (put it INSIDE the `prompt` field) and the agent `response`, assign
+# `human_label` 0.0-10.0 = how directly the response addresses the question.
+# 10.0 = on-topic and fully answers what was asked; low = evasion, padding, or
+# drift onto adjacent topics. Note: relevancy is NOT correctness — a
+# confidently-wrong but on-topic answer can still be relevant.
+#
+# Schema (strict): each row is exactly {prompt: str, response: str,
+# human_label: float in [0.0, 10.0]}. Extra keys raise InvalidCalibrationSetError.
+# Aim for 30-100 rows spanning clear passes, clear fails, and a borderline batch.
+
+rows:
+  - prompt: "QUESTION: <the exact question the agent was asked>"
+    response: "<a focused response that fully answers the question>"
+    human_label: 9.0
+  - prompt: "QUESTION: <the exact question the agent was asked>"
+    response: "<an evasive non-answer that drifts onto an adjacent topic>"
+    human_label: 2.0
+  - prompt: "QUESTION: <the exact question the agent was asked>"
+    response: "<a partial answer that skips part of what was asked>"
+    human_label: 6.0

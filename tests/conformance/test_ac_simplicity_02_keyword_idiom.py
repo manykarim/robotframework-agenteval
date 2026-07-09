@@ -221,6 +221,12 @@ def test_keyword_names_use_snake_case_method_names() -> None:
         # uses the tools-noun-as-subject spelling (load-bearing keyword name;
         # kept in sync with the unit-level `_VERB_ALLOWLIST`).
         "tools",
+        # add-judge-criteria-shortcuts — `score` verb (`Judge.Score With
+        # Criteria`) + `judge` noun-as-subject for the un-namespaced assertion
+        # form (`Judge Score Should Be Above`, design D6); kept in sync with the
+        # unit-level `_VERB_ALLOWLIST`.
+        "score",
+        "judge",
     }
     violations: list[str] = []
     for cls in _all_library_classes():

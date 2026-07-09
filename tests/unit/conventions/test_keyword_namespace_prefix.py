@@ -50,6 +50,18 @@ _NAMESPACED: dict[str, str] = {
     "JudgeLibrary": "Judge",
 }
 
+# Assertion-form keywords that intentionally carry NO namespace prefix even
+# though they live on a namespaced library. They follow the `AssertionsLibrary`
+# `X Should ...` naming idiom (they read as assertions to operators) but must
+# live on a Tier-2 library because they make an LLM call — `AssertionsLibrary`
+# is a Tier-1 surface. Documented in add-judge-criteria-shortcuts design D6.
+# This is a NARROW, per-name allowlist: every OTHER keyword on the namespaced
+# library is still enforced to carry the prefix, and any NEW unprefixed keyword
+# not listed here still fails `test_namespaced_libraries_prefix_every_keyword`.
+_UNPREFIXED_ASSERTION_FORMS: dict[str, frozenset[str]] = {
+    "JudgeLibrary": frozenset({"Judge Score Should Be Above"}),
+}
+
 # Class names whose keywords MUST carry no namespace prefix (no dot).
 _UNPREFIXED: frozenset[str] = frozenset(
     {
@@ -127,7 +139,9 @@ def test_namespaced_libraries_prefix_every_keyword() -> None:
     by_class = _keyword_names_by_class()
     violations: list[str] = []
     for cls_name, token in _NAMESPACED.items():
-        violations.extend(_prefix_violations(cls_name, token, by_class.get(cls_name, [])))
+        exceptions = _UNPREFIXED_ASSERTION_FORMS.get(cls_name, frozenset())
+        names = [n for n in by_class.get(cls_name, []) if n not in exceptions]
+        violations.extend(_prefix_violations(cls_name, token, names))
     assert not violations, "namespace-prefix violations:\n" + "\n".join(violations)
 
 

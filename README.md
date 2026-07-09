@@ -108,11 +108,11 @@ Exit codes from `python -m AgentEval.conformance` follow the sysexits-style 24-l
 
 ## Keywords at a glance
 
-**75 keywords across 11 libraries — one import.** A single `Library    AgentEval` line composes every shipped sub-library (skills, subagents, hooks, MCP, stats, judge, plus the core run-measure-assert loop) and exposes all 75 keywords with no `WITH NAME` incantation. **Naming rule:** keywords that operate on a specific artifact or engine — skills, subagents, hooks, MCP servers, statistics, LLM-judge — carry that namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`); the shared run-measure-assert loop (`Send Prompt`, `Get Tool Call Count`, `Trajectory Should Match`, `Get Effective Config`, …) is unprefixed. The tables below group the keywords by originating sub-library, but every one of them resolves under the single top-level import. Each sub-library remains importable standalone by module path (`Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0`) for per-library budget scoping — the baked prefixes make the call sites identical under both styles, so no `WITH NAME` is needed (and adding it produces a pointless double prefix like `Skill.Skill.Get Frontmatter`).
+**81 keywords across 11 libraries — one import.** A single `Library    AgentEval` line composes every shipped sub-library (skills, subagents, hooks, MCP, stats, judge, plus the core run-measure-assert loop) and exposes all 81 keywords with no `WITH NAME` incantation. **Naming rule:** keywords that operate on a specific artifact or engine — skills, subagents, hooks, MCP servers, statistics, LLM-judge — carry that namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`); the shared run-measure-assert loop (`Send Prompt`, `Get Tool Call Count`, `Trajectory Should Match`, `Get Effective Config`, …) is unprefixed. The tables below group the keywords by originating sub-library, but every one of them resolves under the single top-level import. Each sub-library remains importable standalone by module path (`Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0`) for per-library budget scoping — the baked prefixes make the call sites identical under both styles, so no `WITH NAME` is needed (and adding it produces a pointless double prefix like `Skill.Skill.Get Frontmatter`).
 
-### `AgentEval` — core-loop keywords (45 of the 66)
+### `AgentEval` — core-loop keywords (51 of the 81)
 
-The composed `AgentEval` library holds all 75 keywords. The 45 below are the unprefixed run-measure-assert loop plus the `Stat.*`, `Judge.*`, and `Hook.*` keywords; the remaining 30 (`Skill.*`, `MCP.*`, `Subagent.*`) are listed in the sub-library sections further down and resolve under the same single import.
+The composed `AgentEval` library holds all 81 keywords. The 51 below are the unprefixed run-measure-assert loop plus the `Stat.*`, `Judge.*`, and `Hook.*` keywords; the remaining 30 (`Skill.*`, `MCP.*`, `Subagent.*`) are listed in the sub-library sections further down and resolve under the same single import.
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html](https://manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html)** (GitHub Pages) · local: [`docs/keywords/AgentEval.html`](./docs/keywords/AgentEval.html)
 
@@ -167,12 +167,18 @@ Library    AgentEval
 | **Get Effective Config** | 1 | Resolved config dict, or single `ConfigValue(value, source)` via `setting=<key>` |
 | **Judge.Get Score** | 2 | LLM-judge scoring of an `AgentRunResult` against a Markdown rubric |
 | **Judge.Calibrate Rubric** | 2 | Run the judge against a YAML calibration set; compute Cohen's kappa + threshold-tuning + bias diagnostics (κ ≥ 0.7 hard-fail) |
+| **Judge.Score With Criteria** | 2 | One-line judging from a plain-language criteria string (no rubric file); returns `JudgeScore` with `calibrated=False` |
+| **Judge.Get Faithfulness** | 2 | Metric preset — is every claim in the response supported by the supplied `context`? |
+| **Judge.Get Answer Relevancy** | 2 | Metric preset — does the response address the supplied `question`? |
+| **Judge.Get Hallucination Score** | 2 | Metric preset — grounding score (higher = less hallucination; 10.0 = none) vs the supplied `context` |
+| **Judge.Get Preset Rubric** | 1 | Return a preset's `JudgeRubric` for the graduation path (→ `Judge.Calibrate Rubric`) |
+| **Judge Score Should Be Above** | 2 | Judge-and-assert in one line from a criteria string; fails with the judge's reasoning |
 
-### `AgentEval.judge.library.JudgeLibrary` — 2 keywords
+### `AgentEval.judge.library.JudgeLibrary` — 8 keywords
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/JudgeLibrary.html](https://manykarim.github.io/robotframework-agenteval/keywords/JudgeLibrary.html)** (GitHub Pages) · local: [`docs/keywords/JudgeLibrary.html`](./docs/keywords/JudgeLibrary.html)
 
-Composed into `AgentEval` via `_SUB_LIBRARIES` — `Judge.Get Score` + `Judge.Calibrate Rubric` resolve under the plain `Library    AgentEval` import. The standalone module-path import works too (and lets operators pass `max_cost_usd` / `max_runtime_seconds` budgets directly — no `WITH NAME`, the `Judge.` prefix is already baked in):
+Composed into `AgentEval` via `_SUB_LIBRARIES` — every `Judge.*` keyword (plus the un-namespaced `Judge Score Should Be Above` assertion) resolves under the plain `Library    AgentEval` import. The standalone module-path import works too (and lets operators pass `max_cost_usd` / `max_runtime_seconds` budgets directly — no `WITH NAME`, the `Judge.` prefix is already baked in):
 
 ```robotframework
 Library    AgentEval.judge.library.JudgeLibrary    max_cost_usd=1.0
@@ -180,10 +186,16 @@ Library    AgentEval.judge.library.JudgeLibrary    max_cost_usd=1.0
 
 | Keyword | Tier | What it does |
 |---|---|---|
-| **Judge.Get Score** | 2 | LLM-judge scoring against a Markdown rubric; returns `JudgeScore` (numeric_score 0-10 + pass_threshold_met + reasoning + criteria_breakdown + cost_usd) |
+| **Judge.Get Score** | 2 | LLM-judge scoring against a Markdown rubric; returns `JudgeScore` (numeric_score 0-10 + pass_threshold_met + reasoning + criteria_breakdown + cost_usd + `calibrated` + `rubric_source`) |
 | **Judge.Calibrate Rubric** | 2 | Cohen's-kappa calibration over a YAML calibration set; returns `CalibrationReport` with `passes_hard_fail` (κ ≥ 0.7), `threshold_tuning`, `recommended_threshold`, `systematic_bias_diagnostics` |
+| **Judge.Score With Criteria** | 2 | One-line judging from a plain-language `criteria` string — no rubric file (DeepEval G-Eval idiom). Always `calibrated=False`, `rubric_source="criteria_string"`, with a WARN-once graduation nudge |
+| **Judge.Get Faithfulness** | 2 | Preset: every factual claim in the response is supported by the supplied `context` (`rubric_source="preset:faithfulness"`) |
+| **Judge.Get Answer Relevancy** | 2 | Preset: the response directly addresses the supplied `question` (`rubric_source="preset:answer_relevancy"`) |
+| **Judge.Get Hallucination Score** | 2 | Preset: grounding score, **higher = less hallucination** (10.0 = none detected), vs the supplied `context` — uniform `>= threshold` pass semantics (`rubric_source="preset:hallucination"`) |
+| **Judge.Get Preset Rubric** | 1 | Return a preset's `JudgeRubric` (no LLM call) so it feeds `Judge.Calibrate Rubric` — the graduation path for presets |
+| **Judge Score Should Be Above** | 2 | Judge-and-assert in one line from a `criteria` string; `>=` pass semantics; fails with the numeric score, threshold, uncalibrated marker, and judge reasoning |
 
-Calibration discipline (κ ≥ 0.7 hard-fail) — see the [Judge calibration cookbook](./docs/recipes/judge-calibration.md) for the recommended pre-deployment workflow.
+Two-tier honesty (the project brand): `Judge.Score With Criteria` + the presets are the **one-line on-ramp** — they always return `calibrated=False` and a truthful `rubric_source`, and emit a documented WARN-once pointing at the graduation path. For CI gates, graduate to a **calibrated rubric** (κ ≥ 0.7 hard-fail) — see the [Judge calibration cookbook](./docs/recipes/judge-calibration.md). Presets ship **uncalibrated by default** (no bundled κ claims); calibrate them against your own labels via `Judge.Get Preset Rubric` → `Judge.Calibrate Rubric` with the [per-preset templates](./docs/examples/judge-presets/).
 
 ### `AgentEval.skills.library.SkillsLibrary` — 10 keywords
 

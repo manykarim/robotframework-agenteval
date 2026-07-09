@@ -89,6 +89,14 @@ _VERB_ALLOWLIST: frozenset[str] = frozenset(
         # asserts the subagent's `tools:` allowlist) and can't be coerced into
         # a generic verb without breaking the promised keyword name.
         "tools",
+        # add-judge-criteria-shortcuts — one-line judge on-ramp keywords.
+        # `score` is a genuine verb (`Judge.Score With Criteria`); `judge` is
+        # the noun-as-subject spelling of the assertion form
+        # (`Judge Score Should Be Above`, un-namespaced per design D6) — the
+        # name is load-bearing (DeepEval `assert_test`-style judge assertion)
+        # and can't be coerced into a generic verb without breaking it.
+        "score",
+        "judge",
     }
 )
 

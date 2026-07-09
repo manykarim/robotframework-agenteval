@@ -221,6 +221,69 @@ def test_calibrate_surfaces_systematic_bias_when_judge_scores_high(
 
 
 # --------------------------------------------------------------------------- #
+# Regression: calibration threads the row's `prompt` (context/question) into    #
+# the judge prompt (add-judge-criteria-shortcuts codex MED)                      #
+# --------------------------------------------------------------------------- #
+
+
+def test_calibrate_threads_row_prompt_into_judge_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Calibrating the faithfulness preset MUST include each row's `prompt`.
+
+    Codex probe observed `has_context_placeholder_in_prompt False`: the judge
+    scored "supported by supplied context" with no supplied context. The row's
+    `prompt` (where the faithfulness template instructs users to put the
+    grounding context) must now render as a distinct `# Input` section.
+    """
+    responses = [_make_judge_response() for _ in range(5)]
+    spy = _patch_adapter_for_calibrate(monkeypatch, responses)
+
+    judge_lib = JudgeLibrary()
+    preset_rubric = judge_lib.get_preset_rubric(name="faithfulness")
+    report = judge_lib.calibrate(rubric=preset_rubric, calibration_set=FIXTURE_CALIBRATION)
+    assert isinstance(report, CalibrationReport)
+
+    # Every calibration row's prompt must reach the judge under `# Input`.
+    row_prompts = [
+        "Write a Python function that adds two numbers.",
+        "Find the largest file in /tmp via the filesystem tool.",
+        "Compute the determinant of a 3x3 matrix.",
+        "List the top 3 most recent commits in this repo.",
+        "Summarize the README in 2 sentences.",
+    ]
+    assert spy.call_count == len(row_prompts)
+    for call, expected_prompt in zip(spy.call_args_list, row_prompts, strict=True):
+        composed = call.kwargs.get("prompt") or call.args[0]
+        assert "# Input" in composed, "calibration judge prompt is missing the `# Input` context section"
+        assert expected_prompt in composed, f"row prompt/context not threaded into judge prompt: {expected_prompt!r}"
+
+
+def test_calibrate_blank_prompt_adds_no_input_section(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A whitespace-only row prompt must NOT add an empty `# Input` section."""
+    calib = tmp_path / "blank-prompt.yaml"
+    calib.write_text(
+        "rows:\n"
+        '  - prompt: "   "\n'
+        '    response: "some response text"\n'
+        "    human_label: 9.0\n"
+        '  - prompt: "a real question"\n'
+        '    response: "another response"\n'
+        "    human_label: 2.0\n",
+        encoding="utf-8",
+    )
+    spy = _patch_adapter_for_calibrate(monkeypatch, [_make_judge_response(), _make_judge_response()])
+
+    judge_lib = JudgeLibrary()
+    preset_rubric = judge_lib.get_preset_rubric(name="faithfulness")
+    judge_lib.calibrate(rubric=preset_rubric, calibration_set=calib)
+
+    first_prompt = spy.call_args_list[0].kwargs.get("prompt") or spy.call_args_list[0].args[0]
+    assert "# Input" not in first_prompt  # blank prompt -> no empty section
+    second_prompt = spy.call_args_list[1].kwargs.get("prompt") or spy.call_args_list[1].args[0]
+    assert "# Input" in second_prompt
+    assert "a real question" in second_prompt
+
+
+# --------------------------------------------------------------------------- #
 # AC-12.2.7: composition via `_SUB_LIBRARIES`                                   #
 # --------------------------------------------------------------------------- #
 

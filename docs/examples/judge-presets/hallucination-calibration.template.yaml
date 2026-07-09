@@ -1,0 +1,36 @@
+# Hallucination (grounding score) preset — calibration-set TEMPLATE (add-judge-criteria-shortcuts D5)
+#
+# Presets ship UNCALIBRATED by default. This is a TEMPLATE for YOU to fill with
+# YOUR own human-labeled examples — the rows below are placeholders, not shipped
+# ground truth. There is NO kappa claim here.
+#
+# DIRECTION (read carefully): this preset is a GROUNDING score where HIGHER IS
+# BETTER (10.0 = no hallucination detected). This INVERTS DeepEval's
+# HallucinationMetric (lower-is-better) so the uniform `numeric_score >=
+# threshold` pass semantics hold. Label accordingly: a well-grounded response
+# gets a HIGH human_label.
+#
+# Graduation path:
+#   ${rubric}=   Judge.Get Preset Rubric      name=hallucination
+#   ${report}=   Judge.Calibrate Rubric       rubric=${rubric}    calibration_set=<this file, filled in>
+#   Should Be True    ${report.passes_hard_fail}    # kappa >= 0.7
+#
+# Labeling task for HALLUCINATION (grounding): given the grounding `context`
+# (put it INSIDE the `prompt` field) and the agent `response`, assign
+# `human_label` 0.0-10.0 = freedom from fabrication. 10.0 = every entity, stat,
+# quote, and citation is traceable to the context; low = pervasive fabrication.
+#
+# Schema (strict): each row is exactly {prompt: str, response: str,
+# human_label: float in [0.0, 10.0]}. Extra keys raise InvalidCalibrationSetError.
+# Aim for 30-100 rows spanning clear passes, clear fails, and a borderline batch.
+
+rows:
+  - prompt: "CONTEXT: <paste the grounding document here>. TASK: <what the agent was asked>"
+    response: "<a fully-grounded response that fabricates nothing>"
+    human_label: 10.0
+  - prompt: "CONTEXT: <paste the grounding document here>. TASK: <what the agent was asked>"
+    response: "<a response inventing entities/stats/citations not in the context>"
+    human_label: 1.0
+  - prompt: "CONTEXT: <paste the grounding document here>. TASK: <what the agent was asked>"
+    response: "<a mostly-grounded response with one unverifiable quantity>"
+    human_label: 6.0

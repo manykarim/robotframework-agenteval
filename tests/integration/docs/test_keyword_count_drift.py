@@ -42,13 +42,12 @@ def _load_checker():
 
 def test_libdoc_derives_expected_count() -> None:
     checker = _load_checker()
-    # Composed `AgentEval` surface: 75 keywords after `add-subagent-delegation-testing`
-    # added 9 `Subagent.*` keywords (`Get Delegations` + `Should Have Delegated To`
-    # + `Should Not Have Delegated` + `Should Delegate To` + `Get Delegation
-    # Decision` + `Get Routing Pass At K` + `Get Routing Accuracy` + `Should Declare
-    # Skills` + `Tools Should Be Subset Of`) to the 66-keyword post-
-    # `add-hooks-execution-testing` surface.
-    assert checker.derive_keyword_count() == 75
+    # Composed `AgentEval` surface: 81 keywords after `add-judge-criteria-shortcuts`
+    # added 6 judge keywords (`Judge.Score With Criteria` + `Judge.Get Faithfulness`
+    # + `Judge.Get Answer Relevancy` + `Judge.Get Hallucination Score` + `Judge.Get
+    # Preset Rubric` + the un-namespaced `Judge Score Should Be Above` assertion) to
+    # the 75-keyword post-`add-subagent-delegation-testing` surface.
+    assert checker.derive_keyword_count() == 81
 
 
 def test_readme_and_index_counts_match_libdoc() -> None:

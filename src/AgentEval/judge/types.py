@@ -65,6 +65,23 @@ class JudgeScore:
           ``__post_init__`` per Story 1b.2 M_R6 pattern.
         - ``cost_usd: float`` — provider-reported cost of the single judge
           LLM call (non-negative; validated in ``__post_init__``).
+        - ``calibrated: bool = False`` — honesty marking (add-judge-criteria-
+          shortcuts D2). ``True`` means "this score came from a rubric with a
+          recorded passing calibration." **No keyword sets ``calibrated=True``
+          in Phase-1** — nothing threads a `CalibrationReport` into scoring yet,
+          so every score is honestly ``False``. Even ``Judge.Get Score`` with a
+          rubric file stamps ``False`` (a file is not evidence of calibration).
+          Evidence-binding (`calibration_report=`) is a deferred carry-over
+          (`DF-JCS-S1` / C104) — half-doing it would let operators flip the
+          flag by assertion. Tri-state (`bool | None`) was rejected: it invites
+          `if score.calibrated` bugs; plain ``False`` with documented "no
+          evidence of calibration" semantics is the honest default.
+        - ``rubric_source: str = "file"`` — provenance enum-as-string:
+          ``"file"`` (Get Score with a path), ``"preloaded"`` (Get Score with a
+          `JudgeRubric` instance), ``"criteria_string"`` (Score With Criteria /
+          the assertion form), ``"preset:<name>"`` (a metric preset). Lets
+          report tooling + the docs' two-tier story distinguish on-ramp scores
+          from rubric scores.
     """
 
     numeric_score: float
@@ -72,6 +89,8 @@ class JudgeScore:
     reasoning: str
     criteria_breakdown: Mapping[str, float] = field(default_factory=dict)
     cost_usd: float = 0.0
+    calibrated: bool = False
+    rubric_source: str = "file"
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.numeric_score <= 10.0:

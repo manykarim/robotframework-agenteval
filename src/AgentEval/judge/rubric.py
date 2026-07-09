@@ -16,7 +16,7 @@ from pathlib import Path
 from AgentEval.errors import InvalidJudgeRubricError
 from AgentEval.judge.types import JudgeRubric
 
-__all__ = ["load_rubric"]
+__all__ = ["load_rubric", "parse_rubric_text"]
 
 
 _THRESHOLD_RE = re.compile(r"Pass\s+if\s+numeric_score\s*>=\s*([0-9]+(?:\.[0-9]+)?)", re.IGNORECASE)
@@ -31,6 +31,12 @@ def load_rubric(path: str | Path) -> JudgeRubric:
     Phase-1 format: two required sections (``## Criteria`` + ``## Threshold``)
     + an optional ``## Examples`` section preserved verbatim in
     ``JudgeRubric.raw_text`` but not parsed into structured fields.
+
+    This is a thin file-IO wrapper: it performs extension + existence checks,
+    reads the file, then delegates all section/bullet/threshold parsing +
+    validation to `parse_rubric_text` (add-judge-criteria-shortcuts D1 — one
+    parser for file rubrics, synthesized criteria-string rubrics, and embedded
+    preset rubrics).
 
     Args:
         path: Filesystem path to a ``.md`` rubric file.
@@ -64,27 +70,53 @@ def load_rubric(path: str | Path) -> JudgeRubric:
         )
 
     raw_text = rubric_path.read_text(encoding="utf-8")
+    return parse_rubric_text(raw_text, source=str(rubric_path))
 
+
+def parse_rubric_text(raw_text: str, *, source: str) -> JudgeRubric:
+    """Parse rubric Markdown text into a `JudgeRubric` (add-judge-criteria-shortcuts D1).
+
+    Shared parser for every rubric source: file rubrics (via `load_rubric`),
+    synthesized criteria-string rubrics (`Judge.Score With Criteria`), and
+    embedded preset rubrics (`judge/presets.py`). A malformed preset therefore
+    fails loudly at first-use with the same `InvalidJudgeRubricError` shape as a
+    malformed file rubric.
+
+    Args:
+        raw_text: The full rubric Markdown text (two required sections
+            ``## Criteria`` + ``## Threshold``; optional ``## Examples``).
+        source: Provenance label surfaced as `InvalidJudgeRubricError.file_path`
+            for diagnostics (a filesystem path for file rubrics, or a synthetic
+            label like ``"<criteria_string>"`` / ``"<preset:faithfulness>"``).
+
+    Returns:
+        `JudgeRubric` with parsed criteria + threshold + the verbatim raw text.
+
+    Raises:
+        InvalidJudgeRubricError: on missing required section OR malformed bullet
+            OR unparseable / out-of-range threshold. ``field_name`` carries the
+            section header or bullet that failed.
+    """
     # Check required section headers
     if not _CRITERIA_HEADER_RE.search(raw_text):
         raise InvalidJudgeRubricError(
-            f"Judge rubric missing required `## Criteria` section ({rubric_path})",
-            file_path=str(rubric_path),
+            f"Judge rubric missing required `## Criteria` section ({source})",
+            file_path=source,
             line_number=None,
             field_name="## Criteria",
             fix_suggestion="Add a `## Criteria` section with one bullet per criterion: `- name: description`.",
         )
     if not _THRESHOLD_HEADER_RE.search(raw_text):
         raise InvalidJudgeRubricError(
-            f"Judge rubric missing required `## Threshold` section ({rubric_path})",
-            file_path=str(rubric_path),
+            f"Judge rubric missing required `## Threshold` section ({source})",
+            file_path=source,
             line_number=None,
             field_name="## Threshold",
             fix_suggestion="Add a `## Threshold` section with a single line: `Pass if numeric_score >= <N>`.",
         )
 
     # Parse criteria bullets from the `## Criteria` section.
-    criteria = _parse_criteria_bullets(raw_text, rubric_path)
+    criteria = _parse_criteria_bullets(raw_text, source)
 
     # Parse threshold — search ONLY within the `## Threshold` section body
     # (header → next `##` or EOF), NOT the whole document. A stray
@@ -96,8 +128,8 @@ def load_rubric(path: str | Path) -> JudgeRubric:
     if threshold_match is None:
         raise InvalidJudgeRubricError(
             f"Judge rubric `## Threshold` section is unparseable; expected "
-            f"`Pass if numeric_score >= <N>` ({rubric_path})",
-            file_path=str(rubric_path),
+            f"`Pass if numeric_score >= <N>` ({source})",
+            file_path=source,
             line_number=None,
             field_name="## Threshold",
             fix_suggestion="Replace the section body with: `Pass if numeric_score >= 7.0` (or your chosen threshold).",
@@ -106,8 +138,8 @@ def load_rubric(path: str | Path) -> JudgeRubric:
         threshold = float(threshold_match.group(1))
     except ValueError as exc:
         raise InvalidJudgeRubricError(
-            f"Judge rubric threshold value not a valid float: {threshold_match.group(1)!r} ({rubric_path})",
-            file_path=str(rubric_path),
+            f"Judge rubric threshold value not a valid float: {threshold_match.group(1)!r} ({source})",
+            file_path=source,
             line_number=None,
             field_name="## Threshold",
             fix_suggestion="Use a numeric threshold value (e.g., `7.0`).",
@@ -115,8 +147,8 @@ def load_rubric(path: str | Path) -> JudgeRubric:
 
     if not 0.0 <= threshold <= 10.0:
         raise InvalidJudgeRubricError(
-            f"Judge rubric threshold {threshold} outside `[0.0, 10.0]` range ({rubric_path})",
-            file_path=str(rubric_path),
+            f"Judge rubric threshold {threshold} outside `[0.0, 10.0]` range ({source})",
+            file_path=source,
             line_number=None,
             field_name="## Threshold",
             fix_suggestion="Use a threshold in [0.0, 10.0]; the JudgeScore range is `0.0 - 10.0`.",
@@ -145,7 +177,7 @@ def _slice_section(raw_text: str, header_re: re.Pattern[str]) -> str:
     return raw_text[section_start:section_end]
 
 
-def _parse_criteria_bullets(raw_text: str, rubric_path: Path) -> list[tuple[str, str]]:
+def _parse_criteria_bullets(raw_text: str, source: str) -> list[tuple[str, str]]:
     """Extract `- name: description` bullets from the `## Criteria` section."""
     section_body = _slice_section(raw_text, _CRITERIA_HEADER_RE)
 
@@ -158,8 +190,8 @@ def _parse_criteria_bullets(raw_text: str, rubric_path: Path) -> list[tuple[str,
         if match is None:
             raise InvalidJudgeRubricError(
                 f"Judge rubric `## Criteria` bullet malformed (expected "
-                f"`- <name>: <description>`): {stripped!r} ({rubric_path})",
-                file_path=str(rubric_path),
+                f"`- <name>: <description>`): {stripped!r} ({source})",
+                file_path=source,
                 line_number=None,
                 field_name=stripped,
                 fix_suggestion="Format each criterion bullet as `- <name>: <description>` (single colon separator).",
@@ -168,8 +200,8 @@ def _parse_criteria_bullets(raw_text: str, rubric_path: Path) -> list[tuple[str,
 
     if not criteria:
         raise InvalidJudgeRubricError(
-            f"Judge rubric `## Criteria` section has no bullets ({rubric_path})",
-            file_path=str(rubric_path),
+            f"Judge rubric `## Criteria` section has no bullets ({source})",
+            file_path=source,
             line_number=None,
             field_name="## Criteria",
             fix_suggestion="Add at least one bullet: `- <name>: <description>`.",
