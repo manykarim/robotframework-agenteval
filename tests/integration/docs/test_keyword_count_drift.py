@@ -52,7 +52,10 @@ def test_libdoc_derives_expected_count() -> None:
     # `Get Attack Success Rate` / `Attack Success Rate Should Be Below`) → 94.
     # `add-skill-ab-benchmark` then added the 1 `Skill.Compare Against Baseline`
     # keyword (two-arm A/B outcome benchmark) -> 95.
-    assert checker.derive_keyword_count() == 95
+    # `add-regression-baseline-tracking` then added the 3 unprefixed baseline
+    # keywords (`Save Metrics Baseline` / `Metrics Should Not Regress` /
+    # `Get Metric Trend`) -> 98.
+    assert checker.derive_keyword_count() == 98
 
 
 def test_readme_and_index_counts_match_libdoc() -> None:

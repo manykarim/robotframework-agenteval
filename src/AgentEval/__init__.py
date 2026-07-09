@@ -119,6 +119,7 @@ _SUB_LIBRARIES: tuple[tuple[str, str], ...] = (
     ("AgentEval.mcp.library", "MCPLibrary"),  # compose-single-library-import (was Story 2.3 carve-out)
     ("AgentEval.conversation.library", "ConversationLibrary"),  # add-multi-turn-conversation-testing
     ("AgentEval.redteam.library", "RedTeamLibrary"),  # add-red-team-probes
+    ("AgentEval.baseline.library", "BaselineLibrary"),  # add-regression-baseline-tracking
 )
 
 

@@ -118,6 +118,14 @@ _VERB_ALLOWLIST: frozenset[str] = frozenset(
         # `get_discoverability_comparison` so this is the first `compare`-prefixed
         # method name to reach the allowlist.
         "compare",
+        # add-regression-baseline-tracking — `Metrics Should Not Regress`
+        # (method `metrics_should_not_regress`) uses the metrics-noun-as-subject
+        # spelling of the assertion form (parallel to the cost / latency / token
+        # / attack assertion nouns above). The name is load-bearing (the gate
+        # asserts the run's metric set has not regressed vs a committed
+        # baseline) and can't be coerced into a generic verb without breaking
+        # the promised keyword name.
+        "metrics",
     }
 )
 

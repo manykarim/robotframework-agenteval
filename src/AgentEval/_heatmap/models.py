@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
+from AgentEval._heatmap._grid import render_ascii_grid
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -339,38 +341,16 @@ class CohortHeatmap:
             value = data.get(task, {}).get(model)
             return _missing if value is None else f"{value:.2f}"
 
-        # Compute column widths.
-        task_col_width = max(len("Task"), *(len(t) for t in self.tasks))
-        model_widths: dict[str, int] = {}
-        for model in self.models:
-            cells = [_fmt(task, model) for task in self.tasks]
-            model_widths[model] = max(len(model), *(len(c) for c in cells))
-
-        # Render header row.
-        header_cells = [
-            "Task".ljust(task_col_width),
-            *(model.ljust(model_widths[model]) for model in self.models),
-        ]
-        header_line = "│ " + " │ ".join(header_cells) + " │"
-
-        # Separator line (top + below header + bottom).
-        sep_parts = [
-            "─" * (task_col_width + 2),
-            *("─" * (model_widths[model] + 2) for model in self.models),
-        ]
-        top_line = "┌" + "┬".join(sep_parts) + "┐"
-        mid_line = "├" + "┼".join(sep_parts) + "┤"
-        bot_line = "└" + "┴".join(sep_parts) + "┘"
-
-        # Body rows.
-        body_lines: list[str] = []
-        for task in self.tasks:
-            cells = [task.ljust(task_col_width)]
-            for model in self.models:
-                cells.append(_fmt(task, model).ljust(model_widths[model]))
-            body_lines.append("│ " + " │ ".join(cells) + " │")
-
-        return "\n".join([top_line, header_line, mid_line, *body_lines, bot_line])
+        # The box-drawing grid layout is the shared `_heatmap._grid` renderer
+        # (extracted per add-regression-baseline-tracking design D8 so
+        # `TrendGrid` reuses the same implementation). Output is byte-identical
+        # to the pre-extraction inline version.
+        return render_ascii_grid(
+            corner_label="Task",
+            row_labels=self.tasks,
+            col_labels=self.models,
+            format_cell=_fmt,
+        )
 
     def as_html(self) -> str:
         """`as_html` — render the heatmap as a standalone HTML document with embedded CSS (Story 13.4 / PRD FR55).

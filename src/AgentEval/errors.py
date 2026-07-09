@@ -1294,8 +1294,105 @@ class InvalidRedTeamProbeError(_FR59Tier1SetupFailureError):
 
 
 # --------------------------------------------------------------------------- #
+# Regression baseline tracking errors (OpenSpec add-regression-baseline-tracking) #
+# --------------------------------------------------------------------------- #
+
+
+class BaselineWriteError(_FR59Tier1SetupFailureError):
+    """Raised when `Save Metrics Baseline` cannot persist the baseline file.
+
+    Design Decision 6: write failures RAISE (the opposite of the telemetry
+    sidecar warn-don't-raise contract) — the user explicitly asked to persist
+    a baseline, and silently continuing would fake-green the very CI gate the
+    baseline exists to feed. Carries the FR59 File/Line/Field/Fix structured
+    shape (``file_path`` = the unwritable path; ``fix_suggestion`` naming the
+    permission/disk remedy).
+
+    ``error_code = "BASELINE_WRITE_FAILED"``.
+    """
+
+    error_code: ClassVar[str] = "BASELINE_WRITE_FAILED"
+
+
+class BaselineNotFoundError(_FR59Tier1SetupFailureError):
+    """Raised when `Metrics Should Not Regress` / `Get Metric Trend` cannot find `baseline=`.
+
+    Design Decision 6: the fix suggestion is the save-then-commit workflow
+    ("run ``Save Metrics Baseline`` first, then commit the file"). ``file_path``
+    carries the resolved missing path.
+
+    ``error_code = "BASELINE_NOT_FOUND"``.
+    """
+
+    error_code: ClassVar[str] = "BASELINE_NOT_FOUND"
+
+
+class BaselineSchemaError(_FR59Tier1SetupFailureError):
+    """Raised when a baseline file is unparseable, schema-drifted, or version-mismatched.
+
+    Design Decision 6: raised on ``json`` parse failure, unsupported
+    ``schema_version``, or a missing/wrong-shape required field (``field_name``
+    names the offending field; the message names the found and supported
+    schema versions).
+
+    ``error_code = "BASELINE_SCHEMA_DRIFT"``.
+    """
+
+    error_code: ClassVar[str] = "BASELINE_SCHEMA_DRIFT"
+
+
+# --------------------------------------------------------------------------- #
 # Warnings (per architecture L997: DegradedTraceWarning + AdapterVersionDriftWarning) #
 # --------------------------------------------------------------------------- #
+
+
+class PossibleRegressionWarning(UserWarning):
+    """Emitted when a proportion metric breaches tolerance but the CIs overlap.
+
+    Design Decision 2 (PASS-with-WARNING outcome): "a 2-point Pass@k drop over
+    10 trials may be noise" lands here. The keyword PASSES (overlap ⇒ don't
+    fail) but the warning quotes both points, both CIs, and both trial counts
+    so the human can raise ``n`` in ``Stat.Run N Times`` rather than chase
+    ghosts. NOT silent — the residual uncertainty is made visible.
+    """
+
+
+class UnderpoweredComparisonWarning(UserWarning):
+    """Emitted when the sample sizes are too small to detect the requested tolerance.
+
+    Design Decision 2: when the Wilson CI half-width exceeds the requested
+    tolerance, the minimum detectable difference is larger than what the gate
+    was asked to catch. The warning states the approximate ``n`` needed — the
+    gate never silently pretends it could have caught what it mathematically
+    cannot.
+    """
+
+
+class DegradedComparisonWarning(UserWarning):
+    """Emitted when continuous-metric inference degrades to tolerance-only.
+
+    Design Decision 3: when raw samples are missing on either side OR the
+    ``[agenteval-advanced]`` extra is not installed, the Mann-Whitney U noise
+    guard cannot run, so the comparison falls back to a point-only tolerance
+    check. The warning names exactly what was skipped and why (missing samples
+    vs missing extra); the report records ``comparison_mode="point_only"``.
+    Degraded is loud, never silent (fake-green rejection).
+    """
+
+
+class SkippedMetricWarning(UserWarning):
+    """Emitted when a metric is skipped from a regression comparison.
+
+    Design Decision 6/7 (never silent-drop): the comparison engine returns a
+    ``skipped`` verdict — never an auto-fail — for a metric that is present on
+    only one side (baseline-only or current-only) or whose evidence kind
+    mismatches between the two runs. Per the spec's "never auto-fail on skip"
+    rule the keyword still PASSES, but a silent skip is a fake-green: a CI cost
+    gate would vanish without a trace if the current run stopped producing
+    ``cost_usd``. This warning names the skipped metric and why it was skipped
+    so the disappearance is loud, not silent, without the caller having to
+    inspect ``report.comparisons``.
+    """
 
 
 class DegradedTraceWarning(UserWarning):

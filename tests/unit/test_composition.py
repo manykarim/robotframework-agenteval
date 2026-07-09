@@ -69,6 +69,7 @@ _ONE_PER_SUBLIBRARY = [
     "Get Cohort Heatmap",  # HeatmapLibrary
     "Start Conversation",  # ConversationLibrary (add-multi-turn-conversation-testing)
     "RedTeam.Run Probe",  # RedTeamLibrary (add-red-team-probes)
+    "Save Metrics Baseline",  # BaselineLibrary (add-regression-baseline-tracking)
 ]
 
 
@@ -77,7 +78,7 @@ def test_single_import_reaches_all_sublibrary_keywords() -> None:
     names = set(lib.get_keyword_names())
     missing = [kw for kw in _ONE_PER_SUBLIBRARY if kw not in names]
     assert not missing, f"single `Library AgentEval` import is missing keywords: {missing!r}"
-    assert len(lib._loaded_components) == 13
+    assert len(lib._loaded_components) == 14
 
 
 # --------------------------------------------------------------------------- #
@@ -157,7 +158,7 @@ def test_duplicate_robot_name_raises_naming_both_classes(monkeypatch: pytest.Mon
 def test_full_registry_constructs_without_collision() -> None:
     # No RuntimeError over the real 13-component composition.
     lib = AgentEval()
-    assert len(lib._loaded_components) == 13
+    assert len(lib._loaded_components) == 14
 
 
 # --------------------------------------------------------------------------- #

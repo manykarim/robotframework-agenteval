@@ -78,6 +78,11 @@ _UNPREFIXED: frozenset[str] = frozenset(
         # the shared run-measure-assert loop, not an artifact/engine namespace —
         # unprefixed like Orchestration + Metrics.
         "ConversationLibrary",
+        # add-regression-baseline-tracking: baseline snapshot/compare/trend
+        # keywords (`Save Metrics Baseline`, `Metrics Should Not Regress`,
+        # `Get Metric Trend`) are part of the shared run-measure-assert loop,
+        # not an artifact/engine namespace — unprefixed like Metrics.
+        "BaselineLibrary",
         "AgentEval",  # top-level composed class (its own config/tier keywords)
     }
 )

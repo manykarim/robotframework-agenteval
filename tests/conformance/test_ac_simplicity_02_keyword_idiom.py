@@ -243,6 +243,11 @@ def test_keyword_names_use_snake_case_method_names() -> None:
         # `compare_against_baseline`); kept in sync with the unit-level
         # `_VERB_ALLOWLIST`.
         "compare",
+        # add-regression-baseline-tracking — `Metrics Should Not Regress`
+        # (method `metrics_should_not_regress`) uses the metrics-noun-as-subject
+        # spelling of the assertion form; kept in sync with the unit-level
+        # `_VERB_ALLOWLIST`.
+        "metrics",
     }
     violations: list[str] = []
     for cls in _all_library_classes():
