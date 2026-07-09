@@ -227,6 +227,13 @@ def test_keyword_names_use_snake_case_method_names() -> None:
         # unit-level `_VERB_ALLOWLIST`.
         "score",
         "judge",
+        # add-multi-turn-conversation-testing — `end` + `simulate` verbs
+        # (`End Conversation`, `Simulate User`) + `transcript` noun-as-subject
+        # (`Transcript Should Contain`); kept in sync with the unit-level
+        # `_VERB_ALLOWLIST`.
+        "end",
+        "simulate",
+        "transcript",
     }
     violations: list[str] = []
     for cls in _all_library_classes():

@@ -130,6 +130,9 @@ __all__ = [
     "SubagentDelegationAssertionError",
     "SubagentConfigDriftError",
     "InvalidSubagentRoutingTasksError",
+    # add-multi-turn-conversation-testing (2):
+    "ConversationClosedError",
+    "ConversationContinuationUnsupportedError",
     # Warnings (1):
     "DegradedTraceWarning",
 ]
@@ -1157,6 +1160,73 @@ class InvalidCalibrationSetError(_FR59Tier1SetupFailureError):
     """
 
     error_code: ClassVar[str] = "INVALID_CALIBRATION_SET"
+
+
+# --------------------------------------------------------------------------- #
+# Conversation errors (add-multi-turn-conversation-testing — design D9)        #
+# Exactly TWO new leaves per the dossier E5 errors.py-bloat finding.           #
+# --------------------------------------------------------------------------- #
+
+
+class ConversationClosedError(AgentEvalIntegrityError):
+    """Raised when a `Send Message` / `Simulate User` targets a closed handle.
+
+    add-multi-turn-conversation-testing design D2 + D9. After
+    `End Conversation` marks a `ConversationHandle` closed (releasing any
+    native session resources), any further `Send Message` or `Simulate User`
+    against it raises this — a run-state contract violation, NOT an FR59
+    setup-file parse failure, so it carries a `fix_suggestion` but not the
+    File/Line/Field 5-line layout.
+
+    `Get Conversation Transcript` remains readable after close (this error is
+    NOT raised for read-only transcript access).
+
+    `error_code = "CONVERSATION_CLOSED"`; exit code 70 (EX_SOFTWARE — run-state
+    contract violation, same family as `TierViolationError`).
+    """
+
+    error_code: ClassVar[str] = "CONVERSATION_CLOSED"
+
+    def __init__(self, message: str, *, fix_suggestion: str = "") -> None:
+        super().__init__(message)
+        self.fix_suggestion: str = fix_suggestion
+
+    def __str__(self) -> str:
+        base = Exception.__str__(self)
+        return f"{self.error_code}: {base}\n  Fix: {self.fix_suggestion or 'N/A'}"
+
+
+class ConversationContinuationUnsupportedError(AgentEvalCompatError):
+    """Raised when `Start Conversation require_native=True` hits a replay-only adapter.
+
+    add-multi-turn-conversation-testing design D4 + D9. When a test requires
+    genuine native session continuation (replay semantics would invalidate the
+    eval) it passes `require_native=True`; if the resolved adapter does NOT
+    implement the optional duck-typed `run_turn`, this raises UP FRONT — before
+    any LLM call — naming the adapter and suggesting the fallback (omit
+    `require_native`) in its `fix_suggestion`.
+
+    A Compat-family error (adapter capability mismatch), parallel to
+    `UnsupportedBinaryVersionError`; runtime failure, so no FR59 5-line layout.
+
+    `error_code = "CONVERSATION_CONTINUATION_UNSUPPORTED"`; exit code 78
+    (EX_CONFIG — same family as the other adapter-capability Compat errors).
+    """
+
+    error_code: ClassVar[str] = "CONVERSATION_CONTINUATION_UNSUPPORTED"
+
+    def __init__(self, message: str, *, adapter: str | None = None, fix_suggestion: str = "") -> None:
+        super().__init__(message)
+        self.adapter: str | None = adapter
+        self.fix_suggestion: str = fix_suggestion
+
+    def __str__(self) -> str:
+        base = Exception.__str__(self)
+        return (
+            f"{self.error_code}: {base}\n"
+            f"  Adapter: {self.adapter or 'N/A'}\n"
+            f"  Fix: {self.fix_suggestion or 'N/A'}"
+        )
 
 
 # --------------------------------------------------------------------------- #

@@ -15,7 +15,7 @@
 """Single-library-import composition tests (`compose-single-library-import` change).
 
 Covers the `single-library-import` capability:
-- `Library AgentEval` composes all 11 sub-libraries (task 4.1 / 4.2).
+- `Library AgentEval` composes all 12 sub-libraries (task 4.1 / 4.2).
 - The import-time collision detector stays loud (task 4.3).
 - Budget forwarding to every `_HostBudgetPlumbing` subclass, incl. the C55
   closure for `Skill.Get Activation Decision` (task 4.4 / 4.5).
@@ -52,7 +52,7 @@ MCP_FIXTURE = FIXTURES / "mcp" / "mcp-valid.json"
 
 
 # --------------------------------------------------------------------------- #
-# Task 4.1 — single import reaches one keyword from each of the 11 sub-libs    #
+# Task 4.1 — single import reaches one keyword from each of the 12 sub-libs    #
 # --------------------------------------------------------------------------- #
 
 _ONE_PER_SUBLIBRARY = [
@@ -67,6 +67,7 @@ _ONE_PER_SUBLIBRARY = [
     "Get Tool Call Count",  # MetricsLibrary
     "Trajectory Should Match",  # AssertionsLibrary
     "Get Cohort Heatmap",  # HeatmapLibrary
+    "Start Conversation",  # ConversationLibrary (add-multi-turn-conversation-testing)
 ]
 
 
@@ -75,7 +76,7 @@ def test_single_import_reaches_all_sublibrary_keywords() -> None:
     names = set(lib.get_keyword_names())
     missing = [kw for kw in _ONE_PER_SUBLIBRARY if kw not in names]
     assert not missing, f"single `Library AgentEval` import is missing keywords: {missing!r}"
-    assert len(lib._loaded_components) == 11
+    assert len(lib._loaded_components) == 12
 
 
 # --------------------------------------------------------------------------- #
@@ -153,9 +154,9 @@ def test_duplicate_robot_name_raises_naming_both_classes(monkeypatch: pytest.Mon
 
 
 def test_full_registry_constructs_without_collision() -> None:
-    # No RuntimeError over the real 11-component composition.
+    # No RuntimeError over the real 12-component composition.
     lib = AgentEval()
-    assert len(lib._loaded_components) == 11
+    assert len(lib._loaded_components) == 12
 
 
 # --------------------------------------------------------------------------- #

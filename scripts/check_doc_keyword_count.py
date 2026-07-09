@@ -46,7 +46,7 @@ _COUNTED_LIBRARIES = ("AgentEval",)
 # Number of sub-libraries composed into `AgentEval` via `_SUB_LIBRARIES`
 # (equals `len(AgentEval._SUB_LIBRARIES)`); all reachable through the single
 # `Library    AgentEval` import.
-_LIBRARY_COUNT = 11
+_LIBRARY_COUNT = 12
 
 
 def derive_keyword_count() -> int:

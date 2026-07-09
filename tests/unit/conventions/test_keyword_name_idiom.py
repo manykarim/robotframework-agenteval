@@ -97,6 +97,14 @@ _VERB_ALLOWLIST: frozenset[str] = frozenset(
         # and can't be coerced into a generic verb without breaking it.
         "score",
         "judge",
+        # add-multi-turn-conversation-testing — conversation lifecycle keywords.
+        # `end` + `simulate` are genuine verbs (`End Conversation`,
+        # `Simulate User`); `transcript` is the noun-as-subject spelling of the
+        # content assertion (`Transcript Should Contain`) — same load-bearing
+        # posture as the `trajectory` / `tool` assertion nouns above.
+        "end",
+        "simulate",
+        "transcript",
     }
 )
 

@@ -86,7 +86,7 @@ from AgentEval.judge.calibration import (
 from AgentEval.judge.presets import get_preset_rubric
 from AgentEval.judge.rubric import load_rubric, parse_rubric_text
 from AgentEval.judge.types import CalibrationReport, JudgeRubric, JudgeScore
-from AgentEval.types import AgentRunMetadata, AgentRunResult, Usage
+from AgentEval.types import AgentRunMetadata, AgentRunResult, ConversationTranscript, ConversationTurn, Usage
 
 __all__ = ["JudgeLibrary"]
 
@@ -111,13 +111,13 @@ class JudgeLibrary(_HostBudgetPlumbing):
     def get_score(
         self,
         *,
-        result: AgentRunResult,
+        result: AgentRunResult | ConversationTranscript,
         rubric: str | Path | JudgeRubric,
         judge_adapter: str = "generic",
         judge_model: str | None = None,
         **adapter_kwargs: Any,
     ) -> JudgeScore:
-        """Evaluates an `AgentRunResult` against a Markdown rubric using an LLM judge (PRD FR48).
+        """Evaluates an `AgentRunResult` — or a whole `ConversationTranscript` — against a rubric (PRD FR48 + add-multi-turn-conversation-testing).
 
         [Tier 2 — Stochastic Single-Shot] — single-shot LLM call against the
         configured `judge_adapter` (default `"generic"` LiteLLM-backed).
@@ -125,8 +125,16 @@ class JudgeLibrary(_HostBudgetPlumbing):
         contract when invoked with `seed + temperature=0`. Wraps
         `@guarded_fanout` cost+runtime guardrails per ADR-015.
 
+        **Per-turn judging works today** (add-multi-turn-conversation-testing
+        D6): a conversation turn's ``result`` IS an ``AgentRunResult``, so
+        ``Judge.Get Score    result=${turn_result}    rubric=...`` scores that
+        single turn with no new API. Passing a ``ConversationTranscript`` as
+        ``result=`` instead renders the FULL role-tagged transcript (every user
+        + agent turn in order) into the judge prompt for whole-conversation
+        judging — one `JudgeScore` for the conversation as a whole.
+
         | =Arguments= | =Description= |
-        | ``result`` | The `AgentRunResult` to evaluate. Reads ``result.response_text`` for the agent's output. |
+        | ``result`` | The `AgentRunResult` to evaluate (reads ``result.response_text``), OR a `ConversationTranscript` (renders the full transcript). A conversation turn's ``result`` is a plain `AgentRunResult` — per-turn judging is free. |
         | ``rubric`` | Path to a Markdown rubric file (`.md`) OR a pre-loaded `JudgeRubric` instance. |
         | ``judge_adapter`` | Adapter slug to resolve via `agenteval.coding_agents` entry-points. Defaults to ``"generic"``. |
         | ``judge_model`` | Model identifier for the judge adapter (e.g., ``"anthropic/claude-sonnet-4-6"``). Forwarded to the adapter's `run(model=...)` kwarg. |
@@ -142,21 +150,26 @@ class JudgeLibrary(_HostBudgetPlumbing):
         is outside ``[0.0, 10.0]``.
 
         Example:
-        | ${result} =    `Send Prompt`    prompt=Find the largest file    adapter=generic    model=anthropic/claude-sonnet-4-6
-        | ${score} =    `Judge.Get Score`    result=${result}    rubric=${CURDIR}/rubrics/skill-quality.md    judge_adapter=generic    judge_model=anthropic/claude-sonnet-4-6
-        | Should Be True    ${score.pass_threshold_met}
-        | Should Be True    ${score.numeric_score} >= 7.0
-        | Log    Reasoning: ${score.reasoning}
+        | ${r2} =    `Send Message`    ${conv}    Make it business class
+        | ${score} =    `Judge.Get Score`    result=${r2}    rubric=${CURDIR}/rubrics/upsell.md          # per-turn
+        | ${t} =    `Get Conversation Transcript`    ${conv}
+        | ${whole} =    `Judge.Get Score`    result=${t}    rubric=${CURDIR}/rubrics/goal-completion.md   # whole conversation
+        | Should Be True    ${whole.pass_threshold_met}
 
         Notes:
         - PRD FR48 ratifies the keyword + rubric calibration discipline.
         - Tier-2 LLM-deterministic per `determinism-contract.md`; cost guardrails per ADR-015.
         - `JudgeScore` shape ratified Story 12.1 AC-12.1.2 per architecture L1316.
-        - Phase-1 single-shot LLM call; multi-turn chain-of-thought is DF-12.1-S2 carry-over.
+        - Transcript rendering uses the shared conversation renderer (add-multi-turn-conversation-testing D6).
         - `rubric_source` is `"preloaded"` for a `JudgeRubric` instance, else `"file"`;
           `calibrated` is always `False` (a rubric file is not calibration evidence —
           add-judge-criteria-shortcuts D2; evidence-binding is `DF-JCS-S1` / C104).
         """
+        # add-multi-turn-conversation-testing D6: a whole-conversation judge
+        # renders the full role-tagged transcript as the "agent output" the
+        # judge scores, reusing the entire single-result pipeline unchanged.
+        if isinstance(result, ConversationTranscript):
+            result = _transcript_to_judge_result(result)
         # Load + parse the rubric (or accept a pre-parsed one). The provenance
         # marking is honest about where the rubric came from (D2): a file path
         # vs an already-parsed `JudgeRubric` instance.
@@ -666,6 +679,100 @@ class JudgeLibrary(_HostBudgetPlumbing):
             )
         return score
 
+    @keyword(name="Judge Turn Should Pass")
+    @tier(2)
+    @guarded_fanout()
+    def judge_turn_should_pass(
+        self,
+        conversation: Any,
+        rubric: str | Path | JudgeRubric,
+        turn: int = -1,
+        judge_adapter: str = "generic",
+        judge_model: str | None = None,
+        **adapter_kwargs: Any,
+    ) -> JudgeScore:
+        """Scores one conversation turn against a rubric and FAILS the test unless it passes (add-multi-turn-conversation-testing).
+
+        [Tier 2 — Stochastic Single-Shot] — the assertion-style counterpart to
+        `Judge.Get Score`, un-namespaced (matching the ``X Should ...`` assertion
+        idiom) but hosted on the Tier-2 judge library because it makes an LLM
+        call. Selects the given AGENT turn (negative indices count from the end;
+        default ``-1`` = last agent turn), scores it via the SAME path as
+        `Judge.Get Score`, and FAILS the RF test when ``pass_threshold_met`` is
+        false — reporting the numeric score, threshold, and the judge's reasoning
+        in the failure message. Wraps ``@guarded_fanout`` identically to
+        `Judge.Get Score`.
+
+        | =Arguments= | =Description= |
+        | ``conversation`` | A live ``ConversationHandle`` OR a frozen ``ConversationTranscript``. |
+        | ``rubric`` | Path to a Markdown rubric file (`.md`) OR a pre-loaded `JudgeRubric`. |
+        | ``turn`` | Agent-turn index to score. Negative counts from the end; default ``-1`` = last agent turn. |
+        | ``judge_adapter`` | Adapter slug (default ``"generic"``). |
+        | ``judge_model`` | Model identifier forwarded to ``adapter.run(model=...)``. |
+        | ``**adapter_kwargs`` | Provider forward-compat kwargs (e.g. ``temperature=0.0``, ``seed=42``). |
+
+        An OUT-OF-RANGE ``turn`` fails immediately with a message naming the
+        requested index and the available agent-turn count — **without making any
+        LLM call**. On pass it RETURNS the ``JudgeScore`` so callers can log the
+        score without a second LLM call.
+
+        Raises ``AssertionError`` (RF test failure) when the turn is out of range
+        OR the score is below the rubric threshold.
+        Raises ``InvalidJudgeRubricError`` on rubric parse failure.
+
+        Example:
+        | `Send Message`    ${conv}    Book a flight to Oslo
+        | `Send Message`    ${conv}    Make it business class
+        | ${score} =    `Judge Turn Should Pass`    ${conv}    ${CURDIR}/rubrics/upsell.md    turn=-1
+        | Log    Last turn scored ${score.numeric_score}
+
+        Notes:
+        - add-multi-turn-conversation-testing D6 (assertion form on the Tier-2 judge library, un-namespaced).
+        - Out-of-range turn index is a clear setup failure, raised before any LLM call.
+        - Sibling keywords: `Judge.Get Score` (returns the score; also accepts a whole transcript).
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        agent_turns = _agent_turns_of(conversation)
+        if not agent_turns:
+            raise AssertionError(
+                "Judge Turn Should Pass: the conversation has no agent turns to score yet "
+                "(send at least one `Send Message` first)."
+            )
+        try:
+            selected = agent_turns[turn]
+        except IndexError:
+            raise AssertionError(
+                f"Judge Turn Should Pass: turn index {turn} is out of range; the conversation "
+                f"has {len(agent_turns)} agent turn(s) (valid indices: "
+                f"0..{len(agent_turns) - 1} or -{len(agent_turns)}..-1). No LLM call was made."
+            ) from None
+        turn_result = selected.result
+        if turn_result is None:  # pragma: no cover - agent turns always carry a result
+            raise AssertionError(f"Judge Turn Should Pass: selected agent turn {turn} carries no AgentRunResult.")
+
+        if isinstance(rubric, JudgeRubric):
+            parsed_rubric = rubric
+            rubric_source = "preloaded"
+        else:
+            parsed_rubric = load_rubric(rubric)
+            rubric_source = "file"
+
+        score = _execute_judge(
+            parsed_rubric,
+            turn_result,
+            adapter_slug=judge_adapter,
+            judge_model=judge_model,
+            rubric_source=rubric_source,
+            adapter_kwargs=adapter_kwargs,
+        )
+        if not score.pass_threshold_met:
+            raise AssertionError(
+                f"Judge Turn Should Pass: turn {turn} scored {score.numeric_score} "
+                f"below threshold {parsed_rubric.threshold} "
+                f"(calibrated={score.calibrated}, rubric_source={score.rubric_source}). "
+                f"Judge reasoning: {score.reasoning}"
+            )
+        return score
+
     # ----------------------------------------------------------------------- #
     # add-judge-criteria-shortcuts — shared preset-scoring helper              #
     # ----------------------------------------------------------------------- #
@@ -815,6 +922,38 @@ def _with_threshold(rubric: JudgeRubric, threshold: float) -> JudgeRubric:
         )
     new_raw = _THRESHOLD_LINE_RE.sub(f"Pass if numeric_score >= {threshold}", rubric.raw_text)
     return JudgeRubric(criteria=rubric.criteria, threshold=threshold, raw_text=new_raw)
+
+
+def _transcript_to_judge_result(transcript: ConversationTranscript) -> AgentRunResult:
+    """Render a `ConversationTranscript` into a judge-scoreable `AgentRunResult` (D6).
+
+    The full role-tagged transcript (every user + agent turn in chronological
+    order, via the shared conversation renderer) becomes the ``response_text``
+    the judge scores — so the existing single-result judge pipeline handles a
+    whole conversation with no branch inside `_compose_judge_prompt`.
+    """
+    from AgentEval.conversation._renderer import render_transcript_text
+
+    rendered = render_transcript_text(transcript.turns)
+    return AgentRunResult(
+        response_text=rendered,
+        tool_calls=[],
+        usage=Usage(input_tokens=0, output_tokens=0),
+        metadata=AgentRunMetadata(completeness="complete", mcp_coverage="hosted_in_process"),
+        cost_usd=0.0,
+        latency_seconds=0.0,
+        trace_id="conversation-transcript",
+    )
+
+
+def _agent_turns_of(conversation: Any) -> list[ConversationTurn]:
+    """Extract the ordered agent turns from a live handle OR a frozen transcript."""
+    turns = getattr(conversation, "turns", None)
+    if turns is None:
+        raise TypeError(
+            f"expected a ConversationHandle or ConversationTranscript; got {type(conversation).__name__}"
+        )
+    return [t for t in turns if t.role == "agent"]
 
 
 def _execute_judge(

@@ -59,7 +59,7 @@ _NAMESPACED: dict[str, str] = {
 # library is still enforced to carry the prefix, and any NEW unprefixed keyword
 # not listed here still fails `test_namespaced_libraries_prefix_every_keyword`.
 _UNPREFIXED_ASSERTION_FORMS: dict[str, frozenset[str]] = {
-    "JudgeLibrary": frozenset({"Judge Score Should Be Above"}),
+    "JudgeLibrary": frozenset({"Judge Score Should Be Above", "Judge Turn Should Pass"}),
 }
 
 # Class names whose keywords MUST carry no namespace prefix (no dot).
@@ -70,6 +70,11 @@ _UNPREFIXED: frozenset[str] = frozenset(
         "MetricsLibrary",
         "AssertionsLibrary",
         "HeatmapLibrary",
+        # add-multi-turn-conversation-testing: conversation lifecycle keywords
+        # (`Start Conversation`, `Send Message`, `Simulate User`, …) are part of
+        # the shared run-measure-assert loop, not an artifact/engine namespace —
+        # unprefixed like Orchestration + Metrics.
+        "ConversationLibrary",
         "AgentEval",  # top-level composed class (its own config/tier keywords)
     }
 )

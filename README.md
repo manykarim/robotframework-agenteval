@@ -108,11 +108,11 @@ Exit codes from `python -m AgentEval.conformance` follow the sysexits-style 24-l
 
 ## Keywords at a glance
 
-**81 keywords across 11 libraries — one import.** A single `Library    AgentEval` line composes every shipped sub-library (skills, subagents, hooks, MCP, stats, judge, plus the core run-measure-assert loop) and exposes all 81 keywords with no `WITH NAME` incantation. **Naming rule:** keywords that operate on a specific artifact or engine — skills, subagents, hooks, MCP servers, statistics, LLM-judge — carry that namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`); the shared run-measure-assert loop (`Send Prompt`, `Get Tool Call Count`, `Trajectory Should Match`, `Get Effective Config`, …) is unprefixed. The tables below group the keywords by originating sub-library, but every one of them resolves under the single top-level import. Each sub-library remains importable standalone by module path (`Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0`) for per-library budget scoping — the baked prefixes make the call sites identical under both styles, so no `WITH NAME` is needed (and adding it produces a pointless double prefix like `Skill.Skill.Get Frontmatter`).
+**90 keywords across 12 libraries — one import.** A single `Library    AgentEval` line composes every shipped sub-library (skills, subagents, hooks, MCP, stats, judge, plus the core run-measure-assert loop) and exposes all 90 keywords with no `WITH NAME` incantation. **Naming rule:** keywords that operate on a specific artifact or engine — skills, subagents, hooks, MCP servers, statistics, LLM-judge — carry that namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`); the shared run-measure-assert loop (`Send Prompt`, `Get Tool Call Count`, `Trajectory Should Match`, `Get Effective Config`, …) is unprefixed. The tables below group the keywords by originating sub-library, but every one of them resolves under the single top-level import. Each sub-library remains importable standalone by module path (`Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0`) for per-library budget scoping — the baked prefixes make the call sites identical under both styles, so no `WITH NAME` is needed (and adding it produces a pointless double prefix like `Skill.Skill.Get Frontmatter`).
 
-### `AgentEval` — core-loop keywords (51 of the 81)
+### `AgentEval` — core-loop keywords (60 of the 90)
 
-The composed `AgentEval` library holds all 81 keywords. The 51 below are the unprefixed run-measure-assert loop plus the `Stat.*`, `Judge.*`, and `Hook.*` keywords; the remaining 30 (`Skill.*`, `MCP.*`, `Subagent.*`) are listed in the sub-library sections further down and resolve under the same single import.
+The composed `AgentEval` library holds all 90 keywords. The 60 below are the unprefixed run-measure-assert loop plus the `Stat.*`, `Judge.*`, and `Hook.*` keywords; the remaining 30 (`Skill.*`, `MCP.*`, `Subagent.*`) are listed in the sub-library sections further down and resolve under the same single import.
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html](https://manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html)** (GitHub Pages) · local: [`docs/keywords/AgentEval.html`](./docs/keywords/AgentEval.html)
 
@@ -173,8 +173,17 @@ Library    AgentEval
 | **Judge.Get Hallucination Score** | 2 | Metric preset — grounding score (higher = less hallucination; 10.0 = none) vs the supplied `context` |
 | **Judge.Get Preset Rubric** | 1 | Return a preset's `JudgeRubric` for the graduation path (→ `Judge.Calibrate Rubric`) |
 | **Judge Score Should Be Above** | 2 | Judge-and-assert in one line from a criteria string; fails with the judge's reasoning |
+| **Judge Turn Should Pass** | 2 | Score one conversation turn against a rubric; fail the test unless it passes (out-of-range turn fails without an LLM call) |
+| **Start Conversation** | 1 | Start a multi-turn conversation; returns a test-owned `ConversationHandle` (no LLM call until the first `Send Message`) |
+| **Send Message** | 2 | Send one user message; returns the agent turn's `AgentRunResult` (threaded natively or via honest history-replay) |
+| **Get Conversation Transcript** | 1 | Immutable `ConversationTranscript` snapshot (turns + reconciled aggregates + `continuation_mode`) |
+| **End Conversation** | 1 | Close the handle + release native session resources (transcript stays readable) |
+| **Transcript Should Contain** | 1 | Assert a turn of the selected role contains text (substring or regex) |
+| **Simulate User** | 3 | LLM-driven user simulator (persona/goal/max_turns); Tier-3 budget-guarded; `cache_key` repeatability |
+| **Get Conversation Results** | 1 | Extract the per-turn `list[AgentRunResult]` so every metric keyword aggregates over a conversation |
+| **Get Turn Count** | 1 | Number of agent turns in a conversation |
 
-### `AgentEval.judge.library.JudgeLibrary` — 8 keywords
+### `AgentEval.judge.library.JudgeLibrary` — 9 keywords
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/JudgeLibrary.html](https://manykarim.github.io/robotframework-agenteval/keywords/JudgeLibrary.html)** (GitHub Pages) · local: [`docs/keywords/JudgeLibrary.html`](./docs/keywords/JudgeLibrary.html)
 
@@ -194,6 +203,7 @@ Library    AgentEval.judge.library.JudgeLibrary    max_cost_usd=1.0
 | **Judge.Get Hallucination Score** | 2 | Preset: grounding score, **higher = less hallucination** (10.0 = none detected), vs the supplied `context` — uniform `>= threshold` pass semantics (`rubric_source="preset:hallucination"`) |
 | **Judge.Get Preset Rubric** | 1 | Return a preset's `JudgeRubric` (no LLM call) so it feeds `Judge.Calibrate Rubric` — the graduation path for presets |
 | **Judge Score Should Be Above** | 2 | Judge-and-assert in one line from a `criteria` string; `>=` pass semantics; fails with the numeric score, threshold, uncalibrated marker, and judge reasoning |
+| **Judge Turn Should Pass** | 2 | Score a selected conversation turn against a rubric (negative indices allowed); fails the test unless the turn passes; out-of-range index fails without an LLM call (add-multi-turn-conversation-testing) |
 
 Two-tier honesty (the project brand): `Judge.Score With Criteria` + the presets are the **one-line on-ramp** — they always return `calibrated=False` and a truthful `rubric_source`, and emit a documented WARN-once pointing at the graduation path. For CI gates, graduate to a **calibrated rubric** (κ ≥ 0.7 hard-fail) — see the [Judge calibration cookbook](./docs/recipes/judge-calibration.md). Presets ship **uncalibrated by default** (no bundled κ claims); calibrate them against your own labels via `Judge.Get Preset Rubric` → `Judge.Calibrate Rubric` with the [per-preset templates](./docs/examples/judge-presets/).
 

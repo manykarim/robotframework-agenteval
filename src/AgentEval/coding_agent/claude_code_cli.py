@@ -209,6 +209,10 @@ class ClaudeCodeCLIAdapter(SubprocessAdapter):
         # Story 5.2 DF-4.2-S1 absorption: per-run observer instance, set by
         # `run()` before delegating to base.run() so `_finalize` can read it.
         self._current_observer: HostedMcpObserver | None = None
+        # add-multi-turn-conversation-testing D4: the stream-json session id
+        # captured from the `system`/init event on the most recent run. Used
+        # by `run_turn` to spawn subsequent turns with `--resume`.
+        self._last_session_id: str | None = None
         # Story 5.2 code-review 3-angle HIGH-D fix 2026-05-20 (Blind H4 +
         # Edge-cases H3 + H4): pre-edit `_detect_external_configs` read
         # `~/.claude.json` + `./.mcp.json` unconditionally → false-positive
@@ -271,6 +275,68 @@ class ClaudeCodeCLIAdapter(SubprocessAdapter):
             return result
         finally:
             self._current_observer = None
+
+    def run_turn(
+        self,
+        prompt: str,
+        *,
+        conversation_state: Any,
+        tools: list[str] | None = None,
+        mcp_servers: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AgentRunResult:
+        """Thread one conversation turn, natively via `--resume` when a session id exists.
+
+        add-multi-turn-conversation-testing design D4. Turn 1 runs normally and
+        captures the stream-json session id (from the `system`/init event) into
+        ``conversation_state.session_ref``; subsequent turns spawn with
+        ``--resume <session_id>`` (``continuation="native_session"``).
+
+        Honest degradation: if the session id was never captured (the pinned
+        binary's `-p` mode did not surface one — the empirical-probe risk noted
+        in the design), turn 2+ falls back to composing a delimited history
+        preamble into an ordinary `run()` and sets
+        ``conversation_state.continuation = "replayed_history"`` — the honesty
+        field means the transcript shows the TRUE mode rather than lying about a
+        native session that isn't there.
+        """
+        prior = tuple(getattr(conversation_state, "prior_turns", ()))
+        first_agent = not any(t.role == "agent" for t in prior)
+        session_ref = getattr(conversation_state, "session_ref", None)
+
+        if not first_agent and session_ref:
+            result = self.run(
+                prompt,
+                tools=tools,
+                mcp_servers=mcp_servers,
+                _resume_session_id=session_ref,
+                **kwargs,
+            )
+            conversation_state.session_ref = self._last_session_id or session_ref
+            conversation_state.continuation = "native_session"
+            return result
+
+        if not first_agent and not session_ref:
+            # Session was never captured on turn 1 — degrade honestly to replay.
+            from AgentEval.conversation._renderer import render_replay_prompt
+
+            result = self.run(
+                render_replay_prompt(prior, prompt),
+                tools=tools,
+                mcp_servers=mcp_servers,
+                **kwargs,
+            )
+            conversation_state.continuation = "replayed_history"
+            return result
+
+        # First agent turn: normal run + capture the session id for resume.
+        result = self.run(prompt, tools=tools, mcp_servers=mcp_servers, **kwargs)
+        if self._last_session_id:
+            conversation_state.session_ref = self._last_session_id
+            conversation_state.continuation = "native_session"
+        else:
+            conversation_state.continuation = "replayed_history"
+        return result
 
     def _detect_external_configs(self, mcp_servers: dict[str, Any] | None) -> None:
         """Detect external MCP configs + signal observer per ADR-016 D4.
@@ -375,16 +441,25 @@ class ClaudeCodeCLIAdapter(SubprocessAdapter):
         # Phase-1: forward `tools` / `mcp_servers` as kwargs the base
         # passes in but don't act on them at this layer; Story 4.3
         # adds the temp `.mcp.json` generation step before `_spawn`.
-        _ = kwargs
+        # add-multi-turn-conversation-testing D4: `_resume_session_id` (set by
+        # `run_turn` for turn 2+) spawns `--resume <sid>` so the CLI continues
+        # its native session.
+        resume_session_id = kwargs.get("_resume_session_id")
 
         cmd = [
             CLAUDE_BINARY,
             "--output-format=stream-json",
             "--verbose",
             "--print",
-            "--",  # end-of-options sentinel so prompts starting with `-` aren't parsed as flags
-            prompt,
         ]
+        if resume_session_id:
+            cmd.extend(["--resume", str(resume_session_id)])
+        cmd.extend(
+            [
+                "--",  # end-of-options sentinel so prompts starting with `-` aren't parsed as flags
+                prompt,
+            ]
+        )
         return subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -414,6 +489,19 @@ class ClaudeCodeCLIAdapter(SubprocessAdapter):
 
     def _finalize(self, events: list[ClaudeCodeEvent], exit_code: int) -> AgentRunResult:
         """Fold the event stream into an `AgentRunResult`."""
+        # add-multi-turn-conversation-testing D4: capture the stream-json
+        # session id (carried on the `system`/init event, propagated on every
+        # event) so `run_turn` can `--resume` subsequent turns. Empirical-probe
+        # gated: the exact resume flag behavior is verified against the pinned
+        # 2.x binary via `tests/integration/test_claude_code_cli_multiturn_live.py`
+        # (per `feedback_listener_hook_api_surface_empirical_check`); the fixture
+        # captures the init-event schema for the unit tests.
+        for ev in events:
+            sid = ev.raw.get("session_id")
+            if sid:
+                self._last_session_id = str(sid)
+                break
+
         terminal = next((e for e in reversed(events) if e.is_terminal), None)
 
         # Response text: prefer the terminal `result.result` field if
