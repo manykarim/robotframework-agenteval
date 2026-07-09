@@ -217,6 +217,10 @@ def test_keyword_names_use_snake_case_method_names() -> None:
         "exit",
         "output",
         "command",
+        # add-subagent-delegation-testing — `Subagent.Tools Should Be Subset Of`
+        # uses the tools-noun-as-subject spelling (load-bearing keyword name;
+        # kept in sync with the unit-level `_VERB_ALLOWLIST`).
+        "tools",
     }
     violations: list[str] = []
     for cls in _all_library_classes():

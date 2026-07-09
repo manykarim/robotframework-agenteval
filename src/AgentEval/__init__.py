@@ -378,8 +378,10 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
                     )
                 )
             else:
-                # No constructor kwargs — e.g. SubagentsLibrary, HooksLibrary,
-                # TelemetryLibrary, HeatmapLibrary.
+                # No constructor kwargs — e.g. HooksLibrary, TelemetryLibrary,
+                # HeatmapLibrary. (SubagentsLibrary now subclasses
+                # `_HostBudgetPlumbing` per add-subagent-delegation-testing and
+                # is handled by the mixin branch above.)
                 components.append(cls())
 
         # Collision detector — raise loudly on duplicate keyword names

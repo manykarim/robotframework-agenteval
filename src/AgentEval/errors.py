@@ -126,6 +126,10 @@ __all__ = [
     "JudgeOutputParseError",
     "SkillDidNotActivateError",
     "InvalidSkillDiscoverabilityTasksError",
+    # add-subagent-delegation-testing (3):
+    "SubagentDelegationAssertionError",
+    "SubagentConfigDriftError",
+    "InvalidSubagentRoutingTasksError",
     # Warnings (1):
     "DegradedTraceWarning",
 ]
@@ -917,6 +921,140 @@ class SkillDidNotActivateError(AgentEvalIntegrityError):
             f"  Reasoning: {reasoning_preview}\n"
             f"  Fix: {self.fix_suggestion or 'N/A'}"
         )
+
+
+class SubagentDelegationAssertionError(AgentEvalIntegrityError):
+    """Raised when a delegation-routing assertion fails (add-subagent-delegation-testing).
+
+    Shared by the three delegation assertions
+    (`Subagent.Should Have Delegated To`, `Subagent.Should Not Have Delegated`,
+    `Subagent.Should Delegate To`). Mirrors `SkillDidNotActivateError`'s
+    diagnostic shape so operators can diagnose whether the orchestrator
+    routed to the wrong subagent, to none at all, or to an unexpected one.
+
+    Structured attrs:
+        - `prompt` — the prompt that produced the run, or `None` for the
+          Tier-1 assertions that operate on a pre-existing `AgentRunResult`.
+        - `expected_subagent` — the subagent the assertion expected (or did
+          NOT expect, for the absence assertion); `None` when the absence
+          assertion targeted ANY delegation.
+        - `observed_delegations` — list of subagent identities extracted from
+          the run's tool-call trace (empty list when none occurred).
+        - `reasoning` — the run's `response_text` (Tier-2 probe only), truncated
+          in `__str__`; raw value available via the attribute.
+        - `fix_suggestion` — operator-facing remediation hint.
+
+    `error_code = "SUBAGENT_DELEGATION_ASSERTION"`.
+    """
+
+    error_code: ClassVar[str] = "SUBAGENT_DELEGATION_ASSERTION"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        prompt: str | None = None,
+        expected_subagent: str | None = None,
+        observed_delegations: list[str] | None = None,
+        reasoning: str | None = None,
+        fix_suggestion: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.prompt: str | None = prompt
+        self.expected_subagent: str | None = expected_subagent
+        self.observed_delegations: list[str] = list(observed_delegations or [])
+        self.reasoning: str | None = reasoning
+        self.fix_suggestion: str = fix_suggestion
+
+    def __str__(self) -> str:
+        message = Exception.__str__(self)
+        if self.observed_delegations:
+            # Degraded (unrecognized-shape) identities are retained as "" so the
+            # non-match stays visible; render them with a placeholder so the
+            # `Observed:` line never collapses to a blank/malformed string.
+            observed = ", ".join(d if d else "<unresolved>" for d in self.observed_delegations)
+        else:
+            observed = "none observed"
+        reasoning_preview = (
+            self.reasoning[:120] + "..." if self.reasoning and len(self.reasoning) > 120 else (self.reasoning or "N/A")
+        )
+        return (
+            f"{self.error_code}: {message}\n"
+            f"  Prompt: {self.prompt if self.prompt else 'N/A'}\n"
+            f"  Expected: {self.expected_subagent if self.expected_subagent else 'N/A'}\n"
+            f"  Observed: {observed}\n"
+            f"  Reasoning: {reasoning_preview}\n"
+            f"  Fix: {self.fix_suggestion or 'N/A'}"
+        )
+
+
+class SubagentConfigDriftError(AgentEvalIntegrityError):
+    """Raised when a subagent `.md` file drifts from an asserted config expectation.
+
+    Shared by both static config-drift checks (`Subagent.Should Declare Skills`,
+    `Subagent.Tools Should Be Subset Of`). Distinct from
+    `InvalidSubagentDefinitionError` because the file *parses fine* — it drifts
+    from the asserted expectation, which is a test failure, NOT an FR59 setup
+    failure (subagents do NOT inherit parent skills/tools, so an absent field
+    fails loud rather than vacuously passing).
+
+    Structured attrs:
+        - `file_path` — the subagent `.md` path under assertion.
+        - `offending` — list of the drifting items (missing skills, or tools
+          outside the allowlist, or an empty list when the whole field was
+          absent).
+        - `fix_suggestion` — operator-facing remediation hint.
+
+    `error_code = "SUBAGENT_CONFIG_DRIFT"`.
+    """
+
+    error_code: ClassVar[str] = "SUBAGENT_CONFIG_DRIFT"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        file_path: str | None = None,
+        offending: list[str] | None = None,
+        fix_suggestion: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.file_path: str | None = file_path
+        self.offending: list[str] = list(offending or [])
+        self.fix_suggestion: str = fix_suggestion
+
+    def __str__(self) -> str:
+        message = Exception.__str__(self)
+        offending = ", ".join(self.offending) if self.offending else "N/A"
+        return (
+            f"{self.error_code}: {message}\n"
+            f"  File: {self.file_path if self.file_path else 'N/A'}\n"
+            f"  Offending: {offending}\n"
+            f"  Fix: {self.fix_suggestion or 'N/A'}"
+        )
+
+
+class InvalidSubagentRoutingTasksError(_FR59Tier1SetupFailureError):
+    """Raised when a subagent routing-tasks YAML fails parse or schema validation.
+
+    add-subagent-delegation-testing Tier-1 setup-failure leaf (parallel to
+    `InvalidSkillDiscoverabilityTasksError`). Raised by
+    `subagents/_tasks.load_subagent_routing_tasks()` when:
+        - YAML file fails `yaml.safe_load()` (malformed YAML)
+        - Required top-level `tasks: list[Task]` missing OR empty
+        - Per-task `id`, `prompt`, or `expected_subagent` missing / wrong-type
+        - Duplicate `id` values across tasks
+        - File extension is not `.yaml` / `.yml` or file does not exist
+
+    `field_name` JSON Pointer convention (parallel to
+    `InvalidSkillDiscoverabilityTasksError`): RFC 6901 pointer into the
+    offending location, e.g., `/tasks/0/expected_subagent`. Root errors use
+    `""` per RFC 6901 §5.
+
+    `error_code = "INVALID_SUBAGENT_ROUTING_TASKS"`; exit code 65 (EX_DATAERR).
+    """
+
+    error_code: ClassVar[str] = "INVALID_SUBAGENT_ROUTING_TASKS"
 
 
 class InvalidJudgeRubricError(_FR59Tier1SetupFailureError):

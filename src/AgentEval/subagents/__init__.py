@@ -14,7 +14,27 @@
 
 """AgentEval.subagents sub-package.
 
-Subagent sub-library: frontmatter inspection per FR3.
+Subagent sub-library: frontmatter inspection per FR3, plus delegation-routing
+assertions + config-drift checks (add-subagent-delegation-testing change).
 
-Modules land in Epic 2 Story 2.2.
+Modules land in Epic 2 Story 2.2; delegation-routing surface added by the
+add-subagent-delegation-testing OpenSpec change.
 """
+
+from __future__ import annotations
+
+from AgentEval.subagents.types import (
+    DelegationDecision,
+    DelegationRecord,
+    SubagentRoutingResult,
+    SubagentRoutingSummary,
+    SubagentRoutingTaskResult,
+)
+
+__all__ = [
+    "DelegationRecord",
+    "DelegationDecision",
+    "SubagentRoutingTaskResult",
+    "SubagentRoutingSummary",
+    "SubagentRoutingResult",
+]

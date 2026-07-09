@@ -108,11 +108,11 @@ Exit codes from `python -m AgentEval.conformance` follow the sysexits-style 24-l
 
 ## Keywords at a glance
 
-**66 keywords across 11 libraries — one import.** A single `Library    AgentEval` line composes every shipped sub-library (skills, subagents, hooks, MCP, stats, judge, plus the core run-measure-assert loop) and exposes all 66 keywords with no `WITH NAME` incantation. **Naming rule:** keywords that operate on a specific artifact or engine — skills, subagents, hooks, MCP servers, statistics, LLM-judge — carry that namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`); the shared run-measure-assert loop (`Send Prompt`, `Get Tool Call Count`, `Trajectory Should Match`, `Get Effective Config`, …) is unprefixed. The tables below group the keywords by originating sub-library, but every one of them resolves under the single top-level import. Each sub-library remains importable standalone by module path (`Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0`) for per-library budget scoping — the baked prefixes make the call sites identical under both styles, so no `WITH NAME` is needed (and adding it produces a pointless double prefix like `Skill.Skill.Get Frontmatter`).
+**75 keywords across 11 libraries — one import.** A single `Library    AgentEval` line composes every shipped sub-library (skills, subagents, hooks, MCP, stats, judge, plus the core run-measure-assert loop) and exposes all 75 keywords with no `WITH NAME` incantation. **Naming rule:** keywords that operate on a specific artifact or engine — skills, subagents, hooks, MCP servers, statistics, LLM-judge — carry that namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`); the shared run-measure-assert loop (`Send Prompt`, `Get Tool Call Count`, `Trajectory Should Match`, `Get Effective Config`, …) is unprefixed. The tables below group the keywords by originating sub-library, but every one of them resolves under the single top-level import. Each sub-library remains importable standalone by module path (`Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0`) for per-library budget scoping — the baked prefixes make the call sites identical under both styles, so no `WITH NAME` is needed (and adding it produces a pointless double prefix like `Skill.Skill.Get Frontmatter`).
 
 ### `AgentEval` — core-loop keywords (45 of the 66)
 
-The composed `AgentEval` library holds all 66 keywords. The 45 below are the unprefixed run-measure-assert loop plus the `Stat.*`, `Judge.*`, and `Hook.*` keywords; the remaining 21 (`Skill.*`, `MCP.*`, `Subagent.Get Frontmatter`) are listed in the sub-library sections further down and resolve under the same single import.
+The composed `AgentEval` library holds all 75 keywords. The 45 below are the unprefixed run-measure-assert loop plus the `Stat.*`, `Judge.*`, and `Hook.*` keywords; the remaining 30 (`Skill.*`, `MCP.*`, `Subagent.*`) are listed in the sub-library sections further down and resolve under the same single import.
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html](https://manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html)** (GitHub Pages) · local: [`docs/keywords/AgentEval.html`](./docs/keywords/AgentEval.html)
 
@@ -231,11 +231,33 @@ Library    AgentEval.mcp.library.MCPLibrary    max_cost_usd=10.0
 | **MCP.Get Tool Discoverability** | 3 | Cohort probe of whether the agent + MCP combo discovers the expected tools across N trials |
 | **MCP.Compare Tool Discoverability** | 3 | Compare Tool Discoverability across ≥2 adapters with Mann-Whitney U significance |
 
-### `AgentEval.subagents.library.SubagentsLibrary` — 1 keyword
+### `AgentEval.subagents.library.SubagentsLibrary` — 10 keywords
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/SubagentsLibrary.html](https://manykarim.github.io/robotframework-agenteval/keywords/SubagentsLibrary.html)** (GitHub Pages) · local: [`docs/keywords/SubagentsLibrary.html`](./docs/keywords/SubagentsLibrary.html)
 
-`Subagent.Get Frontmatter` — parallel to `Skill.Get Frontmatter` for subagent `.md` files. Composed into the top-level `AgentEval` library; the former `Get Frontmatter` collision with `Skill.Get Frontmatter` was resolved by the namespace-prefix renames, so both resolve under a single `Library    AgentEval` import.
+Static inspection:
+
+- `Subagent.Get Frontmatter` — parse a subagent `.md`'s YAML frontmatter (parallel to `Skill.Get Frontmatter`; validates required `name`/`description` plus optional `tools`/`model`/`skills`).
+
+Delegation-routing assertions over an `AgentRunResult` (Tier-1 — deterministic, no agent calls; delegations are read from the already-captured `Task`-tool invocations in `result.tool_calls`):
+
+- `Subagent.Get Delegations` — extract the ordered list of orchestrator→subagent delegations.
+- `Subagent.Should Have Delegated To` — assert the run delegated to a named subagent.
+- `Subagent.Should Not Have Delegated` — assert no delegation (optionally to a specific subagent).
+- `Subagent.Get Routing Pass At K` — HumanEval Pass@k over routing-decision trials (hard-coded predicate; pairs with `Stat.Run N Times`).
+
+Routing probe + cohort (adapter-dependent):
+
+- `Subagent.Should Delegate To` (Tier-2) — run a prompt once and assert the chosen subagent.
+- `Subagent.Get Delegation Decision` (Tier-3) — return a routing decision (never raises on a miss).
+- `Subagent.Get Routing Accuracy` (Tier-3) — tasks-YAML cohort → per-task Pass@k + aggregate routing accuracy.
+
+Config-drift static checks (subagents do **not** inherit parent skills/tools, so absent declarations fail loud):
+
+- `Subagent.Should Declare Skills` — assert explicit `skills:` preloading in the frontmatter.
+- `Subagent.Tools Should Be Subset Of` — assert the declared `tools:` are within an allowlist.
+
+All composed into the top-level `AgentEval` library; every keyword resolves under a single `Library    AgentEval` import.
 
 ### `AgentEval.hooks.library.HooksLibrary` — 1 keyword
 

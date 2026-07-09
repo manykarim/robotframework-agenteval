@@ -83,6 +83,12 @@ _VERB_ALLOWLIST: frozenset[str] = frozenset(
         "exit",
         "output",
         "command",
+        # add-subagent-delegation-testing — `Subagent.Tools Should Be Subset Of`
+        # uses the tools-noun-as-subject spelling (parallel to the budget /
+        # hook assertion nouns above). The name is load-bearing (the config
+        # asserts the subagent's `tools:` allowlist) and can't be coerced into
+        # a generic verb without breaking the promised keyword name.
+        "tools",
     }
 )
 

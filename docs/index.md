@@ -6,17 +6,17 @@ This site hosts the project's keyword reference + architectural decision records
 
 ## Keyword reference (libdoc)
 
-11 libraries · 66 keywords total, all reachable through a single `Library    AgentEval` import. Regenerated per release via `python -m robot.libdoc`.
+11 libraries · 75 keywords total, all reachable through a single `Library    AgentEval` import. Regenerated per release via `python -m robot.libdoc`.
 
-Since the `compose-single-library-import` change, every shipped sub-library is composed into the top-level `AgentEval` library via `_SUB_LIBRARIES`, so all 66 keywords are callable after one `Library    AgentEval` line — no `WITH NAME` needed. Each sub-library is still importable standalone (by module path) for per-library budget scoping; the baked namespace prefixes (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`) make the call sites identical under both import styles.
+Since the `compose-single-library-import` change, every shipped sub-library is composed into the top-level `AgentEval` library via `_SUB_LIBRARIES`, so all 75 keywords are callable after one `Library    AgentEval` line — no `WITH NAME` needed. Each sub-library is still importable standalone (by module path) for per-library budget scoping; the baked namespace prefixes (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`) make the call sites identical under both import styles.
 
 | Library | Keywords | Reference |
 | --- | --- | --- |
-| `AgentEval` (composed top-level — all 66 keywords) | 66 | [`AgentEval.html`](./keywords/AgentEval.html) |
+| `AgentEval` (composed top-level — all 75 keywords) | 75 | [`AgentEval.html`](./keywords/AgentEval.html) |
 | `AgentEval.skills.library.SkillsLibrary` — `Skill.*` skill `.md` static + activation + discoverability | 10 | [`SkillsLibrary.html`](./keywords/SkillsLibrary.html) |
 | `AgentEval.mcp.library.MCPLibrary` — `MCP.*` server lifecycle + tool inspection | 10 | [`MCPLibrary.html`](./keywords/MCPLibrary.html) |
 | `AgentEval.judge.library.JudgeLibrary` — `Judge.*` LLM-judge scoring + rubric calibration | 2 | [`JudgeLibrary.html`](./keywords/JudgeLibrary.html) |
-| `AgentEval.subagents.library.SubagentsLibrary` — `Subagent.Get Frontmatter` static | 1 | [`SubagentsLibrary.html`](./keywords/SubagentsLibrary.html) |
+| `AgentEval.subagents.library.SubagentsLibrary` — `Subagent.*` frontmatter static + delegation-routing + config-drift | 10 | [`SubagentsLibrary.html`](./keywords/SubagentsLibrary.html) |
 | `AgentEval.hooks.library.HooksLibrary` — `Hook.*` config parse + synthetic-event execution + matcher simulation | 8 | [`HooksLibrary.html`](./keywords/HooksLibrary.html) |
 
 The 66-keyword total is the composed `AgentEval` surface; the per-sub-library rows show the same keywords available standalone (the counts overlap because the sub-libraries are composed into `AgentEval`, not additive to it).

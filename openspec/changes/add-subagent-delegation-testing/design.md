@@ -220,8 +220,27 @@ names.
   order in Decision 1 is written to be satisfiable under the observed shapes
   and MUST be re-verified against a captured real trace before the Tier-2
   keyword is finalized).
+  - **RESOLVED (task 1.1, implementation-time probe):** the `claude_code_cli`
+    adapter normalizes every Claude Code `tool_use` content block into a
+    `ToolCallTrace(name=block["name"], args=block["input"])` verbatim
+    (`src/AgentEval/coding_agent/claude_code_cli.py:459-468`). A Claude Code
+    `Task` delegation therefore surfaces as
+    `ToolCallTrace(name="Task", args={"subagent_type": <name>, "description":
+    ..., "prompt": ...})`. Decision 1's default tool-name set (`{"Task"}`,
+    case-insensitive) and identity-probe order (`subagent_type` first) match
+    the real trace shape verbatim — **no probe-order adjustment required.**
+    The `prompt` + `description` keys are also read into `DelegationRecord`.
 - Whether `Subagent.Get Routing Accuracy` should also surface Wilson CIs in
   its summary (the skills cohort does via the shared summary builder) — decide
   at implementation by whichever keeps the reuse of
   `skills/_internal`-style helpers cleanest; the spec requires
   `routing_accuracy` + per-task Pass@k as the floor.
+  - **RESOLVED (implementation):** Wilson CIs are NOT surfaced in Phase-1. The
+    routing cohort computes its own aggregate (`routing_accuracy` = fraction of
+    all trials that routed to the expected subagent) + per-task `pass_at_k`
+    directly, rather than reusing the skills summary builder (whose
+    `activation_accuracy` / `false_activation_rate` / `missed_activation_rate`
+    fields are skill-shaped and would couple the two schemas — the same
+    argument Decision 7 makes for a separate tasks loader). The spec floor
+    (`routing_accuracy` + per-task Pass@k) is met; Wilson CIs are a clean
+    Phase-2 addition behind the same keyword surface.
