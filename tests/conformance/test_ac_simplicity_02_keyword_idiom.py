@@ -209,6 +209,14 @@ def test_keyword_names_use_snake_case_method_names() -> None:
         "cost",
         "latency",
         "token",
+        # add-hooks-execution-testing — hook-execution + simulation keywords
+        # (`fire` verb + `decision`/`exit`/`output`/`command` noun-as-subject,
+        # kept in sync with the unit-level `_VERB_ALLOWLIST`).
+        "fire",
+        "decision",
+        "exit",
+        "output",
+        "command",
     }
     violations: list[str] = []
     for cls in _all_library_classes():

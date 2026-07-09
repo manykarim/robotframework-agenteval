@@ -110,6 +110,7 @@ __all__ = [
     "InvalidSkillFrontmatterError",
     "InvalidSubagentDefinitionError",
     "InvalidHookConfigError",
+    "HookExecutionError",
     "InvalidMCPServerConfigError",
     "InvalidMCPToolSchemaError",
     "InvalidScenarioYAMLError",
@@ -392,6 +393,37 @@ class InvalidHookConfigError(_FR59Tier1SetupFailureError):
     """
 
     error_code: ClassVar[str] = "INVALID_HOOK_CONFIG"
+
+
+class HookExecutionError(_FR59Tier1SetupFailureError):
+    """Raised by the hook-execution keywords on a zero-match fire or keyword misuse.
+
+    Added by the OpenSpec change `add-hooks-execution-testing` (design
+    Decision 8 — minimal error-surface growth: exactly ONE new error class).
+    Raised by `src/AgentEval/hooks/_runner.py` + `HooksLibrary` when:
+        - `Fire Hook Event` matches ZERO configured hooks for the given
+          event/subject (returning an empty report would let
+          `Hook.Decision Should Be` silently never run — a fake-green;
+          the `fix_suggestion` points at `Hook.Get Hooks For Event`).
+        - A parsed-config object of the wrong shape is passed to an
+          execution/simulation keyword.
+
+    Config-SHAPE failures (malformed `settings.json`) keep raising
+    `InvalidHookConfigError` — this leaf covers execution-time misuse only.
+    Per-hook execution failures (missing binary, timeout) are RECORDED on
+    the per-hook result record (`status="spawn_failed" | "timed_out"`),
+    NOT raised — so a multi-hook event reports every hook. Assertion
+    keywords fail via standard RF assertion failures, not this class.
+
+    Inherits the FR59 4-line `__str__` shape + structured attrs
+    (`file_path` / `line_number` / `field_name` / `fix_suggestion`)
+    from `_FR59Tier1SetupFailureError`.
+
+    `error_code = "HOOK_EXECUTION"`; exit code 65 (EX_DATAERR; same
+    Tier-1 setup-failure family).
+    """
+
+    error_code: ClassVar[str] = "HOOK_EXECUTION"
 
 
 class InvalidMCPServerConfigError(_FR59Tier1SetupFailureError):

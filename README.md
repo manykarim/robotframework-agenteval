@@ -108,11 +108,11 @@ Exit codes from `python -m AgentEval.conformance` follow the sysexits-style 24-l
 
 ## Keywords at a glance
 
-**59 keywords across 11 libraries — one import.** A single `Library    AgentEval` line composes every shipped sub-library (skills, subagents, hooks, MCP, stats, judge, plus the core run-measure-assert loop) and exposes all 59 keywords with no `WITH NAME` incantation. **Naming rule:** keywords that operate on a specific artifact or engine — skills, subagents, hooks, MCP servers, statistics, LLM-judge — carry that namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`); the shared run-measure-assert loop (`Send Prompt`, `Get Tool Call Count`, `Trajectory Should Match`, `Get Effective Config`, …) is unprefixed. The tables below group the keywords by originating sub-library, but every one of them resolves under the single top-level import. Each sub-library remains importable standalone by module path (`Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0`) for per-library budget scoping — the baked prefixes make the call sites identical under both styles, so no `WITH NAME` is needed (and adding it produces a pointless double prefix like `Skill.Skill.Get Frontmatter`).
+**66 keywords across 11 libraries — one import.** A single `Library    AgentEval` line composes every shipped sub-library (skills, subagents, hooks, MCP, stats, judge, plus the core run-measure-assert loop) and exposes all 66 keywords with no `WITH NAME` incantation. **Naming rule:** keywords that operate on a specific artifact or engine — skills, subagents, hooks, MCP servers, statistics, LLM-judge — carry that namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`); the shared run-measure-assert loop (`Send Prompt`, `Get Tool Call Count`, `Trajectory Should Match`, `Get Effective Config`, …) is unprefixed. The tables below group the keywords by originating sub-library, but every one of them resolves under the single top-level import. Each sub-library remains importable standalone by module path (`Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0`) for per-library budget scoping — the baked prefixes make the call sites identical under both styles, so no `WITH NAME` is needed (and adding it produces a pointless double prefix like `Skill.Skill.Get Frontmatter`).
 
-### `AgentEval` — core-loop keywords (38 of the 59)
+### `AgentEval` — core-loop keywords (45 of the 66)
 
-The composed `AgentEval` library holds all 59 keywords. The 38 below are the unprefixed run-measure-assert loop plus the `Stat.*`, `Judge.*`, and `Hook.Get Config` keywords; the remaining 21 (`Skill.*`, `MCP.*`, `Subagent.Get Frontmatter`) are listed in the sub-library sections further down and resolve under the same single import.
+The composed `AgentEval` library holds all 66 keywords. The 45 below are the unprefixed run-measure-assert loop plus the `Stat.*`, `Judge.*`, and `Hook.*` keywords; the remaining 21 (`Skill.*`, `MCP.*`, `Subagent.Get Frontmatter`) are listed in the sub-library sections further down and resolve under the same single import.
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html](https://manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html)** (GitHub Pages) · local: [`docs/keywords/AgentEval.html`](./docs/keywords/AgentEval.html)
 
@@ -157,6 +157,13 @@ Library    AgentEval
 | **Get Last Warnings** | 1 | Warnings emitted during the run |
 | **Get Cohort Heatmap** | 1 | Pass@k cohort heatmap (ASCII + dict) |
 | **Hook.Get Config** | 1 | Parse a Claude Code `settings.json` hook configuration |
+| **Hook.Fire Hook Event** | 1 | Fire a synthetic hook event — execute matching command hooks + capture exit/stdout/decision (executes local scripts) |
+| **Hook.Decision Should Be** | 1 | Assert a fired hook's normalized block/allow/ask/none decision (`deny` = `block`) |
+| **Hook.Exit Code Should Be** | 1 | Assert a fired hook's raw subprocess exit code |
+| **Hook.Output Field Should Be** | 1 | Assert a dotted field in a fired hook's parsed stdout JSON |
+| **Hook.Get Hooks For Event** | 1 | Static "which hooks would fire for tool X?" simulation — no execution |
+| **Hook.Validate Matcher Syntax** | 1 | Validate a matcher compiles (Python `re`), optionally test a subject |
+| **Hook.Command Should Exist** | 1 | Assert each hook command's first token resolves to an executable on disk |
 | **Get Effective Config** | 1 | Resolved config dict, or single `ConfigValue(value, source)` via `setting=<key>` |
 | **Judge.Get Score** | 2 | LLM-judge scoring of an `AgentRunResult` against a Markdown rubric |
 | **Judge.Calibrate Rubric** | 2 | Run the judge against a YAML calibration set; compute Cohen's kappa + threshold-tuning + bias diagnostics (κ ≥ 0.7 hard-fail) |

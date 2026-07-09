@@ -71,6 +71,18 @@ _VERB_ALLOWLIST: frozenset[str] = frozenset(
         "cost",
         "latency",
         "token",
+        # add-hooks-execution-testing — hook-execution + simulation keywords.
+        # `fire` is a genuine verb (`Hook.Fire Hook Event`); `decision` /
+        # `exit` / `output` / `command` are the noun-as-subject spelling of
+        # the assertion + resolution keywords (`Hook.Decision Should Be`,
+        # `Hook.Exit Code Should Be`, `Hook.Output Field Should Be`,
+        # `Hook.Command Should Exist`) — same load-bearing-name posture as the
+        # budget-assertion nouns above.
+        "fire",
+        "decision",
+        "exit",
+        "output",
+        "command",
     }
 )
 

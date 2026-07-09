@@ -42,10 +42,12 @@ def _load_checker():
 
 def test_libdoc_derives_expected_count() -> None:
     checker = _load_checker()
-    # Composed `AgentEval` surface: 59 keywords after `add-budget-assertion-keywords`
-    # added the 4 Tier-1 budget assertions (`Cost/Latency/Latency P95/Token Usage
-    # Should Be Below`) to the 55-keyword post-`remove-dead-machinery` surface.
-    assert checker.derive_keyword_count() == 59
+    # Composed `AgentEval` surface: 66 keywords after `add-hooks-execution-testing`
+    # added the 7 Tier-1 hook keywords (`Hook.Fire Hook Event` + `Hook.Decision
+    # Should Be` + `Hook.Exit Code Should Be` + `Hook.Output Field Should Be` +
+    # `Hook.Get Hooks For Event` + `Hook.Validate Matcher Syntax` + `Hook.Command
+    # Should Exist`) to the 59-keyword post-`add-budget-assertion-keywords` surface.
+    assert checker.derive_keyword_count() == 66
 
 
 def test_readme_and_index_counts_match_libdoc() -> None:
