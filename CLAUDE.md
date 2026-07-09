@@ -132,6 +132,22 @@ are the canonical source.
 - **Test surface:** 1605 passed + 10 skipped at HEAD. `uv run pytest tests/`.
 - **Lint + types:** `uv run ruff check src/ tests/` + `uv run mypy src/`
   (scoped to src — tests/ lint-only).
+- **Full local gate (run ALL before committing — these mirror CI; three of
+  them are CI-only and previously slipped to PR time):**
+  ```bash
+  uv run ruff check src/ tests/
+  uv run ruff format --check src/ tests/          # CI-only gate (ci.yml)
+  uv run mypy src/
+  uv run python scripts/check-license-headers.py  # CI-only gate (ci.yml)
+  uv run python scripts/check-contract-sections.py # CI-only gate (docs-build.yml, NFR-MAINT-04)
+  uv run python scripts/check_doc_keyword_count.py # CI-only gate (docs-build.yml)
+  uv run python scripts/check-catalog-references.py --all-tracked
+  uv run pytest tests/
+  ```
+  The same set is wired into `.pre-commit-config.yaml` (`uv run pre-commit run
+  --all-files`), but `pre-commit install` is blocked when `core.hooksPath` is
+  set, so agent sessions must run the sequence explicitly rather than relying on
+  the git hook firing.
 - **Dogfood targets:** `rf-mcp` (vendored at `/home/many/workspace/rf-mcp/`) +
   `robotframework-agentskills`. Path-B live-LLM E2E now operational via
   minimax M2.7 (`tests/dogfood/rf-mcp/test_metrics_e2e_smoke.robot`).
