@@ -30,6 +30,19 @@ repos:
         types: [python]
         require_serial: true
 
+      # Whole-tree `ruff format --check` mirroring ci.yml exactly. The
+      # per-file `ruff-format` hook above auto-formats STAGED files; this gate
+      # additionally fails on ANY drift across `src/`+`tests/` (incl. unstaged
+      # pre-existing drift) so it can never slip through to CI (2026-07-09:
+      # these three CI-only gates previously only surfaced at PR time).
+      - id: ruff-format-check
+        name: ruff format --check (src/ tests/, whole tree)
+        entry: uv run ruff format --check src/ tests/
+        language: system
+        always_run: true
+        pass_filenames: false
+        require_serial: true
+
       - id: mypy
         name: mypy (src/)
         entry: uv run mypy src/
@@ -53,5 +66,26 @@ repos:
         # script reads `git diff --cached` itself and must see the WHOLE
         # staged set so it can extract DF-X.Y-SZ refs from any added line.
         # Filtering here would blind the gate — per Story 14.2 Opus LOW-2.
+        pass_filenames: false
+        require_serial: true
+
+      # NFR-MAINT-04: every docs/contracts/*.md carries the 4 required
+      # sections. Local mirror of the docs-build.yml CI step (added 2026-07-09
+      # so the gate runs before commit, not only at PR time).
+      - id: contract-sections
+        name: NFR-MAINT-04 contract-doc section presence
+        entry: uv run python scripts/check-contract-sections.py
+        language: system
+        always_run: true
+        pass_filenames: false
+        require_serial: true
+
+      # Documented keyword count in README + docs/index.md must match libdoc.
+      # Local mirror of the docs-build.yml count-drift CI step.
+      - id: doc-keyword-count
+        name: doc keyword-count drift check
+        entry: uv run python scripts/check_doc_keyword_count.py
+        language: system
+        always_run: true
         pass_filenames: false
         require_serial: true
