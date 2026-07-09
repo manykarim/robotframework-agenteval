@@ -50,7 +50,9 @@ def test_libdoc_derives_expected_count() -> None:
     # `Get Turn Count` on the metrics library) to reach 90; `add-red-team-probes`
     # then added the 4 `RedTeam.*` keywords (`Run Probe` / `Should Refuse` /
     # `Get Attack Success Rate` / `Attack Success Rate Should Be Below`) → 94.
-    assert checker.derive_keyword_count() == 94
+    # `add-skill-ab-benchmark` then added the 1 `Skill.Compare Against Baseline`
+    # keyword (two-arm A/B outcome benchmark) -> 95.
+    assert checker.derive_keyword_count() == 95
 
 
 def test_readme_and_index_counts_match_libdoc() -> None:

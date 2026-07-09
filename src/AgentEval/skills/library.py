@@ -96,6 +96,7 @@ from AgentEval.skills._internal import load_skill_discoverability_tasks
 from AgentEval.skills._parser import parse_frontmatter, validate_frontmatter_structure
 from AgentEval.skills.types import (
     ActivationDecision,
+    SkillBenchmarkComparisonResult,
     SkillDiscoverabilityComparisonResult,
     SkillDiscoverabilityComparisonSummary,
     SkillDiscoverabilityResult,
@@ -740,6 +741,182 @@ class SkillsLibrary(_HostBudgetPlumbing):
             cross_adapter_deltas=cross_adapter_deltas,
             heatmap=heatmap,
             summary=summary,
+        )
+
+    # --------------------------------------------------------------- #
+    # add-skill-ab-benchmark: two-arm A/B benchmark (skill-vs-no-skill #
+    # OR skill-v1-vs-v2). Reuses the Epic-13 stats primitives +        #
+    # Epic-12 judge machinery; blind grading + first-class             #
+    # skill-obsolescence verdict. Behind `[agenteval-advanced]`.       #
+    # --------------------------------------------------------------- #
+
+    @keyword(name="Skill.Compare Against Baseline")
+    @tier(3)
+    @guarded_fanout()
+    def compare_against_baseline(
+        self,
+        skill: str | Path = "",
+        tasks: str | Path = "",
+        baseline: str | Path = "none",
+        trials: int = 3,
+        adapter: str = "generic",
+        model: str | None = None,
+        seed: int = 42,
+        alpha: float = 0.05,
+        obsolescence_threshold: float = 0.9,
+        max_cost_usd: float = 20.00,
+        max_runtime_seconds: float | None = None,
+        judge_adapter: str = "generic",
+        judge_model: str | None = None,
+        polling: float | None = None,
+        **kwargs: Any,
+    ) -> SkillBenchmarkComparisonResult:
+        """Benchmarks whether a skill improves agent outcomes vs a baseline arm (add-skill-ab-benchmark).
+
+        [Tier 3 — Stochastic Fan-Out] — runs the SAME task cohort in two arms
+        (``candidate`` = the skill at ``skill=``; ``baseline`` = no-skill when
+        ``baseline=none``, else the other skill for v1-vs-v2) and returns a
+        frozen ``SkillBenchmarkComparisonResult`` with per-arm pass rate / token
+        usage / elapsed time / cost, cross-arm statistical significance
+        (Mann-Whitney U + Cliff's delta + seeded bootstrap CI, all reused from
+        ``AgentEval.stats``), a first-class skill-obsolescence ``verdict``, and
+        evidence-bearing per-trial records.
+
+        Requires the ``[agenteval-advanced]`` optional extra (scipy + numpy);
+        raises ``ImportError`` on invocation WITHOUT it — fail-fast BEFORE any
+        adapter fan-out (mirrors `Skill.Compare Discoverability`).
+
+        **HONESTY — skill delivery (design D2):** the with-skill arms receive
+        the skill's raw ``.md`` content (frontmatter + body) PREPENDED to the
+        task prompt in a delimited block. The result carries
+        ``skill_delivery="prompt_injected"`` — this is prompt-context injection,
+        NOT native skill installation (adapters expose no uniform install API in
+        Phase-1). The RELATIVE arm comparison is the supported claim; absolute
+        pass rates may differ from a natively-installed skill.
+
+        **HONESTY — blind grading (design D4):** for rubric-graded tasks the
+        composed judge prompt carries ONLY the rubric + task prompt +
+        ``response_text`` — no skill name, no arm label added by the harness. The
+        judge grading queue is seed-shuffled + interleaved across arms, and the
+        result records an auditable ``blinding`` map (mode + seed + grading
+        order). Candidate outputs may self-identify the skill; the harness adds
+        nothing arm-identifying, and that is what the contract covers.
+
+        | =Arguments= | =Description= |
+        | ``skill`` | Filesystem path to the candidate skill ``.md`` file. |
+        | ``tasks`` | Filesystem path to the benchmark tasks YAML (each task: ``prompt`` + one grading mode — ``expected_content`` list OR ``rubric`` path). |
+        | ``baseline`` | The literal string ``"none"`` (default; no-skill baseline arm) OR a path to another skill (v1-vs-v2 mode). |
+        | ``trials`` | Trials per task per arm. Defaults to ``3``. Must be ``>= 1``. |
+        | ``adapter`` | Adapter identifier for BOTH arms. Defaults to ``"generic"``. |
+        | ``model`` | Optional model override forwarded to the adapter ctor. |
+        | ``seed`` | Feeds BOTH the bootstrap resampler AND the blind-grading shuffle. Defaults to ``42``. |
+        | ``alpha`` | Significance level for the verdict + bootstrap CI. Must be in ``(0, 1)``. Defaults to ``0.05``. |
+        | ``obsolescence_threshold`` | Baseline pass-rate at/above which (with no significant candidate gain, ``baseline=none`` only) the verdict is ``skill_unnecessary``. Must be in ``[0, 1]``. Defaults to ``0.9``. |
+        | ``max_cost_usd`` | Budget cap across BOTH arms AND judge grading (design D8). Defaults to ``20.00``. Enforced via `@guarded_fanout()`. |
+        | ``max_runtime_seconds`` | Runtime cap. Phase-1: tracked, NOT enforced. |
+        | ``judge_adapter`` | Adapter used for rubric grading. Defaults to ``"generic"``. |
+        | ``judge_model`` | Optional model override for the judge adapter. |
+        | ``polling`` | Must NOT be provided — raises ``PollingDisallowedError`` per FR28. |
+        | ``**kwargs`` | Forwarded to the adapter constructor(s). |
+
+        Returns ``SkillBenchmarkComparisonResult`` with ``candidate`` +
+        ``baseline`` arm summaries, ``pass_rate_delta``, ``mann_whitney``,
+        ``cliffs_delta``, ``bootstrap_ci``, ``verdict`` (closed set:
+        ``skill_improves`` / ``skill_unnecessary`` / ``skill_regresses`` /
+        ``no_significant_difference``), ``skill_delivery``, ``blinding``,
+        ``evidence`` (one entry per trial per arm), ``heatmap``,
+        ``total_runtime_seconds``, ``total_cost_usd`` (+ ``judge_cost_usd``
+        broken out).
+
+        Raises ``ImportError`` when ``[agenteval-advanced]`` is missing.
+        Raises ``PollingDisallowedError`` when ``polling`` is provided (FR28).
+        Raises ``ValueError`` on missing ``skill`` / ``tasks``, ``trials < 1``,
+        ``alpha`` outside ``(0, 1)``, or ``obsolescence_threshold`` outside
+        ``[0, 1]`` — all BEFORE any adapter fan-out.
+        Raises ``InvalidSkillBenchmarkTasksError`` on a structurally invalid
+        tasks YAML.
+
+        Example:
+        | ${bench}=    `Skill.Compare Against Baseline`
+        | ...    skill=${CURDIR}/skills/web-search.md
+        | ...    tasks=${CURDIR}/benchmark/web-search-tasks.yaml
+        | ...    baseline=none    trials=5
+        | Should Be Equal    ${bench.verdict}    skill_improves
+        | Should Be True    ${bench.pass_rate_delta} > 0.0
+
+        Notes:
+        - Reuses ``AgentEval.stats.{mannwhitney,cliffs_delta,bootstrap}`` (Epic 13) + ``AgentEval.judge`` (Epic 12) unchanged.
+        - FR28 prohibits polling on Tier-3 fan-out keywords — fan out via this keyword's own ``trials`` argument instead.
+        - The post-dot keyword name is multi-word per ``feedback_libdoc_namespace_keyword_must_be_multiword``.
+        - Phase-2 carry-over DF-SAB-S1: ``workspace_installed`` native skill delivery (adapters lack a uniform install API in Phase-1).
+        - Sibling keywords: `Skill.Compare Discoverability` (trigger behavior across adapters); `Skill.Get Discoverability` (single-adapter activation cohort).
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        # Story 13.3 HIGH-A precedent: anchor the wall-clock at keyword entry —
+        # BEFORE validation, extras gate, and fan-out — so
+        # `total_runtime_seconds` is what the operator actually waited.
+        bench_t_start = time.perf_counter()
+
+        # Validation order (Task 4.2): polling ban → arg validation → extras
+        # gate → cohort load → fan-out.
+        if polling is not None:
+            raise PollingDisallowedError(
+                build_polling_disallowed_message(
+                    "Skill.Compare Against Baseline",
+                    {"skill": str(skill), "tasks": str(tasks), "baseline": str(baseline)},
+                )
+            )
+        if not skill:
+            raise ValueError("Skill.Compare Against Baseline requires `skill=<path>` kwarg")
+        if not tasks:
+            raise ValueError("Skill.Compare Against Baseline requires `tasks=<yaml-path>` kwarg")
+        if trials < 1:
+            raise ValueError(f"trials must be >= 1; got {trials}")
+        if not (0.0 < alpha < 1.0):
+            raise ValueError(f"alpha must be in (0.0, 1.0); got {alpha!r}")
+        if not (0.0 <= obsolescence_threshold <= 1.0):
+            raise ValueError(f"obsolescence_threshold must be in [0.0, 1.0]; got {obsolescence_threshold!r}")
+
+        # `[agenteval-advanced]` extras gate — fail-fast BEFORE fan-out. Read via
+        # module attr (Story 13.3 amendment) so a monkeypatch is observed even
+        # across pytest session-wide module reload.
+        from AgentEval.stats import library as _stats_lib
+
+        if not _stats_lib._ADVANCED_AVAILABLE:
+            raise ImportError(
+                "Skill.Compare Against Baseline: scipy + numpy required. "
+                "Install via: uv pip install robotframework-agenteval[agenteval-advanced]"
+            )
+
+        from AgentEval.skills._benchmark import load_skill_benchmark_tasks, run_skill_benchmark
+
+        # `baseline` is either the literal "none" or a path; normalize to str.
+        baseline_str = str(baseline)
+        benchmark_tasks = load_skill_benchmark_tasks(tasks)
+
+        # Bind the effective cost budget (codex HIGH). `@guarded_fanout()` reads
+        # only `self._max_cost_usd` and its cost meter is a Phase-1 0.0 stub, so
+        # the per-call `max_cost_usd=` argument was invisible and adapter+judge
+        # spend went uncapped. The per-call value wins (it is what the operator
+        # asked for at this call site); it falls back to the host instance attr
+        # when explicitly cleared to None. `run_skill_benchmark` performs the
+        # explicit cumulative accounting across BOTH arms AND judge grading.
+        effective_max_cost_usd = max_cost_usd if max_cost_usd is not None else self._max_cost_usd
+
+        return run_skill_benchmark(
+            skill=skill,
+            tasks=benchmark_tasks,
+            baseline=baseline_str,
+            trials=trials,
+            adapter=adapter,
+            model=model,
+            seed=seed,
+            alpha=alpha,
+            obsolescence_threshold=obsolescence_threshold,
+            judge_adapter=judge_adapter,
+            judge_model=judge_model,
+            extra_adapter_kwargs=dict(kwargs),
+            t_start=bench_t_start,
+            max_cost_usd=effective_max_cost_usd,
         )
 
     @keyword(name="Skill.Should Activate For")

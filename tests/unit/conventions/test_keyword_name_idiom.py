@@ -111,6 +111,13 @@ _VERB_ALLOWLIST: frozenset[str] = frozenset(
         # (the metric IS the attack success rate; garak/DeepTeam call it ASR)
         # and can't be coerced into a generic verb without breaking it.
         "attack",
+        # add-skill-ab-benchmark — `Skill.Compare Against Baseline` (method
+        # `compare_against_baseline`). `compare` is a genuine verb (the keyword
+        # compares a candidate arm against a baseline arm); the sibling
+        # `Skill.Compare Discoverability` reads the same but its method is
+        # `get_discoverability_comparison` so this is the first `compare`-prefixed
+        # method name to reach the allowlist.
+        "compare",
     }
 )
 

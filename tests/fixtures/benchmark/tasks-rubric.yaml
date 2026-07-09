@@ -1,0 +1,15 @@
+# Skill A/B benchmark tasks fixture — judge-graded via a shared rubric.
+# Uses the file-level `defaults.rubric` fallback so no task repeats it.
+
+defaults:
+  rubric: tests/fixtures/rubrics/skill-quality.md
+
+tasks:
+  - id: judge_task_a
+    prompt: "List the 3 largest files in /tmp with sizes."
+
+  - id: judge_task_b
+    prompt: "Open foo.py and explain its purpose."
+
+  - id: judge_task_c
+    prompt: "Deploy the service and report the resulting URL."

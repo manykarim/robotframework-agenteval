@@ -155,8 +155,50 @@ in its CI matrix (Mock provider for routine CI; a separate
 `weekly-cross-adapter-discoverability.yml` workflow runs against real APIs on a
 budget). Tracked as a Phase-1.5 carry-over.
 
+## Tier 4 — Does the skill actually earn its context window? (A/B benchmark)
+
+Discoverability answers *"does the agent trigger the skill?"* — but not *"does
+the skill make the output better?"* `Skill.Compare Against Baseline` runs your
+task cohort in two arms (candidate skill vs. a no-skill baseline, or v1 vs. v2)
+and reports per-arm pass rate / tokens / time plus cross-arm significance and a
+first-class **skill-obsolescence verdict**:
+
+```robotframework
+*** Settings ***
+Library    AgentEval
+
+*** Test Cases ***
+Web Search Skill Earns Its Context Window
+    ${bench}=    Skill.Compare Against Baseline
+    ...    skill=${CURDIR}/skills/web-search.md
+    ...    tasks=${CURDIR}/benchmark/web-search-tasks.yaml
+    ...    baseline=none
+    ...    trials=5
+    ...    max_cost_usd=20.00
+    # verdict is one of: skill_improves / skill_unnecessary /
+    # skill_regresses / no_significant_difference
+    Should Be Equal    ${bench.verdict}    skill_improves
+    Should Be True     ${bench.pass_rate_delta} > 0.0
+    Log    Candidate pass rate: ${bench.candidate.pass_rate} (${bench.candidate.total_tokens} tokens)
+    Log    Baseline  pass rate: ${bench.baseline.pass_rate} (${bench.baseline.total_tokens} tokens)
+```
+
+Each benchmark task carries a `prompt` plus exactly one grading mode —
+`expected_content: [<substr>, ...]` (deterministic) or `rubric: <path.md>`
+(LLM-judge graded, **blind**: the judge never sees which arm produced an
+output). Behind the `[agenteval-advanced]` extra (Mann-Whitney U + Cliff's
+delta + bootstrap CI, all reused from `AgentEval.stats`).
+
+**Honesty (design D2):** Phase-1 delivers the skill by **prompt-context
+injection** — the result carries `skill_delivery="prompt_injected"` to state
+plainly this is not native skill installation. When the no-skill baseline
+already passes at/above the obsolescence threshold with no significant candidate
+gain, the verdict is `skill_unnecessary` — the strongest possible
+remove-the-skill signal.
+
 ## See Also
 
+- `Skill.Compare Against Baseline` — two-arm A/B outcome benchmark (this recipe, Tier 4)
 - `Skill.Get Activation Decision` — single-prompt activation query
 - `Skill.Get Discoverability` + `Skill.Should Activate For`
 - `Stat.Run N Times` + `Stat.Get Pass At K`

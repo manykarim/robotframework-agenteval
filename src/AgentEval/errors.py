@@ -126,6 +126,7 @@ __all__ = [
     "JudgeOutputParseError",
     "SkillDidNotActivateError",
     "InvalidSkillDiscoverabilityTasksError",
+    "InvalidSkillBenchmarkTasksError",
     # add-subagent-delegation-testing (3):
     "SubagentDelegationAssertionError",
     "SubagentConfigDriftError",
@@ -858,6 +859,33 @@ class InvalidSkillDiscoverabilityTasksError(_FR59Tier1SetupFailureError):
     """
 
     error_code: ClassVar[str] = "INVALID_SKILL_DISCOVERABILITY_TASKS"
+
+
+class InvalidSkillBenchmarkTasksError(_FR59Tier1SetupFailureError):
+    """Raised when a skill A/B benchmark tasks YAML fails parse or schema validation.
+
+    add-skill-ab-benchmark Tier-1 setup-failure leaf (sibling of
+    `InvalidSkillDiscoverabilityTasksError`). Raised by
+    `skills/_benchmark.load_skill_benchmark_tasks()` when:
+        - File extension is not `.yaml` / `.yml` or the file does not exist
+        - YAML fails `yaml.safe_load()` (malformed YAML)
+        - Top-level value is not a mapping OR `tasks:` is missing / empty
+        - Per-task `id` or `prompt` missing / wrong-type
+        - A task declares BOTH grading modes (`expected_content` + `rubric`)
+        - A task declares NEITHER grading mode and the file has no
+          `defaults.rubric` fallback
+        - `expected_content` is not a non-empty list of strings
+        - Duplicate `id` values across tasks
+
+    `field_name` JSON Pointer convention (parallel to
+    `InvalidSkillDiscoverabilityTasksError`): RFC 6901 pointer into the
+    offending location, e.g., `/tasks/0/expected_content`. Root errors use
+    `""` per RFC 6901 §5.
+
+    `error_code = "INVALID_SKILL_BENCHMARK_TASKS"`; exit code 65 (EX_DATAERR).
+    """
+
+    error_code: ClassVar[str] = "INVALID_SKILL_BENCHMARK_TASKS"
 
 
 class SkillDidNotActivateError(AgentEvalIntegrityError):

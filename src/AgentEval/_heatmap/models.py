@@ -19,7 +19,7 @@ from __future__ import annotations
 import html
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -219,6 +219,47 @@ class CohortHeatmap:
             (task_result.task_id, adapter, task_result.pass_at_k)
             for adapter in result.adapters
             for task_result in result.per_adapter_results[adapter].per_task_results
+        )
+        return cls(tasks=tasks, models=models, cells=cells)
+
+    @classmethod
+    def from_skill_benchmark(
+        cls,
+        result: Any,
+    ) -> CohortHeatmap:
+        """Build a two-column heatmap from a skill A/B benchmark (add-skill-ab-benchmark / design D8).
+
+        Rows = task ids (in cohort order), columns = the two arms
+        (``candidate`` / ``baseline``), cells = per-task pass rate. Reads the
+        two ``SkillBenchmarkArmSummary`` objects off ``result.candidate`` /
+        ``result.baseline`` (a finalized ``SkillBenchmarkComparisonResult`` OR a
+        pre-construction shim exposing the same two attributes, mirroring the
+        ``from_skill_comparison`` shim pattern).
+
+        Row order is taken from ``result.task_order`` when present (the shim
+        provides it); otherwise it falls back to the candidate arm's per-task
+        mapping insertion order (both arms share the same task set).
+
+        Args:
+            result: A ``SkillBenchmarkComparisonResult`` or a shim exposing
+                ``candidate`` + ``baseline`` (+ optional ``task_order``).
+
+        Returns:
+            ``CohortHeatmap`` with 2 columns (candidate, baseline) + one row
+            per task.
+        """
+        candidate = result.candidate
+        baseline = result.baseline
+        task_order = getattr(result, "task_order", None)
+        if task_order is None:
+            task_order = tuple(candidate.per_task_pass_rates.keys())
+        tasks = tuple(task_order)
+        models = ("candidate", "baseline")
+        cells = tuple(
+            (task_id, arm_name, arm.per_task_pass_rates[task_id])
+            for arm_name, arm in (("candidate", candidate), ("baseline", baseline))
+            for task_id in tasks
+            if task_id in arm.per_task_pass_rates
         )
         return cls(tasks=tasks, models=models, cells=cells)
 

@@ -430,6 +430,10 @@ Added by Story 4.3 (Orchestration Keywords — Epic 4 Story 3). Pre-create-story
 - **DF-MTC-S2 (C106) — declarative `simulate_user:` block in scenario YAML.** Design D8 deliberately keeps simulation in `.robot` (budget + persona iteration visible). Phase-2: evaluate a per-eval `simulate_user: {persona, goal, max_turns, cache_key}` block only if budget visibility can be preserved. Effort: S. Phase-2.
 - **DF-MTC-S3 (C107) — scenario-level `require_native` for `turns:` evals.** The keyword surface has `Start Conversation require_native=True`; `turns:` YAML evals rely on the per-turn `continuation` honesty field instead. Phase-2: add eval/scenario-level `require_native: true` raising `ConversationContinuationUnsupportedError` before dispatch. Effort: S. Phase-2.
 
+## Deferred from: OpenSpec `add-skill-ab-benchmark` (2026-07-09)
+
+- **DF-SAB-S1 (C109) — `workspace_installed` native skill delivery for `Skill.Compare Against Baseline`.** Design D2: Phase-1 delivers the candidate/baseline skill via PROMPT-CONTEXT INJECTION (raw `.md` content prepended in a delimited block); the result carries the runtime-validated `skill_delivery="prompt_injected"` honesty field to state plainly this is NOT native skill installation. Adapters expose no uniform skill-install API in Phase-1, so a 6-adapter matrix of filesystem conventions was deferred behind the honesty field. Phase-2: add a `"workspace_installed"` delivery mode that writes the skill into each adapter's native skills directory (Claude Code `.claude/skills/` is known; codex/copilot/opencode/openai-agents need empirical probes per `feedback_listener_hook_api_surface_empirical_check`), extend `BENCHMARK_SKILL_DELIVERY_MODES`, and only emit `"workspace_installed"` on verified native install. Effort: M. Phase-2.
+
 ---
 
 *Update this file as new deferred items emerge from future reviews.*

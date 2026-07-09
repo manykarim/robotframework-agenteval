@@ -108,11 +108,11 @@ Exit codes from `python -m AgentEval.conformance` follow the sysexits-style 24-l
 
 ## Keywords at a glance
 
-**94 keywords across 13 libraries — one import.** A single `Library    AgentEval` line composes every shipped sub-library (skills, subagents, hooks, MCP, stats, judge, red-team, plus the core run-measure-assert loop) and exposes all 94 keywords with no `WITH NAME` incantation. **Naming rule:** keywords that operate on a specific artifact or engine — skills, subagents, hooks, MCP servers, statistics, LLM-judge, red-team probes — carry that namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.` / `RedTeam.`); the shared run-measure-assert loop (`Send Prompt`, `Get Tool Call Count`, `Trajectory Should Match`, `Get Effective Config`, …) is unprefixed. The tables below group the keywords by originating sub-library, but every one of them resolves under the single top-level import. Each sub-library remains importable standalone by module path (`Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0`) for per-library budget scoping — the baked prefixes make the call sites identical under both styles, so no `WITH NAME` is needed (and adding it produces a pointless double prefix like `Skill.Skill.Get Frontmatter`).
+**95 keywords across 13 libraries — one import.** A single `Library    AgentEval` line composes every shipped sub-library (skills, subagents, hooks, MCP, stats, judge, red-team, plus the core run-measure-assert loop) and exposes all 95 keywords with no `WITH NAME` incantation. **Naming rule:** keywords that operate on a specific artifact or engine — skills, subagents, hooks, MCP servers, statistics, LLM-judge, red-team probes — carry that namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.` / `RedTeam.`); the shared run-measure-assert loop (`Send Prompt`, `Get Tool Call Count`, `Trajectory Should Match`, `Get Effective Config`, …) is unprefixed. The tables below group the keywords by originating sub-library, but every one of them resolves under the single top-level import. Each sub-library remains importable standalone by module path (`Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0`) for per-library budget scoping — the baked prefixes make the call sites identical under both styles, so no `WITH NAME` is needed (and adding it produces a pointless double prefix like `Skill.Skill.Get Frontmatter`).
 
-### `AgentEval` — core-loop keywords (60 of the 94)
+### `AgentEval` — core-loop keywords (60 of the 95)
 
-The composed `AgentEval` library holds all 94 keywords. The 60 below are the unprefixed run-measure-assert loop plus the `Stat.*`, `Judge.*`, and `Hook.*` keywords; the remaining 34 (`Skill.*`, `MCP.*`, `Subagent.*`, `RedTeam.*`) are listed in the sub-library sections further down and resolve under the same single import.
+The composed `AgentEval` library holds all 95 keywords. The 60 below are the unprefixed run-measure-assert loop plus the `Stat.*`, `Judge.*`, and `Hook.*` keywords; the remaining 35 (`Skill.*`, `MCP.*`, `Subagent.*`, `RedTeam.*`) are listed in the sub-library sections further down and resolve under the same single import.
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html](https://manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html)** (GitHub Pages) · local: [`docs/keywords/AgentEval.html`](./docs/keywords/AgentEval.html)
 
@@ -207,7 +207,7 @@ Library    AgentEval.judge.library.JudgeLibrary    max_cost_usd=1.0
 
 Two-tier honesty (the project brand): `Judge.Score With Criteria` + the presets are the **one-line on-ramp** — they always return `calibrated=False` and a truthful `rubric_source`, and emit a documented WARN-once pointing at the graduation path. For CI gates, graduate to a **calibrated rubric** (κ ≥ 0.7 hard-fail) — see the [Judge calibration cookbook](./docs/recipes/judge-calibration.md). Presets ship **uncalibrated by default** (no bundled κ claims); calibrate them against your own labels via `Judge.Get Preset Rubric` → `Judge.Calibrate Rubric` with the [per-preset templates](./docs/examples/judge-presets/).
 
-### `AgentEval.skills.library.SkillsLibrary` — 10 keywords
+### `AgentEval.skills.library.SkillsLibrary` — 11 keywords
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/SkillsLibrary.html](https://manykarim.github.io/robotframework-agenteval/keywords/SkillsLibrary.html)** (GitHub Pages) · local: [`docs/keywords/SkillsLibrary.html`](./docs/keywords/SkillsLibrary.html)
 
@@ -229,6 +229,7 @@ Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0
 | **Skill.Get Discoverability** | 3 | Cohort discoverability — N trials × M tasks + per-task activation rates + aggregate summary |
 | **Skill.Get Activation Pass At K** | 1 | Pass@k activation rate for a skill from a discoverability result |
 | **Skill.Compare Discoverability** | 3 | Compare skill discoverability across ≥2 adapters with statistical significance |
+| **Skill.Compare Against Baseline** | 3 | A/B benchmark a skill vs a no-skill (or v1-vs-v2) baseline — per-arm pass rate/tokens/time + significance + blind grading + obsolescence verdict |
 
 ### `AgentEval.mcp.library.MCPLibrary` — 10 keywords
 

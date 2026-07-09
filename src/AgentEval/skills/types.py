@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from AgentEval._heatmap.models import CohortHeatmap
@@ -45,7 +45,38 @@ __all__ = [
     "SkillDiscoverabilityComparisonResult",
     "SkillPairwiseAdapterDelta",
     "SkillDiscoverabilityComparisonSummary",
+    # add-skill-ab-benchmark — two-arm A/B benchmark surface.
+    "SkillBenchmarkTrialEvidence",
+    "SkillBenchmarkArmSummary",
+    "SkillBenchmarkComparisonResult",
+    "BENCHMARK_ARMS",
+    "BENCHMARK_VERDICTS",
+    "BENCHMARK_SKILL_DELIVERY_MODES",
+    "BENCHMARK_GRADING_MODES",
 ]
+
+# --------------------------------------------------------------------------- #
+# add-skill-ab-benchmark — closed value spaces (runtime-validated honesty      #
+# fields, mirroring `AgentRunMetadata.mcp_coverage`'s closed-set discipline).  #
+# --------------------------------------------------------------------------- #
+
+#: The two fixed arms of a benchmark (design D1).
+BENCHMARK_ARMS: frozenset[str] = frozenset({"candidate", "baseline"})
+
+#: The closed verdict value space (design D6). `skill_unnecessary` is the
+#: first-class skill-obsolescence signal; only emitted in `baseline=none` mode.
+BENCHMARK_VERDICTS: frozenset[str] = frozenset(
+    {"skill_improves", "skill_unnecessary", "skill_regresses", "no_significant_difference"}
+)
+
+#: The closed skill-delivery honesty value space (design D2). Phase-1 emits
+#: ONLY `"prompt_injected"` — prompt-context injection, NOT native skill
+#: installation. Phase-2 `"workspace_installed"` is a deliberate future addition
+#: (adding a value we do not yet perform would be a dishonesty bug).
+BENCHMARK_SKILL_DELIVERY_MODES: frozenset[str] = frozenset({"prompt_injected"})
+
+#: The closed grading-mode value space (design D3).
+BENCHMARK_GRADING_MODES: frozenset[str] = frozenset({"expected_content", "judge"})
 
 
 @dataclass(frozen=True)
@@ -320,3 +351,173 @@ class SkillDiscoverabilityComparisonResult:
                 f"summary.activation_accuracy_per_adapter keys "
                 f"{sorted(self.summary.activation_accuracy_per_adapter.keys())!r}"
             )
+
+
+# --------------------------------------------------------------------------- #
+# add-skill-ab-benchmark — two-arm A/B benchmark result surface (design D7)    #
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class SkillBenchmarkTrialEvidence:
+    """One evidence-bearing trial record from `Skill.Compare Against Baseline`.
+
+    Every trial (per arm, per task, per trial index) produces exactly one of
+    these so a reviewer can trace each pass/fail verdict back to the trial
+    output, its grading mode, and (for judged trials) the judge's reasoning.
+
+    Fields:
+        task_id: The task's `id` field from the benchmark YAML.
+        arm: Which arm produced the output (`"candidate"` or `"baseline"`).
+        trial_index: 0-indexed trial number within this (arm, task) cell.
+        blinded_grading_id: Opaque seed-derived id (`"g-<hex>"`) — carries NO
+            arm/task information; the grader never sees the true coordinates.
+        passed: Whether this trial passed its grading.
+        grading_mode: `"expected_content"` (deterministic substring check) or
+            `"judge"` (LLM rubric grading).
+        judge_score: The judge's `numeric_score` (judge mode only; else None).
+        judge_reasoning: The judge's narrative reasoning (judge mode only).
+        response_excerpt: Truncated `response_text` with the project redaction
+            pass applied (credential scrubbing per `_kernel.redaction`).
+        input_tokens / output_tokens: Token usage from the trial's `AgentRunResult.usage`.
+        cost_usd: Adapter cost for this trial (judge cost is aggregated separately).
+        latency_seconds: Wall-clock seconds for the trial's adapter run.
+        error: When the trial's adapter (or judge) execution RAISED at runtime,
+            the string reason (`"<ExceptionType>: <message>"`); `None` for a
+            trial that executed cleanly. A failed trial is recorded as
+            non-passing (`passed=False`) evidence rather than aborting the whole
+            benchmark — every trial stays auditable (codex MED). Setup/config
+            errors (bad skill path, unresolvable adapter, invalid tasks file)
+            still fail loud BEFORE any trial runs.
+    """
+
+    task_id: str
+    arm: str
+    trial_index: int
+    blinded_grading_id: str
+    passed: bool
+    grading_mode: str
+    judge_score: float | None
+    judge_reasoning: str | None
+    response_excerpt: str
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    latency_seconds: float
+    error: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.arm not in BENCHMARK_ARMS:
+            raise ValueError(
+                f"SkillBenchmarkTrialEvidence.arm must be one of {sorted(BENCHMARK_ARMS)}; got {self.arm!r}"
+            )
+        if self.grading_mode not in BENCHMARK_GRADING_MODES:
+            raise ValueError(
+                f"SkillBenchmarkTrialEvidence.grading_mode must be one of "
+                f"{sorted(BENCHMARK_GRADING_MODES)}; got {self.grading_mode!r}"
+            )
+
+
+@dataclass(frozen=True)
+class SkillBenchmarkArmSummary:
+    """Per-arm outcome metrics for `Skill.Compare Against Baseline` (design D7).
+
+    Fields:
+        arm: `"candidate"` or `"baseline"`.
+        skill_path: Filesystem path of the skill delivered to this arm, or
+            `None` for the no-skill baseline (`baseline=none`).
+        pass_rate: Fraction of this arm's trials that passed (`[0.0, 1.0]`).
+        per_task_pass_rates: Mapping task_id → per-task pass rate (in task order).
+        total_tokens: Sum of input+output tokens across the arm's trials.
+        mean_tokens: `total_tokens / trials_run` (0.0 when no trials).
+        total_elapsed_seconds: Sum of the arm's trial `latency_seconds`.
+        total_cost_usd: Sum of the arm's trial adapter costs.
+        trials_run: Total adapter runs in this arm (`N tasks * trials`).
+    """
+
+    arm: str
+    skill_path: str | None
+    pass_rate: float
+    per_task_pass_rates: Mapping[str, float]
+    total_tokens: int
+    mean_tokens: float
+    total_elapsed_seconds: float
+    total_cost_usd: float
+    trials_run: int
+
+    def __post_init__(self) -> None:
+        if self.arm not in BENCHMARK_ARMS:
+            raise ValueError(
+                f"SkillBenchmarkArmSummary.arm must be one of {sorted(BENCHMARK_ARMS)}; got {self.arm!r}"
+            )
+        if not 0.0 <= self.pass_rate <= 1.0:
+            raise ValueError(f"SkillBenchmarkArmSummary.pass_rate must be in [0.0, 1.0]; got {self.pass_rate!r}")
+        # M_R6 defensive copy.
+        object.__setattr__(self, "per_task_pass_rates", dict(self.per_task_pass_rates))
+
+
+@dataclass(frozen=True)
+class SkillBenchmarkComparisonResult:
+    """Top-level result of `Skill.Compare Against Baseline` (design D7 / PRD-adjacent).
+
+    Frozen + `dataclasses.asdict()`-serializable. Carries per-arm metrics,
+    cross-arm statistical significance (Epic-13 primitives), the closed-set
+    obsolescence verdict, the `skill_delivery` honesty field, an auditable
+    blinding record, per-trial evidence, and the cohort heatmap.
+
+    Fields:
+        candidate / baseline: `SkillBenchmarkArmSummary` per arm.
+        pass_rate_delta: `candidate.pass_rate - baseline.pass_rate`.
+        mann_whitney: `MannWhitneyResult` over the two arms' per-task
+            pass-rate distributions (Epic-13 `compute_mann_whitney_u`).
+        cliffs_delta: Cliff's delta over the same samples.
+        bootstrap_ci: Seeded percentile bootstrap CI `(lo, hi)` on the
+            per-task pass-rate delta (candidate − baseline).
+        verdict: Closed set — see `BENCHMARK_VERDICTS`.
+        skill_delivery: Honesty field — Phase-1 always `"prompt_injected"`.
+        blinding: Auditable record `{"mode", "seed", "grading_order"}`.
+        evidence: One `SkillBenchmarkTrialEvidence` per trial per arm.
+        heatmap: `CohortHeatmap` (rows = tasks, columns = the two arms).
+        total_runtime_seconds: Wall-clock anchored at keyword entry.
+        total_cost_usd: Adapter + judge cost combined.
+        judge_cost_usd: Judge-only cost, broken out of `total_cost_usd`.
+    """
+
+    candidate: SkillBenchmarkArmSummary
+    baseline: SkillBenchmarkArmSummary
+    pass_rate_delta: float
+    mann_whitney: MannWhitneyResult
+    cliffs_delta: float
+    bootstrap_ci: tuple[float, float]
+    verdict: str
+    skill_delivery: str
+    blinding: Mapping[str, Any]
+    evidence: tuple[SkillBenchmarkTrialEvidence, ...]
+    heatmap: CohortHeatmap
+    total_runtime_seconds: float
+    total_cost_usd: float
+    judge_cost_usd: float
+
+    def __post_init__(self) -> None:
+        if self.verdict not in BENCHMARK_VERDICTS:
+            raise ValueError(
+                f"SkillBenchmarkComparisonResult.verdict must be one of "
+                f"{sorted(BENCHMARK_VERDICTS)}; got {self.verdict!r}"
+            )
+        if self.skill_delivery not in BENCHMARK_SKILL_DELIVERY_MODES:
+            raise ValueError(
+                f"SkillBenchmarkComparisonResult.skill_delivery must be one of "
+                f"{sorted(BENCHMARK_SKILL_DELIVERY_MODES)}; got {self.skill_delivery!r}"
+            )
+        lo, hi = self.bootstrap_ci
+        if lo > hi:
+            raise ValueError(
+                f"SkillBenchmarkComparisonResult.bootstrap_ci must have lo <= hi; got {self.bootstrap_ci!r}"
+            )
+        if self.candidate.arm != "candidate":
+            raise ValueError(f"candidate arm summary must have arm='candidate'; got {self.candidate.arm!r}")
+        if self.baseline.arm != "baseline":
+            raise ValueError(f"baseline arm summary must have arm='baseline'; got {self.baseline.arm!r}")
+        # Defensive copies (M_R6): freeze the blinding mapping + evidence tuple.
+        object.__setattr__(self, "blinding", dict(self.blinding))
+        object.__setattr__(self, "evidence", tuple(self.evidence))

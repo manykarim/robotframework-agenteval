@@ -239,6 +239,10 @@ def test_keyword_names_use_snake_case_method_names() -> None:
         # conversation assertion nouns); kept in sync with the unit-level
         # `_VERB_ALLOWLIST`.
         "attack",
+        # add-skill-ab-benchmark — `Skill.Compare Against Baseline` (method
+        # `compare_against_baseline`); kept in sync with the unit-level
+        # `_VERB_ALLOWLIST`.
+        "compare",
     }
     violations: list[str] = []
     for cls in _all_library_classes():
