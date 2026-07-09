@@ -38,16 +38,25 @@ PRD a second time.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from AgentEval.types import ToolCallTrace
+
+if TYPE_CHECKING:
+    from AgentEval._heatmap.models import CohortHeatmap
+    from AgentEval.stats.types import MannWhitneyResult
 
 __all__ = [
     "DiscoverabilityTask",
     "TaskResult",
     "DiscoverabilitySummary",
     "DiscoverabilityResult",
+    # Story 13.3 (Epic 13) — cross-adapter comparison surface (FR10b).
+    "DiscoverabilityComparisonResult",
+    "PairwiseAdapterDelta",
+    "DiscoverabilityComparisonSummary",
 ]
 
 
@@ -144,3 +153,178 @@ class DiscoverabilityResult:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "per_task_results", list(self.per_task_results))
+
+
+# --------------------------------------------------------------------------- #
+# Story 13.3 (Epic 13) — cross-adapter comparison surface (FR10b)             #
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class PairwiseAdapterDelta:
+    """One pairwise cross-adapter delta within `DiscoverabilityComparisonResult` (Story 13.3).
+
+    Carries the Mann-Whitney U result + the per-task pass-rate
+    differential between two adapters. The cohort comparison ships
+    C(N, 2) pairwise deltas across N adapters; each delta is indexed by
+    the ordered key `f"{adapter_a}_vs_{adapter_b}"` in
+    `DiscoverabilityComparisonResult.cross_adapter_deltas`.
+
+    Fields:
+        adapter_a: First adapter name.
+        adapter_b: Second adapter name (must differ from `adapter_a`).
+        pass_rate_delta: ``mean(adapter_a per-task pass rates) - mean(adapter_b)``;
+            in ``[-1.0, 1.0]``. Positive → adapter_a outperforms adapter_b.
+        mann_whitney_result: Story 13.1 ``MannWhitneyResult`` (Mann-Whitney
+            U on the per-task pass rates with `predicate=lambda r: r.pass_rate`).
+        significant_at_alpha_05: ``mann_whitney_result.p_value < 0.05``;
+            redundant with the Mann-Whitney p-value but stored explicitly so
+            consumers can ``Should Be True ${delta.significant_at_alpha_05}``
+            without re-deriving.
+    """
+
+    adapter_a: str
+    adapter_b: str
+    pass_rate_delta: float
+    mann_whitney_result: MannWhitneyResult
+    significant_at_alpha_05: bool
+
+    def __post_init__(self) -> None:
+        if self.adapter_a == self.adapter_b:
+            raise ValueError(
+                f"PairwiseAdapterDelta requires distinct adapters; got "
+                f"adapter_a={self.adapter_a!r} == adapter_b={self.adapter_b!r}"
+            )
+        if not (-1.0 <= self.pass_rate_delta <= 1.0):
+            raise ValueError(f"pass_rate_delta must be in [-1.0, 1.0]; got {self.pass_rate_delta!r}")
+        # `nan < 0.05` evaluates to False, so significant_at_alpha_05 is
+        # False for nan p_values (identical-samples scipy convention) —
+        # consistent with "cannot reject the null."
+        import math
+
+        p = self.mann_whitney_result.p_value
+        expected = (not math.isnan(p)) and p < 0.05
+        if self.significant_at_alpha_05 != expected:
+            raise ValueError(
+                f"significant_at_alpha_05 must equal (p_value < 0.05; nan treated as not significant); "
+                f"got significant_at_alpha_05={self.significant_at_alpha_05!r} but "
+                f"p_value={self.mann_whitney_result.p_value!r}"
+            )
+
+
+@dataclass(frozen=True)
+class DiscoverabilityComparisonSummary:
+    """Aggregate roll-up of `DiscoverabilityComparisonResult` (Story 13.3).
+
+    Fields:
+        total_cost_usd: Sum of per-adapter `summary.total_cost_usd` across all adapters.
+        total_runtime_seconds: End-to-end wall-clock for the `Compare Tool
+            Discoverability` call (what the operator ACTUALLY waited for).
+            Phase-2 serial execution → `total_runtime_seconds ≈ sum(per-adapter
+            runtimes)`; Phase-2.5 parallel target → `total_runtime_seconds ≈
+            max(per-adapter runtimes)`. Per-adapter runtimes remain in
+            `per_adapter_results[adapter].summary.total_runtime_seconds`.
+            Story 13.3 code-review HIGH-A fix 2026-06-01 (Codex HIGH-1 + Opus
+            MED-2 2-way): pre-fix `max(per-adapter runtimes)` underreported
+            actual wait time by ~N-1× under serial execution.
+        pass_rate_per_adapter: Mapping of adapter name → overall pass rate
+            (i.e., `per_adapter_results[adapter].summary.overall_pass_rate`).
+        best_adapter: Adapter name with the highest pass rate.
+        worst_adapter: Adapter name with the lowest pass rate. Equals
+            `best_adapter` only when all adapters tie.
+    """
+
+    total_cost_usd: float
+    total_runtime_seconds: float
+    pass_rate_per_adapter: Mapping[str, float]
+    best_adapter: str
+    worst_adapter: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "pass_rate_per_adapter", dict(self.pass_rate_per_adapter))
+        if self.best_adapter not in self.pass_rate_per_adapter:
+            raise ValueError(
+                f"best_adapter={self.best_adapter!r} not in "
+                f"pass_rate_per_adapter keys {sorted(self.pass_rate_per_adapter.keys())!r}"
+            )
+        if self.worst_adapter not in self.pass_rate_per_adapter:
+            raise ValueError(
+                f"worst_adapter={self.worst_adapter!r} not in "
+                f"pass_rate_per_adapter keys {sorted(self.pass_rate_per_adapter.keys())!r}"
+            )
+        # Story 13.3 code-review HIGH-B fix 2026-06-01 (Codex HIGH-2): re-derive
+        # max/min from pass_rate_per_adapter to verify best_adapter / worst_adapter
+        # are CONSISTENT with the data. Pre-fix the constructor accepted
+        # nonsense like `best_adapter='b'` when 'a' actually had a higher rate.
+        max_rate = max(self.pass_rate_per_adapter.values())
+        min_rate = min(self.pass_rate_per_adapter.values())
+        if self.pass_rate_per_adapter[self.best_adapter] != max_rate:
+            raise ValueError(
+                f"best_adapter={self.best_adapter!r} has pass rate "
+                f"{self.pass_rate_per_adapter[self.best_adapter]!r} but the max "
+                f"observed is {max_rate!r}"
+            )
+        if self.pass_rate_per_adapter[self.worst_adapter] != min_rate:
+            raise ValueError(
+                f"worst_adapter={self.worst_adapter!r} has pass rate "
+                f"{self.pass_rate_per_adapter[self.worst_adapter]!r} but the min "
+                f"observed is {min_rate!r}"
+            )
+
+
+@dataclass(frozen=True)
+class DiscoverabilityComparisonResult:
+    """Top-level result of `MCP.Compare Tool Discoverability` (Story 13.3 / PRD FR10b).
+
+    Shape per epics.md L2186-2187 + Story 13.3 D-2 ratified shape:
+        - `adapters: tuple[str, ...]` — adapter names in input order (≥2).
+        - `per_adapter_results: Mapping[str, DiscoverabilityResult]` —
+          one full `DiscoverabilityResult` per adapter (mirrors what
+          `MCP.Get Tool Discoverability` returns for the single-adapter case).
+        - `cross_adapter_deltas: Mapping[str, PairwiseAdapterDelta]` —
+          C(N, 2) pairwise deltas keyed by `f"{adapter_a}_vs_{adapter_b}"`.
+          For N=2 there is 1 delta; for N=3 there are 3 deltas.
+        - `heatmap: CohortHeatmap` — multi-column heatmap (one column per
+          adapter; rows = task IDs). Built via
+          `CohortHeatmap.from_comparison(self)`.
+        - `summary: DiscoverabilityComparisonSummary` — aggregate roll-up.
+
+    Cross-consistency invariants checked in `__post_init__`:
+        - `len(adapters) >= 2`.
+        - `set(adapters) == set(per_adapter_results.keys())`.
+        - `set(adapters) == set(heatmap.models)`.
+    """
+
+    adapters: tuple[str, ...]
+    per_adapter_results: Mapping[str, DiscoverabilityResult]
+    cross_adapter_deltas: Mapping[str, PairwiseAdapterDelta]
+    heatmap: CohortHeatmap
+    summary: DiscoverabilityComparisonSummary
+
+    def __post_init__(self) -> None:
+        # Tuple coercion + defensive Mapping → dict casts (Story 1b.2 M_R6).
+        object.__setattr__(self, "adapters", tuple(self.adapters))
+        object.__setattr__(self, "per_adapter_results", dict(self.per_adapter_results))
+        object.__setattr__(self, "cross_adapter_deltas", dict(self.cross_adapter_deltas))
+        if len(self.adapters) < 2:
+            raise ValueError(f"DiscoverabilityComparisonResult requires len(adapters) >= 2; got {self.adapters!r}")
+        if set(self.adapters) != set(self.per_adapter_results.keys()):
+            raise ValueError(
+                f"adapters {sorted(self.adapters)!r} must equal "
+                f"per_adapter_results keys {sorted(self.per_adapter_results.keys())!r}"
+            )
+        if set(self.adapters) != set(self.heatmap.models):
+            raise ValueError(
+                f"adapters {sorted(self.adapters)!r} must equal heatmap.models {sorted(self.heatmap.models)!r}"
+            )
+        # Story 13.3 code-review HIGH-C fix 2026-06-01 (Codex HIGH-3 + Opus
+        # MED-1 2-way): also cross-check `summary.pass_rate_per_adapter`
+        # against `adapters`. Pre-fix the result accepted a summary whose
+        # pass_rate_per_adapter was about completely different adapter names,
+        # silently shipping nonsense.
+        if set(self.adapters) != set(self.summary.pass_rate_per_adapter.keys()):
+            raise ValueError(
+                f"adapters {sorted(self.adapters)!r} must equal "
+                f"summary.pass_rate_per_adapter keys "
+                f"{sorted(self.summary.pass_rate_per_adapter.keys())!r}"
+            )

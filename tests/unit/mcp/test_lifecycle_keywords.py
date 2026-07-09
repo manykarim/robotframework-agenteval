@@ -223,19 +223,22 @@ def test_keyword_is_not_async(method_name: str) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_agenteval_does_not_expose_mcp_library_post_story_3_1() -> None:
-    """`MCPLibrary` REMAINS excluded from `_SUB_LIBRARIES` after Story 3.1.
+def test_agenteval_exposes_mcp_library_lifecycle_keywords() -> None:
+    """`MCPLibrary` lifecycle keywords are reachable under `Library AgentEval`.
 
-    Story 2.2 collision-prevention norm: sub-libraries with potential
-    keyword-name collisions stay excluded. Story 3.1 adds 3 keywords
-    (`Start Server`, `Connect To Server`, `Stop Server`) — none collide
-    with HooksLibrary's `Get Config`, but the exclusion-precedent
-    stands per Story 2.3+2.4 ratification.
+    The `compose-single-library-import` change composes MCPLibrary into
+    `_SUB_LIBRARIES` (Story 3.1's `MCP.Start Server` / `MCP.Connect To
+    Server` / `MCP.Stop Server` now resolve under a plain `Library
+    AgentEval` import via their baked `MCP.` prefixes).
     """
     from AgentEval import AgentEval as AgentEvalLib
 
     library = AgentEvalLib()
-    assert "MCPLibrary" not in library._loaded_components
+    assert "MCPLibrary" in library._loaded_components
+    names = library.get_keyword_names()
+    assert "MCP.Start Server" in names
+    assert "MCP.Connect To Server" in names
+    assert "MCP.Stop Server" in names
 
 
 # --------------------------------------------------------------------------- #

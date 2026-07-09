@@ -175,7 +175,9 @@ def test_parse_event_session_shutdown_is_terminal() -> None:
 
 
 def test_parse_event_assistant_message_text_and_output_tokens() -> None:
-    line = '{"type":"assistant.message","data":{"messageId":"m1","content":"Hello","toolRequests":[],"outputTokens":42}}'
+    line = (
+        '{"type":"assistant.message","data":{"messageId":"m1","content":"Hello","toolRequests":[],"outputTokens":42}}'
+    )
     event = CopilotCLIAdapter()._parse_event(line)
     assert event is not None
     assert event.assistant_text == "Hello"

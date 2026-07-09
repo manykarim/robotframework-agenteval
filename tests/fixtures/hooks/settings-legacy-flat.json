@@ -1,0 +1,23 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "command": "echo pre-tool-use",
+        "args": ["--quiet"],
+        "timeout": 5,
+        "matcher": "*"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "command": "echo post-tool-use"
+      }
+    ],
+    "Stop": [
+      {
+        "command": "echo stop",
+        "args": []
+      }
+    ]
+  }
+}

@@ -114,11 +114,11 @@ def test_scaffolded_yaml_pins_explicit_listener_class_path(tmp_path: Path) -> No
 
 
 def test_scaffolded_readme_documents_listener_requirement(tmp_path: Path) -> None:
-    """Bonus: README.md explains why the listener is required."""
+    """Bonus: README.md explains what the listener does and why to use it."""
     main(["init", "--output-dir", str(tmp_path)])
     readme = (tmp_path / "README.md").read_text()
     assert "AgentEval.telemetry.listener.Listener" in readme
-    assert "REQUIRED" in readme.upper()
+    assert "enrich" in readme.lower()
 
 
 def test_new_adapter_requires_name_argument(capsys: pytest.CaptureFixture[str]) -> None:

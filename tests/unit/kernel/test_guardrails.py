@@ -494,3 +494,91 @@ def test_meter_interval_seconds_must_be_positive() -> None:
         @guarded_fanout(estimator=None, meter_interval_seconds=-1.0)
         def run2(self: Any) -> str:
             return "ok"
+
+
+# ============================================================ #
+# remove-dead-machinery D5: no-budget fast path                #
+# ============================================================ #
+
+
+def _record_meter_threads(monkeypatch: pytest.MonkeyPatch) -> list[str | None]:
+    """Patch `threading.Thread` in guardrails to record created thread names."""
+    created_names: list[str | None] = []
+    real_thread = threading.Thread
+
+    def recording_thread(*args: Any, **kwargs: Any) -> threading.Thread:
+        created_names.append(kwargs.get("name"))
+        return real_thread(*args, **kwargs)
+
+    monkeypatch.setattr(guardrails.threading, "Thread", recording_thread)
+    return created_names
+
+
+def test_no_budget_fast_path_spawns_no_meter_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    """D5 (a): both budgets None → no meter thread; return value passes through."""
+    created_names = _record_meter_threads(monkeypatch)
+
+    @guarded_fanout()
+    def run(self: Any) -> str:
+        return "fast-path-ok"
+
+    agent = _FakeAgent(max_cost_usd=None, max_runtime_seconds=None)  # type: ignore[arg-type]
+    assert run(agent) == "fast-path-ok"
+    assert "agenteval-guarded-fanout-meter" not in created_names
+
+
+def test_no_budget_fast_path_cancel_event_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """D5 (b): current_cancel_event() returns None inside a no-budget body."""
+    observed: list[Any] = []
+
+    @guarded_fanout()
+    def run(self: Any) -> str:
+        observed.append(current_cancel_event())
+        return "ok"
+
+    agent = _FakeAgent(max_cost_usd=None, max_runtime_seconds=None)  # type: ignore[arg-type]
+    assert run(agent) == "ok"
+    assert observed == [None]
+
+
+def test_no_budget_fast_path_exceptions_propagate_unchanged() -> None:
+    """D5 (c): body exceptions propagate without budget-enforcement wrapping."""
+
+    class _BodyError(RuntimeError):
+        pass
+
+    @guarded_fanout()
+    def run(self: Any) -> str:
+        raise _BodyError("boom")
+
+    agent = _FakeAgent(max_cost_usd=None, max_runtime_seconds=None)  # type: ignore[arg-type]
+    with pytest.raises(_BodyError, match="boom"):
+        run(agent)
+
+
+def test_budgeted_call_still_spawns_meter_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    """D5 (d): a configured budget still spawns/joins the meter thread."""
+    created_names = _record_meter_threads(monkeypatch)
+
+    @guarded_fanout(estimator=None, meter_interval_seconds=10.0)
+    def run(self: Any) -> str:
+        return "ok"
+
+    agent = _FakeAgent(max_cost_usd=5.0, max_runtime_seconds=None)
+    assert run(agent) == "ok"
+    assert "agenteval-guarded-fanout-meter" in created_names
+
+
+def test_test_budget_override_routes_to_metering_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """D5 (e): the test-only budget-override kwarg routes to the metering path
+    even when the host instance carries no budgets.
+    """
+    created_names = _record_meter_threads(monkeypatch)
+
+    @guarded_fanout(estimator=None, meter_interval_seconds=10.0)
+    def run(self: Any) -> str:
+        return "ok"
+
+    agent = _FakeAgent(max_cost_usd=None, max_runtime_seconds=None)  # type: ignore[arg-type]
+    assert run(agent, __agenteval_test_budget__=(1.0, None)) == "ok"
+    assert "agenteval-guarded-fanout-meter" in created_names

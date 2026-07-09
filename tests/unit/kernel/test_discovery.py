@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 
 from AgentEval._kernel import discovery
-from AgentEval.errors import AdapterDiscoveryError, DuplicateRegistrationError
+from AgentEval.errors import AdapterDiscoveryError
 
 
 class _FakeEntryPoint:
@@ -82,13 +82,16 @@ def test_discover_adapters_loads_legacy_group(monkeypatch: pytest.MonkeyPatch) -
     assert "legacy-one" in adapters
 
 
-def test_cross_package_duplicate_raises_duplicate_registration_error(
+def test_cross_package_duplicate_raises_adapter_discovery_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """ADR-013 L43: Cross-package collisions across primary + legacy raise
-    `DuplicateRegistrationError(AdapterDiscoveryError)` fail-closed — agenteval
-    refuses to silently pick one. (Pre-Story-1b.3-code-review: impl used
-    warnings.warn + primary-wins, which the ADR forbids. Codex caught.)
+    `AdapterDiscoveryError` fail-closed — agenteval refuses to silently pick one.
+
+    The dedicated `DuplicateRegistrationError` leaf was folded into
+    `AdapterDiscoveryError` by `remove-dead-machinery` (single raise site, no
+    dedicated exit code); the collision message still names the colliding
+    entry-point name and both registration sources.
     """
 
     class PrimaryAdapter:
@@ -104,16 +107,14 @@ def test_cross_package_duplicate_raises_duplicate_registration_error(
             "robotframework_agenteval.adapters": [_FakeEntryPoint("shared", "pkg.Legacy", LegacyAdapter)],
         },
     )
-    with pytest.raises(DuplicateRegistrationError) as exc_info:
+    with pytest.raises(AdapterDiscoveryError) as exc_info:
         discovery.discover_adapters()
-    # ADR-013 L43 contract surfaces both source-package names.
-    assert exc_info.value.sources == (
-        "agenteval.coding_agents",
-        "robotframework_agenteval.adapters",
-    )
-    assert "refuses to silently pick one" in str(exc_info.value)
-    # DuplicateRegistrationError is a subclass of AdapterDiscoveryError per ADR-013 L43.
-    assert isinstance(exc_info.value, AdapterDiscoveryError)
+    msg = str(exc_info.value)
+    # ADR-013 L43 contract: message surfaces the colliding name + both sources.
+    assert "refuses to silently pick one" in msg
+    assert "shared" in msg
+    assert "agenteval.coding_agents" in msg
+    assert "robotframework_agenteval.adapters" in msg
     assert exc_info.value.error_code == "ADAPTER_DISCOVERY_ERROR"
 
 

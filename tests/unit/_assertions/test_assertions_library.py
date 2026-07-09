@@ -524,3 +524,285 @@ def test_trajectory_should_match_invalid_mode_on_external_mixed_raises_value_err
     result = _result([_trace("a")], mcp_coverage="external_mixed")
     with pytest.raises(ValueError, match=r"mode must be one of"):
         lib.trajectory_should_match(result, expected=["a"], mode="bogus")
+
+
+# --------------------------------------------------------------------------- #
+# Budget assertions — Cost / Latency / Latency P95 / Token Usage              #
+# (add-budget-assertion-keywords change / PRD 10-keyword-core debt)           #
+# --------------------------------------------------------------------------- #
+
+
+def _lat_trace(latency_ms: float, *, sequence_index: int = 0) -> ToolCallTrace:
+    return ToolCallTrace(
+        name="t",
+        args={},
+        result="ok",
+        error=None,
+        latency_ms=latency_ms,
+        source="hosted_mcp",
+        gen_ai_tool_call_id=f"t-{sequence_index}",
+        sequence_index=sequence_index,
+    )
+
+
+def _budget_result(
+    *,
+    cost_usd: float = 0.0,
+    latency_seconds: float = 0.0,
+    tool_calls: list[ToolCallTrace] | None = None,
+    usage: Usage | None = None,
+    mcp_coverage: str = "hosted_in_process",
+) -> AgentRunResult:
+    return AgentRunResult(
+        response_text="ok",
+        tool_calls=tool_calls or [],
+        usage=usage or Usage(input_tokens=0, output_tokens=0),
+        metadata=AgentRunMetadata(
+            completeness="complete",
+            mcp_coverage=mcp_coverage,  # type: ignore[arg-type]
+        ),
+        cost_usd=cost_usd,
+        latency_seconds=latency_seconds,
+        trace_id="t-" + "0" * 30,
+    )
+
+
+# ---- Cost Should Be Below ---- #
+
+
+def test_cost_should_be_below_under_passes() -> None:
+    lib = AssertionsLibrary()
+    lib.cost_should_be_below(_budget_result(cost_usd=0.05), 0.10)
+
+
+def test_cost_should_be_below_over_fails_with_actual_threshold_unit() -> None:
+    lib = AssertionsLibrary()
+    with pytest.raises(AssertionError) as exc:
+        lib.cost_should_be_below(_budget_result(cost_usd=0.153), 0.10)
+    msg = str(exc.value)
+    assert "0.153" in msg
+    assert "0.1" in msg
+    assert "USD" in msg
+
+
+def test_cost_should_be_below_equal_fails_strict_less_than() -> None:
+    lib = AssertionsLibrary()
+    with pytest.raises(AssertionError):
+        lib.cost_should_be_below(_budget_result(cost_usd=0.10), 0.10)
+
+
+def test_cost_should_be_below_multi_trial_sums_like_getter() -> None:
+    lib = AssertionsLibrary()
+    runs = [_budget_result(cost_usd=0.04) for _ in range(3)]
+    # Aggregated total 0.12 is NOT below 0.10 — matches Get Cost Total sum semantics.
+    with pytest.raises(AssertionError) as exc:
+        lib.cost_should_be_below(runs, 0.10)
+    assert "0.12" in str(exc.value)
+    # And a headroom threshold passes on the same aggregate.
+    lib.cost_should_be_below(runs, 0.20)
+
+
+# ---- Latency Should Be Below ---- #
+
+
+def test_latency_should_be_below_under_passes() -> None:
+    lib = AssertionsLibrary()
+    lib.latency_should_be_below(_budget_result(tool_calls=[_lat_trace(800.0)]), 2000.0)
+
+
+def test_latency_should_be_below_over_fails_with_actual_threshold_unit() -> None:
+    lib = AssertionsLibrary()
+    with pytest.raises(AssertionError) as exc:
+        lib.latency_should_be_below(_budget_result(tool_calls=[_lat_trace(2500.0)]), 2000.0)
+    msg = str(exc.value)
+    assert "2500" in msg
+    assert "2000" in msg
+    assert "ms" in msg
+
+
+def test_latency_should_be_below_equal_fails_strict_less_than() -> None:
+    lib = AssertionsLibrary()
+    with pytest.raises(AssertionError):
+        lib.latency_should_be_below(_budget_result(tool_calls=[_lat_trace(2000.0)]), 2000.0)
+
+
+def test_latency_should_be_below_no_tool_calls_uses_run_level_fallback() -> None:
+    lib = AssertionsLibrary()
+    # No tool calls → latency_seconds * 1000.0 = 1500.0 ms, under 2000 → passes.
+    lib.latency_should_be_below(_budget_result(latency_seconds=1.5, tool_calls=[]), 2000.0)
+
+
+def test_latency_should_be_below_multi_trial_union_mean_like_getter() -> None:
+    lib = AssertionsLibrary()
+    runs = [
+        _budget_result(tool_calls=[_lat_trace(1000.0), _lat_trace(2000.0, sequence_index=1)]),
+        _budget_result(tool_calls=[_lat_trace(3000.0)]),
+    ]
+    # union-then-mean = mean(1000, 2000, 3000) = 2000.0 → NOT below 2000, below 2500.
+    with pytest.raises(AssertionError) as exc:
+        lib.latency_should_be_below(runs, 2000.0)
+    assert "2000" in str(exc.value)
+    lib.latency_should_be_below(runs, 2500.0)
+
+
+# ---- Latency P95 Should Be Below ---- #
+
+
+def test_latency_p95_should_be_below_under_passes() -> None:
+    lib = AssertionsLibrary()
+    # Single tool call → P95 is that latency (AC-6.1.8).
+    lib.latency_p95_should_be_below(_budget_result(tool_calls=[_lat_trace(1900.0)]), 2000.0)
+
+
+def test_latency_p95_should_be_below_over_fails_with_actual_threshold_unit() -> None:
+    lib = AssertionsLibrary()
+    with pytest.raises(AssertionError) as exc:
+        lib.latency_p95_should_be_below(_budget_result(tool_calls=[_lat_trace(3100.0)]), 2000.0)
+    msg = str(exc.value)
+    assert "3100" in msg
+    assert "2000" in msg
+    assert "ms" in msg
+
+
+def test_latency_p95_should_be_below_multi_trial_matches_getter() -> None:
+    from AgentEval.metrics import _internal as m_internal
+
+    lib = AssertionsLibrary()
+    runs = [
+        _budget_result(tool_calls=[_lat_trace(float(x), sequence_index=x) for x in range(100)]),
+    ]
+    observed_p95 = m_internal._aggregate_latency_p95(runs)
+    # A threshold just above the getter's P95 must pass; just below must fail.
+    lib.latency_p95_should_be_below(runs, observed_p95 + 1.0)
+    with pytest.raises(AssertionError):
+        lib.latency_p95_should_be_below(runs, observed_p95)
+
+
+# ---- Token Usage Should Be Below ---- #
+
+
+def test_token_usage_should_be_below_under_passes() -> None:
+    lib = AssertionsLibrary()
+    lib.token_usage_should_be_below(_budget_result(usage=Usage(input_tokens=400, output_tokens=100)), 1000)
+
+
+def test_token_usage_should_be_below_over_fails_with_actual_threshold_unit() -> None:
+    lib = AssertionsLibrary()
+    runs = [
+        _budget_result(usage=Usage(input_tokens=500, output_tokens=100)),
+        _budget_result(usage=Usage(input_tokens=500, output_tokens=100)),
+    ]  # total = 1200
+    with pytest.raises(AssertionError) as exc:
+        lib.token_usage_should_be_below(runs, 1000)
+    msg = str(exc.value)
+    assert "1200" in msg
+    assert "1000" in msg
+    assert "tokens" in msg
+
+
+def test_token_usage_should_be_below_equal_fails_strict_less_than() -> None:
+    lib = AssertionsLibrary()
+    with pytest.raises(AssertionError):
+        lib.token_usage_should_be_below(_budget_result(usage=Usage(input_tokens=600, output_tokens=400)), 1000)
+
+
+def test_token_usage_should_be_below_cached_not_double_counted() -> None:
+    lib = AssertionsLibrary()
+    # input=500 (of which cached=300), output=100 → total = 600, NOT 900. Passes under 700.
+    usage = Usage(input_tokens=500, output_tokens=100, cached_input_tokens=300)
+    lib.token_usage_should_be_below(_budget_result(usage=usage), 700)
+    # Confirms the sub-field was not added: 600 < 700 passes; if it were 900 it would fail.
+    with pytest.raises(AssertionError):
+        lib.token_usage_should_be_below(_budget_result(usage=usage), 600)
+
+
+def test_token_usage_should_be_below_reasoning_not_double_counted() -> None:
+    lib = AssertionsLibrary()
+    # reasoning_output_tokens is reported inside output_tokens — must not be added again.
+    usage = Usage(input_tokens=100, output_tokens=200, reasoning_output_tokens=150)
+    # total = 300 (not 450). Passes under 400.
+    lib.token_usage_should_be_below(_budget_result(usage=usage), 400)
+
+
+# ---- Shared validation + conventions ---- #
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda lib: lib.cost_should_be_below([], 0.10),
+        lambda lib: lib.latency_should_be_below([], 2000.0),
+        lambda lib: lib.latency_p95_should_be_below([], 2000.0),
+        lambda lib: lib.token_usage_should_be_below([], 1000),
+    ],
+)
+def test_budget_empty_list_raises_value_error(call) -> None:
+    lib = AssertionsLibrary()
+    with pytest.raises(ValueError, match=r"empty list"):
+        call(lib)
+
+
+@pytest.mark.parametrize("bad_threshold", [0, -0.5, float("nan"), float("inf"), -float("inf")])
+def test_cost_bad_threshold_raises_value_error_before_dispatch(bad_threshold) -> None:
+    lib = AssertionsLibrary()
+    # Even with an over-budget observed value, the threshold gate fires first
+    # → ValueError, not AssertionError (caller-typo gate precedes dispatch).
+    with pytest.raises(ValueError, match=r"threshold must be"):
+        lib.cost_should_be_below(_budget_result(cost_usd=999.0), bad_threshold)
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda lib, t: lib.latency_should_be_below(_budget_result(tool_calls=[_lat_trace(5000.0)]), t),
+        lambda lib, t: lib.latency_p95_should_be_below(_budget_result(tool_calls=[_lat_trace(5000.0)]), t),
+        lambda lib, t: lib.token_usage_should_be_below(_budget_result(usage=Usage(input_tokens=9, output_tokens=9)), t),
+    ],
+)
+@pytest.mark.parametrize("bad_threshold", [0, -1, float("nan")])
+def test_budget_bad_threshold_raises_value_error_before_dispatch(call, bad_threshold) -> None:
+    lib = AssertionsLibrary()
+    with pytest.raises(ValueError, match=r"threshold must be"):
+        call(lib, bad_threshold)
+
+
+def test_cost_external_mixed_does_not_raise_incomplete_trace() -> None:
+    # Provider-reported scalar — NOT mcp_coverage-gated (design D5). external_mixed
+    # + allow_external_mcp_blind=False must NOT raise IncompleteTraceError.
+    lib = AssertionsLibrary(allow_external_mcp_blind=False)
+    result = _budget_result(cost_usd=0.01, mcp_coverage="external_mixed")
+    lib.cost_should_be_below(result, 0.10)  # no raise
+    with pytest.raises(AssertionError):  # sanity: over-budget still fails via assertion, not coverage
+        lib.cost_should_be_below(_budget_result(cost_usd=0.5, mcp_coverage="external_mixed"), 0.10)
+
+
+def _capture_logger_info(monkeypatch) -> list[str]:
+    import AgentEval._assertions.library as lib_mod
+
+    captured: list[str] = []
+    monkeypatch.setattr(lib_mod.logger, "info", lambda msg, *a, **k: captured.append(msg))
+    return captured
+
+
+def test_budget_pass_logs_evidence_line(monkeypatch) -> None:
+    captured = _capture_logger_info(monkeypatch)
+    lib = AssertionsLibrary()
+    lib.cost_should_be_below(_budget_result(cost_usd=0.05), 0.10)
+    assert len(captured) == 1
+    line = captured[0]
+    assert "0.05" in line  # observed
+    assert "0.1" in line  # threshold
+    assert "USD" in line  # unit
+    assert "runs=1" in line  # aggregated-run count
+
+
+def test_budget_pass_logs_run_count_for_multi_trial(monkeypatch) -> None:
+    captured = _capture_logger_info(monkeypatch)
+    lib = AssertionsLibrary()
+    lib.token_usage_should_be_below(
+        [_budget_result(usage=Usage(input_tokens=10, output_tokens=10)) for _ in range(3)],
+        1000,
+    )
+    assert len(captured) == 1
+    assert "runs=3" in captured[0]
+    assert "tokens" in captured[0]

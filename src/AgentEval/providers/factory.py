@@ -83,7 +83,7 @@ def get_provider(name: str, **kwargs: Any) -> LLMProviderAdapter:
     # Story 4.1 code-review Edge-cases M-4 fix 2026-05-20: warn when an
     # entry-point overrides a built-in provider so debuggability survives
     # contention. Compare ADR-013 cross-package collision precedent
-    # (DuplicateRegistrationError raises); for SAME-name built-in-vs-
+    # (`AdapterDiscoveryError` raises fail-closed); for SAME-name built-in-vs-
     # entry-points conflicts the FR17c contract is "entry-points win" so
     # we warn rather than raise.
     for builtin_name, builtin_cls in BUILTIN_PROVIDERS.items():

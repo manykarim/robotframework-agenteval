@@ -1,0 +1,124 @@
+[0m
+> code · MiniMax-M2.7
+[0m
+[0m→ [0mRead _bmad-output/implementation-artifacts/14-6-unified-host-instance-budget-plumbing-c20-c26-c89-c95-close.md
+[0m→ [0mRead src/AgentEval/_kernel/host_budget_plumbing.py
+[0m→ [0mRead src/AgentEval/_kernel/guardrails.py[90m [limit=40, offset=255][0m
+[0m→ [0mRead src/AgentEval/mcp/library.py[90m [limit=40, offset=95][0m
+[0m✱ [0mGrep "@guarded_fanout"[90m 97 matches[0m
+[0m→ [0mRead src/AgentEval/skills/library.py[90m [limit=25, offset=92][0m
+[0m→ [0mRead src/AgentEval/orchestration/library.py[90m [limit=45, offset=105][0m
+[0m→ [0mRead src/AgentEval/mcp/library.py[90m [limit=50, offset=425][0m
+[0m✱ [0mGrep "tracked NOT enforced"[90m 80 matches[0m
+[0m→ [0mRead src/AgentEval/__init__.py[90m [limit=40, offset=340][0m
+[0m→ [0mRead src/AgentEval/mcp/library.py[90m [limit=80, offset=560][0m
+[0m→ [0mRead docs/phase-1-5-carry-overs.md[90m [limit=100, offset=35][0m
+[0m
+[0m$ [0mmkdir -p /home/many/workspace/robotframework-agenteval/_bmad-output/cross-llm-reviews
+(no output)
+[0m
+[0m→ [0mRead docs/phase-1-5-carry-overs.md[90m [limit=40, offset=105][0m
+[0m→ [0mRead _bmad-output/implementation-artifacts/deferred-work.md[90m [limit=50, offset=1][0m
+[0m✱ [0mGrep "DF-14\.6-S1"[90m 71 matches[0m
+[0m→ [0mRead src/AgentEval/mcp/library.py[90m [limit=40, offset=449][0m
+[0m→ [0mRead src/AgentEval/skills/library.py[90m [limit=35, offset=524][0m
+[0m→ [0mRead tests/unit/kernel/test_host_budget_plumbing.py[90m [limit=60][0m
+[0m→ [0mRead tests/unit/kernel/test_host_budget_plumbing.py[90m [offset=60][0m
+[0m→ [0mRead src/AgentEval/_kernel/guardrails.py[90m [limit=35, offset=280][0m
+[0m
+[0m$ [0mcd /home/many/workspace/robotframework-agenteval && git diff HEAD~1 -- src/AgentEval/__init__.py | head -50
+diff --git a/src/AgentEval/__init__.py b/src/AgentEval/__init__.py
+index 364c51b..b500a1c 100644
+--- a/src/AgentEval/__init__.py
++++ b/src/AgentEval/__init__.py
+@@ -345,7 +345,17 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
+             # actually routes through the mock provider. Pre-edit broke
+             # PRD FR41 precedence at the orchestration boundary.
+             if cls_name == "OrchestrationLibrary":
+-                components.append(cls(default_provider=self._provider))
++                # Story 14.6 (C26 closure): forward `max_cost_usd` +
++                # `max_runtime_seconds` for `Run Scenario` Tier-3
++                # `@guarded_fanout` enforcement via the unified
++                # `_HostBudgetPlumbing` mixin. Mirrors Stats / Judge pattern.
++                components.append(
++                    cls(
++                        default_provider=self._provider,
++                        max_cost_usd=self._max_cost_usd,
++                        max_runtime_seconds=self._max_runtime_seconds,
++                    )
++                )
+             elif cls_name == "MetricsLibrary":
+                 # Story 6.1 AC-6.1.2: propagate library-level
+                 # `allow_external_mcp_blind` to MetricsLibrary so the
+[0m
+[0m→ [0mRead _bmad-output/implementation-artifacts/epic-11-retro-2026-05-27.md[90m [limit=15, offset=148][0m
+[0m→ [0mRead _bmad-output/implementation-artifacts/epic-12-retro-2026-06-01.md[90m [limit=15, offset=157][0m
+[0m→ [0mRead _bmad-output/implementation-artifacts/epic-13-retro-2026-06-03.md[90m [limit=15, offset=178][0m
+[0m✱ [0mGrep "def run_scenario"[90m 0 matches[0m
+[0m→ [0mRead src/AgentEval/orchestration/library.py[90m [limit=50, offset=155][0m
+[0m
+[0m$ [0muv run pytest tests/unit/kernel/test_host_budget_plumbing.py -v 2>&1 | tail -30
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.2, pluggy-1.6.0 -- /home/many/workspace/robotframework-agenteval/.venv/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/many/workspace/robotframework-agenteval
+configfile: pyproject.toml
+plugins: anyio-4.13.0, cov-6.3.0
+collecting ... collected 12 items
+
+tests/unit/kernel/test_host_budget_plumbing.py::test_mixin_init_sets_both_attrs_to_provided_values PASSED [  8%]
+tests/unit/kernel/test_host_budget_plumbing.py::test_mixin_init_defaults_both_attrs_to_none PASSED [ 16%]
+tests/unit/kernel/test_host_budget_plumbing.py::test_mixin_init_accepts_partial_kwargs PASSED [ 25%]
+tests/unit/kernel/test_host_budget_plumbing.py::test_mixin_cooperative_init_forwards_remaining_kwargs_to_super PASSED [ 33%]
+tests/unit/kernel/test_host_budget_plumbing.py::test_mcp_library_carries_budget_attrs_after_init PASSED [ 41%]
+tests/unit/kernel/test_host_budget_plumbing.py::test_skills_library_carries_budget_attrs_after_init PASSED [ 50%]
+tests/unit/kernel/test_host_budget_plumbing.py::test_orchestration_library_carries_budget_attrs_after_init PASSED [ 58%]
+tests/unit/kernel/test_host_budget_plumbing.py::test_mcp_get_tool_discoverability_reads_budget_from_host_instance PASSED [ 66%]
+tests/unit/kernel/test_host_budget_plumbing.py::test_mcp_compare_tool_discoverability_reads_budget_from_host_instance PASSED [ 75%]
+tests/unit/kernel/test_host_budget_plumbing.py::test_skill_compare_discoverability_reads_budget_from_host_instance PASSED [ 83%]
+tests/unit/kernel/test_host_budget_plumbing.py::test_orchestration_run_scenario_reads_budget_from_host_instance PASSED [ 91%]
+tests/unit/kernel/test_host_budget_plumbing.py::test_decorator_reads_attrs_via_getattr_with_estimator_pre_flight PASSED [100%]
+
+============================== 12 passed in 1.05s ==============================
+[0m
+[0m✱ [0mGrep "run_scenario"[90m 0 matches[0m
+[0m→ [0mRead src/AgentEval/orchestration/library.py[90m [limit=70, offset=245][0m
+[0m→ [0mRead src/AgentEval/orchestration/library.py[90m [limit=20, offset=225][0m
+[0m
+[0m$ [0muv run python -c "
+from AgentEval.mcp.library import MCPLibrary
+from AgentEval.skills.library import SkillsLibrary
+from AgentEval.orchestration.library import OrchestrationLibrary
+import inspect
+
+# Check MRO
+print('MCPLibrary MRO:', [c.__name__ for c in MCPLibrary.__mro__])
+print('SkillsLibrary MRO:', [c.__name__ for c in SkillsLibrary.__mro__])
+print('OrchestrationLibrary MRO:', [c.__name__ for c in OrchestrationLibrary.__mro__])
+
+# Check keyword-only for OrchestrationLibrary
+sig = inspect.signature(OrchestrationLibrary.__init__)
+print('OrchestrationLibrary.__init__ params:', list(sig.parameters.keys()))
+print('default_provider kind:', sig.parameters['default_provider'].kind)
+print('max_cost_usd kind:', sig.parameters['max_cost_usd'].kind)
+print('max_runtime_seconds kind:', sig.parameters['max_runtime_seconds'].kind)
+
+# Test positional arg rejection
+try:
+    OrchestrationLibrary('mock')
+    print('ERROR: positional arg accepted')
+except TypeError as e:
+    print('OK: positional arg rejected:', str(e)[:80])
+"
+MCPLibrary MRO: ['MCPLibrary', '_HostBudgetPlumbing', 'object']
+SkillsLibrary MRO: ['SkillsLibrary', '_HostBudgetPlumbing', 'object']
+OrchestrationLibrary MRO: ['OrchestrationLibrary', '_HostBudgetPlumbing', 'object']
+OrchestrationLibrary.__init__ params: ['self', 'default_provider', 'max_cost_usd', 'max_runtime_seconds', 'kwargs']
+default_provider kind: KEYWORD_ONLY
+max_cost_usd kind: KEYWORD_ONLY
+max_runtime_seconds kind: KEYWORD_ONLY
+OK: positional arg rejected: OrchestrationLibrary.__init__() takes 1 positional argument but 2 were given
+[0m
+[0m← [0mWrite _bmad-output/cross-llm-reviews/story-14-6-kilo-findings.md
+Wrote file successfully.
+[0m

@@ -51,12 +51,33 @@ Sub-library registration via `_SUB_LIBRARIES` in
 
 from __future__ import annotations
 
+from typing import Any
+
 from robot.api.deco import keyword
 
 from AgentEval._kernel.coverage import _check_mcp_coverage
 from AgentEval._kernel.tier import tier
 from AgentEval.metrics import _internal
 from AgentEval.types import AgentRunResult, Usage
+
+
+def _agent_results_of(conversation: Any) -> list[AgentRunResult]:
+    """Extract the ordered `list[AgentRunResult]` of agent turns from a handle/transcript.
+
+    add-multi-turn-conversation-testing D7 — duck-typed on the shared ``turns``
+    attribute (a live ``ConversationHandle`` and a frozen
+    ``ConversationTranscript`` both expose it) so metrics need no
+    conversation-specific import coupling.
+    """
+    turns = getattr(conversation, "turns", None)
+    if turns is None:
+        raise TypeError(
+            f"Get Conversation Results/Get Turn Count expect a ConversationHandle "
+            f"(from `Start Conversation`) or a ConversationTranscript "
+            f"(from `Get Conversation Transcript`); got {type(conversation).__name__}"
+        )
+    return [t.result for t in turns if t.role == "agent" and t.result is not None]
+
 
 __all__ = ["MetricsLibrary", "Usage"]
 
@@ -82,6 +103,72 @@ class MetricsLibrary:
 
     def __init__(self, allow_external_mcp_blind: bool = False) -> None:
         self._allow_external_mcp_blind = allow_external_mcp_blind
+
+    # ----------------------------------------------------------------- #
+    # add-multi-turn-conversation-testing — conversation extraction (D7) #
+    # ----------------------------------------------------------------- #
+
+    @keyword(name="Get Conversation Results")
+    @tier(1)
+    def get_conversation_results(self, conversation: Any) -> list[AgentRunResult]:
+        """Extracts the ordered ``list[AgentRunResult]`` of agent turns from a conversation (add-multi-turn-conversation-testing).
+
+        [Tier 1 — Deterministic] — pure extraction, NO LLM call. Because every
+        metrics keyword already accepts ``list[AgentRunResult]``, this is the
+        ONLY new plumbing needed to aggregate per-turn cost/latency/tool-calls
+        over a whole conversation — feed the returned list straight into
+        `Get Cost Total`, `Get Latency P95`, `Get Tool Call Count`, etc. (design
+        D7 — no DeepEval-style metric zoo).
+
+        | =Arguments= | =Description= |
+        | ``conversation`` | A live ``ConversationHandle`` (from `Start Conversation`) OR a frozen ``ConversationTranscript`` (from `Get Conversation Transcript`). |
+
+        Returns an ``list[AgentRunResult]`` with one element per AGENT turn, in
+        chronological order (element ``i`` is the ``i``-th agent turn).
+
+        Raises ``TypeError`` when ``conversation`` is neither a handle nor a
+        transcript.
+
+        Example:
+        | ${results} =    `Get Conversation Results`    ${conv}
+        | ${cost} =    `Get Cost Total`    ${results}
+        | ${p95} =    `Get Latency P95`    ${results}
+        | @{names} =    `Get Tool Call Names`    ${results}
+
+        Notes:
+        - Order matches turn order (chronological agent turns).
+        - Accepts BOTH a live handle and a frozen transcript.
+        - The whole existing metric vocabulary aggregates over the returned list unchanged (design D7).
+        - Sibling keyword: `Get Turn Count` for the agent-turn count.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        return _agent_results_of(conversation)
+
+    @keyword(name="Get Turn Count")
+    @tier(1)
+    def get_turn_count(self, conversation: Any) -> int:
+        """Returns the number of agent turns in a conversation (add-multi-turn-conversation-testing).
+
+        [Tier 1 — Deterministic] — pure count, NO LLM call. One "turn" = one
+        user→agent exchange, so this returns the number of AGENT turns.
+
+        | =Arguments= | =Description= |
+        | ``conversation`` | A live ``ConversationHandle`` OR a frozen ``ConversationTranscript``. |
+
+        Returns an ``int`` (0 for a conversation with no completed turns).
+
+        Example:
+        | ${count} =    `Get Turn Count`    ${conv}
+        | Should Be Equal As Integers    ${count}    2
+        | ${t} =    `Simulate User`    ${conv}    persona=impatient    goal=book a flight    max_turns=5
+        | ${n} =    `Get Turn Count`    ${t}
+        | Should Be True    ${n} <= 5
+
+        Notes:
+        - Counts agent turns (user→agent exchanges), not raw turn records.
+        - Accepts BOTH a live handle and a frozen transcript.
+        - Sibling keyword: `Get Conversation Results` for the per-turn result list.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        return len(_agent_results_of(conversation))
 
     # ----------------------------------------------------------------- #
     # FR19 — Tool-call count + names                                    #

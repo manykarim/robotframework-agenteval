@@ -308,7 +308,7 @@ def test_keyword_has_tier_3_annotation() -> None:
 
 def test_keyword_has_robot_marker() -> None:
     assert hasattr(MCPLibrary.get_tool_discoverability, "robot_name")
-    assert MCPLibrary.get_tool_discoverability.robot_name == "Get Tool Discoverability"
+    assert MCPLibrary.get_tool_discoverability.robot_name == "MCP.Get Tool Discoverability"
 
 
 def test_task_result_pass_rate_property() -> None:

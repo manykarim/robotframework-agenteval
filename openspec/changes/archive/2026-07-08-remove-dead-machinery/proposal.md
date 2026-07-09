@@ -1,0 +1,45 @@
+# Proposal: remove-dead-machinery
+
+## Why
+
+The complexity audit (findings dossier E5) measured 26,512 LOC with a 4.2:1 internal-to-user-facing ratio; a slice of that internal weight is machinery with zero functional callers, duplicated implementations, or per-call overhead that buys nothing in the default configuration. Pre-1.0 is the cheapest window to delete it: no external consumers to break, and every line removed now is a line the fix-first-run-experience and composition work does not have to route around. All caller counts below were re-verified by grep in this repo on 2026-07-08 (two dossier numbers were corrected during verification — see Evidence).
+
+## What Changes
+
+- **BREAKING — Delete `src/AgentEval/security/`** (194 LOC: `__init__.py` 26 + `null_sandbox.py` 61 + `policy.py` 39 + `protocols.py` 68). Evidence: zero functional callers — grep for `NullSandbox|SandboxBackend|AgentEval.security` across `src/` and `tests/` matches only docs (ADR-018, ADR-001 catalog, `docs/contracts/stability-surface.md`, `docs/contracts/error-class-hierarchy.md`) and one docstring comment at `tests/unit/test_cli.py:109`. `NullSandbox.execute` still raises the placeholder `NotImplementedError` (the planned `SandboxRequiredError` swap never happened because nothing calls it). The `agenteval.sandboxes` entry-point group (empty in `pyproject.toml`) and `_kernel/discovery.discover_sandboxes()` do not import the package and stay as the Phase-3 extension seam; the `SandboxBackend` Protocol is re-added when a real sandbox backend actually lands in Phase 3.
+- **Delete `src/AgentEval/reporting/`** (20 LOC: a lone `__init__.py` docstring saying "Modules land in Epic 8a Story 8a.1" — they landed elsewhere). Evidence: zero importers of `AgentEval.reporting` in `src/` or `tests/`.
+- **Deduplicate Wilson CI**: delete `src/AgentEval/discoverability/wilson_ci.py` (73 LOC) — a signature-identical duplicate of `src/AgentEval/stats/wilson.py` (`wilson_score_interval(successes, trials, confidence=0.95) -> tuple[float, float]`). Repoint the single production caller (`src/AgentEval/discoverability/_internal.py:41`) to `AgentEval.stats.wilson`. Fold the duplicate test file `tests/unit/discoverability/test_wilson_ci.py` (91 LOC) into `tests/unit/stats/test_wilson.py`, keeping any assertion not already covered there.
+- **BREAKING — Merge the dual config resolvers** (`resolve_config` + `resolve_config_with_provenance`, `src/AgentEval/_kernel/context.py:974-1070`): one resolver that returns the provenance-carrying map; bare values are derived from it. Today `AgentEval.__init__` calls BOTH resolvers back-to-back (`src/AgentEval/__init__.py:265` + `:269`), so every import resolves the 4-layer chain twice and emits unknown-`AGENTEVAL_*`-key warnings twice. The in-code TODO DF-4.3-S1 already calls for this merge. The twin keywords `Get Effective Config` / `Get Effective Config With Provenance` collapse into one keyword (fate and exact surface decided in design.md).
+- **Slim `errors.py`** (1,064 LOC / 30 classes = 24 ratified leaves + 6 never-raised abstract catch-point bases): fold single-raise-site leaves into their parents ONLY where the distinction buys nothing — verified candidate: `DuplicateRegistrationError` (1 raise site, no dedicated exit code in `cli._ERROR_EXIT_CODES`) folds into `AdapterDiscoveryError`. The other three single-raise-site leaves (`ValidateOperatorDisallowed`, `RuntimeBudgetExceededError`, `SkillDidNotActivateError`) each carry a distinct ratified exit code or user-catchable assertion semantics and are KEPT. Delete the never-shipped `"SANDBOX_REQUIRED"` planned row from `cli._ERROR_EXIT_CODES` alongside the security/ deletion. Trim internal story-numerology narration from docstrings. PRESERVE all 6 abstract bases (they are the documented catch points) and the File/Line/Field/Fix message format (independently judged excellent in dossier E4).
+- **Cheapen the `@guarded_fanout` no-budget path** (`src/AgentEval/_kernel/guardrails.py`): when `max_cost_usd` and `max_runtime_seconds` are both `None`, skip the background metering thread, breach state, and cancel-event binding entirely and call the body directly. Today every guarded call spawns a non-daemon poller thread even with nothing to enforce, and `current_cancel_event()` has zero consumers outside `guardrails.py` itself. Budgeted-path behavior (Layers 1-3, fail-closed cost-source handling) is unchanged.
+- **Evaluate dev tooling placement** (`conformance/` 404 LOC, `_new_adapter/` 146, `_init/` 119): design decision documented in design.md. Verified baseline: all three are ALREADY off the runtime import path — `_init`/`_new_adapter` are lazily imported inside `cli.py` subcommand handlers, `conformance` is only reachable via `python -m AgentEval.conformance` and its own tests. Given `agenteval init` is the headline onboarding command, the expected outcome is keep-in-package (no runtime cost to remove), but the evaluation is recorded either way.
+- **Update contract docs minimally** where they register deleted symbols (`docs/contracts/stability-surface.md` sandbox subsection, `docs/contracts/error-class-hierarchy.md` leaf table, ADR-018 status note). No user-facing doc rewrites — that is `fix-first-run-experience`.
+
+### Evidence corrections vs the dossier
+
+Two E5 numbers did not survive re-verification and this proposal uses the corrected values:
+
+- "~15 of 30 error classes ever raised" → actually ALL 24 leaves have ≥1 raise site in `src/`; only the 6 abstract bases are never raised (by design). The slimming win is therefore smaller than the dossier implied: 1 leaf fold + dead exit-code row + narration trim, not a mass cull.
+- "20 of 22 `@guarded_fanout` sites pass no estimator" → actually 9 decorator sites exist, and 0 of 9 pass an estimator. 5 of 9 sites live in libraries whose budget kwargs default to `None` (stats, orchestration, judge x2, plus stats fan-out), so the no-budget fast path is the common case there; the 4 MCP/Skills sites default to non-None budgets and keep the metering thread.
+
+## Capabilities
+
+### New Capabilities
+
+- `config-resolution`: the single-resolver configuration surface — 4-layer precedence (kwarg > env > .env > default), per-key provenance, one resolution pass per library import, single emission of unknown-key warnings, and the merged keyword surface.
+- `fanout-guardrails`: `@guarded_fanout` enforcement contract — no-budget calls run without metering thread/cancel-event overhead; budgeted calls keep pre-flight estimation, mid-run cost/runtime metering, and fail-closed cost-source handling unchanged.
+- `error-hierarchy`: the consolidated error surface — 6 abstract catch-point bases preserved, `DuplicateRegistrationError` folded into `AdapterDiscoveryError`, exit-code table synchronized, File/Line/Field/Fix message format preserved.
+- `package-pruning`: what the shipped package must no longer contain — `AgentEval.security`, `AgentEval.reporting`, `AgentEval.discoverability.wilson_ci` — with the requirement that discoverability Wilson CI numbers are bit-identical through the shared `stats.wilson` implementation.
+
+### Modified Capabilities
+
+_None — `openspec/specs/` currently contains only `opencode-cli-adapter`, which is untouched._
+
+## Impact
+
+- **Code deleted**: `src/AgentEval/security/` (4 files, 194 LOC), `src/AgentEval/reporting/` (1 file, 20 LOC), `src/AgentEval/discoverability/wilson_ci.py` (73 LOC), `resolve_config` or `resolve_config_with_provenance` (~50 LOC merged), `DuplicateRegistrationError` class (~36 LOC).
+- **Code modified**: `src/AgentEval/_kernel/context.py` (resolver merge), `src/AgentEval/__init__.py` (single resolution pass; keyword surface), `src/AgentEval/_kernel/guardrails.py` (no-budget fast path), `src/AgentEval/discoverability/_internal.py` (import repoint), `src/AgentEval/_kernel/discovery.py` (fold raise site), `src/AgentEval/cli.py` (exit-code rows), `src/AgentEval/errors.py`.
+- **Tests**: `tests/unit/discoverability/test_wilson_ci.py` folded into `tests/unit/stats/test_wilson.py`; `tests/unit/kernel/test_context.py` (resolver merge); guardrails unit tests gain no-budget fast-path coverage (assert no meter thread spawned); any test importing deleted symbols updated. Baseline: 1605 passed + 10 skipped must hold (minus tests that existed solely for deleted code).
+- **Docs/contracts**: `docs/contracts/stability-surface.md` (sandbox Protocol subsection removed/marked deferred-to-Phase-3), `docs/contracts/error-class-hierarchy.md` (leaf count 24 → 23, ADR-014 amendment note), ADR-018 status annotation. No README/recipe rewrites here.
+- **Breaking (pre-1.0, no external consumers)**: `AgentEval.security` imports, `AgentEval.discoverability.wilson_ci` imports, `DuplicateRegistrationError` catches (callers catch `AdapterDiscoveryError` instead), and whichever twin config keyword/resolver form design.md retires.
+- **Sibling changes (NOT here)**: `fix-first-run-experience` (docs/UX), `compose-single-library-import` (library composition). Explicitly NOT cut (audited as justified): 6 adapters, stats primitives, `_kernel/redaction.py`, `_kernel/version_drift.py`.

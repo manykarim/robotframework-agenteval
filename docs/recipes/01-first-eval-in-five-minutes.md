@@ -1,7 +1,7 @@
 # Recipe #1: First eval in 5 minutes
 
-**Persona:** any new agenteval user.
-**Time budget:** <5 minutes (NFR-UX-01).
+**Use case:** run your first agenteval eval end-to-end — from install to an enriched JUnit-XML report.
+**Time budget:** <5 minutes.
 **Prerequisites:** `uv` ≥0.4 (or `pip` ≥24); Python ≥3.11.
 
 ## TL;DR
@@ -98,18 +98,15 @@ by RF without error but the listener's hooks (`start_suite`, `start_test`,
 module-as-listener resolution path which expects a top-level
 `ROBOT_LISTENER_API_VERSION` attribute (not present at module scope).
 
-This empirical resolution was caught during Story 8a.2 dev (2026-05-25) when
-the trace_id-tag injection turned out not to surface in `output.xml`.
-
 ## What the listener does
 
 - **Captures OTel spans** per test for cost / latency / token usage / tier
-  breakdown projections (Story 1b.2 / 5.1 / 5.3).
-- **Records the `trace_id` tag** on every test in `output.xml` (FR51) so CI
-  log spelunking can link RF reports to JSONL trace artifacts (Story 8a.2).
+  breakdown projections.
+- **Records the `trace_id` tag** on every test in `output.xml` so CI
+  log spelunking can link RF reports to JSONL trace artifacts.
 - **Enriches the `--xunit junit.xml`** output with `agenteval.*` properties +
-  `<system-out>` evidence + `<system-err>` warnings (Story 8a.1).
-- **Cleans up per-test MCP servers** per ADR-009 (Story 5.2).
+  `<system-out>` evidence + `<system-err>` warnings.
+- **Cleans up per-test MCP servers** ([per-test MCP server scope](../adr/ADR-009-per-test-mcp-server-scope.md)).
 
 Without `--listener`, the library still works at the keyword level — but the
 xunit enrichment + output.xml trace_id linkage + JSONL trace backend are all
@@ -117,11 +114,11 @@ inactive.
 
 ## Next steps
 
-- **Pass@k over polling:** see Recipe #2 (Story 8b.3).
-- **Tool Discoverability cohort:** see Recipe #3 (Story 8b.3).
-- **Skill author stacked validation:** see Recipe #4 (Story 7.3 stub + Story 8b.3 polish).
-- **Custom adapter authoring:** see Recipe #6 (Story 8b.3) + run `agenteval new-adapter` (Story 8b.2).
-- **CI integration:** see Recipe #8 (Story 8b.3) for GitHub Actions / GitLab / Jenkins / Allure examples.
+- **Pass@k over polling:** see Recipe #2.
+- **Tool Discoverability cohort:** see Recipe #3.
+- **Skill author stacked validation:** see Recipe #4.
+- **Custom adapter authoring:** see Recipe #6 + run `agenteval new-adapter`.
+- **CI integration:** see Recipe #8 for GitHub Actions / GitLab / Jenkins / Allure examples.
 
 ## Troubleshooting
 

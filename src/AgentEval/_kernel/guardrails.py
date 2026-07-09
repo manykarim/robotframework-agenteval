@@ -77,6 +77,14 @@ FR41). `max_cost_usd = None` is honored (Layer 1+2 cost checks skipped) as
 well as `max_runtime_seconds = None` (Layer 1+3 runtime checks skipped) —
 useful for tests + diagnostic runs.
 
+No-budget fast path (remove-dead-machinery D5): when BOTH `max_cost_usd` and
+`max_runtime_seconds` resolve to `None` there is nothing to enforce, so the
+wrapper calls the decorated body directly — no background meter thread, no
+`_BreachState`, no cancel-event ContextVar binding. This is the common case
+for the 5 bare `@guarded_fanout()` sites whose host budgets default to `None`
+(stats fan-out, orchestration, judge). Any configured budget takes the full
+metering path below, byte-for-byte unchanged.
+
 Test fixtures override the bound-instance budget via the sentinel-private
 kwarg-only `__agenteval_test_budget__=(cost, runtime)` parameter (renamed
 from the pre-edit `_budget` after Story 1b.3 code review flagged the
@@ -264,6 +272,17 @@ def guarded_fanout(
             else:
                 max_cost_usd = getattr(self, "_max_cost_usd", None)
                 max_runtime_seconds = getattr(self, "_max_runtime_seconds", None)
+
+            # No-budget fast path (remove-dead-machinery D5): when BOTH budgets
+            # are None there is nothing to enforce — every Layer-1/2/3 check
+            # compares against None and can never fire. Skip the meter thread,
+            # the `_BreachState`, and the cancel-event ContextVar binding
+            # entirely and call the body directly. `current_cancel_event()`
+            # returns None on this path (its documented out-of-frame value; zero
+            # consumers outside this module). The budgeted path below is
+            # byte-for-byte unchanged.
+            if max_cost_usd is None and max_runtime_seconds is None:
+                return func(self, *args, **kwargs)
 
             # Layer 1: pre-flight estimation.
             if estimator is not None:

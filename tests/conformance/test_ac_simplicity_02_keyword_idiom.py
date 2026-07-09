@@ -47,12 +47,13 @@ from AgentEval._kernel.tier import get_keyword_tier
 # carve-out registry AND this allowlist with explicit ratification.
 _PHASE_1_SHOULD_CARVE_OUTS: frozenset[tuple[str, str]] = frozenset(
     {
-        ("SkillsLibrary", "Should Be Valid Frontmatter"),
-        # Story 7.2 (2026-05-21) — FR4d `Skill Should Activate For` assertion:
+        ("SkillsLibrary", "Skill.Should Be Valid Frontmatter"),
+        # Story 7.2 (2026-05-21) — FR4d `Skill.Should Activate For` assertion:
         # single-prompt activation assertion mirroring `Tool Call Should Have Occurred`
         # (FR24). Uses `Should *` pattern verbatim from PRD FR4d. Tier-2 single-shot
-        # assertion; raises SkillDidNotActivateError per FR4d contract.
-        ("SkillsLibrary", "Should Activate For"),
+        # assertion; raises SkillDidNotActivateError per FR4d contract. The
+        # `compose-single-library-import` change prefixed these to `Skill.*`.
+        ("SkillsLibrary", "Skill.Should Activate For"),
         # Story 6.2 (2026-05-20) — PRD FR23a/FR23b/FR24/FR25 assertion library:
         # the BFCL three-layer evidence framing (trajectory / tool-call / response)
         # uses `Should *` keyword names verbatim from the PRD. AssertionEngine
@@ -202,6 +203,51 @@ def test_keyword_names_use_snake_case_method_names() -> None:
         "agent",
         # Story 12.2 — Tier-2 judge calibration:
         "calibrate",
+        # add-budget-assertion-keywords — PRD 10-keyword-core budget assertions
+        # (`Cost/Latency/Token ... Should Be Below`); metric-noun-as-subject
+        # spelling is load-bearing per the PRD 10-keyword-core names.
+        "cost",
+        "latency",
+        "token",
+        # add-hooks-execution-testing — hook-execution + simulation keywords
+        # (`fire` verb + `decision`/`exit`/`output`/`command` noun-as-subject,
+        # kept in sync with the unit-level `_VERB_ALLOWLIST`).
+        "fire",
+        "decision",
+        "exit",
+        "output",
+        "command",
+        # add-subagent-delegation-testing — `Subagent.Tools Should Be Subset Of`
+        # uses the tools-noun-as-subject spelling (load-bearing keyword name;
+        # kept in sync with the unit-level `_VERB_ALLOWLIST`).
+        "tools",
+        # add-judge-criteria-shortcuts — `score` verb (`Judge.Score With
+        # Criteria`) + `judge` noun-as-subject for the un-namespaced assertion
+        # form (`Judge Score Should Be Above`, design D6); kept in sync with the
+        # unit-level `_VERB_ALLOWLIST`.
+        "score",
+        "judge",
+        # add-multi-turn-conversation-testing — `end` + `simulate` verbs
+        # (`End Conversation`, `Simulate User`) + `transcript` noun-as-subject
+        # (`Transcript Should Contain`); kept in sync with the unit-level
+        # `_VERB_ALLOWLIST`.
+        "end",
+        "simulate",
+        "transcript",
+        # add-red-team-probes — `Attack Success Rate Should Be Below` uses the
+        # attack-success-rate-noun-as-subject spelling (parallel to the budget /
+        # conversation assertion nouns); kept in sync with the unit-level
+        # `_VERB_ALLOWLIST`.
+        "attack",
+        # add-skill-ab-benchmark — `Skill.Compare Against Baseline` (method
+        # `compare_against_baseline`); kept in sync with the unit-level
+        # `_VERB_ALLOWLIST`.
+        "compare",
+        # add-regression-baseline-tracking — `Metrics Should Not Regress`
+        # (method `metrics_should_not_regress`) uses the metrics-noun-as-subject
+        # spelling of the assertion form; kept in sync with the unit-level
+        # `_VERB_ALLOWLIST`.
+        "metrics",
     }
     violations: list[str] = []
     for cls in _all_library_classes():

@@ -105,13 +105,20 @@ def test_config_value_accepts_all_four_literal_sources() -> None:
         assert cv.source == source
 
 
-def test_get_effective_config_with_provenance_returns_full_dict() -> None:
-    """Story 4.3 / PRD FR41-compliant full-shape keyword."""
+def test_get_effective_config_no_arg_covers_all_config_keys() -> None:
+    """remove-dead-machinery D3: the no-arg form is derived from the provenance
+    map, so it now covers every FR42+FR11b key (11 after Story 5.1 added
+    `trace_path` + Story 13.2 added `otlp_endpoint`) as plain values.
+
+    Replaces the deleted `Get Effective Config With Provenance` keyword's
+    full-map coverage test — the twin keyword was removed (design D3); the
+    per-key `setting=` form is the provenance surface.
+    """
     agent = AgentEval()
-    config = agent.get_effective_config_with_provenance()
+    config = agent.get_effective_config()
     assert isinstance(config, dict)
-    assert all(isinstance(v, ConfigValue) for v in config.values())
-    # All FR42+FR11b keys present (10 after Story 5.1 added `trace_path`).
+    # Plain values, NOT ConfigValue (no-arg shape preserved per design D3).
+    assert not any(isinstance(v, ConfigValue) for v in config.values())
     expected_keys = {
         "provider",
         "telemetry",
@@ -123,18 +130,41 @@ def test_get_effective_config_with_provenance_returns_full_dict() -> None:
         "allow_external_mcp_blind",
         "max_cost_usd",
         "max_runtime_seconds",
+        "otlp_endpoint",
     }
     assert set(config.keys()) == expected_keys
 
 
-def test_get_effective_config_with_provenance_returns_defensive_copy() -> None:
-    """Returned dict is shallow-copied so caller mutation doesn't affect library state."""
+def test_get_effective_config_per_key_provenance_covers_all_keys() -> None:
+    """Per-key provenance (the surviving provenance surface) is available for every key."""
     agent = AgentEval()
-    config = agent.get_effective_config_with_provenance()
-    config["provider"] = ConfigValue(value="MUTATED", source="init_arg")
-    # Re-fetch — library state must be unchanged.
-    config2 = agent.get_effective_config_with_provenance()
-    assert config2["provider"].value == "litellm"
+    for key in agent.get_effective_config():
+        cv = agent.get_effective_config(setting=key)
+        assert isinstance(cv, ConfigValue)
+        assert cv.source in {"init_arg", "env", "dotenv", "default"}
+
+
+def test_unknown_env_key_warning_emitted_once_on_instantiation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """remove-dead-machinery D3: ONE resolution pass per instantiation → exactly
+    one UserWarning per unknown key per source.
+
+    Before the merge, `AgentEval.__init__` called both `resolve_config` and
+    `resolve_config_with_provenance`, so each unknown-`AGENTEVAL_*`-key warning
+    fired twice per source. The single-pass merge collapses that to one.
+    """
+    import warnings
+
+    monkeypatch.setenv("AGENTEVAL_PROVDER", "anthropic")  # typo, unknown key
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        AgentEval()
+    provder_warnings = [w for w in caught if "AGENTEVAL_PROVDER" in str(w.message) and "os.environ" in str(w.message)]
+    assert len(provder_warnings) == 1, (
+        f"expected exactly one unknown-key warning for the os.environ source; "
+        f"got {[str(w.message) for w in provder_warnings]}"
+    )
 
 
 def test_config_value_is_frozen_dataclass() -> None:

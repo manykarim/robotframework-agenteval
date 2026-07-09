@@ -73,6 +73,8 @@ __all__ = [
     "AgentRunMetadata",
     "AgentRunResult",
     "CodingAgentAdapter",
+    "ConversationTurn",
+    "ConversationTranscript",
 ]
 
 
@@ -318,16 +320,30 @@ class AgentRunMetadata:
     `__post_init__` purpose ratified at Story 1b.4 code review is the
     runtime closed-set validation.
 
+    Optional ``continuation`` honesty field (add-multi-turn-conversation-testing
+    HIGH fix): for a multi-turn agent turn threaded by the conversation layer
+    (`Send Message` / `Simulate User` / `Run Scenario`'s `turns:` path), this
+    carries the truthful per-turn threading mode — ``"initial"`` (first agent
+    turn), ``"native_session"`` (adapter ``run_turn``), or ``"replayed_history"``
+    (history-replay fallback). Its sibling honesty field ``mcp_coverage`` lives
+    here for the same reason (ADR-016 philosophy): the signal must survive on the
+    bare ``AgentRunResult`` that `Run Scenario` returns as a flat list, so a
+    YAML-driven cross-adapter comparison can tell replay from native. Defaults to
+    ``None`` for single-shot / `prompt:` evals — the shape is unchanged for every
+    existing single-run caller.
+
     Frozen + immutable; serializes cleanly via `dataclasses.asdict()`.
     """
 
     completeness: Literal["complete", "truncated", "partial"]
     mcp_coverage: Literal["hosted_in_process", "subprocess_with_observer", "external_mixed"]
+    continuation: Literal["initial", "native_session", "replayed_history"] | None = None
 
     _VALID_COMPLETENESS: ClassVar[frozenset[str]] = frozenset(("complete", "truncated", "partial"))
     _VALID_MCP_COVERAGE: ClassVar[frozenset[str]] = frozenset(
         ("hosted_in_process", "subprocess_with_observer", "external_mixed")
     )
+    _VALID_CONTINUATION: ClassVar[frozenset[str]] = frozenset(("initial", "native_session", "replayed_history"))
 
     def __post_init__(self) -> None:
         if self.completeness not in self._VALID_COMPLETENESS:
@@ -339,6 +355,11 @@ class AgentRunMetadata:
             raise ValueError(
                 f"AgentRunMetadata.mcp_coverage must be one of "
                 f"{sorted(self._VALID_MCP_COVERAGE)}; got {self.mcp_coverage!r}"
+            )
+        if self.continuation is not None and self.continuation not in self._VALID_CONTINUATION:
+            raise ValueError(
+                f"AgentRunMetadata.continuation must be None or one of "
+                f"{sorted(self._VALID_CONTINUATION)}; got {self.continuation!r}"
             )
 
 
@@ -396,6 +417,90 @@ class AgentRunResult:
         # Inner ToolCallTrace items are already frozen dataclasses; the list
         # itself is the mutability surface we close here.
         object.__setattr__(self, "tool_calls", list(self.tool_calls))
+
+
+# --------------------------------------------------------------------------- #
+# add-multi-turn-conversation-testing — conversation turn + transcript types  #
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class ConversationTurn:
+    """One turn in a multi-turn conversation (add-multi-turn-conversation-testing D3).
+
+    Role-tagged; ``AgentRunResult`` is the agent-turn payload so the existing
+    single-result assertion + metric vocabulary applies to a turn with zero
+    adaptation. Deliberately DeepEval-``Turn``-compatible in shape
+    (role/content) for future interop while keeping ``AgentRunResult`` — not a
+    new type — as the unit of judgment/measurement.
+
+    Fields:
+        - ``index``: 0-based position of the turn within the conversation
+          (user + agent turns share one monotonic index space).
+        - ``role``: ``"user"`` or ``"agent"``.
+        - ``content``: the message text. For agent turns this mirrors
+          ``result.response_text``; for user turns it is the user message
+          (sentinel tokens stripped for simulated users per design D5).
+        - ``result``: the turn's ``AgentRunResult`` for agent turns; ``None``
+          for user turns.
+        - ``continuation``: how the agent turn was threaded — ``"initial"``
+          (first agent turn), ``"native_session"`` (adapter ``run_turn``), or
+          ``"replayed_history"`` (history-replay fallback). ``None`` for user
+          turns. Same honest-degradation philosophy as ``mcp_coverage``
+          (ADR-016).
+        - ``simulator_cache``: for a simulated USER turn, whether the message
+          was a cache ``"hit"``/``"miss"`` or caching was ``"disabled"``
+          (no ``cache_key``). ``None`` for scripted user turns + all agent
+          turns.
+
+    Frozen + immutable; serializes via ``dataclasses.asdict()``.
+    """
+
+    index: int
+    role: Literal["user", "agent"]
+    content: str
+    result: AgentRunResult | None = None
+    continuation: Literal["initial", "native_session", "replayed_history"] | None = None
+    simulator_cache: Literal["hit", "miss", "disabled"] | None = None
+
+
+@dataclass(frozen=True)
+class ConversationTranscript:
+    """Immutable snapshot of a conversation (add-multi-turn-conversation-testing D2).
+
+    Returned by ``Get Conversation Transcript`` + ``Simulate User``. A stored
+    transcript does NOT mutate when the underlying conversation continues
+    afterward — consistent with the M_R6 defensive-copy discipline used across
+    this module.
+
+    Fields:
+        - ``turns``: ordered tuple of ``ConversationTurn`` (user + agent).
+        - ``turn_count``: number of AGENT turns (one "turn" = one user→agent
+          exchange).
+        - ``total_cost_usd``: sum of agent-turn ``result.cost_usd`` plus any
+          simulator-call costs (when driven by ``Simulate User``).
+        - ``total_latency_seconds``: sum of agent-turn ``result.latency_seconds``.
+        - ``continuation_mode``: conversation-wide threading mode
+          (``"initial"`` for a single-turn conversation; ``"native_session"``
+          or ``"replayed_history"`` when all post-first turns agree; ``"mixed"``
+          when they differ; ``"none"`` when there are no agent turns).
+        - ``stop_reason``: ``"goal_achieved"`` / ``"gave_up"`` / ``"max_turns"``
+          for ``Simulate User`` transcripts; ``None`` for scripted ones.
+
+    Frozen + immutable; serializes via ``dataclasses.asdict()``.
+    """
+
+    turns: tuple[ConversationTurn, ...]
+    turn_count: int
+    total_cost_usd: float
+    total_latency_seconds: float
+    continuation_mode: str
+    stop_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        # M_R6: coerce to a tuple so callers passing a list get an immutable
+        # snapshot that can't be mutated under later sends.
+        object.__setattr__(self, "turns", tuple(self.turns))
 
 
 @runtime_checkable

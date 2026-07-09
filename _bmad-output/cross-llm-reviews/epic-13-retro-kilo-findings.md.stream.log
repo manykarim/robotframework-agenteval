@@ -1,0 +1,163 @@
+[0m
+> code · MiniMax-M2.7
+[0m
+[0m→ [0mRead _bmad-output/implementation-artifacts/epic-13-retro-2026-06-03.md
+[0m✗ [0mread failed
+[91m[1mError: [0mFile not found: /home/many/workspace/robotframework-agenteval/_bmad-output/planning-artifacts/sprint-status.yaml
+[0m
+[0m$ [0mgit -C /home/many/workspace/robotframework-agenteval rev-list --count da6ea20..HEAD 2>/dev/null || echo "REVRANGE_ERROR"
+5
+[0m
+[0m$ [0mgit -C /home/many/workspace/robotframework-agenteval log --oneline da6ea20..HEAD
+74d54c8 feat(skills): Story 13.5 — Skill.Compare Discoverability (FR4c) + 3-tier reviewed v2 — CLOSES EPIC 13
+a52a464 feat(heatmap): Story 13.4 — CohortHeatmap.as_html()+write_html() (FR55) + 3-tier reviewed v2
+2d51d4c feat(discoverability): Story 13.3 — MCP.Compare Tool Discoverability (FR10b) + 3-tier reviewed v2
+f548373 feat(telemetry): Story 13.2 — OTLP trace backend (FR33b) + 3-tier reviewed v2
+ddcdfbc feat(stats): Story 13.1 — Phase-2 advanced stats (FR29a/b/c) + 3-tier reviewed v0.3.0
+[0m
+[0m$ [0mls /home/many/workspace/robotframework-agenteval/_bmad-output/cross-llm-reviews/13-* 2>/dev/null | wc -l
+15
+[0m
+[0m✱ [0mGlob "**/sprint-status.yaml"[90m 1 match[0m
+[0m
+[0m$ [0mgit -C /home/many/workspace/robotframework-agenteval log --format="%H %ai" da6ea20..HEAD
+74d54c8fcb9a14f1ebea2ecfffcb6cc36d22cb24 2026-06-01 15:19:19 +0200
+a52a4646791cfcf3d8de82d53c131d02145ac584 2026-06-01 14:38:12 +0200
+2d51d4c9bb561aed911a79615b2df7918d5bf87d 2026-06-01 14:06:37 +0200
+f5483735aaec64722b6c5a5eac6b85757201f202 2026-06-01 13:00:24 +0200
+ddcdfbc153d61b89d87fb11fe3097163dfd4e43b 2026-06-01 12:17:24 +0200
+[0m
+[0m$ [0mgrep -c "^\| \*\*C[0-9]" /home/many/workspace/robotframework-agenteval/docs/phase-1-5-carry-overs.md 2>/dev/null || echo "NOT_FOUND"
+148
+[0m
+[0m✱ [0mGlob "_bmad-output/implementation-artifacts/*epic-1[01]*retro*.md"[90m 2 matches[0m
+[0m→ [0mRead _bmad-output/implementation-artifacts/sprint-status.yaml[90m [limit=20, offset=145][0m
+[0m→ [0mRead _bmad-output/implementation-artifacts/epic-11-retro-2026-05-27.md[90m [limit=30, offset=1][0m
+[0m
+[0m$ [0mhead -5 /home/many/workspace/robotframework-agenteval/docs/phase-1-5-carry-overs.md
+# Phase-1.5 Carry-Overs Catalog
+
+**Status:** Active tracking catalog. Updated as items land OR new Phase-1.5 carry-overs surface during Phase-1 work.
+**Last updated:** 2026-05-25 (Story 9.2 dev added C66).
+**Owning epic:** mini-epic 1.5 (Phase-1.5: Hygiene + Carry-overs); tracking story `1-5-1`.
+[0m
+[0m✱ [0mGrep "C95|C96|C97|C98"[90m in _bmad-output/implementation-artifacts · 19 matches[0m
+[0m✱ [0mGrep "^\| \*\*C[0-9]"[90m in docs/phase-1-5-carry-overs.md · 98 matches[0m
+[0m
+[0m$ [0mls /home/many/workspace/robotframework-agenteval/_bmad-output/implementation-artifacts/story-13*spec*.md 2>/dev/null | head -10
+(no output)
+[0m
+[0m✱ [0mGrep "^\| \*\*C[0-9]+\*\*"[90m in . · 100 matches[0m
+[0m→ [0mRead _bmad-output/implementation-artifacts/epic-11-retro-2026-05-27.md[90m [limit=80, offset=80][0m
+[0m✱ [0mGrep "^\| \*\*C9[0-9]"[90m in _bmad-output/implementation-artifacts · 0 matches[0m
+[0m→ [0mRead _bmad-output/implementation-artifacts/epic-10-retro-2026-05-26.md[90m [limit=80, offset=1][0m
+[0m✱ [0mGrep "^\| \*\*C[0-9]+\*\*"[90m in docs · 98 matches[0m
+Now I have enough data. Let me compile the findings to the output file.
+[0m
+[0m$ [0mls /home/many/workspace/robotframework-agenteval/_bmad-output/cross-llm-reviews/ 2>/dev/null | grep -c "13" || echo "0"
+18
+[0m
+[0m$ [0mls /home/many/workspace/robotframework-agenteval/_bmad-output/cross-llm-reviews/ 2>/dev/null | grep "13" | head -20
+13-1-claude-opus-findings.md
+13-1-claude-sonnet-findings.md
+13-1-codex-findings.md
+13-2-claude-opus-findings.md
+13-2-claude-sonnet-findings.md
+13-2-codex-findings.md
+13-3-claude-opus-findings.md
+13-3-claude-sonnet-findings.md
+13-3-codex-findings.md
+13-4-claude-opus-findings.md
+13-4-claude-sonnet-findings.md
+13-4-codex-findings.md
+13-5-claude-opus-findings.md
+13-5-claude-sonnet-findings.md
+13-5-codex-findings.md
+epic-13-retro-claude-opus-findings.md
+epic-13-retro-codex-findings.md
+epic-13-retro-kilo-findings.md.stream.log
+[0m
+[0m$ [0mls /home/many/workspace/robotframework-agenteval/_bmad-output/cross-llm-reviews/ 2>/dev/null
+13-1-claude-opus-findings.md
+13-1-claude-sonnet-findings.md
+13-1-codex-findings.md
+13-2-claude-opus-findings.md
+13-2-claude-sonnet-findings.md
+13-2-codex-findings.md
+13-3-claude-opus-findings.md
+13-3-claude-sonnet-findings.md
+13-3-codex-findings.md
+13-4-claude-opus-findings.md
+13-4-claude-sonnet-findings.md
+13-4-codex-findings.md
+13-5-claude-opus-findings.md
+13-5-claude-sonnet-findings.md
+13-5-codex-findings.md
+epic-10-retro-codex-findings.md
+epic-10-retro-codex-stdout.txt
+epic-10-retro-kilo-findings.md
+epic-10-retro-kilo-stdout.txt
+epic-10-retro-review-prompt.md
+epic-11-retro-claude-findings.md
+epic-11-retro-claude-stdout.txt
+epic-11-retro-kilo-findings.md
+epic-11-retro-kilo-stdout.txt
+epic-11-retro-review-prompt.md
+epic-12-retro-claude-findings.md
+epic-12-retro-codex-findings.md
+epic-12-retro-kilo-findings.md
+epic-13-retro-claude-opus-findings.md
+epic-13-retro-codex-findings.md
+epic-13-retro-kilo-findings.md.stream.log
+phase-7-mcp-codex-review.md
+phase-7-mcp-diff.patch
+phase-7-mcp-kilo-findings.md
+phase-7-mcp-kilo-review.md
+phase-7-mcp-review-prompt.md
+phases-1-7-codex-findings.md
+phases-1-7-codex-retro-prompt.md
+phases-1-7-codex-stdout.txt
+phases-1-8-src-tests-diff.patch
+story-11-1-codex-stdout.txt
+story-11-1-copilot-findings.md
+story-11-1-copilot-stdout.txt
+story-11-1-diff.patch
+story-11-1-kilo-findings.md
+story-11-1-kilo-stdout.txt
+story-11-1-review-prompt.md
+story-11-2-codex-stdout.txt
+story-11-2-copilot-findings.md
+story-11-2-copilot-stdout.txt
+story-11-2-diff.patch
+story-11-2-kilo-findings.md
+story-11-2-kilo-stdout.txt
+story-11-2-review-prompt.md
+story-11-3-codex-stdout.txt
+story-11-3-copilot-findings.md
+story-11-3-copilot-stdout.txt
+story-11-3-diff.patch
+story-11-3-kilo-findings.md
+story-11-3-kilo-stdout.txt
+story-11-3-review-prompt.md
+[0m
+[0m✱ [0mGlob "_bmad-output/implementation-artifacts/*epic-12*retro*.md"[90m 1 match[0m
+[0m✱ [0mGrep "Epic 11.*12|1.*11.*8|Epic 10.*11|4.*4.*50"[90m in _bmad-output/implementation-artifacts · 227 matches[0m
+[0m
+[0m← [0mWrite _bmad-output/cross-llm-reviews/epic-13-retro-kilo-findings.md
+Wrote file successfully.
+[0m
+Findings written to `_bmad-output/cross-llm-reviews/epic-13-retro-kilo-findings.md`.
+
+**Total: 2 HIGH + 2 MED + 4 LOW**
+
+**Key findings:**
+- **HIGH-1:** Carry-over base is 70 (Epic 12 retro), not 94 as draft claims — 24 entries unaccounted for
+- **HIGH-2:** `feedback_cross_story_upstream_lesson_propagation` N=12+ is not derivable from stated evidence (7 lessons vs. 12 transitions)
+- **MED-1:** `feedback_codex_probe_fitness` N=13 assumes Epic 12 added 0 Codex-unique catches — assumption is reasonable but unstated; arithmetic otherwise holds
+- **MED-2:** 9% follow-through comparison uses structurally-imprecise metric (denominator grows mechanically); Epic 12 retro's own fix recommendation not applied
+- **LOW-1:** "1.7× source files" is a vanity metric — not inherently meaningful
+- **LOW-2:** "Phase 1+2 feature-complete" framing leans slightly optimistic without 98-carry-over debt caveat
+- **LOW-3:** Story 13.4→13.3 reverse-propagation catch is plausible but unverified with audit trail
+- **LOW-4:** CANDIDATE #1 is slightly over-stated for N=1 — acceptable as CANDIDATE status mitigates
+
+This review operated as Tier 3 (framing/process/citation-consistency) — caught prose-vs-canonical-source mismatches and vanity metrics; not the right tier for empirical numeric re-derivation.

@@ -4,6 +4,68 @@ Calibrate `Judge.Get Score` against human-labeled ground truth before relying on
 its scores in CI. Cohen's kappa ≥ 0.7 is the project's hard-fail threshold per
 `architecture.md` L199 (borrowed from agentguard's calibration discipline).
 
+## Two tiers: start in one line, graduate for CI gates
+
+The judge has a deliberate two-tier on-ramp (add-judge-criteria-shortcuts):
+
+- **Tier 1 — the one-line on-ramp (exploration).** `Judge.Score With Criteria`
+  takes a plain-language criteria string (the DeepEval G-Eval idiom — no rubric
+  file), and the named metric presets (`Judge.Get Faithfulness`,
+  `Judge.Get Answer Relevancy`, `Judge.Get Hallucination Score`) score against
+  curated built-in rubrics. These are the fastest way to a first score. **Every
+  shortcut score is honestly marked `calibrated=False`** with a truthful
+  `rubric_source` (`"criteria_string"` or `"preset:<name>"`), and the first
+  shortcut score per process emits a `WARN` pointing here. Use them to explore —
+  NOT to gate CI.
+
+  ```robot
+  *** Settings ***
+  Library    AgentEval
+
+  *** Test Cases ***
+  Quick Criteria Score
+      ${score}=    Judge.Score With Criteria
+      ...    result=${result}
+      ...    criteria=Response is polite and directly answers the question
+      ...    threshold=7
+      Log    Uncalibrated (${score.rubric_source}); score=${score.numeric_score}
+
+  Judge And Assert In One Line
+      Judge Score Should Be Above    result=${result}
+      ...    criteria=Response is polite and directly answers the question    threshold=7
+  ```
+
+- **Tier 2 — a calibrated rubric (CI gates).** Once you need a score you can
+  gate on, graduate to a rubric whose agreement with humans you have MEASURED:
+  Cohen's kappa ≥ 0.7. That is the rest of this recipe. The `calibrated` field
+  stays `False` in Phase-1 for all keywords (nothing threads calibration
+  evidence into a score yet — carry-over `DF-JCS-S1` / C104); the field means
+  "recorded passing calibration evidence," so it never rides on a shortcut.
+
+### Graduating a preset (no new machinery)
+
+Presets ship **uncalibrated by default**. Cohen's kappa is a joint property of
+(rubric × judge model × domain × labelers), so a calibration set we authored
+against our own labels would not transfer to your model + domain — shipping one
+and claiming κ would be the vibes-over-evidence posture this project brands
+against. Instead, calibrate a preset against YOUR own labels: `Judge.Get Preset
+Rubric` returns the preset's `JudgeRubric`, which feeds straight into
+`Judge.Calibrate Rubric` (which already accepts a `JudgeRubric` instance).
+
+```robot
+*** Test Cases ***
+Calibrate The Faithfulness Preset On My Labels
+    ${rubric}=    Judge.Get Preset Rubric    name=faithfulness
+    ${report}=    Judge.Calibrate Rubric
+    ...    rubric=${rubric}
+    ...    calibration_set=my-faithfulness-labels.yaml
+    Should Be True    ${report.passes_hard_fail}
+```
+
+Per-preset calibration-set templates (placeholder rows + labeling guidance, no
+shipped κ claims) live under
+[`docs/examples/judge-presets/`](../examples/judge-presets/).
+
 ## When to use this recipe
 
 - Before claiming "my judge agrees with humans" in a release note or PR description.
@@ -20,7 +82,7 @@ agreement is beyond chance — a kappa of 1.0 is perfect, 0 is chance-level, and
 negative is systematic disagreement.
 
 **Phase-1 ships single-judge Cohen's kappa only.** Multi-judge ensemble and
-Krippendorff's alpha are Phase-2 carry-overs (`DF-12.2-S1` / C81).
+Krippendorff's alpha are Phase-2 carry-overs.
 
 ## Step 1 — Author the rubric
 

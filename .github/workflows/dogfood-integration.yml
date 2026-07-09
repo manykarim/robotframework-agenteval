@@ -208,3 +208,152 @@ jobs:
         run: |
           echo "::notice::Story 9.2 agentskills-parity-suite-smoke job ran the agentskills dogfood (metrics + assertions + 3-of-11-skills discoverability)."
           echo "::notice::Live-provider discrimination quality + 8 remaining skills are Phase-2 (DF-7.4-S1 / C60). 7-day monitoring + downstream adoption per DF-9.2-S1 / C66."
+
+  # Story 14.4 deliverable (PARTIAL closure of C70 + Epic 11 retro Action #3+#4
+  # + Epic 12 retro Action #4+#8 + Epic 13 retro Action #8):
+  #
+  # OPERATOR PREREQUISITE 1 — set GitHub repo secrets BEFORE triggering:
+  #   - OPENAI_API_KEY              (used by openai_agents_sdk + codex_cli tests)
+  #   - ANTHROPIC_API_KEY           (used by claude_agent_sdk + judge + judge_calibrate tests)
+  #   - GITHUB_COPILOT_TOKEN        (used by copilot_cli test if available)
+  #
+  # OPERATOR PREREQUISITE 2 — CLI binaries on $PATH on the runner:
+  #   `ubuntu-latest` does NOT ship `codex` / `copilot` / `claude` CLIs. The
+  #   3 CLI-backed live tests (codex_cli, copilot_cli, claude_code_cli) will
+  #   `pytest.skip(...)` with "binary not found" reasons unless the operator
+  #   pre-installs them OR moves this job to a runner image/label that
+  #   guarantees them. Per Story 14.4 Codex HIGH-2 + DF-14.4-S1 sub-step (f):
+  #   operator-side runner-setup work. C70 (OpenAI Agents SDK shape) evidence
+  #   path does NOT depend on a CLI binary (Python SDK only) — that half of
+  #   the workflow works on stock ubuntu-latest with just OPENAI_API_KEY.
+  #
+  # Trigger with: `gh workflow run dogfood-integration.yml` (workflow_dispatch).
+  # NEVER runs on PR / release / cron — these tests cost real money and need
+  # the secrets above. Failing-because-secrets-missing on PRs would just be
+  # noisy red CI (per Story 14.4 D-2 honest framing).
+  #
+  # Per `feedback_dogfood_fake_green_precheck`: tests that find no creds OR
+  # missing CLI binaries SKIP cleanly (pytest.skip(...)) — honest signal, not
+  # workflow defect. The aggregate-summary step explicitly flags
+  # "0 passed across all live test files" as an operator-misconfiguration
+  # signal rather than a green run (Codex MED-3).
+  live-integration-tests:
+    name: Live integration tests (5+ Phase-2 SDKs/CLIs — operator-triggered, Story 14.4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # workflow_dispatch ONLY (per Story 14.4 AC-14.4.1).
+    if: github.event_name == 'workflow_dispatch'
+
+    env:
+      AGENTEVAL_INTEGRATION_TESTS: "1"
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GITHUB_COPILOT_TOKEN: ${{ secrets.GITHUB_COPILOT_TOKEN }}
+
+    steps:
+      - name: Checkout agenteval
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set Python version
+        run: echo "3.12" > .python-version
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Detect adapter binary versions (_TESTED_UP_TO drift evidence)
+        shell: bash
+        run: |
+          set +e
+          {
+            echo "## Detected adapter binary versions"
+            echo ""
+            echo "| Adapter | Binary | Observed version | _TESTED_UP_TO constant |"
+            echo "| --- | --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          probe() {
+            local name="$1"; local bin="$2"; local constant="$3"
+            local observed
+            # Codex MED-1 fix: `head | true` chain swallows missing-binary errors.
+            # Pre-check existence with `command -v` instead.
+            if command -v "$bin" >/dev/null 2>&1; then
+              observed="$($bin --version 2>&1 | head -1)"
+              observed="${observed:-(empty)}"
+            else
+              observed="NOT FOUND"
+            fi
+            echo "| $name | \`$bin\` | $observed | $constant |" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::$name observed=$observed tested_up_to=$constant"
+          }
+          probe "codex-cli"        "codex"  "0.133.0"
+          probe "copilot-cli"      "copilot" "1.0.54"
+          probe "claude-code-cli"  "claude"  "2.1.144"
+
+      - name: Run live integration tests (6 files, serial)
+        shell: bash
+        run: |
+          set +e
+          {
+            echo ""
+            echo "## Live integration test results"
+            echo ""
+            echo "| Test file | passed | failed | skipped | exit |"
+            echo "| --- | --- | --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          declare -i overall=0
+          declare -i total_passed=0
+          declare -i total_skipped=0
+          run_test() {
+            local f="$1"
+            local out
+            out=$(uv run pytest "$f" -q --tb=short -p no:cacheprovider 2>&1)
+            local code=$?
+            local passed=$(echo "$out" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' | head -1)
+            local failed=$(echo "$out" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' | head -1)
+            local skipped=$(echo "$out" | grep -oE '[0-9]+ skipped' | grep -oE '[0-9]+' | head -1)
+            passed="${passed:-0}"
+            failed="${failed:-0}"
+            skipped="${skipped:-0}"
+            total_passed=$((total_passed + passed))
+            total_skipped=$((total_skipped + skipped))
+            echo "| \`$(basename "$f")\` | $passed | $failed | $skipped | $code |" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$code" -ne 0 ] && [ "$code" -ne 5 ]; then
+              overall=1
+              echo "::error::$(basename "$f") exit=$code"
+              echo "::group::$(basename "$f") output"
+              echo "$out"
+              echo "::endgroup::"
+            else
+              echo "::notice::$(basename "$f") OK (exit=$code, passed=$passed, failed=$failed, skipped=$skipped)"
+            fi
+          }
+          run_test tests/integration/test_claude_agent_sdk_live.py
+          run_test tests/integration/test_codex_cli_live.py
+          run_test tests/integration/test_copilot_cli_live.py
+          run_test tests/integration/test_judge_calibrate_live.py
+          run_test tests/integration/test_judge_live.py
+          run_test tests/integration/test_openai_agents_sdk_live.py
+          {
+            echo ""
+            echo "**Aggregate:** $total_passed passed across all 6 live test files; $total_skipped skipped."
+            echo ""
+            # Codex MED-3 fix: 0-passed runs are operator-misconfiguration
+            # signals, NOT clean green runs. Be explicit so the operator
+            # doesn't mistake an all-skipped run for evidence.
+            if [ "$total_passed" -eq 0 ]; then
+              echo "::warning::0 passed across all live test files — this is most likely an operator-misconfiguration (missing secrets OR missing CLI binaries on \$PATH). NO live evidence has been produced. Review the per-test SKIP reasons in the table above + the run log + ensure OPERATOR PREREQUISITES 1 + 2 (see workflow leading comment) are satisfied before re-triggering."
+              echo "**⚠️  No live evidence produced** — all 6 test files SKIPPED or no tests collected. This is NOT a valid C70 / Epic 11+12+13 retro evidence run. See ::warning:: above."
+            elif [ "$overall" -eq 0 ]; then
+              echo "**Overall:** all live test files exited cleanly (0 or 5 — pytest 'no tests collected' counts as OK)."
+            else
+              echo "**Overall:** FAIL — at least one live test file exited with a non-zero, non-5 code. See ::error:: annotations + grouped output above."
+            fi
+            echo ""
+            echo "**Operator follow-through (DF-14.4-S1):** record pass counts above in the catalog row + close-out C70 + Epic 11/12/13 retro actions per Story 14.4 AC-14.4.3 evidence-bar. If 0 passed, DO NOT mark C70 done until secrets + runner CLIs are configured + a re-run produces ≥1 passed."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$overall"

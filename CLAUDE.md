@@ -140,6 +140,65 @@ are the canonical source.
 
 ---
 
+## Retro-debt mini-pass at story-create time
+
+**Before invoking `/bmad-create-story`, the operator runs a 2-minute audit of
+prior-retro action items + commits to closing ≥1 unresolved item BEFORE
+starting the new story.** Installed by Story 14.1 META (2026-06-03) per Epic 12
+retro L161 Action #2 (`_bmad-output/implementation-artifacts/epic-12-retro-2026-06-01.md`)
++ Epic 13 retro L179 Action #2 (`_bmad-output/implementation-artifacts/epic-13-retro-2026-06-03.md`).
+Motivation: the autonomous /goal loop demonstrated 9% retro-debt
+follow-through over 3 consecutive epics (Epic 13 retro L193 honest framing).
+This mini-pass shifts retro-debt closure from passive ("the loop fails to
+close items") to active ("operator allocates 1 item per story-create to
+close").
+
+### 5-step procedure
+
+1. List the most recent N=3 retro files:
+   ```bash
+   ls -t _bmad-output/implementation-artifacts/epic-*-retro-*.md | head -3
+   ```
+2. For each retro, read the `## Action items for next retrospective check`
+   table (each retro carries one; structure is consistent since Epic 7).
+3. For each unresolved action item still relevant to the upcoming story,
+   either write its closure into the new story's spec OR explicitly
+   document why it's deferred (per `feedback_honest_framing` — no silent
+   carryover).
+4. Allocate ≥1 retro-debt closure as an explicit AC in the new story.
+   The closure is part of the story scope, NOT parallel work tracked
+   elsewhere.
+5. Save the audit notes as a `## Retro-debt mini-pass` subsection in the
+   new story spec (placed under the drift check, before ACs), naming
+   which retro items were considered + which got closed by this story.
+
+### Common failure mode (per Story 13.5 HIGH-A precedent)
+
+**Reading the action item and deciding it's N/A without grep'ing for the
+named symbol.** When an action item names a specific symbol, file, or flag,
+run a concrete grep before deciding it's N/A. Examples:
+
+- Action item: "close `@guarded_fanout` MCPLibrary carve-out" →
+  `grep -nE "@guarded_fanout|_max_cost_usd" src/AgentEval/mcp/library.py`
+  BEFORE deciding the action is closed or N/A.
+- Action item: "backfill Story 7.1 spec Change Log" →
+  `grep -nE "^## Change Log|^\\| 20" _bmad-output/implementation-artifacts/7-1-*.md`
+  BEFORE deciding the action is satisfied.
+- Action item: "live integration tests for 5+ adapters" →
+  `grep -lE "AGENTEVAL_INTEGRATION_TESTS" tests/integration/test_*_live.py`
+  + check CI run logs BEFORE deciding the action is closed.
+
+The grep is the audit; the action item text is only a pointer.
+
+### Closure note
+
+This section installed by Story 14.1 (`14-1-meta-install-retro-debt-mini-pass-libdoc-smoke-story-7-1-changelog`)
+on 2026-06-03, closing Epic 12 retro Action #2 + Epic 13 retro Action #2
+(both reference identical "install CLAUDE.md story-create-time retro-debt
+mini-pass" criteria).
+
+---
+
 ## Hard rules for autonomous loops
 
 - **NEVER skip pre-commit hooks** (`--no-verify`, `--no-gpg-sign`) unless the

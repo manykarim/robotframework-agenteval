@@ -215,3 +215,21 @@ def validate_subagent_structure(
                 field_name="model",
                 fix_suggestion="Set `model: <model-identifier>` or omit the field for the default.",
             )
+
+    # add-subagent-delegation-testing (Decision 6): the optional `skills`
+    # field is type-checked when present — a list of non-empty strings,
+    # mirroring the `tools` treatment above. A malformed declaration is
+    # rejected early by `Get Frontmatter` so the config-drift check
+    # (`Subagent.Should Declare Skills`) can trust the parsed shape. PRD FR3's
+    # required-field set (`name`, `description`) is unchanged; `skills` is NOT
+    # required at parse time (the drift check, not the parser, enforces
+    # explicit declaration).
+    if "skills" in frontmatter:
+        skills = frontmatter["skills"]
+        if not isinstance(skills, list) or any(not isinstance(s, str) or not s for s in skills):
+            raise InvalidSubagentDefinitionError(
+                f"`skills` (optional) must be a list of non-empty strings; got {type(skills).__name__}.",
+                file_path=file_path,
+                field_name="skills",
+                fix_suggestion="Set `skills: [skill_a, skill_b]` as a YAML list of non-empty strings, or omit it.",
+            )

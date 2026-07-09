@@ -27,7 +27,6 @@ Documentation    Story 5.5 dogfood — exercises agenteval's Epic 5 trace
 ...              checked out at $RF_MCP_REPO_ROOT.
 
 Library          AgentEval    WITH NAME    AgentEval
-Library          AgentEval.mcp.library.MCPLibrary    WITH NAME    MCP
 Library          OperatingSystem
 Library          Collections
 Library          Process

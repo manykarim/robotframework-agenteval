@@ -80,6 +80,31 @@ def mock_copilot_version(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def mock_opencode_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Monkeypatch `subprocess.run` so `_assert_binary_version("opencode")` passes
+    without requiring the real `opencode` binary in CI.
+
+    OpenSpec `add-opencode-support` (cross-story UPSTREAM from Story 4.2
+    Edge-cases MED-1 + Story 11.1 D-4): fixture lives in `conftest.py`
+    from the start so future cross-module opencode CLI tests inherit the
+    mock automatically.
+
+    Default version: bare ``1.15.12`` (local probe 2026-06-25 — opencode
+    `--version` prints just the semver with no prefix; the base
+    `_SEMVER_RE.search()` extracts it directly). Scope: package-wide
+    autouse across `tests/unit/coding_agent/`.
+    """
+    real_run = subprocess.run
+
+    def _fake_run(cmd: Any, **kwargs: Any) -> Any:
+        if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "opencode" and cmd[1] == "--version":
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="1.15.12\n", stderr="")
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+
+@pytest.fixture(autouse=True)
 def _reset_version_drift_dedupe() -> None:
     """Story 11.3: clear the module-level `_session_drift_warned` set
     before each test so dedupe state doesn't bleed across cases.

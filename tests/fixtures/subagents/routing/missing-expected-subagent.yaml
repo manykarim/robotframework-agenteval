@@ -1,0 +1,7 @@
+# Malformed: second task omits the required expected_subagent field.
+tasks:
+  - id: ok-task
+    prompt: Review my PR
+    expected_subagent: code-reviewer
+  - id: broken-task
+    prompt: Do something

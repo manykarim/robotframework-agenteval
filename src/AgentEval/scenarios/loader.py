@@ -190,33 +190,81 @@ def _parse_eval(entry: Any, *, idx: int, file_path: str) -> ScenarioEval:
             field_name=f"/evals/{idx}",
             fix_suggestion="Format each eval as a YAML mapping with `prompt:` field.",
         )
-    if "prompt" not in entry:
+    # add-multi-turn-conversation-testing D8 (BREAKING): validation is now
+    # **exactly one of** `prompt` | `turns` (previously `prompt` REQUIRED).
+    # Existing single-`prompt` files remain valid; the only breakage is that
+    # an eval with NEITHER field — or BOTH — now raises. `turns` executes its
+    # user messages as one threaded conversation.
+    has_prompt = "prompt" in entry and entry["prompt"] is not None
+    has_turns = "turns" in entry and entry["turns"] is not None
+    if has_prompt and has_turns:
         raise InvalidScenarioYAMLError(
-            f"`evals[{idx}]` missing required `prompt` field",
+            f"`evals[{idx}]` declares BOTH `prompt` and `turns`; exactly one is allowed",
             file_path=file_path,
-            field_name=f"/evals/{idx}/prompt",
-            fix_suggestion="Add a `prompt:` key with the prompt text.",
+            field_name=f"/evals/{idx}",
+            fix_suggestion="Use `prompt:` for a single-shot eval OR `turns:` for a multi-turn conversation — not both.",
         )
-    prompt = entry["prompt"]
-    if not isinstance(prompt, str):
+    if not has_prompt and not has_turns:
         raise InvalidScenarioYAMLError(
-            f"`evals[{idx}].prompt` must be a string; got {type(prompt).__name__}",
+            f"`evals[{idx}]` must declare exactly one of `prompt` or `turns`",
             file_path=file_path,
-            field_name=f"/evals/{idx}/prompt",
-            fix_suggestion="Use a string prompt.",
+            field_name=f"/evals/{idx}",
+            fix_suggestion="Add a `prompt:` key (single-shot) OR a `turns:` list (multi-turn conversation).",
         )
-    # Story 4.3 code-review Edge-cases L2 + Codex MED-1 fix 2026-05-20:
-    # reject empty / whitespace-only prompts so `prompt: ""` fails loud
-    # rather than silently dispatching the adapter with an empty prompt
-    # (which on real LLM providers would burn tokens with no semantic
-    # input). Matches the `Run Scenario scenario=""` empty-check pattern.
-    if not prompt.strip():
-        raise InvalidScenarioYAMLError(
-            f"`evals[{idx}].prompt` must be a non-empty string; got {prompt!r}",
-            file_path=file_path,
-            field_name=f"/evals/{idx}/prompt",
-            fix_suggestion="Provide the prompt text; empty prompts are rejected to avoid silent no-op dispatches.",
-        )
+
+    prompt: str | None = None
+    turns: list[str] | None = None
+    if has_prompt:
+        prompt = entry["prompt"]
+        if not isinstance(prompt, str):
+            raise InvalidScenarioYAMLError(
+                f"`evals[{idx}].prompt` must be a string; got {type(prompt).__name__}",
+                file_path=file_path,
+                field_name=f"/evals/{idx}/prompt",
+                fix_suggestion="Use a string prompt.",
+            )
+        # Story 4.3 code-review Edge-cases L2 + Codex MED-1 fix 2026-05-20:
+        # reject empty / whitespace-only prompts so `prompt: ""` fails loud
+        # rather than silently dispatching the adapter with an empty prompt.
+        if not prompt.strip():
+            raise InvalidScenarioYAMLError(
+                f"`evals[{idx}].prompt` must be a non-empty string; got {prompt!r}",
+                file_path=file_path,
+                field_name=f"/evals/{idx}/prompt",
+                fix_suggestion="Provide the prompt text; empty prompts are rejected to avoid silent no-op dispatches.",
+            )
+    else:
+        turns_raw = entry["turns"]
+        if not isinstance(turns_raw, list):
+            raise InvalidScenarioYAMLError(
+                f"`evals[{idx}].turns` must be a list of user messages; got {type(turns_raw).__name__}",
+                file_path=file_path,
+                field_name=f"/evals/{idx}/turns",
+                fix_suggestion="Format `turns` as a YAML list of user-message strings.",
+            )
+        if not turns_raw:
+            raise InvalidScenarioYAMLError(
+                f"`evals[{idx}].turns` is empty; at least one turn is required",
+                file_path=file_path,
+                field_name=f"/evals/{idx}/turns",
+                fix_suggestion="Add at least one user-message string to `turns`.",
+            )
+        for t_idx, turn in enumerate(turns_raw):
+            if not isinstance(turn, str):
+                raise InvalidScenarioYAMLError(
+                    f"`evals[{idx}].turns[{t_idx}]` must be a string; got {type(turn).__name__}",
+                    file_path=file_path,
+                    field_name=f"/evals/{idx}/turns/{t_idx}",
+                    fix_suggestion="Use string user messages.",
+                )
+            if not turn.strip():
+                raise InvalidScenarioYAMLError(
+                    f"`evals[{idx}].turns[{t_idx}]` must be a non-empty string; got {turn!r}",
+                    file_path=file_path,
+                    field_name=f"/evals/{idx}/turns/{t_idx}",
+                    fix_suggestion="Provide the user-message text; empty turns are rejected.",
+                )
+        turns = list(turns_raw)
     repeat_raw = entry.get("repeat", 1)
     if not isinstance(repeat_raw, int) or isinstance(repeat_raw, bool):
         # `bool` is a subclass of `int` in Python; explicitly reject.
@@ -260,7 +308,13 @@ def _parse_eval(entry: Any, *, idx: int, file_path: str) -> ScenarioEval:
             field_name=f"/evals/{idx}/judge",
             fix_suggestion="Format `judge` as a YAML mapping (Phase-2 LLM-judge config).",
         )
-    return ScenarioEval(prompt=prompt, repeat=repeat_raw, expect=expect, judge=judge)
+    return ScenarioEval(
+        prompt=prompt,
+        turns=tuple(turns) if turns is not None else None,
+        repeat=repeat_raw,
+        expect=expect,
+        judge=judge,
+    )
 
 
 def _validate_optional_str(value: Any, *, field_name: str, file_path: str) -> str | None:

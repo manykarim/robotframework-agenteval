@@ -64,6 +64,68 @@ _VERB_ALLOWLIST: frozenset[str] = frozenset(
         "agent",
         # Story 12.2 — Tier-2 judge calibration:
         "calibrate",
+        # add-budget-assertion-keywords — PRD 10-keyword-core budget assertions
+        # (`Cost/Latency/Token ... Should Be Below`). The metric-noun-as-subject
+        # spelling is load-bearing (PRD 10-keyword-core names) and can't be
+        # coerced into a generic verb without breaking the promised keyword names.
+        "cost",
+        "latency",
+        "token",
+        # add-hooks-execution-testing — hook-execution + simulation keywords.
+        # `fire` is a genuine verb (`Hook.Fire Hook Event`); `decision` /
+        # `exit` / `output` / `command` are the noun-as-subject spelling of
+        # the assertion + resolution keywords (`Hook.Decision Should Be`,
+        # `Hook.Exit Code Should Be`, `Hook.Output Field Should Be`,
+        # `Hook.Command Should Exist`) — same load-bearing-name posture as the
+        # budget-assertion nouns above.
+        "fire",
+        "decision",
+        "exit",
+        "output",
+        "command",
+        # add-subagent-delegation-testing — `Subagent.Tools Should Be Subset Of`
+        # uses the tools-noun-as-subject spelling (parallel to the budget /
+        # hook assertion nouns above). The name is load-bearing (the config
+        # asserts the subagent's `tools:` allowlist) and can't be coerced into
+        # a generic verb without breaking the promised keyword name.
+        "tools",
+        # add-judge-criteria-shortcuts — one-line judge on-ramp keywords.
+        # `score` is a genuine verb (`Judge.Score With Criteria`); `judge` is
+        # the noun-as-subject spelling of the assertion form
+        # (`Judge Score Should Be Above`, un-namespaced per design D6) — the
+        # name is load-bearing (DeepEval `assert_test`-style judge assertion)
+        # and can't be coerced into a generic verb without breaking it.
+        "score",
+        "judge",
+        # add-multi-turn-conversation-testing — conversation lifecycle keywords.
+        # `end` + `simulate` are genuine verbs (`End Conversation`,
+        # `Simulate User`); `transcript` is the noun-as-subject spelling of the
+        # content assertion (`Transcript Should Contain`) — same load-bearing
+        # posture as the `trajectory` / `tool` assertion nouns above.
+        "end",
+        "simulate",
+        "transcript",
+        # add-red-team-probes — `Attack Success Rate Should Be Below` uses the
+        # attack-success-rate-noun-as-subject spelling (parallel to the budget /
+        # hook / conversation assertion nouns above). The name is load-bearing
+        # (the metric IS the attack success rate; garak/DeepTeam call it ASR)
+        # and can't be coerced into a generic verb without breaking it.
+        "attack",
+        # add-skill-ab-benchmark — `Skill.Compare Against Baseline` (method
+        # `compare_against_baseline`). `compare` is a genuine verb (the keyword
+        # compares a candidate arm against a baseline arm); the sibling
+        # `Skill.Compare Discoverability` reads the same but its method is
+        # `get_discoverability_comparison` so this is the first `compare`-prefixed
+        # method name to reach the allowlist.
+        "compare",
+        # add-regression-baseline-tracking — `Metrics Should Not Regress`
+        # (method `metrics_should_not_regress`) uses the metrics-noun-as-subject
+        # spelling of the assertion form (parallel to the cost / latency / token
+        # / attack assertion nouns above). The name is load-bearing (the gate
+        # asserts the run's metric set has not regressed vs a committed
+        # baseline) and can't be coerced into a generic verb without breaking
+        # the promised keyword name.
+        "metrics",
     }
 )
 

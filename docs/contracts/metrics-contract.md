@@ -1,5 +1,22 @@
 # `Metric.*` Keyword Contract — Tool-Call Metrics Library
 
+## Purpose
+
+Defines the stable contract for the tool-call metrics keyword surface — the guarantees callers of the `Get *` metric keywords may rely on for values, boundaries, aggregation, and incomplete-trace handling.
+
+## Scope
+
+Applies to the metric keywords enumerated in the Surface section below and their boundary, multi-trial aggregation, and `IncompleteTraceError` behavior. Does not cover assertion keywords (see the budget-assertions surface) or non-metric telemetry.
+
+## Contract
+
+The keyword surface, the AC-6.1.8 boundary rules, the AC-6.1.1 multi-trial aggregation rules, and the `IncompleteTraceError` gate documented below are the stable contract. Metric values and their aggregation semantics do not change without a Change Policy bump.
+
+## Change Policy
+
+Changes to this contract follow the pre-1.0 stability rules in [`stability-surface.md`](./stability-surface.md); breaking changes to `stable` metric surfaces are constrained by the 3-month-no-break window.
+
+
 **Story:** 6.1 — Tool-Call Metrics Library
 **Phase-1 stability label:** provisional
 **Source-of-truth FRs:** PRD FR19, FR20, FR21, FR22

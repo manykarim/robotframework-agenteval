@@ -1,14 +1,18 @@
-# Sample scenario YAML scaffolded by `agenteval init`.
+# Sample scenario file scaffolded by `agenteval init`.
 #
-# Drives a multi-evaluation run via `Orchestration.Run Scenario`. See PRD FR15
-# + ADR-016 for the full schema; this file is a starter sketch.
+# A scenario describes one or more prompt evaluations to run against an agent.
+# Load it with `Load Scenario` (validates only) or execute it with
+# `Run Scenario`. Only `evals` is required; every other field is optional.
 
 model: mock/test
 provider: mock
 agent: generic
+
+# MCP servers this scenario may use, listed by name. The names must match the
+# servers you start in your test setup (see example_mcp_runtime.robot).
 mcp_servers:
-  - name: bundled-echo
-    config: tests/fixtures/.mcp.json
+  - bundled-echo
+
 evals:
   - prompt: Say hello to the world
     repeat: 1

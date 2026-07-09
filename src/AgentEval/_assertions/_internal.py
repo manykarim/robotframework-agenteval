@@ -30,11 +30,13 @@ Per Story 2.1 sub-library discipline: NO re-exports from
 from __future__ import annotations
 
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any
 
-from AgentEval.types import ToolCallTrace
+from AgentEval.metrics import _internal as _metrics_internal
+from AgentEval.types import AgentRunResult, ToolCallTrace
 
 # --------------------------------------------------------------------------- #
 # Trajectory match helpers (4 modes per PRD FR23a + FR23b)                    #
@@ -188,3 +190,89 @@ def _resolve_schema(schema: dict[str, Any] | str | Path) -> dict[str, Any]:
             f"schema file at {path!r} must contain a JSON object (dict); got top-level {type(loaded).__name__}"
         )
     return loaded
+
+
+# --------------------------------------------------------------------------- #
+# Budget-assertion helpers (add-budget-assertion-keywords change)             #
+#                                                                             #
+# Shared validation + evidence-message builders for the four Tier-1 budget    #
+# assertion keywords (`Cost Should Be Below`, `Latency Should Be Below`,      #
+# `Latency P95 Should Be Below`, `Token Usage Should Be Below`). Computation  #
+# reuses the `metrics/_internal` compute/aggregate helper pairs (design D2)   #
+# so a budget assertion can never drift from its corresponding getter.        #
+# --------------------------------------------------------------------------- #
+
+
+def _validate_budget_threshold(threshold: float, *, unit: str) -> None:
+    """Raise `ValueError` when a budget threshold is non-finite or ``<= 0`` (design D6).
+
+    All four observed budget values are non-negative, so a ``<= 0`` threshold
+    can never pass and is always a caller typo; ``NaN`` / ``inf`` thresholds are
+    nonsense. This caller-typo gate fires BEFORE assertion dispatch (same
+    ordering principle as the Story 6.2 `mode`-validation fix).
+    """
+    if not math.isfinite(threshold) or threshold <= 0:
+        raise ValueError(f"threshold must be a finite number greater than 0 (unit: {unit}); got {threshold!r}")
+
+
+def _guard_non_empty_result(result: AgentRunResult | list[AgentRunResult]) -> None:
+    """Raise `ValueError` on an empty-`list` result (fake-green guard, design D6).
+
+    Deliberate, documented divergence from the getters' AC-6.1.8 vacuous-truth
+    convention: a budget assertion that trivially passes on zero runs is a
+    silent hazard (`Cost Should Be Below ${empty_list} 0.10` passing is the
+    exact fake-green class this project's dogfood precheck exists to catch).
+    """
+    if isinstance(result, list) and not result:
+        raise ValueError(
+            "result must not be an empty list — a budget assertion over zero runs "
+            "would trivially pass (fake-green guard; deliberate divergence from the "
+            "getters' empty-list vacuous-truth convention per design D6)"
+        )
+
+
+def _budget_run_count(result: AgentRunResult | list[AgentRunResult]) -> int:
+    """Number of runs aggregated (``len`` for a list, else ``1``)."""
+    return len(result) if isinstance(result, list) else 1
+
+
+def _budget_message_prefix(label: str, unit: str, run_count: int) -> str:
+    """Build the AssertionEngine `message=` prefix (e.g. ``Cost (USD, 3 runs aggregated)``).
+
+    The AssertionEngine 4.x `verify_assertion(message=...)` PREFIXES this text
+    before its standard ``'<actual>' (float) should be less than '<expected>'
+    (float)`` body (empirically confirmed at implementation time, task 1.1), so
+    the full failure message carries the label + unit + run count AND the
+    observed value + threshold.
+    """
+    plural = "s" if run_count != 1 else ""
+    return f"{label} ({unit}, {run_count} run{plural} aggregated)"
+
+
+def _budget_pass_evidence(
+    label: str,
+    unit: str,
+    observed: float,
+    threshold: float,
+    run_count: int,
+) -> str:
+    """Build the pass-side `robot.api.logger.info` evidence line (design D7 / AC-SIMPLICITY-01)."""
+    return f"{label} assertion passed: observed={observed} {unit}, threshold={threshold} {unit}, runs={run_count}"
+
+
+def _compute_token_total(result: AgentRunResult) -> int:
+    """Single-run total tokens = ``input_tokens + output_tokens`` (design D4).
+
+    Reuses `metrics/_internal._compute_token_usage`. `cached_input_tokens` and
+    `reasoning_output_tokens` are accounting sub-fields (cached input is a
+    subset view of input; providers report reasoning inside `output_tokens`)
+    and are NOT added separately — that would double-count.
+    """
+    usage = _metrics_internal._compute_token_usage(result)
+    return usage.input_tokens + usage.output_tokens
+
+
+def _aggregate_token_total(results: list[AgentRunResult]) -> int:
+    """Multi-trial total tokens: per-field sum first, then ``input + output`` (design D4)."""
+    usage = _metrics_internal._aggregate_token_usage(results)
+    return usage.input_tokens + usage.output_tokens

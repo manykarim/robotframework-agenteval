@@ -362,7 +362,7 @@ Every FR ID is owned by exactly one epic. Phase 1 = Epics 0–9; Phase 2 = Epics
 | FR64 | Epic 1a (Stability Surface doc skeleton) + each epic (labels added per release) | Stability Surface doc |
 | FR65 | Epic 1a (Exit Criteria stub) + Phase 1 close (final content via Epic 9 retrospective) | 0.x→1.0 Exit Criteria doc |
 
-**Coverage check:** All 65 FR IDs accounted for across 13 epics (Epic 0 ships decision records only — no FR coverage).
+**Coverage check:** All 65 FR IDs accounted for across 13 epics (Epic 0 ships decision records only — no FR coverage). Epic 14 [Phase 2.5] added 2026-06-03 closes carry-overs against existing FRs without expanding the FR surface — correctness/hygiene work on FR4d, FR11, FR15/17/18, FR58 (no new FR IDs).
 
 **AC coverage:**
 - AC-SIMPLICITY-01 (evidence-block legibility) → Epic 5 (FR34a/b)
@@ -588,6 +588,24 @@ Every FR ID is owned by exactly one epic. Phase 1 = Epics 0–9; Phase 2 = Epics
 **Dependencies:** Phase 1 completion + Epic 11 (≥2 Tier-1 CLI adapters for cross-adapter discoverability).
 
 **Primary persona:** Agent Developer (multi-model statistical comparison) + Agent Surface Author (cross-runtime cohort) + observability-focused QA Engineers (OTLP integration).
+
+---
+
+### Epic 14 [Phase 2.5]: Carry-Over Debt Reduction (Forked from Epic 13 Retro Action #1, Fork B — 2026-06-03)
+
+**Goal:** Close the highest-leverage carry-overs accumulated across Epics 4-13 surfaced by the Epic 13 retrospective (`_bmad-output/implementation-artifacts/epic-13-retro-2026-06-03.md` Action #1 → Fork B "Carry-Over Debt Reduction"). 6 stories targeting 5 distinct carry-over classes + 1 meta-mechanism installation that Epic 12 + Epic 13 retros both committed to but never installed.
+
+The autonomous /goal loop demonstrated 9% follow-through over 3 consecutive epics (22% → 11% → 9% per Epic 13 retro corrected baselines). Epic 14 explicitly closes ≥6 carry-overs + installs the meta-mechanism that should make future autonomous loops self-debt-closing. Story 14.1 is the META story (installs CLAUDE.md retro-debt mini-pass + review-prompt libdoc smoke step before subsequent stories so they exercise the mechanism on themselves).
+
+**FRs covered (no new FRs added):** correctness work against existing FR4d (Skill Should Activate For), FR11 (cost/runtime guardrails on fan-out), FR15/FR17/FR18 (adapter contract live verification), FR58 (visual contract docs); hygiene tooling around the planning + dev process.
+
+**Carry-overs targeted for close:** C20 (`@guarded_fanout` MCPLibrary 9 epics old) + C26 + C89 + C95 (`@guarded_fanout` SkillsLibrary 1 epic old; unified architectural resolution); C59 (default-predicate incompatibility 6 epics old); C64 (recipe CI extraction); C70 (5 Phase-2 SDKs/CLIs live integration test runs); pre-commit catalog-gate hook (Epic 12 retro Action #6; Epic 13 retro Action #7); CLAUDE.md retro-debt mini-pass section (Epic 12 retro Action #2; Epic 13 retro Action #2) + libdoc smoke step in review prompt template (Epic 12 retro Action #3; Epic 13 retro Action #3); Story 7.1 spec Change Log backfill (Epic 11 retro Action #8; Epic 12 retro Action #10; Epic 13 retro Action #2).
+
+**Dependencies:** Epic 13 closed (HEAD = `b95b821`). Epic 14 has no upstream story dependencies — each story is self-contained against an existing carry-over or Epic 13 retro action.
+
+**Primary persona:** Operator (Many) maintaining project quality + autonomous loops sustainability. Architectural debt impact: cleaner `@guarded_fanout` posture removes the "tracked NOT enforced" lie shipped across MCPLibrary + SkillsLibrary; downstream impact: future cross-adapter cohort runs respect actual budgets.
+
+**Norm-enforcement at story creation:** apply `feedback_spec_vs_ratified_doc_precheck` UPSTREAM at each Story create-time (56th use forward); apply `feedback_carry_over_catalog_gate` UPSTREAM at each Story dev-time (37th UPSTREAM use forward); each Story closes ≥1 catalogued carry-over by explicit reference in the spec D-N list — verify via `phase-1-5-carry-overs.md` row marked `done` at story-close. Apply 3-tier cross-LLM review chain per CLAUDE.md (Claude sonnet + Claude opus + Codex; reserve Kilo for retro-level). Apply `feedback_cross_story_upstream_lesson_propagation` L-1...L-N as the Epic-14 ledger grows.
 
 ---
 
@@ -2148,7 +2166,7 @@ So that I can statistically compare two non-deterministic agent flows with prope
 
 **Given** two `Stat.Run N Times` result lists,
 **When** I call `${u}=    Stat.Mann Whitney U    ${results_a}    ${results_b}    predicate=lambda r: r.cost_usd`,
-**Then** the variable receives a `MannWhitneyResult` with `u_statistic`, `p_value`, `n_a`, `n_b`; analogous for `Cliff Delta` (effect size) and `Bootstrap CI` (confidence interval on any predicate).
+**Then** the variable receives a `MannWhitneyResult` with `u_statistic`, `p_value`, `effect_size_r`, `n_a`, `n_b`; `Cliff Delta` returns `float ∈ [-1, 1]` per PRD FR29b; `Bootstrap CI` returns `tuple[float, float]` (lo, hi) per PRD FR29c (NOT a dataclass — preserves AssertionEngine matcher compatibility per Story 6.3 D-1 precedent).
 
 **And** all advanced stats keywords are behind `[agenteval-advanced]` extra (requires `scipy + numpy`); ImportError on import without the extra has a clear message recommending `uv pip install robotframework-agenteval[agenteval-advanced]`.
 
@@ -2202,7 +2220,7 @@ So that I can share rich cohort visualizations with stakeholders who don't read 
 **When** I call `${html}=    ${heatmap.as_html()}`,
 **Then** the variable receives a standalone HTML string with embedded CSS rendering the heatmap as a color-coded table (Pass@k → color gradient); file write via `${heatmap.write_html("/tmp/heatmap.html")}` produces a viewable file.
 
-**And** unit tests verify HTML validity (parseable by html.parser) + visual regression test against a recorded baseline image.
+**And** unit tests verify HTML validity (parseable by html.parser) + structural-regression test against a recorded baseline HTML fixture (Story 13.4 D-7 in-flight amendment 2026-06-01 + Codex HIGH-1 ratification 2026-06-01: image-based visual regression deferred to Phase-2.5 via DF-13.4-S1 / C92; structural byte-equality vs recorded `.html` baseline fixtures replaces the image regression for Phase-2. Operators can manually inspect the recorded baselines in a browser to verify visual fidelity. Image-based regression requires headless browser + image diff library — heavy deps; Phase-2.5 evaluates whether structural baselines + manual inspection suffice OR whether image regression has empirical value warranting the deps).
 
 ---
 
@@ -2225,3 +2243,145 @@ So that I can claim "skill X is reliably activated by Claude AND GPT AND Copilot
 **And** Recipe Gallery #4 is updated (during this story or Story 12.3 — whichever lands later) with a Phase 2 cross-adapter Skill Discoverability example.
 
 **And** dogfood: `robotframework-agentskills` cross-adapter Skill Discoverability suite is added to that repo's CI matrix using the Mock provider (real-API cross-adapter runs are out of routine CI scope due to cost; a separate `weekly-cross-adapter-discoverability.yml` workflow runs against real APIs on a budget).
+
+---
+
+### Epic 14 [Phase 2.5]: Carry-Over Debt Reduction (Forked from Epic 13 Retro Action #1 — 2026-06-03)
+
+#### Story 14.1: META — Install Retro-Debt Mini-Pass + Libdoc Review-Smoke + Story 7.1 Change Log Backfill
+
+As **the operator running future autonomous /goal loops**,
+I want CLAUDE.md to carry a "story-create-time retro-debt mini-pass" section + the cross-LLM review prompt template to include a libdoc-rendering smoke step + Story 7.1 spec to carry its missing Change Log,
+So that the META mechanisms Epic 12 retro Actions #2 + #3 + Epic 13 retro Actions #2 + #3 + Epic 11 retro Action #8 (Story 7.1 Change Log) committed to are ACTUALLY installed before subsequent Epic 14 stories exercise them.
+
+**Acceptance Criteria:**
+
+**Given** the current `CLAUDE.md` lacks any "story-create-time retro-debt mini-pass" section (`grep -nE "story-create-time retro|retro-debt mini-pass" CLAUDE.md` returns 0 hits) AND the project-level cross-LLM review prompt template doesn't carry a libdoc smoke step AND `_bmad-output/implementation-artifacts/7-1-*.md` has no Change Log section,
+
+**When** Story 14.1 dev completes,
+
+**Then** (1) CLAUDE.md carries a `## Retro-debt mini-pass at story-create time` section describing the 2-minute audit of `_bmad-output/implementation-artifacts/epic-*-retro-*.md` before invoking `/bmad-create-story`; (2) a stable file at `_bmad/cross-llm-review-prompt-template.md` (or similar canonical location) carries the libdoc smoke step `uv run python -m robot.libdoc <Lib> /tmp/probe.html` + verify `@keyword(name=...)` decorator names match rendered output; (3) Story 7.1 spec backfilled with ≥3 dated Change Log entries.
+
+**And** the first subsequent Story 14.x spec exercises the retro-debt mini-pass (closes ≥1 prior-retro action item per the mini-pass discipline).
+
+**And** the next Epic 14 story's cross-LLM review prompt invokes the libdoc smoke step (auditable via `/tmp/story-14-2-review-prompt.md` carrying the smoke-step language).
+
+**Carry-overs closed:** Epic 12 retro Action #2 + #3 + #10; Epic 13 retro Action #2 + #3; Epic 11 retro Action #8.
+
+---
+
+#### Story 14.2: Pre-Commit Catalog-Gate Hook
+
+As **the operator + future autonomous loops**,
+I want a `.pre-commit-config.yaml` hook scanning `git diff --cached` for `DF-\d+\.\d+-S\d+` references + verifying each has a corresponding row in `docs/phase-1-5-carry-overs.md`,
+So that no commit can ship an inline `DF-X.Y-SZ` reference without the catalog row — eliminating the 3-way HIGH-A finding pattern recurring through Epics 11/12/13.
+
+**Acceptance Criteria:**
+
+**Given** `.pre-commit-config.yaml` currently has ruff/format/mypy/license-header hooks only (no `DF-X.Y-SZ` catalog enforcement),
+
+**When** Story 14.2 dev completes,
+
+**Then** the pre-commit config carries a new hook (id e.g., `df-catalog-gate`) that runs against `git diff --cached` + extracts `DF-\d+\.\d+-S\d+` patterns + greps for matching `(\`DF-X.Y-SZ\`)` row in `docs/phase-1-5-carry-overs.md` + fails the commit with a clear error message listing missing rows.
+
+**And** a manual test confirms the hook BLOCKS a forged commit that adds `DF-99.99-S99` reference to a file without a catalog row.
+
+**And** the hook RUNS in CI too (`.github/workflows/ci.yml` defense-in-depth same pattern as ruff/mypy).
+
+**And** the hook implementation language matches `_bmad/scripts/` conventions (Python via `uv run python scripts/check-catalog-references.py` per Story 1a.5 pre-commit pattern).
+
+**Carry-overs closed:** C64-equivalent for catalog; Epic 12 retro Action #6; Epic 13 retro Action #7. Plus surface for catching the catalog-gate-UNIQUE findings (Story 11.3 + 11.2 + Story 7.4 D-2) at commit-time rather than review-time.
+
+---
+
+#### Story 14.3: Recipe CI Extraction (`tests/integration/recipes/test_all_recipes_dryrun.py`)
+
+As **future contributors editing recipes**,
+I want `tests/integration/recipes/test_all_recipes_dryrun.py` auto-extracting every fenced ` ```robotframework ` block from `docs/recipes/*.md` + running `robot --dryrun` against each + asserting clean,
+So that Recipe-#4-class regressions (Story 13.5 HIGH-B: `Get From Dictionary` without `Library Collections`) cannot ship un-caught between releases.
+
+**Acceptance Criteria:**
+
+**Given** `tests/integration/recipes/` currently has ONLY `test_pass_at_k_recipe.py` (no generalized recipe-dryrun harness),
+
+**When** Story 14.3 dev completes,
+
+**Then** the new file ships + parametrizes over `docs/recipes/*.md` fenced robotframework blocks + writes each to a temp `.robot` file + runs `robot --dryrun <temp>` + asserts exit code == 0 + asserts no `No keyword with name` errors in output.
+
+**And** ≥6 fenced robotframework blocks pass dryrun in CI (Story 14.3 close-condition; matches Epic 12 retro Action #9 criterion).
+
+**And** the test SKIPS gracefully (not FAILS) when `robot` binary is absent from environment (matches `feedback_dogfood_fake_green_precheck` discipline — no fake-green).
+
+**And** regression-guard: a deliberately-broken recipe block (e.g., `Get From Dictionary` without `Library Collections`) is rejected by the test in a separate negative-test case (this guards the regression-guard).
+
+**Carry-overs closed:** C64; Epic 12 retro Action #9; Epic 13 retro Action #9. Surface coverage: ALL recipes under `docs/recipes/` (currently 4-8 recipes per `ls docs/recipes/`).
+
+---
+
+#### Story 14.4: Live Integration Test Runs (5+ Phase-2 SDKs/CLIs) + Close C70
+
+As **the operator validating Phase-2 adapter shape against real upstream behavior**,
+I want a workflow-dispatch trigger in `dogfood-integration.yml` (or equivalent) that runs all 6 env-gated `tests/integration/test_*_live.py` files (claude_agent_sdk + codex_cli + copilot_cli + judge + judge_calibrate + openai_agents_sdk) with `AGENTEVAL_INTEGRATION_TESTS=1` + credentials at least once + records pass counts in the run log,
+So that C70 (OpenAI SDK shape verification) closes + `_TESTED_UP_TO` constants are verified against current upstream binaries + any drift is surfaced explicitly.
+
+**Acceptance Criteria:**
+
+**Given** 6 env-gated live integration test files exist at `tests/integration/test_*_live.py` (verified via `ls tests/integration/test_*_live.py | wc -l` == 6) AND none have evidence of running in CI under `AGENTEVAL_INTEGRATION_TESTS=1`,
+
+**When** Story 14.4 dev completes,
+
+**Then** (1) `gh workflow run dogfood-integration.yml` or a NEW `workflow_dispatch`-triggered workflow runs all 6 live tests; (2) at least 1 successful run is documented with pass counts in the run log; (3) C70 is closed in `docs/phase-1-5-carry-overs.md` with implementation reference (run URL or commit hash); (4) any `_TESTED_UP_TO` constants found drifted vs upstream releases are bumped IN THIS STORY or carried as Phase-1.5 catalog rows.
+
+**And** the workflow is reusable (operator can re-trigger it ad-hoc when adapter shapes change upstream — pattern similar to a "release validation" workflow).
+
+**And** the workflow CAREFULLY handles secrets — credentials live in GitHub Actions secrets, NEVER in committed code (matches CLAUDE.md hard rule on no `sk-` / `Bearer ` committal).
+
+**Carry-overs closed:** C70 (OpenAI SDK shape verification); Epic 11 retro Action #3 + #4; Epic 12 retro Action #4 + #8; Epic 13 retro Action #8.
+
+---
+
+#### Story 14.5: Close C59 — Default-Predicate Incompatibility (`Skill.Get Activation Pass At K` Keyword OR Docstring Warnings)
+
+As **Devon (Agent Surface Author) using Pass@k with skill activation decisions**,
+I want EITHER a dedicated `Skill.Get Activation Pass At K(runs, k)` keyword that uses the correct predicate automatically (`lambda r: isinstance(r.result, ActivationDecision) and r.result.activated`) OR explicit incompatibility warnings on both `Stat.Get Pass At K` + `Skill.Get Activation Decision` docstrings with example custom predicate,
+So that Story 7.3 D-1's silent zero-result misleading callers is closed (now 6 epics old per Epic 12 retro Action #5 + Epic 13 retro Action #5).
+
+**Acceptance Criteria:**
+
+**Given** Story 7.3 D-1 (HIGH) empirically confirmed 2026-05-21 that the default predicate (`completeness == "complete"`) returns False for `ActivationDecision` results because `ActivationDecision.metadata.completeness` doesn't exist; `Stat.Get Pass At K` silently returns 0.0,
+
+**When** Story 14.5 dev completes,
+
+**Then** EITHER a dedicated `Skill.Get Activation Pass At K(runs, k)` keyword ships under SkillsLibrary using the correct predicate automatically + unit test exercises the predicate semantics OR both `Stat.Get Pass At K` + `Skill.Get Activation Decision` docstrings carry an `## Incompatibility Warning` section with the example custom-predicate snippet + a matching `# stability-surface anchor test` verifying the warning section appears in libdoc-rendered HTML.
+
+**And** C59 is closed in `docs/phase-1-5-carry-overs.md` with implementation reference.
+
+**And** the chosen direction matches `feedback_in_flight_spec_amendment` — the spec D-N decision documents which path was chosen at dev-start.
+
+**Carry-overs closed:** C59 (DF-7.3-S1); Epic 12 retro Action #5; Epic 13 retro Action #5. (Recommended direction per Devon UX: dedicated keyword — cleaner than docstring warning Devon must remember to read.)
+
+---
+
+#### Story 14.6: Unified Host-Instance Budget Plumbing (`_HostBudgetPlumbing` Mixin Closes C20 + C26 + C89 + C95)
+
+As **Mei + Devon (Agent Surface Authors) running cross-adapter cohort comparisons**,
+I want a unified `_HostBudgetPlumbing` mixin consumed by MCPLibrary + SkillsLibrary + OrchestrationLibrary so all 3 libraries carry `_max_cost_usd` + `_max_runtime_seconds` host-instance attrs symmetrically + `@guarded_fanout()`-decorated keywords actually enforce budgets end-to-end,
+So that the "tracked NOT enforced" carve-out shipped across MCPLibrary (DF-4.4-S1 / C20, 9 epics old) + SkillsLibrary (DF-13.5-S1 / C95) closes with one architectural fix; cross-adapter fan-out runs respect actual budgets per FR11 not just per FR11 in docstring.
+
+**Acceptance Criteria:**
+
+**Given** `_kernel/guardrails.py` `@guarded_fanout()` reads `getattr(self, "_max_cost_usd", None)` + `getattr(self, "_max_runtime_seconds", None)` from host instance AND MCPLibrary + SkillsLibrary currently don't carry these attrs (both ship with the carve-out docstring "tracked NOT enforced"),
+
+**When** Story 14.6 dev completes,
+
+**Then** (1) a new `_kernel/host_budget_plumbing.py` ships `_HostBudgetPlumbing` mixin with `_max_cost_usd: float | None` + `_max_runtime_seconds: float | None` instance attrs + the constructor pattern accepting them as kwargs; (2) MCPLibrary + SkillsLibrary + OrchestrationLibrary inherit the mixin; (3) `MCP.Get Tool Discoverability` + `MCP.Compare Tool Discoverability` + `Skill.Get Discoverability` + `Skill.Compare Discoverability` (+ any other `@guarded_fanout`-decorated keywords) ACTUALLY enforce `max_cost_usd` + `max_runtime_seconds` end-to-end (mid-run hard-stop at 1.1× cap raises `CostExceededError` per existing kernel pattern); (4) docstring caveats updated to remove the "tracked NOT enforced" language across all affected keywords + libdoc regenerated; (5) C20 + C26 + C89 + C95 closed in `docs/phase-1-5-carry-overs.md` with implementation reference; (6) unit + integration tests verify budget enforcement on each of the 4 fan-out keywords (e.g., `max_cost_usd=0.01` against a 3-adapter fan-out raises `CostExceededError` after the 1st adapter's `cost_usd=0.05` accumulator-tick).
+
+**And** the migration is backward-compatible: existing callers NOT passing `max_cost_usd`/`max_runtime_seconds` continue to work (None semantics = unlimited, as before).
+
+**And** existing `_SUB_LIBRARIES` exclusion rule from Story 2.2 collision norm is preserved (the mixin doesn't change `_SUB_LIBRARIES` membership — only adds budget plumbing to host instances).
+
+**And** Story 13.5's `@guarded_fanout` posture (currently `getattr` fallback to None) becomes correct + tested; the docstring "Phase-1 carve-out DF-13.5-S1 / C95: tracked NOT enforced" line is removed in this story commit.
+
+**Carry-overs closed:** C20 (DF-4.4-S1, 9 epics old) + C26 (host-instance budget carve-out related) + C89 (DF-13.3-S1) + C95 (DF-13.5-S1); Epic 11 retro Action #2; Epic 12 retro Action #3; Epic 13 retro Action #6.
+
+---

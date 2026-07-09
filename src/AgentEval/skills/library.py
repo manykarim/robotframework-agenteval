@@ -22,37 +22,51 @@
 Story 2.1 ships 5 Tier-1 keywords (per architecture L620 Decision-1 +
 PRD FR1 + epics.md Epic 2 Story 2.1):
 
-- `Get Frontmatter` — parse a skill `.md`'s YAML frontmatter into a dict.
-- `Get Description` — return the `description` field.
-- `Get Allowed Tools` — return the `allowed-tools` list.
-- `Get Disable Model Invocation` — return the `disable-model-invocation` bool.
-- `Should Be Valid Frontmatter` — structural validator (Phase-1 plain
+- `Skill.Get Frontmatter` — parse a skill `.md`'s YAML frontmatter into a dict.
+- `Skill.Get Description` — return the `description` field.
+- `Skill.Get Allowed Tools` — return the `allowed-tools` list.
+- `Skill.Get Disable Model Invocation` — return the `disable-model-invocation` bool.
+- `Skill.Should Be Valid Frontmatter` — structural validator (Phase-1 plain
   `@keyword`; full AssertionEngine matcher deferred to Phase-2 per
   ADR-022 catalog row).
 
-Every method is `@tier(1)`-annotated (deterministic, ≤50 ms per call on
-typical 5 KB inputs per NFR-PERF-02). Tier-1 keywords do NOT touch the
-provider, the trace store, or external services; they read the local
-`.md` file + parse YAML only.
+The 5 static-inspection keywords above are `@tier(1)`-annotated
+(deterministic, ≤50 ms per call on typical 5 KB inputs per NFR-PERF-02).
+Tier-1 keywords do NOT touch the provider, the trace store, or external
+services; they read the local `.md` file + parse YAML only. Stochastic
+fan-out keywords (`Skill.Get Activation Decision`, `Skill.Get Discoverability`,
+`Skill.Compare Discoverability`) are `@tier(3)` and `Skill.Should Activate For`
+is `@tier(2)` — these were added in later epics (7 / 12 / 13) and are
+NOT covered by the ≤50 ms NFR.
 
-Usage from a `.robot` file:
+Naming rule: every SkillsLibrary keyword bakes its `Skill.` namespace
+prefix into its `@keyword(name=...)` value (the artifact/engine-library
+rule from the `compose-single-library-import` change), so the call sites
+below are identical whether the library is reached through the composed
+`Library AgentEval` import or a standalone module-path import.
+
+Usage from a `.robot` file (composed import — recommended):
 
     *** Settings ***
-    Library    AgentEval.skills.library    WITH NAME    Skill
+    Library    AgentEval
 
     *** Test Cases ***
     Skill File Has Correct Description
         ${desc}=    Skill.Get Description    skills/example.md
         Should Be Equal    ${desc}    Example skill for testing.
 
-**NOTE (per Phase 6 review):** unlike other AgentEval sub-libraries,
-`SkillsLibrary` is NOT registered in `_SUB_LIBRARIES` and is NOT
-composed under the top-level `AgentEval` library (DF-7.1-S1 / name
-collision with `SubagentsLibrary.Get Frontmatter`). All 8 keywords
-must be imported via the direct path shown in the Usage block above.
+Standalone import for budget scoping (no `WITH NAME` needed — the
+`Skill.` prefix is already baked in):
+
+    *** Settings ***
+    Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0
+
+Do NOT add `WITH NAME    Skill` to that import: RF stacks the assigned
+name on top of the baked prefix, so `Skill.Get Frontmatter` would become
+`Skill.Skill.Get Frontmatter` — harmless but pointless and confusing.
 
 Phase-1 limitations explicitly documented:
-- `Should Be Valid Frontmatter` is a plain `@keyword`-decorated function,
+- `Skill.Should Be Valid Frontmatter` is a plain `@keyword`-decorated function,
   NOT a `robotframework-assertion-engine` matcher. The Phase-1 manual-
   validation contract is load-bearing; Phase-2 (ADR-022 adoption) re-
   wires it with the full operator-chain idiom.
@@ -65,12 +79,16 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from robot.api.deco import keyword
 
+if TYPE_CHECKING:
+    from AgentEval.stats.types import KeywordRun
+
 from AgentEval._kernel.discovery import get_adapter
 from AgentEval._kernel.guardrails import guarded_fanout
+from AgentEval._kernel.host_budget_plumbing import _HostBudgetPlumbing
 from AgentEval._kernel.tier import tier
 from AgentEval._kernel.tier_acl import build_polling_disallowed_message
 from AgentEval.errors import PollingDisallowedError, SkillDidNotActivateError
@@ -78,9 +96,11 @@ from AgentEval.skills._internal import load_skill_discoverability_tasks
 from AgentEval.skills._parser import parse_frontmatter, validate_frontmatter_structure
 from AgentEval.skills.types import (
     ActivationDecision,
+    SkillBenchmarkComparisonResult,
+    SkillDiscoverabilityComparisonResult,
+    SkillDiscoverabilityComparisonSummary,
     SkillDiscoverabilityResult,
-    SkillDiscoverabilityTaskSummary,
-    SkillTaskResult,
+    SkillPairwiseAdapterDelta,
 )
 
 __all__ = ["SkillsLibrary"]
@@ -89,16 +109,30 @@ __all__ = ["SkillsLibrary"]
 _BROWSER_STYLE_MIGRATED = True
 
 
-class SkillsLibrary:
-    """Static-inspection keywords for skill `.md` files [Tier 1 — Deterministic].
+class SkillsLibrary(_HostBudgetPlumbing):
+    """Static-inspection + cross-adapter keywords for skill `.md` files.
 
-    All 5 public methods are `@keyword`-decorated + `@tier(1)`-annotated
-    per Story 1b.6 conventions. The class holds no mutable state; each
-    call re-parses the target file so the keywords are stateless +
-    parallel-safe under `pabot --processes N`.
+    Inherits ``_HostBudgetPlumbing`` (Story 14.6 / C95 closure) so
+    ``Skill.Compare Discoverability`` (and any future @guarded_fanout
+    keyword) enforces ``max_cost_usd`` + ``max_runtime_seconds`` budgets.
+    Under the composed ``Library AgentEval`` import these budgets are
+    forwarded automatically from the top-level config; a standalone
+    ``Library AgentEval.skills.library.SkillsLibrary max_cost_usd=...``
+    import passes them at RF ``Library`` import time.
+
+    All 9 public methods are `@keyword`-decorated per Story 1b.6
+    conventions, spanning mixed tiers: `@tier(1)` for deterministic
+    static-inspection (Get Frontmatter, Get Description, Get Allowed
+    Tools, Get Disable Model Invocation, Should Be Valid Frontmatter) —
+    these hold no mutable state and re-parse the target file per call
+    (stateless + parallel-safe under `pabot --processes N`); `@tier(2)`
+    for `Skill.Should Activate For` (declarative-match keyword); `@tier(3)`
+    for stochastic fan-out keywords delegating to coding-agent adapters
+    (`Skill.Get Activation Decision`, `Skill.Get Discoverability` Story 7.2,
+    `Skill.Compare Discoverability` Story 13.5).
     """
 
-    @keyword(name="Get Frontmatter")
+    @keyword(name="Skill.Get Frontmatter")
     @tier(1)
     def get_frontmatter(self, path: str | Path) -> dict[str, Any]:
         """Parses the YAML frontmatter at the head of a skill ``.md`` file (PRD FR1).
@@ -106,9 +140,9 @@ class SkillsLibrary:
         [Tier 1 — Deterministic] — pure file-read + YAML parse; no
         provider, no trace store. Returns the raw parsed YAML as a
         ``dict[str, Any]``. Does NOT enforce the required-fields
-        contract — see `Should Be Valid Frontmatter` for structural
-        validation, OR the typed getters (`Get Description`,
-        `Get Allowed Tools`, etc.) which validate during projection.
+        contract — see `Skill.Should Be Valid Frontmatter` for structural
+        validation, OR the typed getters (`Skill.Get Description`,
+        `Skill.Get Allowed Tools`, etc.) which validate during projection.
         Median ≤ 50 ms per call on the 5 KB reference fixture.
 
         | =Arguments= | =Description= |
@@ -120,7 +154,7 @@ class SkillsLibrary:
         `docs/contracts/error-class-hierarchy.md` L96-104.
 
         Example:
-        | ${frontmatter} =    `Get Frontmatter`    ${CURDIR}/skills/example.md
+        | ${frontmatter} =    `Skill.Get Frontmatter`    ${CURDIR}/skills/example.md
         | Should Be Equal    ${frontmatter}[name]    example-skill
         | Should Contain    ${frontmatter}[allowed-tools]    Bash
 
@@ -128,17 +162,17 @@ class SkillsLibrary:
         - PRD FR1 ratifies the YAML frontmatter parse + dict-return contract.
         - Performance budget: NFR-PERF-02 (median ≤ 50 ms per call).
         - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
-        - Sibling keywords: `Get Description`, `Get Allowed Tools`, `Get Disable Model Invocation` (typed-validated projections); `Should Be Valid Frontmatter` (structural validator).
+        - Sibling keywords: `Skill.Get Description`, `Skill.Get Allowed Tools`, `Skill.Get Disable Model Invocation` (typed-validated projections); `Skill.Should Be Valid Frontmatter` (structural validator).
         - Parallel surface: `SubagentsLibrary.Get Frontmatter` for sub-agent ``.md`` files (different validation rules).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return parse_frontmatter(path)
 
-    @keyword(name="Get Description")
+    @keyword(name="Skill.Get Description")
     @tier(1)
     def get_description(self, path: str | Path) -> str:
         """Returns the ``description`` field from a skill ``.md`` file's frontmatter (PRD FR1).
 
-        [Tier 1 — Deterministic] — pure projection of `Get Frontmatter`
+        [Tier 1 — Deterministic] — pure projection of `Skill.Get Frontmatter`
         with a ``description``-field non-empty-string check.
 
         | =Arguments= | =Description= |
@@ -149,23 +183,23 @@ class SkillsLibrary:
         empty.
 
         Example:
-        | ${desc} =    `Get Description`    ${CURDIR}/skills/example.md
+        | ${desc} =    `Skill.Get Description`    ${CURDIR}/skills/example.md
         | Should Contain    ${desc}    example skill
         | Should Be True    len('${desc}') > 0
 
         Notes:
         - PRD FR1 ratifies the description-field projection contract.
         - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
-        - Sibling keywords: `Get Frontmatter` (raw dict); `Should Be Valid Frontmatter` (all-fields validator).
+        - Sibling keywords: `Skill.Get Frontmatter` (raw dict); `Skill.Should Be Valid Frontmatter` (all-fields validator).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return str(self._read_and_validate(path)["description"])
 
-    @keyword(name="Get Allowed Tools")
+    @keyword(name="Skill.Get Allowed Tools")
     @tier(1)
     def get_allowed_tools(self, path: str | Path) -> list[str]:
         """Returns the ``allowed-tools`` list from a skill ``.md`` file's frontmatter (PRD FR1).
 
-        [Tier 1 — Deterministic] — pure projection of `Get Frontmatter`
+        [Tier 1 — Deterministic] — pure projection of `Skill.Get Frontmatter`
         with a ``list[str]`` type check. The list MAY be empty (a skill
         with no tool allowlist is valid).
 
@@ -176,7 +210,7 @@ class SkillsLibrary:
         invalid OR ``allowed-tools`` is not a list of strings.
 
         Example:
-        | @{tools} =    `Get Allowed Tools`    ${CURDIR}/skills/example.md
+        | @{tools} =    `Skill.Get Allowed Tools`    ${CURDIR}/skills/example.md
         | Should Contain    ${tools}    Bash
         | Should Contain    ${tools}    Read
         | Length Should Be    ${tools}    3
@@ -184,16 +218,16 @@ class SkillsLibrary:
         Notes:
         - PRD FR1 ratifies the allowed-tools projection contract.
         - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
-        - Sibling keywords: `Get Frontmatter` (raw dict); `Get Disable Model Invocation` (companion projection).
+        - Sibling keywords: `Skill.Get Frontmatter` (raw dict); `Skill.Get Disable Model Invocation` (companion projection).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return list(self._read_and_validate(path)["allowed-tools"])
 
-    @keyword(name="Get Disable Model Invocation")
+    @keyword(name="Skill.Get Disable Model Invocation")
     @tier(1)
     def get_disable_model_invocation(self, path: str | Path) -> bool:
         """Returns the ``disable-model-invocation`` bool from a skill ``.md`` file's frontmatter (PRD FR1).
 
-        [Tier 1 — Deterministic] — pure projection of `Get Frontmatter`
+        [Tier 1 — Deterministic] — pure projection of `Skill.Get Frontmatter`
         with a strict bool type check. YAML coercion rules:
 
         - ``true``/``false``/``yes``/``no``/``on``/``off`` parse to Python
@@ -209,16 +243,16 @@ class SkillsLibrary:
         invalid OR ``disable-model-invocation`` is not a bool.
 
         Example:
-        | ${disabled} =    `Get Disable Model Invocation`    ${CURDIR}/skills/example.md
+        | ${disabled} =    `Skill.Get Disable Model Invocation`    ${CURDIR}/skills/example.md
         | Should Be Equal    ${disabled}    ${FALSE}                                      # Default for most skills.
-        | ${disabled} =    `Get Disable Model Invocation`    ${CURDIR}/skills/static-only.md
+        | ${disabled} =    `Skill.Get Disable Model Invocation`    ${CURDIR}/skills/static-only.md
         | Should Be Equal    ${disabled}    ${TRUE}
 
         Notes:
         - PRD FR1 ratifies the disable-model-invocation projection contract.
         - Strict bool typing — int / string forms rejected. The PyYAML 1.1 coercion of unquoted ``true``/``yes`` etc. to Python bool IS accepted.
         - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
-        - Sibling keyword: `Get Allowed Tools` (companion projection).
+        - Sibling keyword: `Skill.Get Allowed Tools` (companion projection).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return bool(self._read_and_validate(path)["disable-model-invocation"])
 
@@ -226,7 +260,7 @@ class SkillsLibrary:
         """Parse + structurally-validate a skill `.md` file once per call.
 
         Internal helper that consolidates the parse + validate steps
-        shared by `Get Description` / `Get Allowed Tools` / `Get
+        shared by `Skill.Get Description` / `Skill.Get Allowed Tools` / `Get
         Disable Model Invocation`. Story 2.1 code-review B2 fix: the
         earlier per-keyword `parse_frontmatter` + `validate_frontmatter_structure`
         call pair iterated `REQUIRED_FIELDS` once per call; this
@@ -234,8 +268,8 @@ class SkillsLibrary:
         sweep per public-keyword invocation, matching the NFR-PERF-02
         budget framing.
 
-        Tier-1 callers that need ALL fields should call `Get Frontmatter`
-        once + `Should Be Valid Frontmatter` on the result; chained
+        Tier-1 callers that need ALL fields should call `Skill.Get Frontmatter`
+        once + `Skill.Should Be Valid Frontmatter` on the result; chained
         per-field getters each incur ONE I/O + parse cycle (cache-free
         by design — `SkillsLibrary` is stateless under `pabot --processes N`).
         """
@@ -243,7 +277,7 @@ class SkillsLibrary:
         validate_frontmatter_structure(frontmatter, file_path=str(path))
         return frontmatter
 
-    @keyword(name="Should Be Valid Frontmatter")
+    @keyword(name="Skill.Should Be Valid Frontmatter")
     @tier(1)
     def should_be_valid_frontmatter(self, frontmatter: dict[str, Any]) -> None:
         """Asserts a parsed frontmatter dict has the 4 required fields with correct types (PRD FR1).
@@ -255,7 +289,7 @@ class SkillsLibrary:
         matcher deferred to Phase-2.
 
         | =Arguments= | =Description= |
-        | ``frontmatter`` | The dict returned by `Get Frontmatter`. |
+        | ``frontmatter`` | The dict returned by `Skill.Get Frontmatter`. |
 
         Raises ``InvalidSkillFrontmatterError`` when any required field
         is missing OR has the wrong type. The error message lists the
@@ -264,20 +298,20 @@ class SkillsLibrary:
         L96-104.
 
         Example:
-        | ${frontmatter} =    `Get Frontmatter`    ${CURDIR}/skills/example.md
-        | `Should Be Valid Frontmatter`    ${frontmatter}
+        | ${frontmatter} =    `Skill.Get Frontmatter`    ${CURDIR}/skills/example.md
+        | `Skill.Should Be Valid Frontmatter`    ${frontmatter}
         | ${fm_broken} =    Create Dictionary    name=just-a-name
-        | Run Keyword And Expect Error    InvalidSkillFrontmatterError*    `Should Be Valid Frontmatter`    ${fm_broken}
+        | Run Keyword And Expect Error    InvalidSkillFrontmatterError*    `Skill.Should Be Valid Frontmatter`    ${fm_broken}
 
         Notes:
         - PRD FR1 ratifies the required-fields contract.
         - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
         - ADR-019 ratifies the Phase-1 plain-``@keyword`` form; Phase-2 will adopt the AssertionEngine matcher idiom.
-        - Sibling keyword: `Get Frontmatter` (raw dict — feed its return into this validator).
+        - Sibling keyword: `Skill.Get Frontmatter` (raw dict — feed its return into this validator).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         validate_frontmatter_structure(frontmatter)
 
-    @keyword(name="Get Activation Decision")
+    @keyword(name="Skill.Get Activation Decision")
     @tier(3)
     @guarded_fanout()
     def get_activation_decision(
@@ -314,7 +348,7 @@ class SkillsLibrary:
         here — missing ``name`` silently yields ``activated=False``.
 
         Example (illustrative — assumes a real adapter):
-        | ${decision} =    `Get Activation Decision`    ${CURDIR}/skills/web-search.md    prompt=Find news about Robot Framework
+        | ${decision} =    `Skill.Get Activation Decision`    ${CURDIR}/skills/web-search.md    prompt=Find news about Robot Framework
         | Should Be True    ${decision.activated}
         | Should Be True    ${decision.cost_usd} >= 0.0
 
@@ -322,12 +356,12 @@ class SkillsLibrary:
         - PRD FR1 ratifies the skill-activation surface; AC-7.1 ratifies the keyword contract.
         - Phase-1 heuristic per AC-7.1.4 — substring check on skill ``name`` in response text. Phase-2 classifier deferred per DF-7.1-S1 / C55.
         - FR28 prohibits polling — use `Stat.Run N Times` for statistical assertions instead.
-        - Sibling keyword: `Should Activate For` (assertion wrapper); `Get Discoverability` (multi-task cohort evaluation).
+        - Sibling keyword: `Skill.Should Activate For` (assertion wrapper); `Skill.Get Discoverability` (multi-task cohort evaluation).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         if polling is not None:
             raise PollingDisallowedError(
                 build_polling_disallowed_message(
-                    "Get Activation Decision",
+                    "Skill.Get Activation Decision",
                     {"skill": str(skill), "prompt": prompt, "adapter": adapter},
                 )
             )
@@ -348,7 +382,65 @@ class SkillsLibrary:
             latency_seconds=result.latency_seconds,
         )
 
-    @keyword(name="Get Discoverability")
+    # ----------------------------------------------------------------- #
+    # FR27 specialised — Story 14.5 / C59 / DF-7.3-S1 closure             #
+    # ----------------------------------------------------------------- #
+
+    @keyword(name="Skill.Get Activation Pass At K")
+    @tier(1)
+    def get_activation_pass_at_k(
+        self,
+        runs: list[KeywordRun],
+        k: int,
+    ) -> float:
+        """[Tier 1 — Deterministic] HumanEval Pass@k unbiased estimator over activation-decision trials.
+
+        Specialised sibling of ``Stat.Get Pass At K`` with the
+        activation-decision pass-predicate HARD-CODED in. Returns
+        ``float ∈ [0, 1]`` — same HumanEval estimator math as
+        ``Stat.Get Pass At K`` (delegates to the same internal helper).
+
+        | =Arguments= | =Description= |
+        | ``runs`` | ``list[KeywordRun]`` — typically the result of ``Stat.Run N Times`` wrapping ``Skill.Get Activation Decision``. |
+        | ``k`` | Top-k parameter. Must satisfy ``1 <= k <= len(runs)``. |
+
+        Raises ``ValueError`` when ``k < 1``, ``k > len(runs)``, or
+        ``len(runs) == 0`` (delegated to ``_compute_pass_at_k`` validation).
+
+        Example:
+        | ${pass_at_5} =    `Skill.Get Activation Pass At K`    ${RUNS}    k=5
+        | Should Be True    ${pass_at_5} >= 0.7
+
+        Notes:
+        - PRD FR27 — Pass@k unbiased estimator math reused via
+          ``AgentEval.stats._internal._compute_pass_at_k``.
+        - Pass-predicate is HARD-CODED to
+          ``isinstance(run.result, ActivationDecision) and
+          run.result.activated``. The default ``Stat.Get Pass At K``
+          predicate (``completeness == "complete"``) returns ``False``
+          for ``ActivationDecision`` results because
+          ``ActivationDecision`` has no ``metadata.completeness``
+          attribute — the silent-zero failure mode Story 7.3 D-1
+          empirically confirmed (closes C59 / DF-7.3-S1).
+        - No ``predicate`` kwarg by design — removing the
+          predicate-customization pitfall is the whole purpose. Operators
+          needing a custom predicate call ``Stat.Get Pass At K`` directly.
+        - Sibling keyword: ``Stat.Get Pass At K`` (Tier-1) for generic
+          Pass@k on ``AgentRunResult`` runs.
+        - Closes Epic 12 retro Action #5 + Epic 13 retro Action #5 (the
+          C59 closure ratified 6 epics later in Story 14.5). The multi-word
+          post-dot keyword name complies with the ratified norm
+          ``feedback_libdoc_namespace_keyword_must_be_multiword``
+          (Epic 12 retro 2026-06-01) — single-word post-dot names trigger
+          the RF libdoc auto-split bug; multi-word names are immune.
+        """
+        from AgentEval.skills._internal import _activation_pass_predicate
+        from AgentEval.stats._internal import _compute_pass_at_k
+
+        c = sum(1 for r in runs if _activation_pass_predicate(r))
+        return _compute_pass_at_k(c, len(runs), k)
+
+    @keyword(name="Skill.Get Discoverability")
     @tier(3)
     @guarded_fanout()
     def get_discoverability(
@@ -389,7 +481,7 @@ class SkillsLibrary:
         is structurally invalid.
 
         Example (illustrative — assumes a real adapter):
-        | ${disc} =    `Get Discoverability`    ${CURDIR}/skills/web-search.md    ${CURDIR}/tasks/web-search.yaml    trials_per_task=5
+        | ${disc} =    `Skill.Get Discoverability`    ${CURDIR}/skills/web-search.md    ${CURDIR}/tasks/web-search.yaml    trials_per_task=5
         | Should Be True    ${disc.summary.activation_accuracy} >= 0.6
         | FOR    ${task_result}    IN    @{disc.per_task_results}
         |     Log    ${task_result.task_id}: ${task_result.pass_at_k}
@@ -399,12 +491,12 @@ class SkillsLibrary:
         - PRD FR4b ratifies the cohort-discoverability contract; AC-7.2 ratifies the keyword surface.
         - Phase-1 activation heuristic per AC-7.2.4. Phase-2 structured-response classifier deferred per DF-7.2-S1 / C56.
         - FR28 prohibits polling — fan-out via this keyword's own ``trials_per_task`` or via `Stat.Run N Times`.
-        - Sibling keywords: `Get Activation Decision` (single-task variant); `Should Activate For` (assertion wrapper).
+        - Sibling keywords: `Skill.Get Activation Decision` (single-task variant); `Skill.Should Activate For` (assertion wrapper).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         if polling is not None:
             raise PollingDisallowedError(
                 build_polling_disallowed_message(
-                    "Get Discoverability",
+                    "Skill.Get Discoverability",
                     {"skill": str(skill), "tasks": str(tasks), "adapter": adapter},
                 )
             )
@@ -416,46 +508,418 @@ class SkillsLibrary:
 
         skill_tasks = load_skill_discoverability_tasks(tasks)
 
-        adapter_cls = get_adapter(adapter)
-        ctor_kwargs: dict[str, Any] = dict(kwargs)
-        if model is not None:
-            ctor_kwargs["model"] = model
+        # Story 13.5 refactor: per-adapter logic extracted to
+        # `skills/_internal.run_single_adapter_skill_discoverability` so
+        # the new `Skill.Compare Discoverability` keyword reuses it
+        # without duplication. Behavior MUST equal pre-refactor —
+        # verified by Story 7.2's existing tests passing unchanged.
+        from AgentEval.skills._internal import run_single_adapter_skill_discoverability
 
         t_start = time.perf_counter()
-        task_results: list[SkillTaskResult] = []
-        for task in skill_tasks:
-            activations = 0
-            trial_costs: list[float] = []
-            for _ in range(trials_per_task):
-                adapter_instance = adapter_cls(**ctor_kwargs)
-                result = adapter_instance.run(task.prompt)
-                activated = bool(skill_name) and skill_name.lower() in result.response_text.lower()
-                if activated:
-                    activations += 1
-                trial_costs.append(result.cost_usd)
-            pass_at_k = activations / trials_per_task if trials_per_task > 0 else 0.0
-            cost_per_trial = sum(trial_costs) / max(trials_per_task, 1)
-            task_results.append(
-                SkillTaskResult(
-                    task_id=task.id,
-                    task_prompt=task.prompt,
-                    should_activate=task.should_activate,
-                    trials_run=trials_per_task,
-                    activations_observed=activations,
-                    pass_at_k=pass_at_k,
-                    competing_skills_picked={},
-                    cost_per_trial_usd=cost_per_trial,
-                )
-            )
-        total_runtime = time.perf_counter() - t_start
-        summary = self._build_discoverability_summary(task_results, total_runtime)
-        return SkillDiscoverabilityResult(
-            per_task_results=tuple(task_results),
-            summary=summary,
-            adapter_coverage="in_process",
+        return run_single_adapter_skill_discoverability(
+            skill_name=skill_name,
+            task_list=skill_tasks,
+            adapter=adapter,
+            model=model,
+            trials_per_task=trials_per_task,
+            extra_adapter_kwargs=dict(kwargs),
+            t_start=t_start,
         )
 
-    @keyword(name="Should Activate For")
+    # --------------------------------------------------------------- #
+    # Story 13.5: Cross-adapter Skill Discoverability comparison      #
+    # (PRD FR4c). Symmetric to Story 13.3's `MCP.Compare Tool         #
+    # Discoverability` (FR10b). Behind the `[agenteval-advanced]`     #
+    # extra (Mann-Whitney U from Story 13.1).                         #
+    # --------------------------------------------------------------- #
+
+    @keyword(name="Skill.Compare Discoverability")
+    @tier(3)
+    @guarded_fanout()
+    def get_discoverability_comparison(
+        self,
+        skill: str | Path = "",
+        tasks: str | Path = "",
+        adapters: list[str] | None = None,
+        trials_per_task: int = 3,
+        max_cost_usd: float = 20.00,
+        max_runtime_seconds: float | None = None,
+        model: str | None = None,
+        polling: float | None = None,
+        **kwargs: Any,
+    ) -> SkillDiscoverabilityComparisonResult:
+        """Compares Skill Discoverability across ≥2 coding-agent adapters with statistical significance (PRD FR4c; Story 13.5).
+
+        [Tier 3 — Stochastic Fan-Out] — runs `Skill.Get Discoverability`
+        once per adapter against the SAME task set, then computes
+        pairwise Mann-Whitney U deltas across the per-task `pass_at_k`
+        distributions PLUS false-activation-rate + missed-activation-
+        rate deltas. Returns a `SkillDiscoverabilityComparisonResult`
+        with per-adapter results + cross-adapter deltas + multi-column
+        cohort heatmap + aggregate summary.
+
+        Requires the ``[agenteval-advanced]`` optional extra (scipy +
+        numpy) for the Mann-Whitney U cross-adapter delta computation;
+        raises ``ImportError`` on invocation WITHOUT the extra
+        (fail-fast BEFORE per-adapter fan-out — operators discovering
+        the missing extra should not pay N-adapter trial cost first).
+
+        | =Arguments= | =Description= |
+        | ``skill`` | Filesystem path to the skill ``.md`` file. |
+        | ``tasks`` | Filesystem path to the skill-discoverability tasks YAML (loaded ONCE; shared across adapters). |
+        | ``adapters`` | REQUIRED ``list[str]`` of adapter names; ≥2 entries required. |
+        | ``trials_per_task`` | Pass@k trials per task. Defaults to ``3``. |
+        | ``max_cost_usd`` | Budget cap. Defaults to ``20.00`` per epics.md L2218 (4× single-adapter typical). Enforced via `@guarded_fanout()` per Story 14.6 (C95 closure) — SkillsLibrary inherits `_HostBudgetPlumbing` so budgets passed at RF `Library` import time are honored end-to-end. |
+        | ``max_runtime_seconds`` | Runtime cap. Phase-1: tracked, NOT enforced. |
+        | ``model`` | Optional ``str`` forwarded to ALL adapters' ctor. |
+        | ``polling`` | Must NOT be provided — raises ``PollingDisallowedError`` per FR28 (mirrors `Skill.Get Discoverability`). |
+        | ``**kwargs`` | Forward-compat kwargs routed to each adapter's ctor. |
+
+        Returns ``SkillDiscoverabilityComparisonResult`` with
+        ``adapters`` + ``per_adapter_results`` (one
+        ``SkillDiscoverabilityResult`` per adapter) +
+        ``cross_adapter_deltas`` (C(N, 2) ``SkillPairwiseAdapterDelta``
+        entries keyed ``f"{a1}_vs_{a2}"``) + ``heatmap`` (multi-column
+        ``CohortHeatmap`` via ``from_skill_comparison``) + ``summary``
+        (``SkillDiscoverabilityComparisonSummary``).
+
+        Raises ``ImportError`` when ``[agenteval-advanced]`` extra is
+        missing. Raises ``PollingDisallowedError`` when ``polling`` is
+        provided. Raises ``ValueError`` on missing ``skill`` / ``tasks``
+        / ``adapters`` (≥2 distinct required) / invalid
+        ``trials_per_task``.
+
+        Example:
+        | ${comparison}=    `Skill.Compare Discoverability`
+        | ...    skill=${CURDIR}/skills/example.md
+        | ...    tasks=${CURDIR}/discoverability/skill-tasks.yaml
+        | ...    adapters=${{['claude_code_cli', 'codex_cli']}}
+        | ...    trials_per_task=5
+        | Should Be True    ${comparison.summary.activation_accuracy_per_adapter['claude_code_cli']} >= 0.7
+        | Should Be True    abs(${comparison.cross_adapter_deltas['claude_code_cli_vs_codex_cli'].pass_at_k_delta}) < 0.3
+
+        Notes:
+        - Story 13.5 (Epic 13) ships this Phase-2 keyword closing Devon's cross-adapter analysis loop. Symmetric to Story 13.3's `MCP.Compare Tool Discoverability` (FR10b).
+        - PRD FR4c ratifies the cross-adapter Skill Discoverability surface; epics.md L2218-2219 ratifies the keyword signature + extended fields (per-adapter false-activation / missed-activation rate comparison).
+        - Math reference: ``AgentEval.stats.mannwhitney.compute_mann_whitney_u`` (Story 13.1 pure helper). Mann-Whitney U is computed on the per-task ``pass_at_k`` lists per adapter; false-activation + missed-activation deltas are aggregate-summary subtractions.
+        - ``@tier(3)`` per fan-out semantics — stochastic by tier definition.
+        - Phase-2.5 carry-overs: DF-13.5-S1 (`@guarded_fanout` cross-library budget plumbing); DF-13.5-S2 (per-adapter MCP attachment); DF-13.5-S3 (Bonferroni multi-pairwise correction); DF-13.5-S4 (`robotframework-agentskills` dogfood CI matrix).
+        - Sibling keyword: `Skill.Get Discoverability` (Phase-1 single-adapter). The ≥2-adapter validation rejects N=1 callers — use the simpler `Get` keyword for single-adapter runs.
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        # Story 13.3 HIGH-A precedent (codex MED-2 13.5 fix): anchor the
+        # comparison-level wall-clock at keyword entry — BEFORE validation,
+        # extras gate, frontmatter parse, and per-adapter fan-out — so
+        # `summary.total_runtime_seconds` is end-to-end (what the operator
+        # waited), not "fan-out-only" (which would exclude real setup time).
+        compare_t_start = time.perf_counter()
+
+        # Validate args (mirrors single-adapter Get + adds N>=2 constraint).
+        if polling is not None:
+            raise PollingDisallowedError(
+                build_polling_disallowed_message(
+                    "Skill.Compare Discoverability",
+                    {"skill": str(skill), "tasks": str(tasks), "adapters": adapters},
+                )
+            )
+        if not skill:
+            raise ValueError("Skill.Compare Discoverability requires `skill=<path>` kwarg")
+        if not tasks:
+            raise ValueError("Skill.Compare Discoverability requires `tasks=<yaml-path>` kwarg")
+        if trials_per_task < 1:
+            raise ValueError(f"trials_per_task must be >= 1; got {trials_per_task}")
+        if adapters is None or len(adapters) < 2:
+            raise ValueError(
+                f"Skill.Compare Discoverability requires adapters=[<adapter_1>, "
+                f"<adapter_2>, ...] with >= 2 entries; got {adapters!r}"
+            )
+        if len(set(adapters)) != len(adapters):
+            raise ValueError(
+                f"Skill.Compare Discoverability requires distinct adapter names; got duplicates in {adapters!r}"
+            )
+
+        # `[agenteval-advanced]` extras gate (Story 13.5 D-4 + L-2).
+        # Module-attr read per Story 13.3 amendment (NOT `from X import Y`
+        # which captures stale value across pytest session reload).
+        from AgentEval.stats import library as _stats_lib
+
+        if not _stats_lib._ADVANCED_AVAILABLE:
+            raise ImportError(
+                "Skill.Compare Discoverability: scipy + numpy required. "
+                "Install via: uv pip install robotframework-agenteval[agenteval-advanced]"
+            )
+
+        # Parse skill frontmatter + tasks YAML ONCE (shared across adapters).
+        fm = parse_frontmatter(skill)
+        name_raw = fm.get("name")
+        skill_name = name_raw if isinstance(name_raw, str) else ""
+        skill_tasks = load_skill_discoverability_tasks(tasks)
+
+        from AgentEval._heatmap.models import CohortHeatmap
+        from AgentEval.skills._internal import run_single_adapter_skill_discoverability
+        from AgentEval.stats.mannwhitney import compute_mann_whitney_u
+
+        per_adapter_results: dict[str, SkillDiscoverabilityResult] = {}
+        for adapter_name in adapters:
+            per_adapter_results[adapter_name] = run_single_adapter_skill_discoverability(
+                skill_name=skill_name,
+                task_list=skill_tasks,
+                adapter=adapter_name,
+                model=model,
+                trials_per_task=trials_per_task,
+                extra_adapter_kwargs=dict(kwargs),
+                t_start=time.perf_counter(),
+            )
+
+        # Build C(N, 2) pairwise deltas.
+        import itertools
+        import math as _math
+
+        cross_adapter_deltas: dict[str, SkillPairwiseAdapterDelta] = {}
+        for adapter_a, adapter_b in itertools.combinations(adapters, 2):
+            a_result = per_adapter_results[adapter_a]
+            b_result = per_adapter_results[adapter_b]
+            rates_a = [t.pass_at_k for t in a_result.per_task_results]
+            rates_b = [t.pass_at_k for t in b_result.per_task_results]
+            if not rates_a or not rates_b:
+                continue
+            mwu = compute_mann_whitney_u(rates_a, rates_b)
+            delta_key = f"{adapter_a}_vs_{adapter_b}"
+            mean_a = sum(rates_a) / len(rates_a)
+            mean_b = sum(rates_b) / len(rates_b)
+            cross_adapter_deltas[delta_key] = SkillPairwiseAdapterDelta(
+                adapter_a=adapter_a,
+                adapter_b=adapter_b,
+                pass_at_k_delta=mean_a - mean_b,
+                pass_at_k_mann_whitney_result=mwu,
+                false_activation_rate_delta=a_result.summary.false_activation_rate
+                - b_result.summary.false_activation_rate,
+                missed_activation_rate_delta=a_result.summary.missed_activation_rate
+                - b_result.summary.missed_activation_rate,
+                significant_at_alpha_05=(not _math.isnan(mwu.p_value)) and mwu.p_value < 0.05,
+            )
+
+        # Build summary.
+        activation_accuracy_per_adapter = {
+            name: per_adapter_results[name].summary.activation_accuracy for name in adapters
+        }
+        best_adapter = max(
+            activation_accuracy_per_adapter,
+            key=lambda a: activation_accuracy_per_adapter[a],
+        )
+        worst_adapter = min(
+            activation_accuracy_per_adapter,
+            key=lambda a: activation_accuracy_per_adapter[a],
+        )
+        total_cost = sum(r.summary.total_cost_usd for r in per_adapter_results.values())
+        # Story 13.3 HIGH-A: comparison wall-clock measured from
+        # `compare_t_start` (NOT MAX of per-adapter, which would
+        # under-report serial execution by ~N-1×).
+        total_runtime = time.perf_counter() - compare_t_start
+        summary = SkillDiscoverabilityComparisonSummary(
+            total_cost_usd=total_cost,
+            total_runtime_seconds=total_runtime,
+            activation_accuracy_per_adapter=activation_accuracy_per_adapter,
+            best_adapter=best_adapter,
+            worst_adapter=worst_adapter,
+        )
+
+        # Build heatmap via the new classmethod. Use a shim namespace
+        # (mirrors Story 13.3 D-5 pattern) so the classmethod can read
+        # `.adapters` + `.per_adapter_results` before the full result
+        # dataclass is constructed.
+        class _ComparisonShim:
+            pass
+
+        shim = _ComparisonShim()
+        shim.adapters = tuple(adapters)  # type: ignore[attr-defined]
+        shim.per_adapter_results = per_adapter_results  # type: ignore[attr-defined]
+        heatmap = CohortHeatmap.from_skill_comparison(shim)  # type: ignore[arg-type]
+
+        return SkillDiscoverabilityComparisonResult(
+            adapters=tuple(adapters),
+            per_adapter_results=per_adapter_results,
+            cross_adapter_deltas=cross_adapter_deltas,
+            heatmap=heatmap,
+            summary=summary,
+        )
+
+    # --------------------------------------------------------------- #
+    # add-skill-ab-benchmark: two-arm A/B benchmark (skill-vs-no-skill #
+    # OR skill-v1-vs-v2). Reuses the Epic-13 stats primitives +        #
+    # Epic-12 judge machinery; blind grading + first-class             #
+    # skill-obsolescence verdict. Behind `[agenteval-advanced]`.       #
+    # --------------------------------------------------------------- #
+
+    @keyword(name="Skill.Compare Against Baseline")
+    @tier(3)
+    @guarded_fanout()
+    def compare_against_baseline(
+        self,
+        skill: str | Path = "",
+        tasks: str | Path = "",
+        baseline: str | Path = "none",
+        trials: int = 3,
+        adapter: str = "generic",
+        model: str | None = None,
+        seed: int = 42,
+        alpha: float = 0.05,
+        obsolescence_threshold: float = 0.9,
+        max_cost_usd: float = 20.00,
+        max_runtime_seconds: float | None = None,
+        judge_adapter: str = "generic",
+        judge_model: str | None = None,
+        polling: float | None = None,
+        **kwargs: Any,
+    ) -> SkillBenchmarkComparisonResult:
+        """Benchmarks whether a skill improves agent outcomes vs a baseline arm (add-skill-ab-benchmark).
+
+        [Tier 3 — Stochastic Fan-Out] — runs the SAME task cohort in two arms
+        (``candidate`` = the skill at ``skill=``; ``baseline`` = no-skill when
+        ``baseline=none``, else the other skill for v1-vs-v2) and returns a
+        frozen ``SkillBenchmarkComparisonResult`` with per-arm pass rate / token
+        usage / elapsed time / cost, cross-arm statistical significance
+        (Mann-Whitney U + Cliff's delta + seeded bootstrap CI, all reused from
+        ``AgentEval.stats``), a first-class skill-obsolescence ``verdict``, and
+        evidence-bearing per-trial records.
+
+        Requires the ``[agenteval-advanced]`` optional extra (scipy + numpy);
+        raises ``ImportError`` on invocation WITHOUT it — fail-fast BEFORE any
+        adapter fan-out (mirrors `Skill.Compare Discoverability`).
+
+        **HONESTY — skill delivery (design D2):** the with-skill arms receive
+        the skill's raw ``.md`` content (frontmatter + body) PREPENDED to the
+        task prompt in a delimited block. The result carries
+        ``skill_delivery="prompt_injected"`` — this is prompt-context injection,
+        NOT native skill installation (adapters expose no uniform install API in
+        Phase-1). The RELATIVE arm comparison is the supported claim; absolute
+        pass rates may differ from a natively-installed skill.
+
+        **HONESTY — blind grading (design D4):** for rubric-graded tasks the
+        composed judge prompt carries ONLY the rubric + task prompt +
+        ``response_text`` — no skill name, no arm label added by the harness. The
+        judge grading queue is seed-shuffled + interleaved across arms, and the
+        result records an auditable ``blinding`` map (mode + seed + grading
+        order). Candidate outputs may self-identify the skill; the harness adds
+        nothing arm-identifying, and that is what the contract covers.
+
+        | =Arguments= | =Description= |
+        | ``skill`` | Filesystem path to the candidate skill ``.md`` file. |
+        | ``tasks`` | Filesystem path to the benchmark tasks YAML (each task: ``prompt`` + one grading mode — ``expected_content`` list OR ``rubric`` path). |
+        | ``baseline`` | The literal string ``"none"`` (default; no-skill baseline arm) OR a path to another skill (v1-vs-v2 mode). |
+        | ``trials`` | Trials per task per arm. Defaults to ``3``. Must be ``>= 1``. |
+        | ``adapter`` | Adapter identifier for BOTH arms. Defaults to ``"generic"``. |
+        | ``model`` | Optional model override forwarded to the adapter ctor. |
+        | ``seed`` | Feeds BOTH the bootstrap resampler AND the blind-grading shuffle. Defaults to ``42``. |
+        | ``alpha`` | Significance level for the verdict + bootstrap CI. Must be in ``(0, 1)``. Defaults to ``0.05``. |
+        | ``obsolescence_threshold`` | Baseline pass-rate at/above which (with no significant candidate gain, ``baseline=none`` only) the verdict is ``skill_unnecessary``. Must be in ``[0, 1]``. Defaults to ``0.9``. |
+        | ``max_cost_usd`` | Budget cap across BOTH arms AND judge grading (design D8). Defaults to ``20.00``. Enforced via `@guarded_fanout()`. |
+        | ``max_runtime_seconds`` | Runtime cap. Phase-1: tracked, NOT enforced. |
+        | ``judge_adapter`` | Adapter used for rubric grading. Defaults to ``"generic"``. |
+        | ``judge_model`` | Optional model override for the judge adapter. |
+        | ``polling`` | Must NOT be provided — raises ``PollingDisallowedError`` per FR28. |
+        | ``**kwargs`` | Forwarded to the adapter constructor(s). |
+
+        Returns ``SkillBenchmarkComparisonResult`` with ``candidate`` +
+        ``baseline`` arm summaries, ``pass_rate_delta``, ``mann_whitney``,
+        ``cliffs_delta``, ``bootstrap_ci``, ``verdict`` (closed set:
+        ``skill_improves`` / ``skill_unnecessary`` / ``skill_regresses`` /
+        ``no_significant_difference``), ``skill_delivery``, ``blinding``,
+        ``evidence`` (one entry per trial per arm), ``heatmap``,
+        ``total_runtime_seconds``, ``total_cost_usd`` (+ ``judge_cost_usd``
+        broken out).
+
+        Raises ``ImportError`` when ``[agenteval-advanced]`` is missing.
+        Raises ``PollingDisallowedError`` when ``polling`` is provided (FR28).
+        Raises ``ValueError`` on missing ``skill`` / ``tasks``, ``trials < 1``,
+        ``alpha`` outside ``(0, 1)``, or ``obsolescence_threshold`` outside
+        ``[0, 1]`` — all BEFORE any adapter fan-out.
+        Raises ``InvalidSkillBenchmarkTasksError`` on a structurally invalid
+        tasks YAML.
+
+        Example:
+        | ${bench}=    `Skill.Compare Against Baseline`
+        | ...    skill=${CURDIR}/skills/web-search.md
+        | ...    tasks=${CURDIR}/benchmark/web-search-tasks.yaml
+        | ...    baseline=none    trials=5
+        | Should Be Equal    ${bench.verdict}    skill_improves
+        | Should Be True    ${bench.pass_rate_delta} > 0.0
+
+        Notes:
+        - Reuses ``AgentEval.stats.{mannwhitney,cliffs_delta,bootstrap}`` (Epic 13) + ``AgentEval.judge`` (Epic 12) unchanged.
+        - FR28 prohibits polling on Tier-3 fan-out keywords — fan out via this keyword's own ``trials`` argument instead.
+        - The post-dot keyword name is multi-word per ``feedback_libdoc_namespace_keyword_must_be_multiword``.
+        - Phase-2 carry-over DF-SAB-S1: ``workspace_installed`` native skill delivery (adapters lack a uniform install API in Phase-1).
+        - Sibling keywords: `Skill.Compare Discoverability` (trigger behavior across adapters); `Skill.Get Discoverability` (single-adapter activation cohort).
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        # Story 13.3 HIGH-A precedent: anchor the wall-clock at keyword entry —
+        # BEFORE validation, extras gate, and fan-out — so
+        # `total_runtime_seconds` is what the operator actually waited.
+        bench_t_start = time.perf_counter()
+
+        # Validation order (Task 4.2): polling ban → arg validation → extras
+        # gate → cohort load → fan-out.
+        if polling is not None:
+            raise PollingDisallowedError(
+                build_polling_disallowed_message(
+                    "Skill.Compare Against Baseline",
+                    {"skill": str(skill), "tasks": str(tasks), "baseline": str(baseline)},
+                )
+            )
+        if not skill:
+            raise ValueError("Skill.Compare Against Baseline requires `skill=<path>` kwarg")
+        if not tasks:
+            raise ValueError("Skill.Compare Against Baseline requires `tasks=<yaml-path>` kwarg")
+        if trials < 1:
+            raise ValueError(f"trials must be >= 1; got {trials}")
+        if not (0.0 < alpha < 1.0):
+            raise ValueError(f"alpha must be in (0.0, 1.0); got {alpha!r}")
+        if not (0.0 <= obsolescence_threshold <= 1.0):
+            raise ValueError(f"obsolescence_threshold must be in [0.0, 1.0]; got {obsolescence_threshold!r}")
+
+        # `[agenteval-advanced]` extras gate — fail-fast BEFORE fan-out. Read via
+        # module attr (Story 13.3 amendment) so a monkeypatch is observed even
+        # across pytest session-wide module reload.
+        from AgentEval.stats import library as _stats_lib
+
+        if not _stats_lib._ADVANCED_AVAILABLE:
+            raise ImportError(
+                "Skill.Compare Against Baseline: scipy + numpy required. "
+                "Install via: uv pip install robotframework-agenteval[agenteval-advanced]"
+            )
+
+        from AgentEval.skills._benchmark import load_skill_benchmark_tasks, run_skill_benchmark
+
+        # `baseline` is either the literal "none" or a path; normalize to str.
+        baseline_str = str(baseline)
+        benchmark_tasks = load_skill_benchmark_tasks(tasks)
+
+        # Bind the effective cost budget (codex HIGH). `@guarded_fanout()` reads
+        # only `self._max_cost_usd` and its cost meter is a Phase-1 0.0 stub, so
+        # the per-call `max_cost_usd=` argument was invisible and adapter+judge
+        # spend went uncapped. The per-call value wins (it is what the operator
+        # asked for at this call site); it falls back to the host instance attr
+        # when explicitly cleared to None. `run_skill_benchmark` performs the
+        # explicit cumulative accounting across BOTH arms AND judge grading.
+        effective_max_cost_usd = max_cost_usd if max_cost_usd is not None else self._max_cost_usd
+
+        return run_skill_benchmark(
+            skill=skill,
+            tasks=benchmark_tasks,
+            baseline=baseline_str,
+            trials=trials,
+            adapter=adapter,
+            model=model,
+            seed=seed,
+            alpha=alpha,
+            obsolescence_threshold=obsolescence_threshold,
+            judge_adapter=judge_adapter,
+            judge_model=judge_model,
+            extra_adapter_kwargs=dict(kwargs),
+            t_start=bench_t_start,
+            max_cost_usd=effective_max_cost_usd,
+        )
+
+    @keyword(name="Skill.Should Activate For")
     @tier(2)
     def should_activate_for(
         self,
@@ -472,7 +936,7 @@ class SkillsLibrary:
         adapter once and asserts the skill name appears in the response
         text. Phase-1 activation heuristic per AC-7.2.5: case-insensitive
         substring check of the skill ``name`` field in
-        ``result.response_text`` (same heuristic as `Get Activation Decision`).
+        ``result.response_text`` (same heuristic as `Skill.Get Activation Decision`).
 
         | =Arguments= | =Description= |
         | ``prompt`` | Natural-language prompt to test. |
@@ -492,22 +956,22 @@ class SkillsLibrary:
         Note: missing / empty / non-string ``name`` field causes the
         activation check to always evaluate False — this keyword raises
         ``SkillDidNotActivateError`` unconditionally in that case
-        (same as `Get Activation Decision` per AC-7.1.4).
+        (same as `Skill.Get Activation Decision` per AC-7.1.4).
 
         Example (illustrative — assumes a real adapter):
-        | `Should Activate For`    Find news about Robot Framework    ${CURDIR}/skills/web-search.md
-        | Run Keyword And Expect Error    SkillDidNotActivateError*    `Should Activate For`    Calculate 2+2    ${CURDIR}/skills/web-search.md
+        | `Skill.Should Activate For`    Find news about Robot Framework    ${CURDIR}/skills/web-search.md
+        | Run Keyword And Expect Error    SkillDidNotActivateError*    `Skill.Should Activate For`    Calculate 2+2    ${CURDIR}/skills/web-search.md
 
         Notes:
         - PRD FR4d ratifies the activation-assertion contract; AC-7.2.5 + AC-7.2.6 ratify the keyword surface.
         - Phase-1 heuristic per AC-7.1.4 — substring check on skill ``name`` in response text.
         - FR28 prohibits polling — fan-out via `Stat.Run N Times` if statistical evidence is needed.
-        - Sibling keywords: `Get Activation Decision` (returns decision instead of raising); `Get Discoverability` (multi-task cohort).
+        - Sibling keywords: `Skill.Get Activation Decision` (returns decision instead of raising); `Skill.Get Discoverability` (multi-task cohort).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         if polling is not None:
             raise PollingDisallowedError(
                 build_polling_disallowed_message(
-                    "Should Activate For",
+                    "Skill.Should Activate For",
                     {"prompt": prompt, "skill": str(skill), "adapter": adapter},
                 )
             )
@@ -536,33 +1000,9 @@ class SkillsLibrary:
                 ),
             )
 
-    def _build_discoverability_summary(
-        self, task_results: list[SkillTaskResult], total_runtime: float
-    ) -> SkillDiscoverabilityTaskSummary:
-        """Compute aggregate summary across all task results."""
-        total_trials = sum(r.trials_run for r in task_results)
-        total_correct = sum(
-            r.activations_observed if r.should_activate else (r.trials_run - r.activations_observed)
-            for r in task_results
-        )
-        activation_accuracy = total_correct / total_trials if total_trials > 0 else 0.0
-
-        decoy_results = [r for r in task_results if not r.should_activate]
-        false_act_obs = sum(r.activations_observed for r in decoy_results)
-        false_act_denom = sum(r.trials_run for r in decoy_results)
-        false_activation_rate = false_act_obs / false_act_denom if false_act_denom > 0 else 0.0
-
-        should_act_results = [r for r in task_results if r.should_activate]
-        missed_obs = sum(r.trials_run - r.activations_observed for r in should_act_results)
-        missed_denom = sum(r.trials_run for r in should_act_results)
-        missed_activation_rate = missed_obs / missed_denom if missed_denom > 0 else 0.0
-
-        total_cost = sum(r.cost_per_trial_usd * r.trials_run for r in task_results)
-
-        return SkillDiscoverabilityTaskSummary(
-            activation_accuracy=activation_accuracy,
-            false_activation_rate=false_activation_rate,
-            missed_activation_rate=missed_activation_rate,
-            total_cost_usd=total_cost,
-            total_runtime_seconds=total_runtime,
-        )
+    # `_build_discoverability_summary` removed Story 13.5 refactor 2026-06-01:
+    # logic extracted to `AgentEval.skills._internal.build_skill_discoverability_summary`
+    # so the new `Skill.Compare Discoverability` keyword reuses it. The
+    # only caller was `get_discoverability` which now delegates to the
+    # `run_single_adapter_skill_discoverability` helper (which calls
+    # `build_skill_discoverability_summary` internally).

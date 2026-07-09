@@ -1,0 +1,17 @@
+[0m
+> code · MiniMax-M2.7
+[0m
+[0m→ [0mRead src/AgentEval/coding_agent/opencode_cli.py
+[0m→ [0mRead tests/unit/coding_agent/test_opencode_cli.py
+[0m→ [0mRead src/AgentEval/coding_agent/codex_cli.py
+[0m→ [0mRead src/AgentEval/_kernel/version_drift.py
+[0m✱ [0mGlob "tests/fixtures/opencode_cli/*.jsonl"[90m 5 matches[0m
+[0m→ [0mRead tests/fixtures/opencode_cli/simple_prompt.jsonl
+[0m→ [0mRead tests/fixtures/opencode_cli/tool_error.jsonl
+[0m→ [0mRead tests/fixtures/opencode_cli/tool_use.jsonl
+[0m→ [0mRead tests/fixtures/opencode_cli/nonzero_exit.jsonl
+[0m→ [0mRead tests/fixtures/opencode_cli/truncated.jsonl
+[0m
+[0m← [0mWrite _bmad-output/cross-llm-reviews/add-opencode-support-kilo-findings.md
+Wrote file successfully.
+[0m

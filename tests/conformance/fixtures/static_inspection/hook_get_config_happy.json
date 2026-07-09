@@ -5,6 +5,6 @@
   "path_type": "happy",
   "expected_result_shape": {
     "type": "dict",
-    "contains_keys": ["hooks.PreToolUse", "hooks.PostToolUse", "hooks.Stop"]
+    "contains_keys": ["PreToolUse", "PostToolUse", "Stop"]
   }
 }

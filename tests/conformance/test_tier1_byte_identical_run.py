@@ -48,8 +48,13 @@ _BYTE_IDENTICAL_EXEMPT: dict[str, str] = {
     # it's an exemption from THIS fixture because the call has side-effects
     # (reads ContextVar) that the fixture-level harness doesn't reset.
     "Get Effective Config": "context-dependent: reads ContextVar",
-    "Get Effective Config With Provenance": "context-dependent: reads ContextVar",
     "Get Keyword Tier": "intentional ValueError on unknown kw; conformance covered by stats unit tests",
+    # add-multi-turn-conversation-testing: `Start Conversation` is a stateful
+    # constructor — it RETURNS a fresh test-owned `ConversationHandle` (a new
+    # mutable object per call by design, so `handle_1 != handle_2` by identity).
+    # This is not an FR31a violation (no LLM call, no nondeterministic compute);
+    # its guarantees are exercised by the conversation lifecycle unit tests.
+    "Start Conversation": "stateful constructor: returns a fresh ConversationHandle object per call by design",
     # Sub-library getters that require pre-bound state (HookContext / MCP
     # server handle / TraceStore-bound runs) are exempted from the no-args
     # conformance probe; their byte-identical guarantee is exercised by

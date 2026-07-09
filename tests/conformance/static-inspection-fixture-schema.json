@@ -13,7 +13,7 @@
         "Skill.Get Description",
         "Skill.Get Allowed Tools",
         "Skill.Get Disable Model Invocation",
-        "Should Be Valid Frontmatter",
+        "Skill.Should Be Valid Frontmatter",
         "Subagent.Get Frontmatter",
         "Hook.Get Config",
         "MCP.Get Server Config",

@@ -111,9 +111,9 @@ def _invoke_keyword(fixture: dict[str, Any]) -> Any:
         return _SKILLS.get_allowed_tools(path)
     if kw == "Skill.Get Disable Model Invocation":
         return _SKILLS.get_disable_model_invocation(path)
-    if kw == "Should Be Valid Frontmatter":
+    if kw == "Skill.Should Be Valid Frontmatter":
         # For error-path with missing fields, parse_frontmatter still
-        # succeeds (it doesn't validate); only `Should Be Valid Frontmatter`
+        # succeeds (it doesn't validate); only `Skill.Should Be Valid Frontmatter`
         # raises. Use the parser-level helper to avoid the
         # `Skills.get_frontmatter` no-validate contract.
         from AgentEval.skills._parser import parse_frontmatter
@@ -214,7 +214,7 @@ def test_fixture_coverage_exhausts_keyword_set() -> None:
         "Skill.Get Description",
         "Skill.Get Allowed Tools",
         "Skill.Get Disable Model Invocation",
-        "Should Be Valid Frontmatter",
+        "Skill.Should Be Valid Frontmatter",
         "Subagent.Get Frontmatter",
         "Hook.Get Config",
         "MCP.Get Server Config",

@@ -49,8 +49,11 @@ module docstring's "cannot block library import" claim.)
 
 Duplicate-rejection contract (Story 1b.3 code-review fix per ADR-013 L43):
 Cross-package collisions between `agenteval.coding_agents` (primary) AND
-`robotframework_agenteval.adapters` (legacy) raise `DuplicateRegistrationError`
-fail-closed — agenteval refuses to silently pick one. (Pre-edit code used
+`robotframework_agenteval.adapters` (legacy) raise `AdapterDiscoveryError`
+fail-closed — agenteval refuses to silently pick one; the message names the
+colliding entry-point name and both registration sources (the dedicated
+`DuplicateRegistrationError` leaf was folded into `AdapterDiscoveryError` by
+`remove-dead-machinery`). (Pre-edit code used
 `warnings.warn` + primary-wins, which the ADR explicitly forbids.) Intra-group
 collisions remain governed by PyPA installer-side metadata-uniqueness rules;
 if an installer accepts a duplicate anyway, the dict-update last-wins fallback
@@ -96,7 +99,7 @@ from importlib import metadata as importlib_metadata
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from AgentEval.errors import AdapterDiscoveryError, DuplicateRegistrationError
+from AgentEval.errors import AdapterDiscoveryError
 
 if TYPE_CHECKING:
     from AgentEval.types import CodingAgentAdapter  # Story 1b.4 lands the Protocol
@@ -189,9 +192,10 @@ def _discover_entry_point_group(group_name: str) -> dict[str, type]:
 def _cached_coding_agents() -> Mapping[str, type]:
     """Cached merge of `agenteval.coding_agents` (primary) + `robotframework_agenteval.adapters` (legacy).
 
-    Cross-package collisions raise `DuplicateRegistrationError(AdapterDiscoveryError)`
-    fail-closed per ADR-013 L43 verbatim — agenteval refuses to silently pick
-    one when a name appears in both groups.
+    Cross-package collisions raise `AdapterDiscoveryError` fail-closed per
+    ADR-013 L43 verbatim — agenteval refuses to silently pick one when a name
+    appears in both groups; the message names the colliding entry-point name and
+    both sources.
     """
     # Both groups are scanned eagerly; if either has partial-install failures,
     # the AdapterDiscoveryError propagates through the helper and lru_cache
@@ -201,13 +205,12 @@ def _cached_coding_agents() -> Mapping[str, type]:
     merged: dict[str, type] = dict(legacy)
     for name, cls in primary.items():
         if name in merged:
-            raise DuplicateRegistrationError(
+            raise AdapterDiscoveryError(
                 f"Adapter name {name!r} is declared in BOTH "
                 f"`{_GROUP_CODING_AGENTS}` (primary, class {cls!r}) AND "
                 f"`{_GROUP_LEGACY_ADAPTERS}` (legacy, class {merged[name]!r}). "
                 f"Per ADR-013 L43, agenteval refuses to silently pick one. "
                 f"Resolve by removing one of the two registrations.",
-                sources=(_GROUP_CODING_AGENTS, _GROUP_LEGACY_ADAPTERS),
                 loaded_so_far={k: v for k, v in merged.items() if k != name},
             )
         merged[name] = cls
@@ -228,15 +231,15 @@ def discover_adapters() -> dict[str, type[CodingAgentAdapter]]:
     """Discover coding-agent adapters across `agenteval.coding_agents` (primary)
     + `robotframework_agenteval.adapters` (legacy backward-compat per ADR-013 L18).
 
-    On cross-package name collision, raises `DuplicateRegistrationError` per
+    On cross-package name collision, raises `AdapterDiscoveryError` per
     ADR-013 L43 (agenteval refuses to silently pick one).
 
     Returns a fresh `dict` (caller-mutable; the underlying cached MappingProxy
     is read-only).
 
     Raises:
-        DuplicateRegistrationError: cross-package adapter-name collision.
-        AdapterDiscoveryError: one or more entry-points failed to load
+        AdapterDiscoveryError: cross-package adapter-name collision, OR
+            one or more entry-points failed to load
             (e.g., partial install, broken import). The exception's
             `loaded_so_far` attribute holds the successfully-loaded entries.
     """
@@ -257,9 +260,10 @@ def discover_sandboxes() -> dict[str, type]:
     """Discover sandbox backends via `agenteval.sandboxes` entry-points (ADR-018).
 
     Phase-1: returns dict mapping backend name → backend class. The
-    `SandboxBackend` Protocol lives at `src/AgentEval/security/protocols.py`
-    (Story 1a.1 baseline); Phase-3 backend implementations register via this
-    discovery path.
+    `SandboxBackend` Protocol was withdrawn pre-1.0 (see
+    `docs/contracts/stability-surface.md`); Phase-3 re-introduces it alongside
+    the first real backend, whose implementations register via this discovery
+    path. The `agenteval.sandboxes` entry-point group + this seam stay intact.
     """
     return dict(_cached_sandboxes())
 

@@ -2,9 +2,9 @@
 Documentation    Story 7.4 dogfood — exercises ``Skill.Get Discoverability`` (Story 7.2 / FR4b)
 ...              against 3 representative ``robotframework-agentskills`` skills with stub adapters.
 ...
-...              D-2 LOAD-BEARING: Uses ``Library AgentEval.skills.library.SkillsLibrary WITH NAME Skill``
-...              directly — SkillsLibrary is EXCLUDED from _SUB_LIBRARIES (DF-7.1-S1/C55).
-...              Cannot use ``Library AgentEval WITH NAME AgentEval`` for Skill.* keywords.
+...              SkillsLibrary is composed into ``_SUB_LIBRARIES`` (compose-single-library-import
+...              change; former DF-7.1-S1/C55 collision resolved via the ``Skill.*`` namespace
+...              renames), so ``Library AgentEval`` reaches every ``Skill.*`` keyword directly.
 ...
 ...              Stub adapters always activate target skill (DF-7.4-S1 constraint):
 ...                  activation_accuracy=0.625 (15/24), false_activation_rate=1.0 by design.
@@ -16,7 +16,7 @@ Documentation    Story 7.4 dogfood — exercises ``Skill.Get Discoverability`` (
 ...              CI wiring deferred per Phase-1 norm (Story 1a.2 HIGH-1 / D-5):
 ...              ``dogfood-integration.yml`` is install-smoke-only by design.
 
-Library    AgentEval.skills.library.SkillsLibrary    WITH NAME    Skill
+Library    AgentEval
 Library    ${CURDIR}/fixtures/agentskills_discoverability.py
 
 Suite Setup    Register Skill Stubs

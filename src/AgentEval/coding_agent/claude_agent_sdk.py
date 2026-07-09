@@ -200,9 +200,8 @@ class ClaudeAgentSDKAdapter(InProcessAdapter):
         try:
             response_text, tool_use_blocks, result_msg = anyio.run(_drive)
         except Exception:
-            # Detection-failure path per ADR-016 — degrade mcp_coverage
-            # honestly + re-raise so callers see the underlying error.
-            mcp_coverage = "external_mixed"
+            # Detection-failure path per ADR-016 — re-raise so callers see
+            # the underlying error (mcp_coverage stays at its honest default).
             raise
         finally:
             latency_seconds = time.monotonic() - start

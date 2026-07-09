@@ -257,6 +257,88 @@ class GenericAdapter(InProcessAdapter):
         )
         return result
 
+    def run_turn(
+        self,
+        prompt: str,
+        *,
+        conversation_state: Any,
+        tools: list[str] | None = None,
+        mcp_servers: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> AgentRunResult:
+        """Thread one conversation turn NATIVELY via full message-history construction.
+
+        add-multi-turn-conversation-testing design D4 (`native_session` path):
+        the natural chat-API form — rebuild the full ``messages=[...]`` history
+        from ``conversation_state.prior_turns`` (extending the single-message
+        construction of `run()` at ``generic.py`` L216) and forward to the
+        provider's ``chat()``. Because it works on the mock provider, multi-turn
+        unit tests are deterministic with no API keys.
+
+        The provider receives the FULL prior conversation (user turns as
+        ``role="user"``, agent turns as ``role="assistant"``) plus the new
+        ``prompt`` as the final ``user`` message — so turn 2+ genuinely sees
+        turn 1, which is what ``continuation="native_session"`` promises.
+
+        ``conversation_state.session_ref`` is unused for the generic adapter
+        (message history IS the session state); the slot is left untouched.
+        """
+        if tools:
+            raise NotImplementedError(
+                "GenericAdapter.run_turn does not advertise tools to the provider in "
+                "Phase-1 (DF-5.2-S3); the multi-turn tool-dispatch loop is Phase-2 scope."
+            )
+        if mcp_servers:
+            raise NotImplementedError(
+                "GenericAdapter.run_turn does not wire mcp_servers across turns in Phase-1 "
+                "(the multi-turn tool/observer loop is Phase-2 scope); pass mcp_servers=None."
+            )
+
+        # Story 6.3 AC-6.3.5: Tier-1 LLM-invocation ban per PRD FR30b.
+        from AgentEval._kernel.tier_acl import enforce_tier1_no_llm
+
+        enforce_tier1_no_llm()
+
+        messages: list[Message] = []
+        for turn in getattr(conversation_state, "prior_turns", ()):
+            if turn.role == "user":
+                messages.append(Message(role="user", content=turn.content))
+            else:
+                messages.append(Message(role="assistant", content=turn.content))
+        messages.append(Message(role="user", content=prompt))
+
+        t0 = time.monotonic()
+        response = self._provider.chat(messages=messages, model=self._model, **kwargs)
+        latency_seconds = time.monotonic() - t0
+
+        result = AgentRunResult(
+            response_text=response.text,
+            tool_calls=[],
+            usage=Usage(
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+                cached_input_tokens=response.usage.cached_input_tokens,
+            ),
+            metadata=AgentRunMetadata(
+                completeness="complete",
+                mcp_coverage="hosted_in_process",
+            ),
+            cost_usd=float(response.cost_usd) if response.cost_usd is not None else 0.0,
+            latency_seconds=latency_seconds,
+            trace_id=uuid.uuid4().hex,
+        )
+        _record_run_metadata(
+            adapter_name=self.name,
+            adapter_version=self.version,
+            model=self._model,
+            mcp_servers=[],
+            total_cost_usd=result.cost_usd,
+            completeness=result.metadata.completeness,
+            mcp_coverage=result.metadata.mcp_coverage,
+            prompt_hashes=[_hash_prompt(prompt)],
+        )
+        return result
+
 
 def _attach_handle_to_observer(observer: HostedMcpObserver, name: str, handle: Any) -> None:
     """Attach the observer to the server backing an `MCPServerHandle`.

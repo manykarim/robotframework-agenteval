@@ -182,19 +182,22 @@ def test_parse_subagent_frontmatter_module_level_matches_keyword() -> None:
     assert direct == via_keyword
 
 
-def test_agenteval_does_not_expose_subagents_library_via_dynamic_core() -> None:
-    """`SubagentsLibrary` is EXCLUDED from top-level DynamicCore composition.
+def test_agenteval_exposes_subagents_library_via_dynamic_core() -> None:
+    """`SubagentsLibrary` IS composed into top-level DynamicCore composition.
 
-    Story 2.2 code-review HIGH-1 fix: `Get Frontmatter` collides with
-    `SkillsLibrary`. Resolution: users access via `Library AgentEval.subagents.library.SubagentsLibrary
-    WITH NAME Subagent`. The collision-detector in `AgentEval._build_components`
-    enforces this exclusion at import time so future stories cannot
-    silently re-introduce the collision.
+    The `compose-single-library-import` change resolved the former
+    `Get Frontmatter` collision with `SkillsLibrary` via namespace-prefix
+    renames (`Subagent.Get Frontmatter` / `Skill.Get Frontmatter`), so
+    `SubagentsLibrary` is now registered in `_SUB_LIBRARIES` and a plain
+    `Library AgentEval` import reaches `Subagent.Get Frontmatter`. The
+    collision-detector in `AgentEval._build_components` still guards
+    against a future keyword-name clash.
     """
     from AgentEval import AgentEval as AgentEvalLib
 
     library = AgentEvalLib()
-    assert "SubagentsLibrary" not in library._loaded_components
+    assert "SubagentsLibrary" in library._loaded_components
+    assert "Subagent.Get Frontmatter" in library.get_keyword_names()
 
 
 def test_subagents_library_callable_standalone() -> None:

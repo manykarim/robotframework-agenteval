@@ -41,12 +41,14 @@ Phase-1 carve-outs (DF-4.3-S2 + DF-4.3-S3):
 
 from __future__ import annotations
 
-import inspect
 from typing import Any
 
 from robot.api.deco import keyword
 
+from AgentEval._kernel.adapter_kwargs import split_adapter_kwargs as _split_adapter_kwargs
 from AgentEval._kernel.discovery import get_adapter
+from AgentEval._kernel.guardrails import guarded_fanout
+from AgentEval._kernel.host_budget_plumbing import _HostBudgetPlumbing
 from AgentEval._kernel.tier import tier
 from AgentEval.scenarios.loader import load_scenario
 from AgentEval.scenarios.schema import Scenario
@@ -76,42 +78,32 @@ class _Unset:
 _UNSET: Any = _Unset()
 
 
-def _split_adapter_kwargs(adapter_cls: type, kwargs: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Story 4.3 code-review 2-way HIGH-D fix 2026-05-20 (Codex HIGH-2):
-    split caller kwargs into "constructor kwargs" (accepted by the adapter's
-    `__init__`) vs "run-time kwargs" (forwarded to `run()`). Pre-edit ALL
-    kwargs went to the constructor; strict third-party adapters crashed
-    (TypeError) + per-call kwargs like `temperature` never reached `run()`.
+# `_split_adapter_kwargs` was factored into `_kernel/adapter_kwargs.py`
+# (add-multi-turn-conversation-testing) so `ConversationLibrary` can reuse it
+# without a circular import back into this module (`Run Scenario` lazy-imports
+# the conversation threading layer for `turns:` evals). Re-imported above as
+# `_split_adapter_kwargs` for byte-identical internal behavior + test refs.
 
-    Strategy: introspect `adapter_cls.__init__` signature. Named params (other
-    than `self` and `kwargs`) are constructor-bound; everything else goes to
-    `run_kwargs`. Adapters accepting `**kwargs` get ALL kwargs (preserves the
-    Story 1b.4 InProcessAdapter._adapter_config swallow-pattern).
+
+class OrchestrationLibrary(_HostBudgetPlumbing):
+    """`Send Prompt` + `Run Scenario` keywords (Story 4.3 / PRD FR14 + FR15).
+
+    Inherits ``_HostBudgetPlumbing`` (Story 14.6 / C26 closure) so
+    ``Run Scenario`` (Tier-3 fan-out) enforces ``max_cost_usd`` +
+    ``max_runtime_seconds`` budgets via ``@guarded_fanout()``. Unlike
+    MCPLibrary + SkillsLibrary, this library IS in ``_SUB_LIBRARIES``
+    (composed under the top-level ``AgentEval`` library) so the budgets
+    are auto-wired from ``AgentEval._build_components`` per AC-14.6.5.
     """
-    try:
-        sig = inspect.signature(adapter_cls)  # signature of the class IS the __init__ signature minus self
-    except (TypeError, ValueError):
-        # Fallback: forward everything to ctor (Story 4.3 Phase-1 behavior).
-        return dict(kwargs), {}
-    accepts_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
-    if accepts_var_keyword:
-        # Adapter's __init__ has **kwargs — forward everything (Story 1b.4
-        # InProcessAdapter pattern stores unknown kwargs on _adapter_config).
-        return dict(kwargs), {}
-    ctor_param_names = {
-        p.name
-        for p in sig.parameters.values()
-        if p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
-    }
-    ctor_kwargs = {k: v for k, v in kwargs.items() if k in ctor_param_names}
-    run_kwargs = {k: v for k, v in kwargs.items() if k not in ctor_param_names}
-    return ctor_kwargs, run_kwargs
 
-
-class OrchestrationLibrary:
-    """`Send Prompt` + `Run Scenario` keywords (Story 4.3 / PRD FR14 + FR15)."""
-
-    def __init__(self, default_provider: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        default_provider: str | None = None,
+        max_cost_usd: float | None = None,
+        max_runtime_seconds: float | None = None,
+        **kwargs: Any,
+    ) -> None:
         """Story 4.3 code-review 2-way HIGH-C fix 2026-05-20 (Blind H3 + Codex HIGH-1):
         accept a `default_provider` to receive the AgentEval library's resolved
         config. Without this, `AgentEval(provider='mock').send_prompt(prompt='hi')`
@@ -119,7 +111,17 @@ class OrchestrationLibrary:
         (raising ValueError). The AgentEval `_build_components()` now passes
         `self._provider` here so PRD FR41 precedence propagates to the
         orchestration surface.
+
+        Story 14.6 (C26 closure): added `max_cost_usd` + `max_runtime_seconds`
+        keyword-only args (cooperatively forwarded to `_HostBudgetPlumbing`
+        via `super().__init__()`). `default_provider` becomes keyword-only
+        to match the mixin's discipline + avoid positional-arg MRO conflicts.
         """
+        super().__init__(
+            max_cost_usd=max_cost_usd,
+            max_runtime_seconds=max_runtime_seconds,
+            **kwargs,
+        )
         self._default_provider: str | None = default_provider
 
     @keyword(name="Send Prompt")
@@ -212,6 +214,7 @@ class OrchestrationLibrary:
 
     @keyword(name="Run Scenario")
     @tier(3)
+    @guarded_fanout()
     def run_scenario(
         self,
         adapter: str | _Unset = _UNSET,
@@ -313,9 +316,56 @@ class OrchestrationLibrary:
                         "YAML `mcp_servers:` field — pre-fix the YAML field was silently dropped."
                     )
 
+        # add-multi-turn-conversation-testing D8: `turns:` evals thread as ONE
+        # conversation per repetition (fresh handle each repeat) via the same
+        # optional-`run_turn` continuation machinery as the keyword surface;
+        # each turn contributes one `AgentRunResult` to the flat ordered list
+        # (its per-turn `continuation` honesty field survives on
+        # `result.metadata.continuation` — the honesty sibling of `mcp_coverage`
+        # — so a YAML-driven cross-adapter comparison can tell replay from
+        # native). Single-`prompt` evals are unchanged (metadata.continuation
+        # stays None). Lazy import keeps orchestration's module-load
+        # graph independent of the conversation package.
+        from AgentEval.conversation._handle import ConversationHandle
+        from AgentEval.conversation._threading import execute_turn
+
         results: list[AgentRunResult] = []
         for eval_entry in scenario_obj.evals:
             for _ in range(eval_entry.repeat):
+                if eval_entry.is_multi_turn:
+                    assert eval_entry.turns is not None
+                    # Fresh adapter instance per repetition — isolation
+                    # (repetition N+1 must NOT see repetition N's history) +
+                    # session affinity (one instance reused across the turns
+                    # WITHIN this repetition).
+                    conv_adapter = adapter_cls(**ctor_kwargs)
+                    supports_native = callable(getattr(conv_adapter, "run_turn", None))
+                    handle = ConversationHandle(
+                        adapter_name=resolved_adapter_name,
+                        adapter_instance=conv_adapter,
+                        run_kwargs=run_kwargs,
+                        supports_native=supports_native,
+                    )
+                    # add-multi-turn-conversation-testing codex-review MED fix:
+                    # do NOT silently drop `mcp_servers` for `turns:` evals. The
+                    # single-`prompt` path forwards `mcp_servers=mcp_servers_resolved`
+                    # into the adapter; the multi-turn path must do the same so the
+                    # adapter either honors the servers or raises honestly (e.g.
+                    # `GenericAdapter.run_turn` raises NotImplementedError on
+                    # non-empty `mcp_servers`) instead of running with silent no-MCP.
+                    # Only inject when servers were actually supplied, so the common
+                    # no-MCP path is byte-identical to before.
+                    turn_call_kwargs: dict[str, Any] | None = (
+                        {"mcp_servers": mcp_servers_resolved} if mcp_servers_resolved is not None else None
+                    )
+                    for turn_message in eval_entry.turns:
+                        turn_result = execute_turn(handle, turn_message, call_kwargs=turn_call_kwargs)
+                        assert isinstance(turn_result, AgentRunResult)
+                        results.append(turn_result)
+                    continue
+                # Single-`prompt` eval: exactly-one-of validation guarantees a
+                # non-None prompt here (the loader rejects neither/both).
+                assert eval_entry.prompt is not None
                 result = adapter_instance.run(
                     eval_entry.prompt,
                     mcp_servers=mcp_servers_resolved,

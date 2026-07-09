@@ -47,18 +47,15 @@ addition, no refactor of Story 1b.2's classes):
   `_kernel/guardrails.@guarded_fanout` Layer 1 + Layer 2.
 - `RuntimeBudgetExceededError(AgentEvalBudgetError)` — raised by Layer 1 + Layer 3.
 - `AdapterDiscoveryError(AgentEvalCompatError)` — raised by
-  `_kernel/discovery.{_discover_entry_point_group, get_adapter}` on partial-install
-  + lookup-miss. Exposes a `loaded_so_far: dict[str, type]` attribute so
-  callers can recover the successfully-loaded adapters from a partial-failure
-  scan (per ADR-013 L42 verbatim contract, restored after Story 1b.3 code
-  review caught the docstring vs implementation drift).
-- `DuplicateRegistrationError(AdapterDiscoveryError)` — raised by
-  `_kernel/discovery._cached_coding_agents` when the same adapter name is
-  declared across `agenteval.coding_agents` (primary) AND
-  `robotframework_agenteval.adapters` (legacy) — per ADR-013 L43's
-  "agenteval refuses to silently pick one" contract. Exposes the conflicting
-  source-package names via `sources: tuple[str, str]` (primary first, legacy
-  second).
+  `_kernel/discovery.{_discover_entry_point_group, get_adapter, _cached_coding_agents}`
+  on partial-install, lookup-miss, AND cross-package name collision (per ADR-013
+  L43's "agenteval refuses to silently pick one" contract — the message names the
+  colliding entry-point name and both registration sources). Exposes a
+  `loaded_so_far: dict[str, type]` attribute so callers can recover the
+  successfully-loaded adapters from a partial-failure scan (per ADR-013 L42
+  verbatim contract). The former `DuplicateRegistrationError` leaf was folded
+  into this class by `remove-dead-machinery` (single raise site, no dedicated
+  exit code — collisions already exited through `ADAPTER_DISCOVERY_ERROR`).
 
 The remaining 6 leaves from `docs/contracts/error-class-hierarchy.md` (Story
 1a.4 ratified catalog) are added to this module as subsequent stories need them:
@@ -67,13 +64,11 @@ The remaining 6 leaves from `docs/contracts/error-class-hierarchy.md` (Story
 - `ValidateOperatorDisallowed` — Epic 6 Story 6.2 (assertion gate enforcement)
 - `AdapterVersionDriftWarning` — Epic 11 Story 11.3 (warning, not error)
 
-Special case (separate paragraph because the Phase-1 home differs):
-
-- `SandboxRequiredError` — currently lives at `src/AgentEval/security/policy.py`
-  per Story 1a.1's pre-`errors.py` baseline; does NOT yet inherit from
-  `AgentEvalError`. Re-homing into this module under `AgentEvalSafetyError`
-  is a Phase-1.5 hygiene carry-over tracked in
-  `_bmad-output/implementation-artifacts/deferred-work.md`.
+(`SandboxRequiredError` was planned as a `security/` sandbox leaf but never
+shipped; the `security/` package was withdrawn pre-1.0 by the
+`remove-dead-machinery` change. A `SandboxBackend` Protocol + its error surface
+are re-introduced when a real Phase-3 sandbox backend lands — see
+`docs/contracts/stability-surface.md`.)
 
 The 3-class structure in this story is extension-friendly: future stories
 ADD leaves (and, if needed, the other 3 sub-bases `AgentEvalSafetyError`,
@@ -115,6 +110,7 @@ __all__ = [
     "InvalidSkillFrontmatterError",
     "InvalidSubagentDefinitionError",
     "InvalidHookConfigError",
+    "HookExecutionError",
     "InvalidMCPServerConfigError",
     "InvalidMCPToolSchemaError",
     "InvalidScenarioYAMLError",
@@ -124,13 +120,22 @@ __all__ = [
     "CostExceededError",
     "RuntimeBudgetExceededError",
     "AdapterDiscoveryError",
-    "DuplicateRegistrationError",
     "UnsupportedBinaryVersionError",
     "UnsupportedMCPVersionError",
     "MCPConnectionLostError",
     "JudgeOutputParseError",
     "SkillDidNotActivateError",
     "InvalidSkillDiscoverabilityTasksError",
+    "InvalidSkillBenchmarkTasksError",
+    # add-subagent-delegation-testing (3):
+    "SubagentDelegationAssertionError",
+    "SubagentConfigDriftError",
+    "InvalidSubagentRoutingTasksError",
+    # add-multi-turn-conversation-testing (2):
+    "ConversationClosedError",
+    "ConversationContinuationUnsupportedError",
+    # add-red-team-probes (1):
+    "InvalidRedTeamProbeError",
     # Warnings (1):
     "DegradedTraceWarning",
 ]
@@ -247,8 +252,11 @@ class AgentEvalSafetyError(AgentEvalError):
 
     - `ValidateOperatorDisallowed` — `validate` AssertionEngine operator used
       without `allow_validate_operator=True` opt-in (FR43); Story 6.3 enforces.
-    - `SandboxRequiredError` — currently lives at `src/AgentEval/security/policy.py`
-      per Story 1a.1 baseline; Phase-1.5 hygiene carry-over to re-home here.
+
+    (`SandboxRequiredError` was planned under this sub-base but never shipped;
+    the `security/` package was withdrawn pre-1.0 by `remove-dead-machinery`
+    and the Protocol/backend are re-introduced when a real Phase-3 sandbox
+    lands — see `docs/contracts/stability-surface.md`.)
     """
 
 
@@ -395,6 +403,37 @@ class InvalidHookConfigError(_FR59Tier1SetupFailureError):
     """
 
     error_code: ClassVar[str] = "INVALID_HOOK_CONFIG"
+
+
+class HookExecutionError(_FR59Tier1SetupFailureError):
+    """Raised by the hook-execution keywords on a zero-match fire or keyword misuse.
+
+    Added by the OpenSpec change `add-hooks-execution-testing` (design
+    Decision 8 — minimal error-surface growth: exactly ONE new error class).
+    Raised by `src/AgentEval/hooks/_runner.py` + `HooksLibrary` when:
+        - `Fire Hook Event` matches ZERO configured hooks for the given
+          event/subject (returning an empty report would let
+          `Hook.Decision Should Be` silently never run — a fake-green;
+          the `fix_suggestion` points at `Hook.Get Hooks For Event`).
+        - A parsed-config object of the wrong shape is passed to an
+          execution/simulation keyword.
+
+    Config-SHAPE failures (malformed `settings.json`) keep raising
+    `InvalidHookConfigError` — this leaf covers execution-time misuse only.
+    Per-hook execution failures (missing binary, timeout) are RECORDED on
+    the per-hook result record (`status="spawn_failed" | "timed_out"`),
+    NOT raised — so a multi-hook event reports every hook. Assertion
+    keywords fail via standard RF assertion failures, not this class.
+
+    Inherits the FR59 4-line `__str__` shape + structured attrs
+    (`file_path` / `line_number` / `field_name` / `fix_suggestion`)
+    from `_FR59Tier1SetupFailureError`.
+
+    `error_code = "HOOK_EXECUTION"`; exit code 65 (EX_DATAERR; same
+    Tier-1 setup-failure family).
+    """
+
+    error_code: ClassVar[str] = "HOOK_EXECUTION"
 
 
 class InvalidMCPServerConfigError(_FR59Tier1SetupFailureError):
@@ -576,7 +615,7 @@ class AgentEvalCompatError(AgentEvalError):
 class AdapterDiscoveryError(AgentEvalCompatError):
     """Raised by `_kernel/discovery.py` on entry-points discovery failures.
 
-    Two raise sites per Story 1b.3:
+    Three raise sites:
         1. **Partial-install detection** (ADR-013 L42): one or more entry-points
            in `agenteval.coding_agents` (or another agenteval.* group) point at
            modules that can't be imported (e.g., the adapter package's extras
@@ -589,6 +628,13 @@ class AdapterDiscoveryError(AgentEvalCompatError):
            the given name across the programmatic + primary + legacy lookup
            precedence. Error message lists the known adapter names. (For this
            case `loaded_so_far` is the empty dict.)
+        3. **Cross-package name collision** (ADR-013 L43): the same adapter name
+           is declared in BOTH `agenteval.coding_agents` (primary) AND
+           `robotframework_agenteval.adapters` (legacy). agenteval refuses to
+           silently pick one; the message names the colliding entry-point name
+           and both registration sources. (Folded here from the former
+           `DuplicateRegistrationError` leaf by `remove-dead-machinery` — single
+           raise site, no dedicated exit code.)
 
     `UnknownAdapterError` (used in the pre-edit story spec) is NOT in the
     ratified catalog; this single leaf covers both cases per the Story 1b.3
@@ -608,42 +654,6 @@ class AdapterDiscoveryError(AgentEvalCompatError):
     def __init__(self, message: str, *, loaded_so_far: dict[str, type] | None = None) -> None:
         super().__init__(message)
         self.loaded_so_far: dict[str, type] = dict(loaded_so_far) if loaded_so_far else {}
-
-
-class DuplicateRegistrationError(AdapterDiscoveryError):
-    """Raised when the same adapter name is declared in BOTH primary + legacy groups.
-
-    Per ADR-013 L43 verbatim: "Duplicate-name collisions across packages
-    produce a `DuplicateRegistrationError(AdapterDiscoveryError)` with both
-    source package names; agenteval refuses to silently pick one."
-
-    Story 1b.3 code review caught the pre-edit implementation's drift from
-    this contract — the original code used `warnings.warn` + primary-wins,
-    which the ADR explicitly forbids. Cross-package collisions now raise this
-    typed error fail-closed so consumers cannot accidentally depend on a
-    non-deterministic resolution.
-
-    Intra-group collisions within ONE entry-point group (same name declared
-    twice in `agenteval.coding_agents`, for example) are a different
-    operational class — handled by the PyPA installer's metadata uniqueness
-    rules, not this exception. If the installer accepts such a duplicate
-    anyway, the `_cached_coding_agents` scan emits a UserWarning + lets the
-    last-wins (which is what stdlib `dict.update` semantics already do).
-
-    `sources` attribute: 2-tuple of `(primary_dist_name, legacy_dist_name)`
-    or `("primary", "legacy")` if dist names cannot be resolved from the
-    entry-point metadata. Inherits `loaded_so_far` from the parent.
-    """
-
-    def __init__(
-        self,
-        message: str,
-        *,
-        sources: tuple[str, str] = ("primary", "legacy"),
-        loaded_so_far: dict[str, type] | None = None,
-    ) -> None:
-        super().__init__(message, loaded_so_far=loaded_so_far)
-        self.sources: tuple[str, str] = sources
 
 
 class UnsupportedBinaryVersionError(AgentEvalCompatError):
@@ -671,8 +681,7 @@ class UnsupportedBinaryVersionError(AgentEvalCompatError):
     `detected`, `min_version`, `max_version` are exposed alongside the
     string message so callers can react programmatically (e.g., suggest
     `pip install '<binary>>=<min_version>'`) without string-parsing the
-    error message. Sibling `DuplicateRegistrationError` / `AdapterDiscoveryError`
-    follow the same pattern.
+    error message. Sibling `AdapterDiscoveryError` follows the same pattern.
 
     `error_code = "UNSUPPORTED_BINARY_VERSION"`; exit code 78 (EX_CONFIG).
     """
@@ -852,6 +861,33 @@ class InvalidSkillDiscoverabilityTasksError(_FR59Tier1SetupFailureError):
     error_code: ClassVar[str] = "INVALID_SKILL_DISCOVERABILITY_TASKS"
 
 
+class InvalidSkillBenchmarkTasksError(_FR59Tier1SetupFailureError):
+    """Raised when a skill A/B benchmark tasks YAML fails parse or schema validation.
+
+    add-skill-ab-benchmark Tier-1 setup-failure leaf (sibling of
+    `InvalidSkillDiscoverabilityTasksError`). Raised by
+    `skills/_benchmark.load_skill_benchmark_tasks()` when:
+        - File extension is not `.yaml` / `.yml` or the file does not exist
+        - YAML fails `yaml.safe_load()` (malformed YAML)
+        - Top-level value is not a mapping OR `tasks:` is missing / empty
+        - Per-task `id` or `prompt` missing / wrong-type
+        - A task declares BOTH grading modes (`expected_content` + `rubric`)
+        - A task declares NEITHER grading mode and the file has no
+          `defaults.rubric` fallback
+        - `expected_content` is not a non-empty list of strings
+        - Duplicate `id` values across tasks
+
+    `field_name` JSON Pointer convention (parallel to
+    `InvalidSkillDiscoverabilityTasksError`): RFC 6901 pointer into the
+    offending location, e.g., `/tasks/0/expected_content`. Root errors use
+    `""` per RFC 6901 §5.
+
+    `error_code = "INVALID_SKILL_BENCHMARK_TASKS"`; exit code 65 (EX_DATAERR).
+    """
+
+    error_code: ClassVar[str] = "INVALID_SKILL_BENCHMARK_TASKS"
+
+
 class SkillDidNotActivateError(AgentEvalIntegrityError):
     """Raised when `Skill Should Activate For` asserts but the skill did not activate.
 
@@ -920,6 +956,140 @@ class SkillDidNotActivateError(AgentEvalIntegrityError):
         )
 
 
+class SubagentDelegationAssertionError(AgentEvalIntegrityError):
+    """Raised when a delegation-routing assertion fails (add-subagent-delegation-testing).
+
+    Shared by the three delegation assertions
+    (`Subagent.Should Have Delegated To`, `Subagent.Should Not Have Delegated`,
+    `Subagent.Should Delegate To`). Mirrors `SkillDidNotActivateError`'s
+    diagnostic shape so operators can diagnose whether the orchestrator
+    routed to the wrong subagent, to none at all, or to an unexpected one.
+
+    Structured attrs:
+        - `prompt` — the prompt that produced the run, or `None` for the
+          Tier-1 assertions that operate on a pre-existing `AgentRunResult`.
+        - `expected_subagent` — the subagent the assertion expected (or did
+          NOT expect, for the absence assertion); `None` when the absence
+          assertion targeted ANY delegation.
+        - `observed_delegations` — list of subagent identities extracted from
+          the run's tool-call trace (empty list when none occurred).
+        - `reasoning` — the run's `response_text` (Tier-2 probe only), truncated
+          in `__str__`; raw value available via the attribute.
+        - `fix_suggestion` — operator-facing remediation hint.
+
+    `error_code = "SUBAGENT_DELEGATION_ASSERTION"`.
+    """
+
+    error_code: ClassVar[str] = "SUBAGENT_DELEGATION_ASSERTION"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        prompt: str | None = None,
+        expected_subagent: str | None = None,
+        observed_delegations: list[str] | None = None,
+        reasoning: str | None = None,
+        fix_suggestion: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.prompt: str | None = prompt
+        self.expected_subagent: str | None = expected_subagent
+        self.observed_delegations: list[str] = list(observed_delegations or [])
+        self.reasoning: str | None = reasoning
+        self.fix_suggestion: str = fix_suggestion
+
+    def __str__(self) -> str:
+        message = Exception.__str__(self)
+        if self.observed_delegations:
+            # Degraded (unrecognized-shape) identities are retained as "" so the
+            # non-match stays visible; render them with a placeholder so the
+            # `Observed:` line never collapses to a blank/malformed string.
+            observed = ", ".join(d if d else "<unresolved>" for d in self.observed_delegations)
+        else:
+            observed = "none observed"
+        reasoning_preview = (
+            self.reasoning[:120] + "..." if self.reasoning and len(self.reasoning) > 120 else (self.reasoning or "N/A")
+        )
+        return (
+            f"{self.error_code}: {message}\n"
+            f"  Prompt: {self.prompt if self.prompt else 'N/A'}\n"
+            f"  Expected: {self.expected_subagent if self.expected_subagent else 'N/A'}\n"
+            f"  Observed: {observed}\n"
+            f"  Reasoning: {reasoning_preview}\n"
+            f"  Fix: {self.fix_suggestion or 'N/A'}"
+        )
+
+
+class SubagentConfigDriftError(AgentEvalIntegrityError):
+    """Raised when a subagent `.md` file drifts from an asserted config expectation.
+
+    Shared by both static config-drift checks (`Subagent.Should Declare Skills`,
+    `Subagent.Tools Should Be Subset Of`). Distinct from
+    `InvalidSubagentDefinitionError` because the file *parses fine* — it drifts
+    from the asserted expectation, which is a test failure, NOT an FR59 setup
+    failure (subagents do NOT inherit parent skills/tools, so an absent field
+    fails loud rather than vacuously passing).
+
+    Structured attrs:
+        - `file_path` — the subagent `.md` path under assertion.
+        - `offending` — list of the drifting items (missing skills, or tools
+          outside the allowlist, or an empty list when the whole field was
+          absent).
+        - `fix_suggestion` — operator-facing remediation hint.
+
+    `error_code = "SUBAGENT_CONFIG_DRIFT"`.
+    """
+
+    error_code: ClassVar[str] = "SUBAGENT_CONFIG_DRIFT"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        file_path: str | None = None,
+        offending: list[str] | None = None,
+        fix_suggestion: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.file_path: str | None = file_path
+        self.offending: list[str] = list(offending or [])
+        self.fix_suggestion: str = fix_suggestion
+
+    def __str__(self) -> str:
+        message = Exception.__str__(self)
+        offending = ", ".join(self.offending) if self.offending else "N/A"
+        return (
+            f"{self.error_code}: {message}\n"
+            f"  File: {self.file_path if self.file_path else 'N/A'}\n"
+            f"  Offending: {offending}\n"
+            f"  Fix: {self.fix_suggestion or 'N/A'}"
+        )
+
+
+class InvalidSubagentRoutingTasksError(_FR59Tier1SetupFailureError):
+    """Raised when a subagent routing-tasks YAML fails parse or schema validation.
+
+    add-subagent-delegation-testing Tier-1 setup-failure leaf (parallel to
+    `InvalidSkillDiscoverabilityTasksError`). Raised by
+    `subagents/_tasks.load_subagent_routing_tasks()` when:
+        - YAML file fails `yaml.safe_load()` (malformed YAML)
+        - Required top-level `tasks: list[Task]` missing OR empty
+        - Per-task `id`, `prompt`, or `expected_subagent` missing / wrong-type
+        - Duplicate `id` values across tasks
+        - File extension is not `.yaml` / `.yml` or file does not exist
+
+    `field_name` JSON Pointer convention (parallel to
+    `InvalidSkillDiscoverabilityTasksError`): RFC 6901 pointer into the
+    offending location, e.g., `/tasks/0/expected_subagent`. Root errors use
+    `""` per RFC 6901 §5.
+
+    `error_code = "INVALID_SUBAGENT_ROUTING_TASKS"`; exit code 65 (EX_DATAERR).
+    """
+
+    error_code: ClassVar[str] = "INVALID_SUBAGENT_ROUTING_TASKS"
+
+
 class InvalidJudgeRubricError(_FR59Tier1SetupFailureError):
     """Raised when a Judge rubric Markdown file fails parse or schema validation.
 
@@ -986,9 +1156,7 @@ class JudgeOutputParseError(AgentEvalCompatError):
 
     def __str__(self) -> str:
         message = Exception.__str__(self)
-        raw_preview = (
-            self.raw_response[:500] + "..." if len(self.raw_response) > 500 else (self.raw_response or "N/A")
-        )
+        raw_preview = self.raw_response[:500] + "..." if len(self.raw_response) > 500 else (self.raw_response or "N/A")
         return (
             f"{self.error_code}: {message}\n"
             f"  Parse error: {self.parse_error or 'N/A'}\n"
@@ -1023,8 +1191,202 @@ class InvalidCalibrationSetError(_FR59Tier1SetupFailureError):
 
 
 # --------------------------------------------------------------------------- #
+# Conversation errors (add-multi-turn-conversation-testing — design D9)        #
+# Exactly TWO new leaves per the dossier E5 errors.py-bloat finding.           #
+# --------------------------------------------------------------------------- #
+
+
+class ConversationClosedError(AgentEvalIntegrityError):
+    """Raised when a `Send Message` / `Simulate User` targets a closed handle.
+
+    add-multi-turn-conversation-testing design D2 + D9. After
+    `End Conversation` marks a `ConversationHandle` closed (releasing any
+    native session resources), any further `Send Message` or `Simulate User`
+    against it raises this — a run-state contract violation, NOT an FR59
+    setup-file parse failure, so it carries a `fix_suggestion` but not the
+    File/Line/Field 5-line layout.
+
+    `Get Conversation Transcript` remains readable after close (this error is
+    NOT raised for read-only transcript access).
+
+    `error_code = "CONVERSATION_CLOSED"`; exit code 70 (EX_SOFTWARE — run-state
+    contract violation, same family as `TierViolationError`).
+    """
+
+    error_code: ClassVar[str] = "CONVERSATION_CLOSED"
+
+    def __init__(self, message: str, *, fix_suggestion: str = "") -> None:
+        super().__init__(message)
+        self.fix_suggestion: str = fix_suggestion
+
+    def __str__(self) -> str:
+        base = Exception.__str__(self)
+        return f"{self.error_code}: {base}\n  Fix: {self.fix_suggestion or 'N/A'}"
+
+
+class ConversationContinuationUnsupportedError(AgentEvalCompatError):
+    """Raised when `Start Conversation require_native=True` hits a replay-only adapter.
+
+    add-multi-turn-conversation-testing design D4 + D9. When a test requires
+    genuine native session continuation (replay semantics would invalidate the
+    eval) it passes `require_native=True`; if the resolved adapter does NOT
+    implement the optional duck-typed `run_turn`, this raises UP FRONT — before
+    any LLM call — naming the adapter and suggesting the fallback (omit
+    `require_native`) in its `fix_suggestion`.
+
+    A Compat-family error (adapter capability mismatch), parallel to
+    `UnsupportedBinaryVersionError`; runtime failure, so no FR59 5-line layout.
+
+    `error_code = "CONVERSATION_CONTINUATION_UNSUPPORTED"`; exit code 78
+    (EX_CONFIG — same family as the other adapter-capability Compat errors).
+    """
+
+    error_code: ClassVar[str] = "CONVERSATION_CONTINUATION_UNSUPPORTED"
+
+    def __init__(self, message: str, *, adapter: str | None = None, fix_suggestion: str = "") -> None:
+        super().__init__(message)
+        self.adapter: str | None = adapter
+        self.fix_suggestion: str = fix_suggestion
+
+    def __str__(self) -> str:
+        base = Exception.__str__(self)
+        return f"{self.error_code}: {base}\n  Adapter: {self.adapter or 'N/A'}\n  Fix: {self.fix_suggestion or 'N/A'}"
+
+
+# --------------------------------------------------------------------------- #
+# Red-team probe errors (add-red-team-probes — design D1/D2)                    #
+# Exactly ONE new leaf: probe-pack parse/schema validation (Tier-1 setup).      #
+# --------------------------------------------------------------------------- #
+
+
+class InvalidRedTeamProbeError(_FR59Tier1SetupFailureError):
+    """Raised when a red-team probe pack (bundled or user YAML) fails parse or schema validation.
+
+    add-red-team-probes Tier-1 setup-failure leaf (parallel to
+    `InvalidScenarioYAMLError` + `InvalidJudgeRubricError`). Raised by
+    `redteam/loader.load_pack()` / `load_bundled_pack()` when:
+        - A probe YAML file fails `yaml.safe_load()` (malformed YAML)
+        - A probe entry omits a required field (`id`, `category`, `severity`,
+          `source`, `expected_behavior`, `prompt`)
+        - A probe declares a `category` outside the four defensive-robustness
+          classes (`prompt_injection`, `jailbreak`, `pii_leakage`,
+          `encoding_obfuscation`)
+        - A probe `id` is duplicated within a pack OR across the bundled + a
+          user-supplied pack (silent override would corrupt attack-success-rate
+          accounting)
+        - A user-supplied file does not exist or is not `.yaml` / `.yml`
+        - The pack files disagree on `pack_version`
+
+    `field_name` names the offending probe id + field (e.g., `pi-003.category`)
+    so the operator can pinpoint the bad entry. Root-error case uses `""`.
+
+    `error_code = "INVALID_REDTEAM_PROBE"`; exit code 65 (EX_DATAERR; same
+    family as other Tier-1 setup-failure errors).
+    """
+
+    error_code: ClassVar[str] = "INVALID_REDTEAM_PROBE"
+
+
+# --------------------------------------------------------------------------- #
+# Regression baseline tracking errors (OpenSpec add-regression-baseline-tracking) #
+# --------------------------------------------------------------------------- #
+
+
+class BaselineWriteError(_FR59Tier1SetupFailureError):
+    """Raised when `Save Metrics Baseline` cannot persist the baseline file.
+
+    Design Decision 6: write failures RAISE (the opposite of the telemetry
+    sidecar warn-don't-raise contract) — the user explicitly asked to persist
+    a baseline, and silently continuing would fake-green the very CI gate the
+    baseline exists to feed. Carries the FR59 File/Line/Field/Fix structured
+    shape (``file_path`` = the unwritable path; ``fix_suggestion`` naming the
+    permission/disk remedy).
+
+    ``error_code = "BASELINE_WRITE_FAILED"``.
+    """
+
+    error_code: ClassVar[str] = "BASELINE_WRITE_FAILED"
+
+
+class BaselineNotFoundError(_FR59Tier1SetupFailureError):
+    """Raised when `Metrics Should Not Regress` / `Get Metric Trend` cannot find `baseline=`.
+
+    Design Decision 6: the fix suggestion is the save-then-commit workflow
+    ("run ``Save Metrics Baseline`` first, then commit the file"). ``file_path``
+    carries the resolved missing path.
+
+    ``error_code = "BASELINE_NOT_FOUND"``.
+    """
+
+    error_code: ClassVar[str] = "BASELINE_NOT_FOUND"
+
+
+class BaselineSchemaError(_FR59Tier1SetupFailureError):
+    """Raised when a baseline file is unparseable, schema-drifted, or version-mismatched.
+
+    Design Decision 6: raised on ``json`` parse failure, unsupported
+    ``schema_version``, or a missing/wrong-shape required field (``field_name``
+    names the offending field; the message names the found and supported
+    schema versions).
+
+    ``error_code = "BASELINE_SCHEMA_DRIFT"``.
+    """
+
+    error_code: ClassVar[str] = "BASELINE_SCHEMA_DRIFT"
+
+
+# --------------------------------------------------------------------------- #
 # Warnings (per architecture L997: DegradedTraceWarning + AdapterVersionDriftWarning) #
 # --------------------------------------------------------------------------- #
+
+
+class PossibleRegressionWarning(UserWarning):
+    """Emitted when a proportion metric breaches tolerance but the CIs overlap.
+
+    Design Decision 2 (PASS-with-WARNING outcome): "a 2-point Pass@k drop over
+    10 trials may be noise" lands here. The keyword PASSES (overlap ⇒ don't
+    fail) but the warning quotes both points, both CIs, and both trial counts
+    so the human can raise ``n`` in ``Stat.Run N Times`` rather than chase
+    ghosts. NOT silent — the residual uncertainty is made visible.
+    """
+
+
+class UnderpoweredComparisonWarning(UserWarning):
+    """Emitted when the sample sizes are too small to detect the requested tolerance.
+
+    Design Decision 2: when the Wilson CI half-width exceeds the requested
+    tolerance, the minimum detectable difference is larger than what the gate
+    was asked to catch. The warning states the approximate ``n`` needed — the
+    gate never silently pretends it could have caught what it mathematically
+    cannot.
+    """
+
+
+class DegradedComparisonWarning(UserWarning):
+    """Emitted when continuous-metric inference degrades to tolerance-only.
+
+    Design Decision 3: when raw samples are missing on either side OR the
+    ``[agenteval-advanced]`` extra is not installed, the Mann-Whitney U noise
+    guard cannot run, so the comparison falls back to a point-only tolerance
+    check. The warning names exactly what was skipped and why (missing samples
+    vs missing extra); the report records ``comparison_mode="point_only"``.
+    Degraded is loud, never silent (fake-green rejection).
+    """
+
+
+class SkippedMetricWarning(UserWarning):
+    """Emitted when a metric is skipped from a regression comparison.
+
+    Design Decision 6/7 (never silent-drop): the comparison engine returns a
+    ``skipped`` verdict — never an auto-fail — for a metric that is present on
+    only one side (baseline-only or current-only) or whose evidence kind
+    mismatches between the two runs. Per the spec's "never auto-fail on skip"
+    rule the keyword still PASSES, but a silent skip is a fake-green: a CI cost
+    gate would vanish without a trace if the current run stopped producing
+    ``cost_usd``. This warning names the skipped metric and why it was skipped
+    so the disappearance is loud, not silent, without the caller having to
+    inspect ``report.comparisons``.
+    """
 
 
 class DegradedTraceWarning(UserWarning):

@@ -20,11 +20,13 @@ Story 4.3 Phase-1 scope: YAML maps onto these frozen dataclasses via
 Tier-1 setup-failure convention (parallel to `InvalidMCPServerConfigError`
 + `InvalidHookConfigError`).
 
-Required shape per PRD FR15 L1514:
+Required shape per PRD FR15 L1514 + add-multi-turn-conversation-testing D8:
 - Top-level: `evals: list[ScenarioEval]` (REQUIRED).
 - Top-level optional: `model: str`, `provider: str`, `agent: str`,
   `mcp_servers: list[str]`.
-- Per-eval REQUIRED: `prompt: str`.
+- Per-eval: **exactly one of** `prompt: str` | `turns: list[str]`
+  (**BREAKING** pre-1.0: `prompt` was previously REQUIRED; `turns` executes
+  the messages as ONE threaded multi-turn conversation).
 - Per-eval optional: `repeat: int = 1`, `expect: dict`, `judge: dict`
   (Phase-2 placeholder).
 """
@@ -39,9 +41,16 @@ __all__ = ["ScenarioEval", "Scenario"]
 
 @dataclass(frozen=True)
 class ScenarioEval:
-    """One evaluation in a scenario's `evals[]` list (Story 4.3)."""
+    """One evaluation in a scenario's `evals[]` list (Story 4.3 + add-multi-turn-conversation-testing D8).
 
-    prompt: str
+    Carries **exactly one of** ``prompt`` (single-shot) or ``turns`` (an ordered
+    list of user messages executed as ONE threaded conversation). The loader
+    enforces the exactly-one-of rule; a directly-constructed instance is not
+    re-validated here (the loader is the single validation gate).
+    """
+
+    prompt: str | None = None
+    turns: tuple[str, ...] | None = None
     repeat: int = 1
     expect: dict[str, Any] = field(default_factory=dict)
     judge: dict[str, Any] = field(default_factory=dict)
@@ -50,6 +59,13 @@ class ScenarioEval:
         # M_R6 shallow-copy at construction.
         object.__setattr__(self, "expect", dict(self.expect))
         object.__setattr__(self, "judge", dict(self.judge))
+        if self.turns is not None:
+            object.__setattr__(self, "turns", tuple(self.turns))
+
+    @property
+    def is_multi_turn(self) -> bool:
+        """True when this eval is a `turns:` conversation (vs a single `prompt`)."""
+        return self.turns is not None
 
 
 @dataclass(frozen=True)

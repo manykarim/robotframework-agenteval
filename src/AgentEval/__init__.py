@@ -60,18 +60,18 @@ from robotlibcore import DynamicCore
 from AgentEval._kernel.context import (
     ConfigValue,
     _resolve_scope,
-    resolve_config,
     resolve_config_with_provenance,
 )
+from AgentEval._kernel.host_budget_plumbing import _HostBudgetPlumbing
 from AgentEval._kernel.tier import tier
 
 __version__ = "0.0.1"
 __all__: list[str] = ["AgentEval"]
 
 # Browser-Library-style docstring migration marker (Phase 5, 2026-05-26).
-# This module hosts the top-level `AgentEval` class which carries 3
-# `@keyword`-decorated methods (Get Effective Config / Get Keyword Tier
-# / Get Effective Config With Provenance). The marker enables the
+# This module hosts the top-level `AgentEval` class which carries 2
+# `@keyword`-decorated methods (Get Effective Config / Get Keyword Tier).
+# The marker enables the
 # conventions-test suite to discover + enforce Browser-style structure
 # on the methods within this file. The composed sub-libraries each carry
 # their own marker in their respective `library.py` files.
@@ -89,44 +89,37 @@ _logger = logging.getLogger("AgentEval.library")
 # top-level `AgentEval` import remains green even while later Epic
 # sub-libraries are not yet shipped. Story 2.1 ships entry 1 (skills);
 # future Epics extend this tuple.
-# Story 2.2 code-review fix (2026-05-19, 3-way HIGH from Edge-cases+Blind+Codex
-# implicit): `Get Frontmatter` collides between `SkillsLibrary` and
-# `SubagentsLibrary` under `DynamicCore` last-wins flattening, silently
-# shadowing Story 2.1's validation surface. Resolution per the PRD-documented
-# canonical user pattern (PRD FR1/FR3 both use `<prefix>.Get Frontmatter`
-# syntax → user pattern is `Library X WITH NAME prefix`, NOT flat
-# `Library AgentEval`): sub-libraries with parallel keyword names are
-# excluded from the top-level DynamicCore composition. Users access them
-# via the WITH-NAME pattern.
+# Naming rule (`compose-single-library-import` change): every keyword of an
+# artifact/engine sub-library (skills, subagents, hooks, mcp, stats, judge)
+# bakes its namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` /
+# `Stat.` / `Judge.`) into its `@keyword(name=...)` value; core-loop
+# sub-libraries (orchestration, telemetry, metrics, assertions, heatmap) and
+# the top-level config/tier keywords carry no prefix. This makes every
+# keyword name globally unique, so ALL shipped sub-libraries — including
+# SkillsLibrary, SubagentsLibrary, and MCPLibrary, which the Story 2.2
+# carve-out formerly excluded over the `Get Frontmatter` collision — compose
+# cleanly into the flat `Library AgentEval` namespace via `DynamicCore`.
 #
-# Carve-out registry (extend per future story with explicit ratification):
-# - `SkillsLibrary` — EXCLUDED (collides with `SubagentsLibrary` on
-#   `Get Frontmatter`). User pattern: `Library AgentEval.skills.library.SkillsLibrary
-#   WITH NAME Skill`.
-# - `SubagentsLibrary` — EXCLUDED (same collision). User pattern:
-#   `Library AgentEval.subagents.library.SubagentsLibrary WITH NAME Subagent`.
-# - `HooksLibrary` — INCLUDED. `Get Config` is unique across all Phase-1
-#   sub-libraries; flattening into `Library AgentEval` is safe.
-# - `MCPLibrary` — EXCLUDED preemptively (Story 2.3 code-review Auditor
-#   MED-2 ratification 2026-05-19; norm-inheritance from Story 2.2 HIGH-1).
-#   `Get Server Config` / `Get Tool Schema` / `Validate Tool Schema` are
-#   unique across Phase-1 sub-libraries, but the precedent matters: future
-#   Tier-1 sub-libraries will inevitably introduce `Get *` collisions.
-#   User pattern: `Library AgentEval.mcp.library.MCPLibrary WITH NAME MCP`.
-#
-# A runtime collision-detector in `_build_components()` raises loudly if
-# future stories accidentally register two components with overlapping
-# `@keyword(name=...)` values — preventing the silent last-wins regression
-# from recurring.
+# The runtime collision-detector in `_build_components()` still raises loudly
+# if two components ever declare the same `@keyword(name=...)` value, guarding
+# the rule mechanically against a future sub-library that forgets its prefix.
+# `tests/unit/conventions/test_keyword_namespace_prefix.py` enforces the rule
+# at unit-test time.
 _SUB_LIBRARIES: tuple[tuple[str, str], ...] = (
     ("AgentEval.hooks.library", "HooksLibrary"),
     ("AgentEval.orchestration.library", "OrchestrationLibrary"),
     ("AgentEval.telemetry.library", "TelemetryLibrary"),
     ("AgentEval.metrics.library", "MetricsLibrary"),
     ("AgentEval._assertions.library", "AssertionsLibrary"),
-    ("AgentEval.stats.library", "StatsLibrary"),  # NEW per Story 6.3 (PRD FR26-31a)
-    ("AgentEval._heatmap.library", "HeatmapLibrary"),  # NEW per Story 8b.2 (FR55-ASCII + dict)
-    ("AgentEval.judge.library", "JudgeLibrary"),  # NEW per Story 12.1 (PRD FR48 — Tier-2 LLM-judge)
+    ("AgentEval.stats.library", "StatsLibrary"),  # Story 6.3 (PRD FR26-31a)
+    ("AgentEval._heatmap.library", "HeatmapLibrary"),  # Story 8b.2 (FR55-ASCII + dict)
+    ("AgentEval.judge.library", "JudgeLibrary"),  # Story 12.1 (PRD FR48 — Tier-2 LLM-judge)
+    ("AgentEval.skills.library", "SkillsLibrary"),  # compose-single-library-import (was Story 2.2 carve-out)
+    ("AgentEval.subagents.library", "SubagentsLibrary"),  # compose-single-library-import (was Story 2.2 carve-out)
+    ("AgentEval.mcp.library", "MCPLibrary"),  # compose-single-library-import (was Story 2.3 carve-out)
+    ("AgentEval.conversation.library", "ConversationLibrary"),  # add-multi-turn-conversation-testing
+    ("AgentEval.redteam.library", "RedTeamLibrary"),  # add-red-team-probes
+    ("AgentEval.baseline.library", "BaselineLibrary"),  # add-regression-baseline-tracking
 )
 
 
@@ -201,6 +194,14 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
             (FR11b + ADR-015). Default None = no cap (opt-in via explicit
             value). Sibling to `max_cost_usd`; catches slow MCP-server startup
             compounded across trials.
+        otlp_endpoint: OTLP collector endpoint URL (FR33b; Story 13.2).
+            Only consumed when ``trace_backend="otlp"``. URL scheme selects
+            transport: ``http://`` / ``https://`` → OTLP HTTP/protobuf
+            exporter (port 4318); ``grpc://`` / ``grpcs://`` → OTLP gRPC
+            exporter (port 4317). Default ``None`` → OTLPBackend falls back
+            to ``http://localhost:4318/v1/traces`` (local Jaeger HTTP).
+            Requires the ``[otlp]`` extra (``opentelemetry-exporter-otlp``);
+            constructing OTLPBackend without the extra raises ``ImportError``.
 
     FR41 precedence behavior (Story 1b.1):
         Each `__init__` parameter defaults to a private sentinel; if the caller
@@ -234,9 +235,10 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
         allow_external_mcp_blind: bool = _UNSET,
         max_cost_usd: float = _UNSET,
         max_runtime_seconds: float | None = _UNSET,
+        otlp_endpoint: str | None = _UNSET,
     ) -> None:
         # Story 1b.1 FR41 wiring: strip _UNSET sentinels, pass the remainder
-        # to resolve_config() so the env-var / .env / defaults layers can fire
+        # to the resolver so the env-var / .env / defaults layers can fire
         # for kwargs the caller did NOT pass. Explicit None IS a user-passed
         # value (e.g., max_runtime_seconds=None) and takes precedence over
         # env-vars.
@@ -250,13 +252,17 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
             "allow_external_mcp_blind": allow_external_mcp_blind,
             "max_cost_usd": max_cost_usd,
             "max_runtime_seconds": max_runtime_seconds,
+            "otlp_endpoint": otlp_endpoint,
         }
         kwarg_overrides = {k: v for k, v in kwarg_overrides.items() if v is not _UNSET}
-        resolved = resolve_config(kwarg_overrides)
-        # Story 4.3 (PRD FR41 ConfigValue surface): also compute the
-        # provenance map for `Get Effective Config setting=key` +
-        # `Get Effective Config With Provenance` keywords.
+        # remove-dead-machinery D3: ONE resolution pass per instantiation. The
+        # precedence chain (kwarg > env > .env > default), coercion, and the
+        # unknown-`AGENTEVAL_*`-key warnings all run once here; bare values are
+        # projected from the stored provenance map. Previously `__init__` called
+        # both `resolve_config` and `resolve_config_with_provenance`, resolving
+        # the 4-layer chain twice and emitting each unknown-key warning twice.
         self._config_provenance: dict[str, ConfigValue] = resolve_config_with_provenance(kwarg_overrides)
+        resolved: dict[str, Any] = {key: cv.value for key, cv in self._config_provenance.items()}
 
         self._provider = resolved["provider"]
         self._telemetry = resolved["telemetry"]
@@ -267,6 +273,7 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
         self._allow_external_mcp_blind = resolved["allow_external_mcp_blind"]
         self._max_cost_usd = resolved["max_cost_usd"]
         self._max_runtime_seconds = resolved["max_runtime_seconds"]
+        self._otlp_endpoint = resolved["otlp_endpoint"]
 
         # Internal scope for MCP server lifecycle (Story 1b.1 _resolve_scope
         # translates the user-vocab `mcp_per_test` into the internal Scope enum).
@@ -333,8 +340,22 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
             # `OrchestrationLibrary` so `AgentEval(provider="mock").send_prompt(...)`
             # actually routes through the mock provider. Pre-edit broke
             # PRD FR41 precedence at the orchestration boundary.
-            if cls_name == "OrchestrationLibrary":
-                components.append(cls(default_provider=self._provider))
+            if cls_name in ("OrchestrationLibrary", "ConversationLibrary", "RedTeamLibrary"):
+                # Story 14.6 (C26 closure): forward `max_cost_usd` +
+                # `max_runtime_seconds` for Tier-3 `@guarded_fanout`
+                # enforcement via the unified `_HostBudgetPlumbing` mixin
+                # (`Run Scenario`; `Simulate User`). ConversationLibrary
+                # (add-multi-turn-conversation-testing) also needs
+                # `default_provider` so `AgentEval(provider="mock")` routes
+                # conversations through the mock provider — same shape as
+                # OrchestrationLibrary.
+                components.append(
+                    cls(
+                        default_provider=self._provider,
+                        max_cost_usd=self._max_cost_usd,
+                        max_runtime_seconds=self._max_runtime_seconds,
+                    )
+                )
             elif cls_name == "MetricsLibrary":
                 # Story 6.1 AC-6.1.2: propagate library-level
                 # `allow_external_mcp_blind` to MetricsLibrary so the
@@ -345,19 +366,18 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
                 # MetricsLibrary — FR37 default-deny gate on tool-call-
                 # bearing assertions (Trajectory + Tool Call).
                 components.append(cls(allow_external_mcp_blind=self._allow_external_mcp_blind))
-            elif cls_name == "StatsLibrary":
-                # Story 6.3 AC-6.3.8: forward `max_cost_usd` + `max_runtime_seconds`
-                # for `Stat.Run N Times` Tier-3 `@guarded_fanout` enforcement (ADR-015).
-                components.append(
-                    cls(
-                        max_cost_usd=self._max_cost_usd,
-                        max_runtime_seconds=self._max_runtime_seconds,
-                    )
-                )
-            elif cls_name == "JudgeLibrary":
-                # Story 12.1 AC-12.1.5 (PRD FR48): forward `max_cost_usd` +
-                # `max_runtime_seconds` for `Judge.Get Score` Tier-2
-                # `@guarded_fanout` enforcement. Mirrors StatsLibrary pattern.
+            elif isinstance(cls, type) and issubclass(cls, _HostBudgetPlumbing):
+                # `compose-single-library-import` change: forward
+                # `max_cost_usd` + `max_runtime_seconds` to ANY component
+                # subclassing `_HostBudgetPlumbing` — covers StatsLibrary
+                # (Story 6.3 AC-6.3.8 / `Stat.Run N Times`), JudgeLibrary
+                # (Story 12.1 AC-12.1.5 / `Judge.Get Score`), SkillsLibrary
+                # (`Skill.Get Activation Decision` / C55 closure), MCPLibrary
+                # (`MCP.Get Tool Discoverability`), and any future mixin
+                # adopter, without adding a new class-name branch each time.
+                # OrchestrationLibrary also subclasses the mixin but is
+                # handled by its explicit branch above (it needs
+                # `default_provider` too).
                 components.append(
                     cls(
                         max_cost_usd=self._max_cost_usd,
@@ -365,6 +385,10 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
                     )
                 )
             else:
+                # No constructor kwargs — e.g. HooksLibrary, TelemetryLibrary,
+                # HeatmapLibrary. (SubagentsLibrary now subclasses
+                # `_HostBudgetPlumbing` per add-subagent-delegation-testing and
+                # is handled by the mixin branch above.)
                 components.append(cls())
 
         # Collision detector — raise loudly on duplicate keyword names
@@ -422,8 +446,7 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
 
         Notes:
         - PRD FR41 ratifies the ConfigValue surface; FR42 ratifies the 9 settings.
-        - Story 4.3 DF-4.3-S1 carry-over: full ``dict[str, ConfigValue]`` migration of the no-arg form is Phase-1.5.
-        - Sibling keyword: `Get Effective Config With Provenance` for the FR41-compliant full-surface form.
+        - The per-setting ``setting=<key>`` form IS the provenance surface (returns ``ConfigValue(value, source)``). remove-dead-machinery D3 REJECTED DF-4.3-S1's proposed migration of the no-arg form to ``dict[str, ConfigValue]``: it would force ``.value`` on the common case to serve a debugging need the ``setting=`` form already serves. The `Get Effective Config With Provenance` twin keyword was deleted.
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         if setting is not None:
             if setting not in self._config_provenance:
@@ -433,17 +456,12 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
                 # keyword boundary.
                 raise ValueError(f"unknown config setting {setting!r}; known: {sorted(self._config_provenance.keys())}")
             return self._config_provenance[setting]
-        return {
-            "provider": self._provider,
-            "telemetry": self._telemetry,
-            "trace_backend": self._trace_backend,
-            "allow_validate_operator": self._allow_validate_operator,
-            "default_temperature": self._default_temperature,
-            "mcp_per_test": self._mcp_per_test,
-            "allow_external_mcp_blind": self._allow_external_mcp_blind,
-            "max_cost_usd": self._max_cost_usd,
-            "max_runtime_seconds": self._max_runtime_seconds,
-        }
+        # remove-dead-machinery D3: derive the no-arg `dict[str, Any]` from the
+        # stored provenance map instead of a hand-maintained key literal (which
+        # was a drift-prone shadow copy of the config keys). Same values as the
+        # `self._<key>` instance attributes — those are projected from this same
+        # map at `__init__` — so the ratified no-arg shape is unchanged.
+        return {key: cv.value for key, cv in self._config_provenance.items()}
 
     @keyword(name="Get Keyword Tier")
     @tier(1)
@@ -511,40 +529,6 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
                 f"valid tiers are 1, 2, 3 per PRD FR30a."
             )
         return tier_value
-
-    @keyword(name="Get Effective Config With Provenance")
-    @tier(1)
-    def get_effective_config_with_provenance(self) -> dict[str, ConfigValue]:
-        """Returns the full settings map with per-key provenance as a ``dict[str, ConfigValue]`` (PRD FR41).
-
-        [Tier 1 — Deterministic] — FR41-compliant surface. Each
-        ``ConfigValue`` carries ``value`` + ``source`` per FR41 L1563.
-        Source is one of ``"init_arg"`` / ``"env"`` / ``"dotenv"`` /
-        ``"default"``.
-
-        | =Arguments= | =Description= |
-        | (none) | Returns the full settings map; no arguments. |
-
-        Defensive shallow-copy of the underlying provenance dict — caller
-        mutations don't propagate to the Library's internal state.
-
-        Example:
-        | Library    AgentEval    max_cost_usd=5.0
-        | ${settings} =    `Get Effective Config With Provenance`
-        | ${cost} =    Set Variable    ${settings}[max_cost_usd]
-        | Should Be Equal As Numbers    ${cost.value}    5.0
-        | Should Be Equal    ${cost.source}    init_arg                              # Constructor kwarg won.
-        | ${temp} =    Set Variable    ${settings}[default_temperature]
-        | Should Be Equal    ${temp.source}    default                               # Not overridden — uses FR42 default.
-
-        Notes:
-        - PRD FR41 ratifies the ``dict[str, ConfigValue]`` shape.
-        - This is the FR41-compliant surface DF-4.3-S1 will migrate ``Get Effective Config`` (no-arg) to once tier-1 tests update.
-        - Sibling keyword: `Get Effective Config` for the simpler ``dict[str, Any]`` or per-setting form.
-        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
-        # M_R6 shallow-copy pattern: protect against caller mutating
-        # the returned dict.
-        return dict(self._config_provenance)
 
     def _get_rf_test_id(self) -> str | None:
         """Read the current RF Listener v3 `test_id` from RF context.

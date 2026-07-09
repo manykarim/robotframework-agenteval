@@ -20,41 +20,50 @@
 """MCP sub-library — `.mcp.json` static-inspection + Phase-1 lifecycle + discoverability keywords.
 
 Static-inspection keywords (Story 2.3 / PRD FR5 + FR6):
-- `Get Server Config` — parse a `.mcp.json` server-config file into a
+- `MCP.Get Server Config` — parse a `.mcp.json` server-config file into a
   dict mapping `<server_name>` → entry (`command`, `args`, `env`,
   `transport`, `tools`).
-- `Get Tool Schema` — return the JSON Schema for a declared tool from
+- `MCP.Get Tool Schema` — return the JSON Schema for a declared tool from
   the Phase-1 `.mcp.json:tools` extension (Phase-2 + Epic 3 add
   runtime retrieval).
-- `Validate Tool Schema` — verify the tool's schema is well-formed
+- `MCP.Validate Tool Schema` — verify the tool's schema is well-formed
   per the jsonschema Draft 2020-12 meta-schema; raise
   `InvalidMCPToolSchemaError` with an RFC 6901 JSON Pointer + the
   wrapped jsonschema error message.
 
 Lifecycle keywords (Story 3.1 + 3.2 / PRD FR7 + FR8 + FR9a + FR9b):
-- `Start Server` — pure handle construction over the 3-transport enum.
-- `Connect To Server` — open session, run `initialize()`, gate on the
+- `MCP.Start Server` — pure handle construction over the 3-transport enum.
+- `MCP.Connect To Server` — open session, run `initialize()`, gate on the
   agenteval-supported protocol range, then close.
-- `Stop Server` — Phase-1 no-op cleanup hook.
-- `List Tools` — per-call MCP `list_tools` projection.
-- `Call Tool` — per-call MCP tool invocation (tool-error-as-data).
+- `MCP.Stop Server` — Phase-1 no-op cleanup hook.
+- `MCP.List Tools` — per-call MCP `list_tools` projection.
+- `MCP.Call Tool` — per-call MCP tool invocation (tool-error-as-data).
 
 Discoverability keyword (Story 4.4 / PRD FR10a):
-- `Get Tool Discoverability` — Tier-3 N-trial Pass@k evaluation with
+- `MCP.Get Tool Discoverability` — Tier-3 N-trial Pass@k evaluation with
   Wilson CI bounds.
 
-Per Story 2.2 code-review HIGH-1 ratification (DynamicCore composition
-keyword-name collision prevention): `MCPLibrary` is NOT registered in
-`src/AgentEval/__init__.py:_SUB_LIBRARIES`. Users access via standalone
-import:
+Every MCPLibrary keyword bakes its `MCP.` namespace prefix into its
+`@keyword(name=...)` value (the artifact/engine-library rule from the
+`compose-single-library-import` change). `MCPLibrary` is registered in
+`src/AgentEval/__init__.py:_SUB_LIBRARIES`, so a plain `Library AgentEval`
+import reaches every keyword; the call site is identical under a
+standalone module-path import.
 
     *** Settings ***
-    Library    AgentEval.mcp.library.MCPLibrary    WITH NAME    MCP
+    Library    AgentEval
 
     *** Test Cases ***
     Echo Server Declares Stdio Transport
         ${servers}=    MCP.Get Server Config    ${CURDIR}/.mcp.json
         Should Be Equal    ${servers["echo"]["transport"]}    stdio
+
+For per-library budget scoping, import standalone (no `WITH NAME` needed —
+the `MCP.` prefix is already baked in; adding `WITH NAME MCP` would produce
+`MCP.MCP.Get Server Config`, which is harmless but pointless):
+
+    *** Settings ***
+    Library    AgentEval.mcp.library.MCPLibrary    max_cost_usd=10.00
 
 Phase-1 limitations:
 - Tool schemas come from the declarative `.mcp.json:tools` extension
@@ -73,15 +82,14 @@ from typing import Any
 
 from robot.api.deco import keyword
 
-from AgentEval._kernel.discovery import get_adapter
+from AgentEval._kernel.guardrails import guarded_fanout
+from AgentEval._kernel.host_budget_plumbing import _HostBudgetPlumbing
 from AgentEval._kernel.tier import tier
 from AgentEval.discoverability.loader import load_discoverability_tasks
 from AgentEval.discoverability.schema import (
+    DiscoverabilityComparisonResult,
     DiscoverabilityResult,
-    DiscoverabilitySummary,
-    TaskResult,
 )
-from AgentEval.discoverability.wilson_ci import wilson_score_interval
 from AgentEval.mcp._parser import (
     get_tool_schema,
     parse_mcp_servers,
@@ -106,10 +114,19 @@ __all__ = ["MCPLibrary"]
 _BROWSER_STYLE_MIGRATED = True
 
 
-class MCPLibrary:
-    """Static-inspection keywords for `.mcp.json` files [Tier 1 — Deterministic]."""
+class MCPLibrary(_HostBudgetPlumbing):
+    """Static-inspection + cross-adapter keywords for `.mcp.json` files.
 
-    @keyword(name="Get Server Config")
+    Inherits ``_HostBudgetPlumbing`` (Story 14.6 / C20+C89 closure) so
+    ``MCP.Get Tool Discoverability`` + ``MCP.Compare Tool Discoverability``
+    enforce ``max_cost_usd`` + ``max_runtime_seconds`` budgets via
+    ``@guarded_fanout()``. Under the composed ``Library AgentEval`` import
+    these budgets are forwarded automatically from the top-level config; a
+    standalone ``Library AgentEval.mcp.library.MCPLibrary max_cost_usd=...``
+    import passes them at RF ``Library`` import time.
+    """
+
+    @keyword(name="MCP.Get Server Config")
     @tier(1)
     def get_server_config(self, path: str | Path) -> dict[str, dict[str, Any]]:
         """Parses a ``.mcp.json`` file's ``mcpServers`` declarations (PRD FR5).
@@ -130,18 +147,18 @@ class MCPLibrary:
         6901 JSON Pointer into the offending location.
 
         Example:
-        | ${servers} =    `Get Server Config`    ${CURDIR}/.mcp.json
+        | ${servers} =    `MCP.Get Server Config`    ${CURDIR}/.mcp.json
         | Should Be Equal    ${servers}[echo][transport]    stdio
         | Should Contain    ${servers}[echo][args]    -m
 
         Notes:
         - PRD FR5 ratifies the ``.mcp.json`` parse contract; FR7 ratifies the transport enum.
         - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
-        - Sibling keywords: `Get Tool Schema` + `Validate Tool Schema` for tool-schema introspection.
+        - Sibling keywords: `MCP.Get Tool Schema` + `MCP.Validate Tool Schema` for tool-schema introspection.
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return parse_mcp_servers(path)
 
-    @keyword(name="Get Tool Schema")
+    @keyword(name="MCP.Get Tool Schema")
     @tier(1)
     def get_tool_schema(
         self,
@@ -166,17 +183,17 @@ class MCPLibrary:
         the tool is not declared on any candidate server.
 
         Example:
-        | ${schema} =    `Get Tool Schema`    ${CURDIR}/.mcp.json    tool_name=echo
+        | ${schema} =    `MCP.Get Tool Schema`    ${CURDIR}/.mcp.json    tool_name=echo
         | Should Be Equal    ${schema}[type]    object
         | Should Contain    ${schema}[required]    message
 
         Notes:
         - PRD FR6 ratifies the tool-schema retrieval contract; Phase-1 scope per Story 2.3 D-D drift-check.
-        - Sibling keywords: `Get Server Config` (full ``.mcp.json`` parse); `Validate Tool Schema` (Draft 2020-12 well-formedness check).
+        - Sibling keywords: `MCP.Get Server Config` (full ``.mcp.json`` parse); `MCP.Validate Tool Schema` (Draft 2020-12 well-formedness check).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return get_tool_schema(config_path, tool_name=tool_name, server_name=server_name)
 
-    @keyword(name="Validate Tool Schema")
+    @keyword(name="MCP.Validate Tool Schema")
     @tier(1)
     def validate_tool_schema(
         self,
@@ -194,7 +211,7 @@ class MCPLibrary:
         | =Arguments= | =Description= |
         | ``config_path`` | Filesystem path to the ``.mcp.json`` file. |
         | ``tool_name`` | Tool whose schema to validate. |
-        | ``server_name`` | Optional server scoping (see `Get Tool Schema`). |
+        | ``server_name`` | Optional server scoping (see `MCP.Get Tool Schema`). |
 
         Raises ``InvalidMCPServerConfigError`` on ``.mcp.json``
         structural failure. Raises ``InvalidMCPToolSchemaError`` when
@@ -204,13 +221,13 @@ class MCPLibrary:
         available via ``__cause__``.
 
         Example:
-        | `Validate Tool Schema`    ${CURDIR}/.mcp.json    tool_name=echo
-        | Run Keyword And Expect Error    InvalidMCPToolSchemaError*    `Validate Tool Schema`    ${CURDIR}/.mcp.json    tool_name=nonexistent
+        | `MCP.Validate Tool Schema`    ${CURDIR}/.mcp.json    tool_name=echo
+        | Run Keyword And Expect Error    InvalidMCPToolSchemaError*    `MCP.Validate Tool Schema`    ${CURDIR}/.mcp.json    tool_name=nonexistent
 
         Notes:
         - Validates schema well-formedness, NOT argument conformance — that's runtime/Epic 3.
         - Error format per FR59 + `docs/contracts/error-class-hierarchy.md` L96-104.
-        - Sibling keyword: `Get Tool Schema` for retrieving the schema dict.
+        - Sibling keyword: `MCP.Get Tool Schema` for retrieving the schema dict.
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         validate_tool_schema(config_path, tool_name=tool_name, server_name=server_name)
 
@@ -218,7 +235,7 @@ class MCPLibrary:
     # Story 3.1: MCP server lifecycle keywords (PRD FR7 + FR8 + FR46)
     # --------------------------------------------------------------- #
 
-    @keyword(name="Start Server")
+    @keyword(name="MCP.Start Server")
     @tier(1)
     def start_server(
         self,
@@ -234,7 +251,7 @@ class MCPLibrary:
         [Tier 1 — Deterministic] — pure handle construction. For
         ``stdio`` + ``in_memory`` transports, does NOT spawn the server
         yet (per Story 3.1 per-call-session design); the actual server
-        start happens during `Connect To Server`. The ``streamable_http``
+        start happens during `MCP.Connect To Server`. The ``streamable_http``
         transport is accepted as a Phase-1 passthrough; full HTTP
         round-trip lands Phase-1.5 or Story 3.2.
 
@@ -250,15 +267,15 @@ class MCPLibrary:
         missing (e.g. ``transport="stdio"`` without ``command``).
 
         Example:
-        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
-        | ${session} =    `Connect To Server`    ${handle}
-        | @{tools} =    `List Tools`    ${handle}
-        | `Stop Server`    ${handle}
+        | ${handle} =    `MCP.Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
+        | ${session} =    `MCP.Connect To Server`    ${handle}
+        | @{tools} =    `MCP.List Tools`    ${handle}
+        | `MCP.Stop Server`    ${handle}
 
         Notes:
         - PRD FR7 ratifies the 3-transport enum; Story 3.1 ratifies the per-call-session design.
         - Story 3.2 lands the full ``streamable_http`` round-trip (Phase-1 currently passthrough).
-        - Sibling keywords: `Connect To Server` (handshake + version check); `List Tools`, `Call Tool`, `Stop Server`.
+        - Sibling keywords: `MCP.Connect To Server` (handshake + version check); `MCP.List Tools`, `MCP.Call Tool`, `MCP.Stop Server`.
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return start_server(
             name=name,
@@ -269,7 +286,7 @@ class MCPLibrary:
             server_factory=server_factory,
         )
 
-    @keyword(name="Connect To Server")
+    @keyword(name="MCP.Connect To Server")
     @tier(1)
     def connect_to_server(self, handle: MCPServerHandle) -> MCPSession:
         """Opens + initializes an MCP ``ClientSession`` and gate-checks the version (PRD FR8 + FR46).
@@ -282,7 +299,7 @@ class MCPLibrary:
         **NOT a live SDK session**.
 
         | =Arguments= | =Description= |
-        | ``handle`` | An ``MCPServerHandle`` from `Start Server`. |
+        | ``handle`` | An ``MCPServerHandle`` from `MCP.Start Server`. |
 
         Raises ``UnsupportedMCPVersionError`` when the negotiated
         protocol version is outside the supported range. Raises
@@ -290,8 +307,8 @@ class MCPLibrary:
         (Phase-1 passthrough; not yet implemented).
 
         Example:
-        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
-        | ${session} =    `Connect To Server`    ${handle}
+        | ${handle} =    `MCP.Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
+        | ${session} =    `MCP.Connect To Server`    ${handle}
         | Should Not Be Empty    ${session.protocol_version}
         | Should Contain    ${session.server_info}[name]    echo
 
@@ -299,11 +316,11 @@ class MCPLibrary:
         - PRD FR8 + FR46 ratify the version-gate + per-call-session contract.
         - Story 3.1 ratifies per-call-session design (no live session returned).
         - NFR-COMPAT-04 pins the MCP SDK at ``mcp>=1.0,<2.0``.
-        - Sibling keywords: `Start Server` (handle construction); `Stop Server` (Phase-1 no-op cleanup); `List Tools` / `Call Tool` (per-call session-internal).
+        - Sibling keywords: `MCP.Start Server` (handle construction); `MCP.Stop Server` (Phase-1 no-op cleanup); `MCP.List Tools` / `MCP.Call Tool` (per-call session-internal).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return connect_to_server(handle)
 
-    @keyword(name="Stop Server")
+    @keyword(name="MCP.Stop Server")
     @tier(1)
     def stop_server(self, handle: MCPServerHandle) -> None:
         """Tears down any per-handle MCP resources.
@@ -315,23 +332,23 @@ class MCPLibrary:
         that need explicit teardown.
 
         | =Arguments= | =Description= |
-        | ``handle`` | The ``MCPServerHandle`` from `Start Server`. |
+        | ``handle`` | The ``MCPServerHandle`` from `MCP.Start Server`. |
 
         Returns ``None``. Never raises in Phase-1 (no-op).
 
         Example:
-        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
+        | ${handle} =    `MCP.Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
         | TRY
-        |     ${result} =    `Call Tool`    ${handle}    echo    arguments=${{ {"message": "hi"} }}
+        |     ${result} =    `MCP.Call Tool`    ${handle}    echo    arguments=${{ {"message": "hi"} }}
         |     Should Be True    ${result.is_error} == False
         | FINALLY
-        |     `Stop Server`    ${handle}
+        |     `MCP.Stop Server`    ${handle}
         | END
 
         Notes:
         - Phase-1 no-op per Story 3.1 design (per-call sessions self-clean).
-        - The canonical 3-step lifecycle (`Start Server` → `Connect To Server` → `Stop Server`) is ratified now to avoid breakage when Phase-1.5 introduces pooled sessions.
-        - Sibling keywords: `Start Server` + `Connect To Server` (companion lifecycle steps).
+        - The canonical 3-step lifecycle (`MCP.Start Server` → `MCP.Connect To Server` → `MCP.Stop Server`) is ratified now to avoid breakage when Phase-1.5 introduces pooled sessions.
+        - Sibling keywords: `MCP.Start Server` + `MCP.Connect To Server` (companion lifecycle steps).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         stop_server(handle)
 
@@ -339,7 +356,7 @@ class MCPLibrary:
     # Story 3.2: MCP tool inspection keywords (PRD FR9a + FR9b)
     # --------------------------------------------------------------- #
 
-    @keyword(name="List Tools")
+    @keyword(name="MCP.List Tools")
     @tier(1)
     def list_tools(self, handle: MCPServerHandle) -> list[MCPTool]:
         """Lists the tools advertised by the MCP server at ``handle`` (PRD FR9a).
@@ -352,7 +369,7 @@ class MCPLibrary:
         ``description``, ``input_schema``, and optional ``output_schema``.
 
         | =Arguments= | =Description= |
-        | ``handle`` | An ``MCPServerHandle`` from `Start Server`. |
+        | ``handle`` | An ``MCPServerHandle`` from `MCP.Start Server`. |
 
         Raises ``ValueError`` when transport is ``streamable_http``
         (Phase-1 passthrough). Raises ``UnsupportedMCPVersionError``
@@ -361,8 +378,8 @@ class MCPLibrary:
         fails mid-call.
 
         Example:
-        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
-        | @{tools} =    `List Tools`    ${handle}
+        | ${handle} =    `MCP.Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
+        | @{tools} =    `MCP.List Tools`    ${handle}
         | Should Not Be Empty    ${tools}
         | Should Contain    ${{ [t.name for t in $tools] }}    echo_back
 
@@ -370,17 +387,18 @@ class MCPLibrary:
         - PRD FR9a ratifies the list-tools contract.
         - Story 3.1 ratifies per-call-session design.
         - Pooled-session optimization is Phase-1.5; Phase-1 pays per-call handshake.
-        - Sibling keyword: `Call Tool` (invoke a tool by name); `Get Tool Schema` (declarative — reads from ``.mcp.json``).
+        - Sibling keyword: `MCP.Call Tool` (invoke a tool by name); `MCP.Get Tool Schema` (declarative — reads from ``.mcp.json``).
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         return list_tools(handle)
 
-    @keyword(name="Call Tool")
+    @keyword(name="MCP.Call Tool")
     @tier(1)
     def call_tool(
         self,
         handle: MCPServerHandle,
         tool_name: str,
         arguments: dict[str, Any] | None = None,
+        **kwargs: Any,
     ) -> MCPToolResult:
         """Invokes a tool by name on the MCP server at ``handle`` (PRD FR9b).
 
@@ -392,40 +410,77 @@ class MCPLibrary:
         exceptions. Infrastructure failures raise
         ``MCPConnectionLostError``.
 
+        Two ways to pass the tool's arguments:
+
+        1. *Natural named arguments* (recommended for simple, string
+           values): write each argument as a normal Robot Framework
+           named argument.
+        2. *Explicit ``arguments=`` dict*: pass a single dict. Use this
+           when an argument value is not a string, or when an argument's
+           name collides with this keyword's own parameters (``handle``,
+           ``tool_name``, ``arguments`` — reserved names).
+
         | =Arguments= | =Description= |
-        | ``handle`` | An ``MCPServerHandle`` from `Start Server`. |
+        | ``handle`` | An ``MCPServerHandle`` from `MCP.Start Server`. |
         | ``tool_name`` | The tool name as advertised by the server. |
-        | ``arguments`` | Optional dict of tool-specific arguments. Defaults to ``{}``. |
+        | ``arguments`` | Optional dict of tool-specific arguments. Defaults to ``{}``. Mutually exclusive with named-argument form. |
+        | ``**kwargs`` | Tool arguments passed as natural named arguments. Mutually exclusive with ``arguments=``. |
 
         Returns ``MCPToolResult`` with ``content`` (list of content
         blocks), ``is_error``, ``error_message``, ``latency_ms``, and
-        ``correlation_id`` (Phase-1 uuid4 placeholder).
+        ``correlation_id``.
 
-        Raises ``ValueError`` on ``streamable_http`` transport (Phase-1
-        passthrough). Raises ``UnsupportedMCPVersionError`` on version
-        gate failure. Raises ``MCPConnectionLostError`` on transport-
-        layer failure mid-call (subprocess crash, etc.).
+        Raises ``ValueError`` when both the ``arguments=`` dict form and
+        named arguments are supplied together (pick one form — no tool
+        call is made). Raises ``ValueError`` on ``streamable_http``
+        transport. Raises ``UnsupportedMCPVersionError`` on version gate
+        failure. Raises ``MCPConnectionLostError`` on transport-layer
+        failure mid-call (subprocess crash, etc.).
 
-        Example:
-        | ${handle} =    `Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
-        | ${result} =    `Call Tool`    ${handle}    echo_back    arguments=${{ {"text": "hi"} }}
+        Robot Framework passes free named arguments as *strings* unless
+        you use the typed ``${...}`` syntax — e.g. ``count=${5}`` sends
+        the integer ``5``, while ``count=5`` sends the string ``"5"``.
+        For non-string values, use the typed syntax or the
+        ``arguments=`` dict form.
+
+        Example (natural named-argument form):
+        | ${handle} =    `MCP.Start Server`    name=echo    transport=stdio    command=python    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
+        | ${result} =    `MCP.Call Tool`    ${handle}    echo_back    text=hello
         | Should Be Equal    ${result.is_error}    ${FALSE}
-        | Should Contain    ${result.content}[0][text]    hi
-        | `Stop Server`    ${handle}
+        | Should Contain    ${result.content}[0][text]    hello
+        | `MCP.Stop Server`    ${handle}
+
+        Example (explicit dict form — needed for non-string / reserved-name arguments):
+        | ${result} =    `MCP.Call Tool`    ${handle}    echo_back    arguments=${{ {"text": "hi"} }}
+        | Should Be Equal    ${result.is_error}    ${FALSE}
 
         Notes:
         - PRD FR9b ratifies the tool-call contract; tool-error-as-data per AC-MCP-CALL-01.
-        - ``correlation_id`` Phase-1 placeholder; Epic 5 wires real trace-id lookup.
-        - Sibling keywords: `List Tools`, `Start Server`, `Stop Server`.
+        - Sibling keywords: `MCP.List Tools`, `MCP.Start Server`, `MCP.Stop Server`.
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
-        return call_tool(handle, tool_name, arguments)
+        if kwargs and arguments is not None:
+            raise ValueError(
+                "MCP.Call Tool: cannot combine the `arguments=` dict form with free "
+                "named arguments — supplying both is ambiguous, so no tool call "
+                "was made.\n"
+                f"  Field: arguments={arguments!r} AND named args {sorted(kwargs)!r}\n"
+                "  Fix: use exactly ONE form — either "
+                "`MCP.Call Tool    ${handle}    tool    name=value` (natural named "
+                "arguments) OR "
+                '`MCP.Call Tool    ${handle}    tool    arguments=${{ {"name": value} }}` '
+                "(explicit dict). Use the dict form for non-string values or when "
+                "a tool argument is named `handle`, `tool_name`, or `arguments`."
+            )
+        effective_arguments = arguments if arguments is not None else (dict(kwargs) if kwargs else None)
+        return call_tool(handle, tool_name, effective_arguments)
 
     # --------------------------------------------------------------- #
     # Story 4.4: MVP Tool Discoverability (PRD FR10a + AC-DISCOVER-01)
     # --------------------------------------------------------------- #
 
-    @keyword(name="Get Tool Discoverability")
+    @keyword(name="MCP.Get Tool Discoverability")
     @tier(3)
+    @guarded_fanout()
     def get_tool_discoverability(
         self,
         mcp_server: str = "",
@@ -444,23 +499,22 @@ class MCPLibrary:
         inspects ``tool_calls`` to compute Pass@k with Wilson CI bounds.
 
         | =Arguments= | =Description= |
-        | ``mcp_server`` | Name of the MCP server (per `Start Server`). Must be a non-empty string. Phase-1: accepted but NOT forwarded to ``adapter.run()`` (DF-4.1-S2 + DF-4.2-S1). |
+        | ``mcp_server`` | Name of the MCP server (per `MCP.Start Server`). Must be a non-empty string. Phase-1: accepted but NOT forwarded to ``adapter.run()`` (DF-4.1-S2 + DF-4.2-S1). |
         | ``adapter`` | Adapter name. Defaults to ``"generic"``. |
         | ``model`` | Model identifier (e.g., ``"anthropic/claude-sonnet-4-6"``). |
         | ``tasks`` | Path to the discoverability tasks YAML. |
         | ``trials_per_task`` | Number of trials per task (Pass@k semantics). Defaults to ``3``. |
-        | ``max_cost_usd`` | Budget cap. Phase-1: tracked, NOT enforced (DF-4.4-S1 carry-over). Defaults to ``5.00``. |
-        | ``max_runtime_seconds`` | Runtime cap. Phase-1: tracked, NOT enforced. Defaults to ``None``. |
+        | ``max_cost_usd`` | Budget cap. Defaults to ``5.00``. Enforced via `@guarded_fanout()` per Story 14.6 (C20 closure) — MCPLibrary inherits `_HostBudgetPlumbing` so budgets passed at RF `Library` import time are honored end-to-end. |
+        | ``max_runtime_seconds`` | Runtime cap. Defaults to ``None``. Enforced via `@guarded_fanout()` (Story 14.6 / C20 closure). |
         | ``**kwargs`` | Provider/adapter forward-compat kwargs. |
 
-        Phase-1 carve-out (DF-4.4-S1): ``@guarded_fanout`` enforcement
-        of ``max_cost_usd`` + ``max_runtime_seconds`` is DEFERRED —
-        same architectural gap as Story 4.3 DF-4.3-S6 (MCPLibrary is
-        excluded from ``_SUB_LIBRARIES`` per Story 2.2 norm; no clean
-        path to inject library-level budgets without architectural
-        change). The kwargs are accepted + tracked on the result but
-        NOT enforced. Operators must bound cost manually until
-        Phase-1.5 plumbs the cross-library config.
+        Budget enforcement (Story 14.6 / C20 closure): `@guarded_fanout()`
+        reads `_max_cost_usd` + `_max_runtime_seconds` from the
+        MCPLibrary host instance via the `_HostBudgetPlumbing` mixin
+        (`_kernel/host_budget_plumbing.py`). Under `Library AgentEval`
+        these are forwarded automatically from the top-level config; a
+        standalone MCPLibrary import passes them at RF `Library` import
+        time.
 
         Phase-1 carve-out (DF-4.1-S2 + DF-4.2-S1): ``mcp_server=`` is
         NOT forwarded to ``adapter.run(mcp_servers=...)`` because both
@@ -488,7 +542,7 @@ class MCPLibrary:
         kwargs are missing/empty.
 
         Example (illustrative — assumes a real adapter or fixture stub):
-        | ${result} =    `Get Tool Discoverability`
+        | ${result} =    `MCP.Get Tool Discoverability`
         | ...    mcp_server=echo
         | ...    adapter=generic
         | ...    provider=mock
@@ -500,10 +554,10 @@ class MCPLibrary:
 
         Notes:
         - PRD FR10a ratifies the keyword + ``DiscoverabilityResult`` shape.
-        - Tier-3 stochastic; budgets tracked but NOT enforced in Phase-1 (DF-4.4-S1).
-        - Story 4.3 + Story 4.4 ratify the carve-out (architectural budget-injection gap shared with `MetricsLibrary` family).
-        - Story 2.2 ratifies the ``_SUB_LIBRARIES`` composition norm (which excludes ``MCPLibrary`` — driver of the carve-out).
-        - Sibling keywords (same library): `Call Tool`, `List Tools`, `Start Server`.
+        - Tier-3 stochastic; `max_cost_usd` + `max_runtime_seconds` budgets enforced via `@guarded_fanout()` (Story 14.6 / C20 closure).
+        - Story 4.3 + Story 4.4 carve-out (architectural budget-injection gap) closed by Story 14.6's unified `_HostBudgetPlumbing` mixin.
+        - The ``compose-single-library-import`` change composes ``MCPLibrary`` into ``_SUB_LIBRARIES``; under ``Library AgentEval`` budgets are forwarded from the top-level config, and a standalone import passes them at RF `Library` import time.
+        - Sibling keywords (same library): `MCP.Call Tool`, `MCP.List Tools`, `MCP.Start Server`.
         - Downstream keyword (separately composed sub-library): `HeatmapLibrary.Get Cohort Heatmap` consumes ``DiscoverabilityResult`` to render the FR55 cohort heatmap.
         """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
         # Story 4.4 code-review MED-B fix 2026-05-20 (Codex empirical probe):
@@ -520,119 +574,265 @@ class MCPLibrary:
         # input now so existing callers don't lock in a no-op default.
         if not mcp_server:
             raise ValueError(
-                "Get Tool Discoverability requires `mcp_server=<name>` kwarg "
+                "MCP.Get Tool Discoverability requires `mcp_server=<name>` kwarg "
                 "(name of an MCP server started via `MCP.Start Server`); empty "
                 "string is rejected even in Phase-1 where DF-4.1-S2 stubs the "
                 "adapter-side integration."
             )
         if not tasks:
-            raise ValueError("Get Tool Discoverability requires `tasks=<yaml-path>` kwarg")
+            raise ValueError("MCP.Get Tool Discoverability requires `tasks=<yaml-path>` kwarg")
         if trials_per_task < 1:
             raise ValueError(f"trials_per_task must be >= 1; got {trials_per_task}")
 
         # Load + validate the tasks YAML.
         task_list = load_discoverability_tasks(tasks)
 
-        # Resolve the adapter (Phase-1 simplified: route ALL kwargs to ctor
-        # like Story 4.3 pre-split-introspection — orchestration's split
-        # logic lives on OrchestrationLibrary, not MCPLibrary; MCPLibrary
-        # is a Phase-1 sub-library that doesn't yet inherit the split.
-        # DF-4.4-S2 carry-over for ctor/run split parity.).
-        adapter_cls = get_adapter(adapter)
-        adapter_ctor_kwargs: dict[str, Any] = dict(kwargs)
-        if model is not None:
-            adapter_ctor_kwargs["model"] = model
-        try:
-            adapter_instance = adapter_cls(**adapter_ctor_kwargs)
-        except TypeError as exc:
-            # Story 4.4 code-review MED-D fix 2026-05-20 (Blind): pre-edit
-            # comment claimed "fall back to no-kwarg construction + log the
-            # dropped kwargs" but the handler actually re-raises with no
-            # fallback. Fixed the comment-vs-code drift — re-raise is
-            # intentional + DF-4.4-S2 carry-over plumbs the real split.
-            raise TypeError(
-                f"Adapter {adapter!r} doesn't accept kwargs {sorted(adapter_ctor_kwargs)}; "
-                "DF-4.4-S2 carry-over (ctor/run split parity for MCPLibrary "
-                "lands in Phase-1.5 — mirroring Story 4.3's "
-                "`_split_adapter_kwargs` introspection on OrchestrationLibrary). "
-                "For now, pass kwargs the adapter accepts."
-            ) from exc
+        # Story 13.3 refactor: per-adapter logic extracted to
+        # `discoverability/_internal.run_single_adapter_discoverability` so
+        # the new `MCP.Compare Tool Discoverability` keyword reuses it
+        # without ~80 LoC duplication. Behavior MUST equal pre-refactor —
+        # verified by Story 4.4's 50+ existing tests passing unchanged.
+        from AgentEval.discoverability._internal import run_single_adapter_discoverability
 
-        # Per-call mcp_servers integration is DF-4.1-S2 / DF-4.2-S1; for now
-        # we DON'T forward the mcp_server name since the adapter would just
-        # raise NotImplementedError. Phase-1 dispatches WITHOUT MCP context;
-        # tool-call success is gated on what the model returns from prompt
-        # alone.
-        _ = mcp_server
+        return run_single_adapter_discoverability(
+            mcp_server=mcp_server,
+            adapter=adapter,
+            model=model,
+            task_list=task_list,
+            trials_per_task=trials_per_task,
+            max_cost_usd=max_cost_usd,
+            max_runtime_seconds=max_runtime_seconds,
+            extra_adapter_kwargs=dict(kwargs),
+            t_start=t_start,
+        )
 
-        per_task: list[TaskResult] = []
-        total_cost = 0.0
-        for task in task_list:
-            tool_calls_per_trial: list[list[Any]] = []
-            cost_per_trial: list[float] = []
-            success_count = 0
-            competing_set: set[str] = set()
-            for _ in range(trials_per_task):
-                run_result = adapter_instance.run(task.prompt)
-                tool_calls_per_trial.append(list(run_result.tool_calls))
-                cost_per_trial.append(run_result.cost_usd)
-                total_cost += run_result.cost_usd
-                called_names = {tc.name for tc in run_result.tool_calls}
-                # Story 4.4 code-review 3-way MED-A fix 2026-05-20 (Edge-cases
-                # M1 + Codex MED + Blind LOW-1): when expected_tools is empty,
-                # wildcard-success mode is active — ANY tool call counts AND
-                # ALL called names go into competing_tools_picked so the
-                # verdict matrix retains visibility into what the model
-                # picked. Pre-edit the `competing_set.update(...)` line was
-                # only reachable in the `if task.expected_tools` branch,
-                # leaving wildcard-mode tasks with permanently-empty
-                # competing_tools_picked.
-                if task.expected_tools:
-                    expected_set = set(task.expected_tools)
-                    if called_names & expected_set:
-                        success_count += 1
-                    competing_set.update(called_names - expected_set)
-                else:
-                    if called_names:
-                        success_count += 1
-                    competing_set.update(called_names)
-            lower, upper = wilson_score_interval(success_count, trials_per_task)
-            per_task.append(
-                TaskResult(
-                    task_id=task.id,
-                    task_prompt=task.prompt,
-                    trials_run=trials_per_task,
-                    success_count=success_count,
-                    tool_calls_per_trial=tool_calls_per_trial,
-                    competing_tools_picked=sorted(competing_set),
-                    cost_per_trial_usd=cost_per_trial,
-                    wilson_ci_lower=lower,
-                    wilson_ci_upper=upper,
-                )
+    # --------------------------------------------------------------- #
+    # Story 13.3: Cross-adapter comparison (PRD FR10b)
+    # --------------------------------------------------------------- #
+
+    @keyword(name="MCP.Compare Tool Discoverability")
+    @tier(3)
+    @guarded_fanout()
+    def get_tool_discoverability_comparison(
+        self,
+        mcp_server: str = "",
+        adapters: list[str] | None = None,
+        tasks: str = "",
+        trials_per_task: int = 3,
+        max_cost_usd: float = 20.00,
+        max_runtime_seconds: float | None = None,
+        model: str | None = None,
+        **kwargs: Any,
+    ) -> DiscoverabilityComparisonResult:
+        """Compares Tool Discoverability across ≥2 coding-agent adapters with statistical significance (PRD FR10b; Story 13.3).
+
+        [Tier 3 — Stochastic Fan-Out] — runs `MCP.Get Tool Discoverability`
+        once per adapter against the SAME task set, then computes
+        pairwise Mann-Whitney U deltas across the per-task pass-rate
+        distributions. Returns a `DiscoverabilityComparisonResult` with
+        per-adapter results + cross-adapter deltas + multi-column
+        cohort heatmap + aggregate summary.
+
+        Requires the ``[agenteval-advanced]`` optional extra (scipy +
+        numpy) for the Mann-Whitney U cross-adapter delta computation;
+        raises ``ImportError`` on invocation WITHOUT the extra (fail-fast
+        BEFORE running any per-adapter fan-out — operators discovering
+        the missing extra should not pay 3-adapter trial cost first).
+
+        | =Arguments= | =Description= |
+        | ``mcp_server`` | Name of the MCP server (per `MCP.Start Server`). Same Phase-1 carve-out as `MCP.Get Tool Discoverability` (DF-4.1-S2 + DF-4.2-S1). |
+        | ``adapters`` | REQUIRED ``list[str]`` of adapter names; ≥2 entries required. N=3+ enables ranking across Claude/GPT/Copilot/.... |
+        | ``tasks`` | Path to the discoverability tasks YAML (loaded ONCE; shared across adapters). |
+        | ``trials_per_task`` | Pass@k trials per task. Defaults to ``3``. |
+        | ``max_cost_usd`` | Budget cap. Defaults to ``20.00`` per epics.md L2186 (4× the single-adapter default reflecting N=3-adapter typical cost). Enforced via `@guarded_fanout()` per Story 14.6 (C89 closure) — MCPLibrary inherits `_HostBudgetPlumbing` so budgets passed at RF `Library` import time are honored end-to-end. |
+        | ``max_runtime_seconds`` | Runtime cap. Phase-1: tracked, NOT enforced. |
+        | ``model`` | Optional ``str`` forwarded to ALL adapters' ctor. Phase-2.5 (DF-13.3-S4): per-adapter model overrides via `adapter_models: dict[str, str]` kwarg. |
+        | ``**kwargs`` | Forward-compat kwargs routed to each adapter's ctor. |
+
+        Returns ``DiscoverabilityComparisonResult`` with ``adapters`` +
+        ``per_adapter_results`` (one ``DiscoverabilityResult`` per
+        adapter) + ``cross_adapter_deltas`` (C(N, 2) ``PairwiseAdapterDelta``
+        entries keyed ``f"{a1}_vs_{a2}"``) + ``heatmap`` (multi-column
+        ``CohortHeatmap`` via ``from_comparison``) + ``summary``
+        (``DiscoverabilityComparisonSummary``).
+
+        Raises ``ImportError`` when ``[agenteval-advanced]`` extra is
+        missing (Mann-Whitney U requires scipy/numpy). Raises
+        ``ValueError`` on missing/empty ``mcp_server`` / ``tasks`` /
+        ``adapters`` (≥2 required) / invalid ``trials_per_task``.
+        Raises ``InvalidDiscoverabilityTasksError`` on tasks YAML
+        parse/schema failure. Raises ``AdapterDiscoveryError`` on
+        unknown adapter name.
+
+        Example:
+        | ${comparison}=    `MCP.Compare Tool Discoverability`
+        | ...    mcp_server=rf-mcp
+        | ...    adapters=${{['generic', 'claude_code_cli', 'codex_cli']}}
+        | ...    tasks=${CURDIR}/tasks.yaml
+        | ...    trials_per_task=5
+        | ...    max_cost_usd=20.00
+        | Should Be Equal As Strings    ${comparison.summary.best_adapter}    claude_code_cli
+        | Should Be True    ${comparison.cross_adapter_deltas['generic_vs_codex_cli'].significant_at_alpha_05}
+
+        Notes:
+        - Story 13.3 (Epic 13) ships this Phase-2 keyword behind the ``[agenteval-advanced]`` optional extra (the Mann-Whitney U dependency from Story 13.1).
+        - PRD FR10b ratifies the ``DiscoverabilityComparisonResult`` shape; epics.md L2186-2189 ratifies the keyword signature + behavior.
+        - Math reference: ``AgentEval.stats.mannwhitney.compute_mann_whitney_u`` (Story 13.1 pure helper at ``src/AgentEval/stats/mannwhitney.py``). The keyword surface ``Stat.Mann Whitney U`` is NOT called here because the input is ``list[float]`` per-task pass rates (NOT ``list[KeywordRun]``).
+        - ``@tier(3)`` per fan-out semantics — stochastic by tier definition; no bit-identical FR31a guarantee (Story 13.1 HIGH-C concern doesn't apply at @tier(3)).
+        - Phase-1 carve-out DF-13.3-S1: ``@guarded_fanout`` enforcement DEFERRED (same MCPLibrary architectural gap as DF-4.4-S1 / C20).
+        - Phase-2.5 carry-overs: DF-13.3-S2 (per-adapter MCP attachment gated on C72 + C68/C69/C73/C75); DF-13.3-S3 (Bonferroni / Holm multi-pairwise correction).
+        - Sibling keyword: `MCP.Get Tool Discoverability` (Phase-1 single-adapter; this keyword's N=1 case is intentionally rejected via the ≥2 validation — single-adapter callers should use the simpler `Get` keyword).
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        t_start = time.monotonic()
+
+        # Validate args (mirrors single-adapter Get + adds N≥2 constraint).
+        if not mcp_server:
+            raise ValueError(
+                "MCP.Compare Tool Discoverability requires `mcp_server=<name>` kwarg "
+                "(name of an MCP server started via `MCP.Start Server`); empty "
+                "string is rejected even in Phase-1 where DF-4.1-S2 stubs the "
+                "adapter-side integration."
             )
+        if not tasks:
+            raise ValueError("MCP.Compare Tool Discoverability requires `tasks=<yaml-path>` kwarg")
+        if trials_per_task < 1:
+            raise ValueError(f"trials_per_task must be >= 1; got {trials_per_task}")
+        if adapters is None or len(adapters) < 2:
+            raise ValueError(
+                f"MCP.Compare Tool Discoverability requires adapters=[<adapter_1>, "
+                f"<adapter_2>, ...] with >= 2 entries; got {adapters!r}"
+            )
+        if len(set(adapters)) != len(adapters):
+            raise ValueError(
+                f"MCP.Compare Tool Discoverability requires distinct adapter names; got duplicates in {adapters!r}"
+            )
+
+        # `[agenteval-advanced]` extras gate (D-6 + L-2). Fail-fast BEFORE
+        # the per-adapter fan-out so operators discovering the missing
+        # extra don't pay N-adapter trial cost first. Direct raise per
+        # AC-13.3.4 in-flight decision (b) — the `Stat.`-prefixed helper
+        # `_raise_advanced_extra_missing` would mis-frame the message
+        # for an `MCP.`-prefixed keyword.
+        #
+        # Read the attribute via module-level access (NOT
+        # `from X import Y` which binds a local) so test
+        # `monkeypatch.setattr(stats_lib, "_ADVANCED_AVAILABLE", False)`
+        # is observed correctly even when this code path runs AFTER
+        # Story 13.1's `test_advanced_extras_gate.py` has run + cleaned
+        # up its own monkeypatch in the same pytest session.
+        from AgentEval.stats import library as _stats_lib
+
+        if not _stats_lib._ADVANCED_AVAILABLE:
+            raise ImportError(
+                "MCP.Compare Tool Discoverability: scipy + numpy required. "
+                "Install via: uv pip install robotframework-agenteval[agenteval-advanced]"
+            )
+
+        # Load tasks YAML ONCE (shared across adapters).
+        task_list = load_discoverability_tasks(tasks)
+
+        # Run per-adapter discoverability serially. Phase-2.5 may parallelize
+        # via thread pool / asyncio; Phase-2 ships serial for simplicity +
+        # safer cost accounting.
+        from AgentEval._heatmap.models import CohortHeatmap
+        from AgentEval.discoverability._internal import run_single_adapter_discoverability
+        from AgentEval.discoverability.schema import (
+            DiscoverabilityComparisonResult,
+            DiscoverabilityComparisonSummary,
+            PairwiseAdapterDelta,
+        )
+        from AgentEval.stats.mannwhitney import compute_mann_whitney_u
+
+        per_adapter_results: dict[str, DiscoverabilityResult] = {}
+        for adapter_name in adapters:
+            # Per-adapter timer measures only THIS adapter's slice — useful
+            # for per-adapter cost auditing. The comparison-level wall-clock
+            # is measured separately from the keyword-entry `t_start` below.
+            per_adapter_results[adapter_name] = run_single_adapter_discoverability(
+                mcp_server=mcp_server,
+                adapter=adapter_name,
+                model=model,
+                task_list=task_list,
+                trials_per_task=trials_per_task,
+                max_cost_usd=max_cost_usd,
+                max_runtime_seconds=max_runtime_seconds,
+                extra_adapter_kwargs=dict(kwargs),
+                t_start=time.monotonic(),
+            )
+
+        # Build C(N, 2) pairwise deltas. Ordering: itertools.combinations
+        # preserves input order so `adapter_a` always comes before
+        # `adapter_b` in the input list.
+        import itertools
+
+        cross_adapter_deltas: dict[str, PairwiseAdapterDelta] = {}
+        for adapter_a, adapter_b in itertools.combinations(adapters, 2):
+            rates_a = [t.pass_rate for t in per_adapter_results[adapter_a].per_task_results]
+            rates_b = [t.pass_rate for t in per_adapter_results[adapter_b].per_task_results]
+            # Empty per-task lists guard: skip the comparison if either is
+            # empty (would otherwise raise from `compute_mann_whitney_u`).
+            if not rates_a or not rates_b:
+                continue
+            mwu = compute_mann_whitney_u(rates_a, rates_b)
+            delta_key = f"{adapter_a}_vs_{adapter_b}"
+            mean_a = sum(rates_a) / len(rates_a)
+            mean_b = sum(rates_b) / len(rates_b)
+            import math as _math
+
+            cross_adapter_deltas[delta_key] = PairwiseAdapterDelta(
+                adapter_a=adapter_a,
+                adapter_b=adapter_b,
+                pass_rate_delta=mean_a - mean_b,
+                mann_whitney_result=mwu,
+                significant_at_alpha_05=(not _math.isnan(mwu.p_value)) and mwu.p_value < 0.05,
+            )
+
+        # Build summary aggregate.
+        pass_rate_per_adapter = {name: per_adapter_results[name].summary.overall_pass_rate for name in adapters}
+        best_adapter = max(pass_rate_per_adapter, key=lambda a: pass_rate_per_adapter[a])
+        worst_adapter = min(pass_rate_per_adapter, key=lambda a: pass_rate_per_adapter[a])
+        total_cost = sum(r.summary.total_cost_usd for r in per_adapter_results.values())
+        # Wall-clock measured from keyword-entry `t_start` — what the operator
+        # ACTUALLY waited for (serial execution Phase-2; Phase-2.5 parallel
+        # target). Story 13.3 code-review HIGH-A fix 2026-06-01 (Codex HIGH-1
+        # + Opus MED-2 2-way): pre-fix `max(per-adapter runtimes)` reported
+        # the slowest single adapter, underreporting actual wait time by
+        # ~N-1× under serial execution. Per-adapter runtimes remain in
+        # `per_adapter_results[adapter].summary.total_runtime_seconds`.
         total_runtime = time.monotonic() - t_start
+        summary = DiscoverabilityComparisonSummary(
+            total_cost_usd=total_cost,
+            total_runtime_seconds=total_runtime,
+            pass_rate_per_adapter=pass_rate_per_adapter,
+            best_adapter=best_adapter,
+            worst_adapter=worst_adapter,
+        )
 
-        # Overall pass rate: weighted by trials.
-        total_trials = sum(t.trials_run for t in per_task)
-        total_successes = sum(t.success_count for t in per_task)
-        overall_pass_rate = (total_successes / total_trials) if total_trials else 0.0
+        # Build a provisional comparison result so CohortHeatmap.from_comparison
+        # can read the per-adapter results. The CohortHeatmap construction
+        # happens AFTER per_adapter_results is populated; we pass a
+        # "placeholder" comparison via direct construction (the
+        # CohortHeatmap.from_comparison reads result.adapters + result.per_adapter_results
+        # only, NOT the heatmap field — no chicken-and-egg).
+        #
+        # Build the heatmap via a lightweight namespace stand-in: the
+        # classmethod accesses .adapters + .per_adapter_results.
+        class _ComparisonShim:
+            pass
 
-        # Phase-1: mcp_coverage hardcoded to "hosted_in_process" since
-        # Phase-1 doesn't yet attach real MCP via the adapter (DF-4.4-S3
-        # carry-over: Epic 5 hosted-MCP observer wires real coverage detection).
-        _ = max_cost_usd
-        _ = max_runtime_seconds
-        # Story 4.4 code-review HIGH-B fix 2026-05-20 (Auditor citation-drift
-        # catch): PRD FR10a L1499 ratifies `summary` nesting for the aggregate
-        # roll-up; pre-edit shape flattened the 3 summary fields into
-        # top-level result attributes. "Fix-the-losing-source-NOW" pattern
-        # per feedback_citation_drift_first_class — implementation realigned.
-        return DiscoverabilityResult(
-            per_task_results=per_task,
-            summary=DiscoverabilitySummary(
-                overall_pass_rate=overall_pass_rate,
-                total_cost_usd=total_cost,
-                total_runtime_seconds=total_runtime,
-            ),
-            mcp_coverage="hosted_in_process",
+        shim = _ComparisonShim()
+        shim.adapters = tuple(adapters)  # type: ignore[attr-defined]
+        shim.per_adapter_results = per_adapter_results  # type: ignore[attr-defined]
+        heatmap = CohortHeatmap.from_comparison(shim)  # type: ignore[arg-type]
+
+        # Track end-to-end runtime (caller-side; not stored separately
+        # but contributes to the per-adapter timers we MAX'd above).
+        _ = t_start
+
+        return DiscoverabilityComparisonResult(
+            adapters=tuple(adapters),
+            per_adapter_results=per_adapter_results,
+            cross_adapter_deltas=cross_adapter_deltas,
+            heatmap=heatmap,
+            summary=summary,
         )

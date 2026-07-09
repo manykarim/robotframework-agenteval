@@ -6,7 +6,7 @@ Documentation    Story 2.1 RF integration test — imports the `Skill`
 ...              Python calls). Complements
 ...              tests/unit/skills/test_library.py.
 
-Library    AgentEval.skills.library.SkillsLibrary    WITH NAME    Skill
+Library    AgentEval
 
 *** Variables ***
 # Story 2.1 code-review B1/E7 fix: anchor the fixture path to ${CURDIR} so

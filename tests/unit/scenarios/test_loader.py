@@ -127,10 +127,13 @@ def test_load_scenario_empty_evals(tmp_path: Path) -> None:
 
 
 def test_load_scenario_eval_missing_prompt(tmp_path: Path) -> None:
+    # add-multi-turn-conversation-testing D8 (BREAKING): an eval with NEITHER
+    # `prompt` nor `turns` now fails the exactly-one-of rule, pointing at the
+    # eval (field_name=/evals/0) rather than the previously-REQUIRED prompt.
     p = _write_yaml(tmp_path, "evals:\n  - repeat: 2\n")
-    with pytest.raises(InvalidScenarioYAMLError) as exc_info:
+    with pytest.raises(InvalidScenarioYAMLError, match="exactly one of") as exc_info:
         load_scenario(p)
-    assert exc_info.value.field_name == "/evals/0/prompt"
+    assert exc_info.value.field_name == "/evals/0"
 
 
 def test_load_scenario_eval_non_string_prompt(tmp_path: Path) -> None:

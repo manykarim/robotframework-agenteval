@@ -1,5 +1,14 @@
 # JUnit XML Enrichment
 
+## Scope
+
+Applies to the `agenteval.*` JUnit XML properties emitted by the AgentEval listener (`AgentEval.telemetry.listener.Listener`) when RF is run with `--xunit`. Covers the property table, `test_id` derivation, idempotency, and the failure-mode + exit-code contracts documented below.
+
+## Contract
+
+The 9 ratified `agenteval.*` properties, their `test_id` derivation, the idempotency guarantee, and the FR50 sysexits-style exit-code mapping below are the stable contract consumers may rely on. Property names and semantics do not change without a Change Policy bump.
+
+
 **Status:** Phase-1 stable (Story 8a.1 closed 2026-05-25).
 **Owning epic:** Epic 8a Story 8a.1
 **Related ADRs:** ADR-014 (Error-Class Hierarchy — `error_code` class attribute drives the FR50 exit code mapping)

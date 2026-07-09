@@ -1,0 +1,34 @@
+# Faithfulness preset — calibration-set TEMPLATE (add-judge-criteria-shortcuts D5)
+#
+# Presets ship UNCALIBRATED by default. Cohen's kappa is a joint property of
+# (rubric x judge model x domain x labelers); a calibration set we author
+# against our own labels does NOT transfer to your model + domain. So this is a
+# TEMPLATE for YOU to fill with YOUR own human-labeled examples — the rows below
+# are placeholders, not shipped ground truth. There is NO kappa claim here.
+#
+# Graduation path:
+#   ${rubric}=   Judge.Get Preset Rubric      name=faithfulness
+#   ${report}=   Judge.Calibrate Rubric       rubric=${rubric}    calibration_set=<this file, filled in>
+#   Should Be True    ${report.passes_hard_fail}    # kappa >= 0.7
+#
+# Labeling task for FAITHFULNESS: given the agent `response` and the grounding
+# `context` it should be faithful to (put the context INSIDE the `prompt` field
+# for the calibration loader, which passes prompt+response to the judge), assign
+# `human_label` 0.0-10.0 = how well every factual claim in the response is
+# supported by the context. 10.0 = strictly within the context; low = the
+# response asserts claims the context does not support.
+#
+# Schema (strict): each row is exactly {prompt: str, response: str,
+# human_label: float in [0.0, 10.0]}. Extra keys raise InvalidCalibrationSetError.
+# Aim for 30-100 rows spanning clear passes, clear fails, and a borderline batch.
+
+rows:
+  - prompt: "CONTEXT: <paste the grounding document here>. TASK: <what the agent was asked>"
+    response: "<the agent's response — a clearly faithful example that stays within the context>"
+    human_label: 9.0
+  - prompt: "CONTEXT: <paste the grounding document here>. TASK: <what the agent was asked>"
+    response: "<a response that fabricates a claim not supported by the context>"
+    human_label: 2.0
+  - prompt: "CONTEXT: <paste the grounding document here>. TASK: <what the agent was asked>"
+    response: "<a borderline response with one mildly unsupported inference>"
+    human_label: 6.0

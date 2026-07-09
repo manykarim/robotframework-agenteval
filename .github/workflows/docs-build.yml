@@ -26,6 +26,9 @@ on:
     paths:
       - "docs/contracts/**"
       - "src/AgentEval/**/*.py"
+      - "README.md"
+      - "docs/index.md"
+      - "scripts/check_doc_keyword_count.py"
 
 permissions:
   contents: read
@@ -81,6 +84,12 @@ jobs:
                   print(f'  - {name}: {exc_type}: {msg}')
               sys.exit(1)
           "
+
+      # Keyword-count drift gate: derive the true unique keyword count from
+      # libdoc and assert README.md + docs/index.md state the same number.
+      # Fails the build when a new keyword ships without the docs being updated.
+      - name: Assert documented keyword counts match libdoc
+        run: uv run python scripts/check_doc_keyword_count.py
 
       # MED-3 fix (2026-05-17): per-file 4-distinct-section assertion instead of
       # aggregate header count. Previous implementation summed header occurrences

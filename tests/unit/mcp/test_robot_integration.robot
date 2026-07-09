@@ -5,7 +5,7 @@ Documentation    Story 2.3 + 3.1 RF integration test — imports the
 ...              Tier-1 lifecycle keywords (Story 3.1) work
 ...              end-to-end inside an RF execution context.
 
-Library    AgentEval.mcp.library.MCPLibrary    WITH NAME    MCP
+Library    AgentEval
 
 *** Variables ***
 ${VALID_FIXTURE}    ${CURDIR}/../../fixtures/mcp/mcp-valid.json
@@ -64,4 +64,22 @@ MCP Call Tool In Memory Echoes Text
     Should Not Be True    ${result.is_error}
     Should Be True    ${result.latency_ms} > 0
     Length Should Be    ${result.correlation_id}    32
+    MCP.Stop Server    ${handle}
+
+MCP Call Tool Natural Kwargs Form Echoes Text
+    [Documentation]    Natural named-argument form: `text=hello` maps to the tool's arguments dict.
+    ${factory}=    Evaluate    __import__('AgentEval.mcp.bundled.echo', fromlist=['build_server']).build_server
+    ${handle}=    MCP.Start Server    echo    in_memory    server_factory=${factory}
+    ${result}=    MCP.Call Tool    ${handle}    echo_back    text=hello
+    Should Not Be True    ${result.is_error}
+    Should Contain    ${result.content}[0][text]    hello
+    MCP.Stop Server    ${handle}
+
+MCP Call Tool Both Argument Forms Raises
+    [Documentation]    Supplying arguments= dict AND a named arg is rejected loudly; no tool call is made.
+    ${factory}=    Evaluate    __import__('AgentEval.mcp.bundled.echo', fromlist=['build_server']).build_server
+    ${handle}=    MCP.Start Server    echo    in_memory    server_factory=${factory}
+    ${args}=    Create Dictionary    text=a
+    Run Keyword And Expect Error    *exactly ONE form*
+    ...    MCP.Call Tool    ${handle}    echo_back    arguments=${args}    text=b
     MCP.Stop Server    ${handle}

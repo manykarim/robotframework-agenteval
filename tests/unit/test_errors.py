@@ -168,27 +168,32 @@ def test_catching_agenteval_error_catches_all_new_leaves() -> None:
 
 
 # ============================================================ #
-# Story 1b.3 code-review patch — DuplicateRegistrationError    #
+# remove-dead-machinery — DuplicateRegistrationError folded     #
+# into AdapterDiscoveryError (single raise site, no exit code)  #
 # ============================================================ #
 
 
-def test_duplicate_registration_error_is_subclass_of_adapter_discovery_error() -> None:
-    """Per ADR-013 L43 verbatim: `DuplicateRegistrationError(AdapterDiscoveryError)`."""
-    from AgentEval.errors import AdapterDiscoveryError, DuplicateRegistrationError
+def test_duplicate_registration_error_no_longer_defined() -> None:
+    """remove-dead-machinery D4: the leaf was folded into `AdapterDiscoveryError`."""
+    import AgentEval.errors as errors_mod
 
-    assert issubclass(DuplicateRegistrationError, AdapterDiscoveryError)
-    assert DuplicateRegistrationError.error_code == "ADAPTER_DISCOVERY_ERROR"
+    assert not hasattr(errors_mod, "DuplicateRegistrationError")
+    assert "DuplicateRegistrationError" not in errors_mod.__all__
 
 
-def test_duplicate_registration_error_sources_attribute() -> None:
-    """ADR-013 L43: 'with both source package names'."""
-    from AgentEval.errors import DuplicateRegistrationError
+def test_adapter_discovery_error_carries_collision_message() -> None:
+    """ADR-013 L43 'both source package names' is now expressed in the message."""
+    from AgentEval.errors import AdapterDiscoveryError
 
-    e = DuplicateRegistrationError(
-        "shared adapter in 2 packages",
-        sources=("agenteval.coding_agents", "robotframework_agenteval.adapters"),
+    e = AdapterDiscoveryError(
+        "Adapter name 'shared' is declared in BOTH `agenteval.coding_agents` "
+        "AND `robotframework_agenteval.adapters`. Per ADR-013 L43, agenteval "
+        "refuses to silently pick one.",
     )
-    assert e.sources == ("agenteval.coding_agents", "robotframework_agenteval.adapters")
+    assert isinstance(e, AdapterDiscoveryError)
+    assert e.error_code == "ADAPTER_DISCOVERY_ERROR"
+    assert e.loaded_so_far == {}
+    assert "refuses to silently pick one" in str(e)
 
 
 def test_adapter_discovery_error_loaded_so_far_default_empty_dict() -> None:

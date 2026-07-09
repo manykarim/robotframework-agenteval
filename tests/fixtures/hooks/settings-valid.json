@@ -2,21 +2,41 @@
   "hooks": {
     "PreToolUse": [
       {
-        "command": "echo pre-tool-use",
-        "args": ["--quiet"],
-        "timeout": 5,
-        "matcher": "*"
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo pre-tool-use",
+            "args": ["--quiet"],
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "echo pre-tool-use-second"
+          }
+        ]
       }
     ],
     "PostToolUse": [
       {
-        "command": "echo post-tool-use"
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo post-tool-use"
+          }
+        ]
       }
     ],
     "Stop": [
       {
-        "command": "echo stop",
-        "args": []
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo stop",
+            "args": []
+          }
+        ]
       }
     ]
   }

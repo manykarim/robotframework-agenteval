@@ -5,6 +5,20 @@
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Copyright 2026 Many Kasiriha
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
 
 # ruff: noqa: E501
 # Browser-Library-style docstring tables can carry long descriptions on a
@@ -66,50 +80,44 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from pathlib import Path
 from typing import Any
 
+from robot.api import logger
 from robot.api.deco import keyword, library
 
 from AgentEval._kernel.discovery import get_adapter
 from AgentEval._kernel.guardrails import guarded_fanout
+from AgentEval._kernel.host_budget_plumbing import _HostBudgetPlumbing
 from AgentEval._kernel.tier import tier
-from AgentEval.errors import JudgeOutputParseError
+from AgentEval.errors import InvalidJudgeRubricError, JudgeOutputParseError
 from AgentEval.judge.calibration import (
     KAPPA_HARD_FAIL_THRESHOLD,
     compute_cohen_kappa,
     load_calibration_set,
 )
-from AgentEval.judge.rubric import load_rubric
+from AgentEval.judge.presets import get_preset_rubric
+from AgentEval.judge.rubric import load_rubric, parse_rubric_text
 from AgentEval.judge.types import CalibrationReport, JudgeRubric, JudgeScore
-from AgentEval.types import AgentRunMetadata, AgentRunResult, Usage
+from AgentEval.types import AgentRunMetadata, AgentRunResult, ConversationTranscript, ConversationTurn, Usage
 
 __all__ = ["JudgeLibrary"]
 
 
 @library(scope="GLOBAL")
-class JudgeLibrary:
+class JudgeLibrary(_HostBudgetPlumbing):
     """`Judge.Get Score` Tier-2 LLM-judge keyword surface (Story 12.1 / PRD FR48).
 
     Wired via `AgentEval._SUB_LIBRARIES` standard composition path.
-    Host-instance budgets (`max_cost_usd` / `max_runtime_seconds`)
-    forwarded from `AgentEval.__init__` via `_build_components` (mirrors
-    `StatsLibrary` precedent per Story 6.3 AC-6.3.8).
+    Inherits `_HostBudgetPlumbing` for the `_max_cost_usd` +
+    `_max_runtime_seconds` instance attrs consumed by `@guarded_fanout`
+    on `Judge.Get Score` (Tier-2 LLM-call keyword). Budgets are forwarded
+    from `AgentEval.__init__` via `_build_components`' unified
+    `_HostBudgetPlumbing` subclass check (`compose-single-library-import`
+    change; formerly a dedicated class-name branch mirroring `StatsLibrary`
+    per Story 6.3 AC-6.3.8).
     """
-
-    def __init__(
-        self,
-        max_cost_usd: float | None = None,
-        max_runtime_seconds: float | None = None,
-    ) -> None:
-        """Library-level cost/runtime budgets per Story 1a.6 + ADR-015.
-
-        Forwarded from top-level `AgentEval(max_cost_usd=...,
-        max_runtime_seconds=...)` via `_build_components`. Consumed by
-        `@guarded_fanout` on `Judge.Get Score` (Tier-2 LLM-call keyword).
-        """
-        self._max_cost_usd = max_cost_usd
-        self._max_runtime_seconds = max_runtime_seconds
 
     @keyword(name="Judge.Get Score")
     @tier(2)
@@ -117,13 +125,13 @@ class JudgeLibrary:
     def get_score(
         self,
         *,
-        result: AgentRunResult,
+        result: AgentRunResult | ConversationTranscript,
         rubric: str | Path | JudgeRubric,
         judge_adapter: str = "generic",
         judge_model: str | None = None,
         **adapter_kwargs: Any,
     ) -> JudgeScore:
-        """Evaluates an `AgentRunResult` against a Markdown rubric using an LLM judge (PRD FR48).
+        """Evaluates an `AgentRunResult` — or a whole `ConversationTranscript` — against a rubric (PRD FR48 + add-multi-turn-conversation-testing).
 
         [Tier 2 — Stochastic Single-Shot] — single-shot LLM call against the
         configured `judge_adapter` (default `"generic"` LiteLLM-backed).
@@ -131,8 +139,16 @@ class JudgeLibrary:
         contract when invoked with `seed + temperature=0`. Wraps
         `@guarded_fanout` cost+runtime guardrails per ADR-015.
 
+        **Per-turn judging works today** (add-multi-turn-conversation-testing
+        D6): a conversation turn's ``result`` IS an ``AgentRunResult``, so
+        ``Judge.Get Score    result=${turn_result}    rubric=...`` scores that
+        single turn with no new API. Passing a ``ConversationTranscript`` as
+        ``result=`` instead renders the FULL role-tagged transcript (every user
+        + agent turn in order) into the judge prompt for whole-conversation
+        judging — one `JudgeScore` for the conversation as a whole.
+
         | =Arguments= | =Description= |
-        | ``result`` | The `AgentRunResult` to evaluate. Reads ``result.response_text`` for the agent's output. |
+        | ``result`` | The `AgentRunResult` to evaluate (reads ``result.response_text``), OR a `ConversationTranscript` (renders the full transcript). A conversation turn's ``result`` is a plain `AgentRunResult` — per-turn judging is free. |
         | ``rubric`` | Path to a Markdown rubric file (`.md`) OR a pre-loaded `JudgeRubric` instance. |
         | ``judge_adapter`` | Adapter slug to resolve via `agenteval.coding_agents` entry-points. Defaults to ``"generic"``. |
         | ``judge_model`` | Model identifier for the judge adapter (e.g., ``"anthropic/claude-sonnet-4-6"``). Forwarded to the adapter's `run(model=...)` kwarg. |
@@ -148,38 +164,44 @@ class JudgeLibrary:
         is outside ``[0.0, 10.0]``.
 
         Example:
-        | ${result} =    `Send Prompt`    prompt=Find the largest file    adapter=generic    model=anthropic/claude-sonnet-4-6
-        | ${score} =    `Judge.Get Score`    result=${result}    rubric=${CURDIR}/rubrics/skill-quality.md    judge_adapter=generic    judge_model=anthropic/claude-sonnet-4-6
-        | Should Be True    ${score.pass_threshold_met}
-        | Should Be True    ${score.numeric_score} >= 7.0
-        | Log    Reasoning: ${score.reasoning}
+        | ${r2} =    `Send Message`    ${conv}    Make it business class
+        | ${score} =    `Judge.Get Score`    result=${r2}    rubric=${CURDIR}/rubrics/upsell.md          # per-turn
+        | ${t} =    `Get Conversation Transcript`    ${conv}
+        | ${whole} =    `Judge.Get Score`    result=${t}    rubric=${CURDIR}/rubrics/goal-completion.md   # whole conversation
+        | Should Be True    ${whole.pass_threshold_met}
 
         Notes:
         - PRD FR48 ratifies the keyword + rubric calibration discipline.
         - Tier-2 LLM-deterministic per `determinism-contract.md`; cost guardrails per ADR-015.
         - `JudgeScore` shape ratified Story 12.1 AC-12.1.2 per architecture L1316.
-        - Phase-1 single-shot LLM call; multi-turn chain-of-thought is DF-12.1-S2 carry-over.
+        - Transcript rendering uses the shared conversation renderer (add-multi-turn-conversation-testing D6).
+        - `rubric_source` is `"preloaded"` for a `JudgeRubric` instance, else `"file"`;
+          `calibrated` is always `False` (a rubric file is not calibration evidence —
+          add-judge-criteria-shortcuts D2; evidence-binding is `DF-JCS-S1` / C104).
         """
-        # Load + parse the rubric (or accept a pre-parsed one).
-        parsed_rubric = rubric if isinstance(rubric, JudgeRubric) else load_rubric(rubric)
+        # add-multi-turn-conversation-testing D6: a whole-conversation judge
+        # renders the full role-tagged transcript as the "agent output" the
+        # judge scores, reusing the entire single-result pipeline unchanged.
+        if isinstance(result, ConversationTranscript):
+            result = _transcript_to_judge_result(result)
+        # Load + parse the rubric (or accept a pre-parsed one). The provenance
+        # marking is honest about where the rubric came from (D2): a file path
+        # vs an already-parsed `JudgeRubric` instance.
+        if isinstance(rubric, JudgeRubric):
+            parsed_rubric = rubric
+            rubric_source = "preloaded"
+        else:
+            parsed_rubric = load_rubric(rubric)
+            rubric_source = "file"
 
-        # Resolve the judge adapter via the standard discovery path.
-        adapter_cls = get_adapter(judge_adapter)
-        adapter = adapter_cls()
-
-        # Compose the judge prompt: system instructions + rubric + agent response.
-        judge_prompt = _compose_judge_prompt(parsed_rubric, result)
-
-        # Run the single-shot judge call.
-        # Story 11.1 + 11.2 + 11.3 cross-LLM review lessons applied UPSTREAM:
-        # forward model + kwargs cleanly; defensive parse on response.
-        run_kwargs: dict[str, Any] = dict(adapter_kwargs)
-        if judge_model is not None:
-            run_kwargs["model"] = judge_model
-        judge_run = adapter.run(prompt=judge_prompt, **run_kwargs)
-
-        # Parse the judge response into a `JudgeScore`.
-        return _parse_judge_response(judge_run, parsed_rubric)
+        return _execute_judge(
+            parsed_rubric,
+            result,
+            adapter_slug=judge_adapter,
+            judge_model=judge_model,
+            rubric_source=rubric_source,
+            adapter_kwargs=adapter_kwargs,
+        )
 
     @keyword(name="Judge.Calibrate Rubric", tags=("agenteval",))
     @tier(2)
@@ -256,7 +278,17 @@ class JudgeLibrary:
                 trace_id=f"calibration-row-{len(judge_scores)}",
             )
 
-            judge_prompt = _compose_judge_prompt(parsed_rubric, synth_result)
+            # Thread the row's `prompt` (the task/context the response was
+            # produced for) into the judge prompt as a distinct `# Input`
+            # section so calibration scores the SAME task the presets score.
+            # The preset calibration templates
+            # (`docs/examples/judge-presets/*.template.yaml`) instruct users to
+            # put the grounding `CONTEXT:`/`QUESTION:` in `prompt`; dropping it
+            # would validate a different, under-specified task than the preset
+            # scores (add-judge-criteria-shortcuts codex MED). Guard on a
+            # non-empty prompt so a blank prompt never adds an empty section.
+            extra_sections: tuple[tuple[str, str], ...] = (("Input", row.prompt),) if row.prompt.strip() else ()
+            judge_prompt = _compose_judge_prompt(parsed_rubric, synth_result, extra_sections=extra_sections)
             run_kwargs: dict[str, Any] = dict(adapter_kwargs)
             if judge_model is not None:
                 run_kwargs["model"] = judge_model
@@ -295,10 +327,673 @@ class JudgeLibrary:
             total_latency_seconds=total_latency,
         )
 
+    # ----------------------------------------------------------------------- #
+    # add-judge-criteria-shortcuts — one-line on-ramp keywords                 #
+    # ----------------------------------------------------------------------- #
+
+    @keyword(name="Judge.Score With Criteria")
+    @tier(2)
+    @guarded_fanout()
+    def score_with_criteria(
+        self,
+        *,
+        result: AgentRunResult,
+        criteria: str,
+        threshold: float = 7.0,
+        judge_adapter: str = "generic",
+        judge_model: str | None = None,
+        **adapter_kwargs: Any,
+    ) -> JudgeScore:
+        """Judges an `AgentRunResult` against a plain-language criteria string — no rubric file (add-judge-criteria-shortcuts).
+
+        [Tier 2 — Stochastic Single-Shot] — the one-line on-ramp (DeepEval
+        G-Eval idiom). Synthesizes a real `JudgeRubric` in memory from the
+        ``criteria`` string (a single criterion carrying the verbatim string),
+        then reuses the exact same judge pipeline as `Judge.Get Score` (prompt
+        composition, adapter call, JSON parse) and returns the same `JudgeScore`
+        shape. Wraps `@guarded_fanout` cost+runtime guardrails per ADR-015.
+
+        **HONESTY (add-judge-criteria-shortcuts D2):** the returned `JudgeScore`
+        is ALWAYS ``calibrated=False`` with ``rubric_source="criteria_string"``,
+        and the first shortcut score per process emits an RF ``WARN`` pointing
+        at the calibration recipe. Two-tier message: *one-line criteria string
+        to start; graduate to a calibrated rubric (Cohen's κ ≥ 0.7) for CI
+        gates* — see `Judge.Get Score` + `Judge.Calibrate Rubric`.
+
+        | =Arguments= | =Description= |
+        | ``result`` | The `AgentRunResult` to evaluate. Reads ``result.response_text``. |
+        | ``criteria`` | Plain-language evaluation instruction (the G-Eval idiom: the string IS the instruction; it is not decomposed). Empty / whitespace / nullish raises `InvalidJudgeRubricError` before any LLM call. |
+        | ``threshold`` | Pass threshold in ``[0.0, 10.0]`` (default ``7.0``); ``pass_threshold_met == (numeric_score >= threshold)``. Out-of-range raises before any LLM call. |
+        | ``judge_adapter`` | Adapter slug (default ``"generic"``). |
+        | ``judge_model`` | Model identifier forwarded to ``adapter.run(model=...)``. |
+        | ``**adapter_kwargs`` | Provider forward-compat kwargs (e.g., ``temperature=0.0``, ``seed=42``). |
+
+        Returns ``JudgeScore`` with ``calibrated=False`` +
+        ``rubric_source="criteria_string"``.
+
+        Raises ``InvalidJudgeRubricError`` on empty/whitespace/nullish criteria
+        or out-of-range threshold (before any LLM call).
+        Raises ``JudgeOutputParseError`` on malformed judge JSON.
+
+        Example:
+        | ${score} =    `Judge.Score With Criteria`    result=${result}    criteria=Response is polite and answers the question    threshold=7
+        | Should Be True    ${score.numeric_score} >= 7.0
+        | Log    Uncalibrated (${score.rubric_source}); reasoning: ${score.reasoning}
+
+        Notes:
+        - PRD FR48 judge surface; add-judge-criteria-shortcuts D1 criteria synthesis.
+        - Tier-2 LLM-deterministic per `determinism-contract.md`; cost guardrails per ADR-015.
+        - `calibrated=False` is unfakeable here — no keyword in this change sets `calibrated=True` (`DF-JCS-S1` / C104).
+        """
+        rubric = _synthesize_criteria_rubric(criteria, threshold)
+        _warn_uncalibrated_once("criteria_string")
+        return _execute_judge(
+            rubric,
+            result,
+            adapter_slug=judge_adapter,
+            judge_model=judge_model,
+            rubric_source="criteria_string",
+            adapter_kwargs=adapter_kwargs,
+        )
+
+    @keyword(name="Judge.Get Faithfulness")
+    @tier(2)
+    @guarded_fanout()
+    def get_faithfulness(
+        self,
+        *,
+        result: AgentRunResult,
+        context: str,
+        threshold: float | None = None,
+        judge_adapter: str = "generic",
+        judge_model: str | None = None,
+        **adapter_kwargs: Any,
+    ) -> JudgeScore:
+        """Metric preset — scores whether the response is grounded in the supplied context (add-judge-criteria-shortcuts).
+
+        [Tier 2 — Stochastic Single-Shot] — thin wrapper over the judge pipeline
+        backed by the curated ``faithfulness`` preset rubric. Wraps
+        `@guarded_fanout` cost+runtime guardrails per ADR-015.
+
+        Rubric criterion (verbatim): *"Every factual claim in the response is
+        supported by the supplied grounding context. Penalize each claim that is
+        unsupported, contradicted, or embellished beyond the context,
+        proportionally to how central the claim is to the response. A response
+        that stays strictly within what the context supports scores 10.0."*
+
+        Does NOT measure: factual accuracy against the world — only support
+        against the supplied ``context``. A response can be faithful to a wrong
+        context and still score high. Does NOT measure relevancy to a question
+        (use `Judge.Get Answer Relevancy`).
+
+        **HONESTY:** ``calibrated=False`` always; ``rubric_source="preset:faithfulness"``;
+        WARN-once per process. Graduate via `Judge.Get Preset Rubric` →
+        `Judge.Calibrate Rubric` on your own labels (add-judge-criteria-shortcuts D5).
+
+        | =Arguments= | =Description= |
+        | ``result`` | The `AgentRunResult` to evaluate. |
+        | ``context`` | Grounding text the response's claims must be supported by. Rendered as a distinct ``# Context`` prompt section. |
+        | ``threshold`` | Optional override of the preset's built-in ``7.0`` threshold; out-of-range raises before any LLM call. |
+        | ``judge_adapter`` / ``judge_model`` / ``**adapter_kwargs`` | Standard judge pass-through. |
+
+        Returns ``JudgeScore`` (``rubric_source="preset:faithfulness"``, ``calibrated=False``).
+
+        Example:
+        | ${score} =    `Judge.Get Faithfulness`    result=${result}    context=${source_document}
+        | Should Be True    ${score.pass_threshold_met}
+
+        Notes:
+        - add-judge-criteria-shortcuts D3 preset registry (`judge/presets.py`).
+        - Tier-2 LLM-deterministic; cost guardrails per ADR-015.
+        - Uncalibrated-by-default per add-judge-criteria-shortcuts D5.
+        """
+        return self._score_with_preset(
+            preset="faithfulness",
+            result=result,
+            extra_sections=(("Context", context),),
+            threshold=threshold,
+            judge_adapter=judge_adapter,
+            judge_model=judge_model,
+            adapter_kwargs=adapter_kwargs,
+        )
+
+    @keyword(name="Judge.Get Answer Relevancy")
+    @tier(2)
+    @guarded_fanout()
+    def get_answer_relevancy(
+        self,
+        *,
+        result: AgentRunResult,
+        question: str,
+        threshold: float | None = None,
+        judge_adapter: str = "generic",
+        judge_model: str | None = None,
+        **adapter_kwargs: Any,
+    ) -> JudgeScore:
+        """Metric preset — scores whether the response addresses the supplied question (add-judge-criteria-shortcuts).
+
+        [Tier 2 — Stochastic Single-Shot] — thin wrapper over the judge pipeline
+        backed by the curated ``answer_relevancy`` preset rubric. Wraps
+        `@guarded_fanout` cost+runtime guardrails per ADR-015.
+
+        Rubric criterion (verbatim): *"The response directly addresses the
+        supplied question: it is on-topic, answers what was actually asked, and
+        does not evade, pad, or drift onto adjacent topics. Penalize non-answers,
+        partial answers that skip the core of the question, and padding that does
+        not advance the answer. A focused response that fully answers the question
+        scores 10.0."*
+
+        Does NOT measure: factual correctness of the answer (a confidently-wrong
+        but on-topic answer can still score high on relevancy) — pair with
+        `Judge.Get Faithfulness` for grounding. The original prompt is NOT
+        recoverable from `AgentRunResult`, so ``question`` MUST be supplied
+        explicitly; it is never silently substituted.
+
+        **HONESTY:** ``calibrated=False`` always; ``rubric_source="preset:answer_relevancy"``;
+        WARN-once per process. Graduate via `Judge.Get Preset Rubric` →
+        `Judge.Calibrate Rubric` (add-judge-criteria-shortcuts D5).
+
+        | =Arguments= | =Description= |
+        | ``result`` | The `AgentRunResult` to evaluate. |
+        | ``question`` | The question the response is expected to answer. Rendered as a distinct ``# Question`` prompt section. |
+        | ``threshold`` | Optional override of the preset's built-in ``7.0`` threshold. |
+        | ``judge_adapter`` / ``judge_model`` / ``**adapter_kwargs`` | Standard judge pass-through. |
+
+        Returns ``JudgeScore`` (``rubric_source="preset:answer_relevancy"``, ``calibrated=False``).
+
+        Example:
+        | ${score} =    `Judge.Get Answer Relevancy`    result=${result}    question=What is the capital of France?
+        | Should Be True    ${score.pass_threshold_met}
+
+        Notes:
+        - add-judge-criteria-shortcuts D3 preset registry (`judge/presets.py`).
+        - Tier-2 LLM-deterministic; cost guardrails per ADR-015.
+        - Uncalibrated-by-default per add-judge-criteria-shortcuts D5.
+        """
+        return self._score_with_preset(
+            preset="answer_relevancy",
+            result=result,
+            extra_sections=(("Question", question),),
+            threshold=threshold,
+            judge_adapter=judge_adapter,
+            judge_model=judge_model,
+            adapter_kwargs=adapter_kwargs,
+        )
+
+    @keyword(name="Judge.Get Hallucination Score")
+    @tier(2)
+    @guarded_fanout()
+    def get_hallucination_score(
+        self,
+        *,
+        result: AgentRunResult,
+        context: str,
+        threshold: float | None = None,
+        judge_adapter: str = "generic",
+        judge_model: str | None = None,
+        **adapter_kwargs: Any,
+    ) -> JudgeScore:
+        """Metric preset — grounding score where HIGHER = LESS hallucination; 10.0 = none detected (add-judge-criteria-shortcuts D4).
+
+        [Tier 2 — Stochastic Single-Shot] — thin wrapper over the judge pipeline
+        backed by the curated ``hallucination`` preset rubric. Wraps
+        `@guarded_fanout` cost+runtime guardrails per ADR-015.
+
+        **Direction (READ THIS FIRST):** this is a GROUNDING score — HIGHER IS
+        BETTER. ``10.0`` = no fabricated entities/facts/citations relative to the
+        ``context``; ``0.0`` = pervasive fabrication. This deliberately INVERTS
+        DeepEval's HallucinationMetric (which scores the hallucination
+        proportion, lower-is-better) so the project-wide uniform
+        ``numeric_score >= threshold`` pass semantics hold for all three presets
+        (add-judge-criteria-shortcuts D4). A well-grounded response PASSES.
+
+        Rubric criterion (verbatim): *"Freedom from hallucination as a GROUNDING
+        score where HIGHER IS BETTER. 10.0 = no fabricated entities, facts,
+        citations, or quantities relative to the supplied context; 0.0 =
+        pervasive fabrication. Every named entity, statistic, quotation, or
+        citation in the response must be traceable to the context; each
+        fabricated or unverifiable item lowers the score proportionally."*
+
+        Does NOT measure: whether the response is complete or relevant — only
+        whether what it DID say is grounded in the context.
+
+        **HONESTY:** ``calibrated=False`` always; ``rubric_source="preset:hallucination"``;
+        WARN-once per process. Graduate via `Judge.Get Preset Rubric` →
+        `Judge.Calibrate Rubric` (add-judge-criteria-shortcuts D5).
+
+        | =Arguments= | =Description= |
+        | ``result`` | The `AgentRunResult` to evaluate. |
+        | ``context`` | Grounding text; fabrications are measured relative to it. Rendered as a distinct ``# Context`` prompt section. |
+        | ``threshold`` | Optional override of the preset's built-in ``7.0`` threshold. |
+        | ``judge_adapter`` / ``judge_model`` / ``**adapter_kwargs`` | Standard judge pass-through. |
+
+        Returns ``JudgeScore`` (``rubric_source="preset:hallucination"``, ``calibrated=False``).
+
+        Example:
+        | ${score} =    `Judge.Get Hallucination Score`    result=${result}    context=${source_document}
+        | Should Be True    ${score.pass_threshold_met}    # high grounding score == low hallucination == pass
+
+        Notes:
+        - add-judge-criteria-shortcuts D4 (higher-is-better polarity) + D3 (preset registry).
+        - Tier-2 LLM-deterministic; cost guardrails per ADR-015.
+        - Uncalibrated-by-default per add-judge-criteria-shortcuts D5.
+        """
+        return self._score_with_preset(
+            preset="hallucination",
+            result=result,
+            extra_sections=(("Context", context),),
+            threshold=threshold,
+            judge_adapter=judge_adapter,
+            judge_model=judge_model,
+            adapter_kwargs=adapter_kwargs,
+        )
+
+    @keyword(name="Judge.Get Preset Rubric")
+    @tier(1)
+    def get_preset_rubric(self, *, name: str) -> JudgeRubric:
+        """Returns the parsed `JudgeRubric` for a named metric preset (add-judge-criteria-shortcuts).
+
+        [Tier 1 — Deterministic] — pure registry lookup + parse; NO LLM call
+        (hence no `@guarded_fanout`). This is the graduation path: feed the
+        returned rubric straight into `Judge.Calibrate Rubric` (which already
+        accepts a `JudgeRubric` instance) to calibrate a preset against YOUR
+        own labeled data — no preset-specific calibration machinery required.
+
+        | =Arguments= | =Description= |
+        | ``name`` | One of the registered preset names: ``faithfulness``, ``answer_relevancy``, ``hallucination``. |
+
+        Returns the parsed ``JudgeRubric`` (threshold ``7.0``).
+
+        Raises ``InvalidJudgeRubricError`` (listing available presets) on an
+        unknown ``name`` — fail-loud, no silent fallback.
+
+        Example:
+        | ${rubric} =    `Judge.Get Preset Rubric`    name=faithfulness
+        | ${report} =    `Judge.Calibrate Rubric`    rubric=${rubric}    calibration_set=${CURDIR}/faithfulness-calibration.yaml
+        | Should Be True    ${report.passes_hard_fail}
+
+        Notes:
+        - add-judge-criteria-shortcuts D3 (preset registry) + D5 (uncalibrated-by-default graduation).
+        - Presets ship NO κ claims; calibration is against the operator's own labels.
+        """
+        return get_preset_rubric(name)
+
+    @keyword(name="Judge Score Should Be Above")
+    @tier(2)
+    @guarded_fanout()
+    def judge_score_should_be_above(
+        self,
+        *,
+        result: AgentRunResult,
+        criteria: str,
+        threshold: float = 7.0,
+        judge_adapter: str = "generic",
+        judge_model: str | None = None,
+        **adapter_kwargs: Any,
+    ) -> JudgeScore:
+        """Judge-and-assert in one line: fails the test when the criteria score is below threshold (add-judge-criteria-shortcuts).
+
+        [Tier 2 — Stochastic Single-Shot] — assertion form (un-namespaced,
+        matching the `AssertionsLibrary` ``X Should ...`` idiom) that lives on
+        the judge library because it makes an LLM call (`AssertionsLibrary` is a
+        Tier-1 surface). Runs the SAME criteria-string scoring path as
+        `Judge.Score With Criteria`, then fails when the score does not meet the
+        threshold. Wraps `@guarded_fanout` cost+runtime guardrails per ADR-015.
+
+        Threshold semantics: the pass comparison is ``numeric_score >= threshold``
+        (``>=``, matching ``pass_threshold_met`` project-wide — NOT a strict
+        ``>`` despite the name "Above"). A score exactly equal to the threshold
+        PASSES.
+
+        On failure the message includes the numeric score, the threshold, the
+        uncalibrated marker (``calibrated=False`` / ``rubric_source``), and the
+        judge's ``reasoning``. On success it RETURNS the `JudgeScore` so callers
+        can log/inspect without a second LLM call.
+
+        | =Arguments= | =Description= |
+        | ``result`` | The `AgentRunResult` to evaluate. |
+        | ``criteria`` | Plain-language evaluation instruction (same as `Judge.Score With Criteria`). Empty/nullish raises before any LLM call. |
+        | ``threshold`` | Pass threshold in ``[0.0, 10.0]`` (default ``7.0``); ``>=`` comparison. |
+        | ``judge_adapter`` / ``judge_model`` / ``**adapter_kwargs`` | Standard judge pass-through. |
+
+        Returns the ``JudgeScore`` on pass (``calibrated=False``,
+        ``rubric_source="criteria_string"``).
+
+        Raises ``AssertionError`` (RF test failure) when
+        ``numeric_score < threshold``.
+        Raises ``InvalidJudgeRubricError`` on empty/nullish criteria or
+        out-of-range threshold (before any LLM call).
+
+        Example:
+        | ${score} =    `Judge Score Should Be Above`    result=${result}    criteria=Response is polite and answers the question    threshold=7
+        | Log    Passed with ${score.numeric_score}
+
+        Notes:
+        - add-judge-criteria-shortcuts D6 (assertion form on the Tier-2 judge library).
+        - `>=` semantics match `pass_threshold_met` (single threshold model library-wide).
+        - Uncalibrated by design — the failure message restates the marker (`DF-JCS-S1` / C104).
+        """
+        rubric = _synthesize_criteria_rubric(criteria, threshold)
+        _warn_uncalibrated_once("criteria_string")
+        score = _execute_judge(
+            rubric,
+            result,
+            adapter_slug=judge_adapter,
+            judge_model=judge_model,
+            rubric_source="criteria_string",
+            adapter_kwargs=adapter_kwargs,
+        )
+        if not score.pass_threshold_met:
+            raise AssertionError(
+                f"Judge score {score.numeric_score} is below threshold {threshold} "
+                f"(calibrated={score.calibrated}, rubric_source={score.rubric_source}). "
+                f"Judge reasoning: {score.reasoning}"
+            )
+        return score
+
+    @keyword(name="Judge Turn Should Pass")
+    @tier(2)
+    @guarded_fanout()
+    def judge_turn_should_pass(
+        self,
+        conversation: Any,
+        rubric: str | Path | JudgeRubric,
+        turn: int = -1,
+        judge_adapter: str = "generic",
+        judge_model: str | None = None,
+        **adapter_kwargs: Any,
+    ) -> JudgeScore:
+        """Scores one conversation turn against a rubric and FAILS the test unless it passes (add-multi-turn-conversation-testing).
+
+        [Tier 2 — Stochastic Single-Shot] — the assertion-style counterpart to
+        `Judge.Get Score`, un-namespaced (matching the ``X Should ...`` assertion
+        idiom) but hosted on the Tier-2 judge library because it makes an LLM
+        call. Selects the given AGENT turn (negative indices count from the end;
+        default ``-1`` = last agent turn), scores it via the SAME path as
+        `Judge.Get Score`, and FAILS the RF test when ``pass_threshold_met`` is
+        false — reporting the numeric score, threshold, and the judge's reasoning
+        in the failure message. Wraps ``@guarded_fanout`` identically to
+        `Judge.Get Score`.
+
+        | =Arguments= | =Description= |
+        | ``conversation`` | A live ``ConversationHandle`` OR a frozen ``ConversationTranscript``. |
+        | ``rubric`` | Path to a Markdown rubric file (`.md`) OR a pre-loaded `JudgeRubric`. |
+        | ``turn`` | Agent-turn index to score. Negative counts from the end; default ``-1`` = last agent turn. |
+        | ``judge_adapter`` | Adapter slug (default ``"generic"``). |
+        | ``judge_model`` | Model identifier forwarded to ``adapter.run(model=...)``. |
+        | ``**adapter_kwargs`` | Provider forward-compat kwargs (e.g. ``temperature=0.0``, ``seed=42``). |
+
+        An OUT-OF-RANGE ``turn`` fails immediately with a message naming the
+        requested index and the available agent-turn count — **without making any
+        LLM call**. On pass it RETURNS the ``JudgeScore`` so callers can log the
+        score without a second LLM call.
+
+        Raises ``AssertionError`` (RF test failure) when the turn is out of range
+        OR the score is below the rubric threshold.
+        Raises ``InvalidJudgeRubricError`` on rubric parse failure.
+
+        Example:
+        | `Send Message`    ${conv}    Book a flight to Oslo
+        | `Send Message`    ${conv}    Make it business class
+        | ${score} =    `Judge Turn Should Pass`    ${conv}    ${CURDIR}/rubrics/upsell.md    turn=-1
+        | Log    Last turn scored ${score.numeric_score}
+
+        Notes:
+        - add-multi-turn-conversation-testing D6 (assertion form on the Tier-2 judge library, un-namespaced).
+        - Out-of-range turn index is a clear setup failure, raised before any LLM call.
+        - Sibling keywords: `Judge.Get Score` (returns the score; also accepts a whole transcript).
+        """  # TODO(agenteval-docs): add issue-link footer once forum/discussion choice is made
+        agent_turns = _agent_turns_of(conversation)
+        if not agent_turns:
+            raise AssertionError(
+                "Judge Turn Should Pass: the conversation has no agent turns to score yet "
+                "(send at least one `Send Message` first)."
+            )
+        try:
+            selected = agent_turns[turn]
+        except IndexError:
+            raise AssertionError(
+                f"Judge Turn Should Pass: turn index {turn} is out of range; the conversation "
+                f"has {len(agent_turns)} agent turn(s) (valid indices: "
+                f"0..{len(agent_turns) - 1} or -{len(agent_turns)}..-1). No LLM call was made."
+            ) from None
+        turn_result = selected.result
+        if turn_result is None:  # pragma: no cover - agent turns always carry a result
+            raise AssertionError(f"Judge Turn Should Pass: selected agent turn {turn} carries no AgentRunResult.")
+
+        if isinstance(rubric, JudgeRubric):
+            parsed_rubric = rubric
+            rubric_source = "preloaded"
+        else:
+            parsed_rubric = load_rubric(rubric)
+            rubric_source = "file"
+
+        score = _execute_judge(
+            parsed_rubric,
+            turn_result,
+            adapter_slug=judge_adapter,
+            judge_model=judge_model,
+            rubric_source=rubric_source,
+            adapter_kwargs=adapter_kwargs,
+        )
+        if not score.pass_threshold_met:
+            raise AssertionError(
+                f"Judge Turn Should Pass: turn {turn} scored {score.numeric_score} "
+                f"below threshold {parsed_rubric.threshold} "
+                f"(calibrated={score.calibrated}, rubric_source={score.rubric_source}). "
+                f"Judge reasoning: {score.reasoning}"
+            )
+        return score
+
+    # ----------------------------------------------------------------------- #
+    # add-judge-criteria-shortcuts — shared preset-scoring helper              #
+    # ----------------------------------------------------------------------- #
+
+    def _score_with_preset(
+        self,
+        *,
+        preset: str,
+        result: AgentRunResult,
+        extra_sections: tuple[tuple[str, str], ...],
+        threshold: float | None,
+        judge_adapter: str,
+        judge_model: str | None,
+        adapter_kwargs: dict[str, Any],
+    ) -> JudgeScore:
+        """Shared body for the three preset keywords (add-judge-criteria-shortcuts D3).
+
+        Loads the preset rubric, applies an optional threshold override, warns
+        once, and runs the judge with the preset's extra prompt section
+        (``# Context`` / ``# Question``).
+        """
+        rubric = get_preset_rubric(preset)
+        if threshold is not None:
+            rubric = _with_threshold(rubric, threshold)
+        rubric_source = f"preset:{preset}"
+        _warn_uncalibrated_once(rubric_source)
+        return _execute_judge(
+            rubric,
+            result,
+            adapter_slug=judge_adapter,
+            judge_model=judge_model,
+            rubric_source=rubric_source,
+            extra_sections=extra_sections,
+            adapter_kwargs=adapter_kwargs,
+        )
+
 
 # --------------------------------------------------------------------------- #
 # Internal helpers                                                              #
 # --------------------------------------------------------------------------- #
+
+
+_THRESHOLD_LINE_RE = re.compile(r"Pass\s+if\s+numeric_score\s*>=\s*[0-9]+(?:\.[0-9]+)?", re.IGNORECASE)
+"""Matches the `## Threshold` body line so a preset threshold override can be
+reflected in the synthesized `raw_text` shown to the judge (not just the
+`JudgeRubric.threshold` field used for `pass_threshold_met`)."""
+
+
+_UNCALIBRATED_WARNING_EMITTED = False
+"""Module-level once-flag for the uncalibrated-shortcut-score WARN.
+
+Process-scoped (add-judge-criteria-shortcuts D2): the first shortcut score per
+process warns at WARN; subsequent ones log at INFO to avoid flooding cohort
+fan-outs. Parallel pabot workers each warn once (documented, acceptable). The
+durable per-score signal is `JudgeScore.calibrated` / `rubric_source`; the log
+line is a courtesy.
+"""
+
+
+def _reset_uncalibrated_warning_for_tests() -> None:
+    """Reset the module-level WARN once-flag (test-only helper)."""
+    global _UNCALIBRATED_WARNING_EMITTED
+    _UNCALIBRATED_WARNING_EMITTED = False
+
+
+def _warn_uncalibrated_once(rubric_source: str) -> None:
+    """Emit the uncalibrated-shortcut-score warning (WARN once, INFO thereafter).
+
+    add-judge-criteria-shortcuts D2: names the ``rubric_source``, states the
+    score is uncalibrated, and points at the calibration recipe as the
+    graduation path for CI gates.
+    """
+    global _UNCALIBRATED_WARNING_EMITTED
+    message = (
+        f"Uncalibrated judge score (rubric_source={rubric_source}). Fine for "
+        f"exploration; for CI gates graduate to a calibrated rubric (Cohen's "
+        f"kappa >= 0.7) — see docs/recipes/judge-calibration.md"
+    )
+    if not _UNCALIBRATED_WARNING_EMITTED:
+        logger.warn(message)
+        _UNCALIBRATED_WARNING_EMITTED = True
+    else:
+        logger.info(message)
+
+
+def _synthesize_criteria_rubric(criteria: str, threshold: float) -> JudgeRubric:
+    """Synthesize a `JudgeRubric` from a plain-language criteria string (add-judge-criteria-shortcuts D1).
+
+    Builds standard-format Markdown ``raw_text`` (a single ``user_criteria``
+    bullet + ``## Threshold`` line) and parses it back through the shared
+    `parse_rubric_text` so the criteria-string path, file rubrics, and preset
+    rubrics all share ONE validation path — and the synthesized rubric can
+    itself be calibrated later without rewriting anything.
+
+    Validation (fail-loud, BEFORE any LLM call): empty / whitespace-only /
+    nullish (`None`-string) ``criteria`` raises `InvalidJudgeRubricError`;
+    an out-of-range ``threshold`` raises via `parse_rubric_text`
+    (per `feedback_nullish_input_fuzz_checklist`).
+    """
+    stripped = (criteria or "").strip()
+    if not stripped or stripped.lower() == "none":
+        raise InvalidJudgeRubricError(
+            f"Judge criteria string is empty or nullish: {criteria!r}",
+            file_path="<criteria_string>",
+            line_number=None,
+            field_name="criteria",
+            fix_suggestion=(
+                "Pass a non-empty plain-language criteria string, e.g. "
+                "`criteria=Response is polite and answers the question`."
+            ),
+        )
+    # Collapse internal whitespace/newlines so the single synthesized bullet
+    # stays well-formed for the line-oriented `## Criteria` bullet parser
+    # (G-Eval criteria are one-liners by idiom).
+    one_line = " ".join(stripped.split())
+    raw_text = (
+        "# Criteria-string rubric (synthesized)\n\n"
+        "## Criteria\n"
+        f"- user_criteria: {one_line}\n\n"
+        "## Threshold\n"
+        f"Pass if numeric_score >= {threshold}\n"
+    )
+    return parse_rubric_text(raw_text, source="<criteria_string>")
+
+
+def _with_threshold(rubric: JudgeRubric, threshold: float) -> JudgeRubric:
+    """Return a copy of ``rubric`` with an overridden threshold.
+
+    Rewrites the ``## Threshold`` body line in ``raw_text`` so the judge prompt
+    and the `JudgeRubric.threshold` field agree. An out-of-range ``threshold``
+    raises the SAME structured `InvalidJudgeRubricError` (source/field/
+    fix_suggestion) that criteria-string synthesis surfaces via
+    `parse_rubric_text` — NOT the bare dataclass `ValueError` from
+    `JudgeRubric.__post_init__` — so the preset threshold-override path gives
+    Robot/Python callers the public rubric error shape before any LLM call
+    (add-judge-criteria-shortcuts codex LOW).
+    """
+    if not 0.0 <= threshold <= 10.0:
+        raise InvalidJudgeRubricError(
+            f"Judge rubric threshold {threshold} outside `[0.0, 10.0]` range (<preset_threshold_override>)",
+            file_path="<preset_threshold_override>",
+            line_number=None,
+            field_name="## Threshold",
+            fix_suggestion="Use a threshold in [0.0, 10.0]; the JudgeScore range is `0.0 - 10.0`.",
+        )
+    new_raw = _THRESHOLD_LINE_RE.sub(f"Pass if numeric_score >= {threshold}", rubric.raw_text)
+    return JudgeRubric(criteria=rubric.criteria, threshold=threshold, raw_text=new_raw)
+
+
+def _transcript_to_judge_result(transcript: ConversationTranscript) -> AgentRunResult:
+    """Render a `ConversationTranscript` into a judge-scoreable `AgentRunResult` (D6).
+
+    The full role-tagged transcript (every user + agent turn in chronological
+    order, via the shared conversation renderer) becomes the ``response_text``
+    the judge scores — so the existing single-result judge pipeline handles a
+    whole conversation with no branch inside `_compose_judge_prompt`.
+    """
+    from AgentEval.conversation._renderer import render_transcript_text
+
+    rendered = render_transcript_text(transcript.turns)
+    return AgentRunResult(
+        response_text=rendered,
+        tool_calls=[],
+        usage=Usage(input_tokens=0, output_tokens=0),
+        metadata=AgentRunMetadata(completeness="complete", mcp_coverage="hosted_in_process"),
+        cost_usd=0.0,
+        latency_seconds=0.0,
+        trace_id="conversation-transcript",
+    )
+
+
+def _agent_turns_of(conversation: Any) -> list[ConversationTurn]:
+    """Extract the ordered agent turns from a live handle OR a frozen transcript."""
+    turns = getattr(conversation, "turns", None)
+    if turns is None:
+        raise TypeError(f"expected a ConversationHandle or ConversationTranscript; got {type(conversation).__name__}")
+    return [t for t in turns if t.role == "agent"]
+
+
+def _execute_judge(
+    rubric: JudgeRubric,
+    result: AgentRunResult,
+    *,
+    adapter_slug: str,
+    judge_model: str | None,
+    rubric_source: str,
+    adapter_kwargs: dict[str, Any],
+    extra_sections: tuple[tuple[str, str], ...] = (),
+) -> JudgeScore:
+    """Resolve the adapter, compose the prompt, run the judge, and parse the score.
+
+    Shared by `Judge.Get Score` and every add-judge-criteria-shortcuts keyword
+    so all sources funnel through one adapter-invocation + parse path. When
+    ``extra_sections`` is empty the composed prompt is byte-identical to the
+    pre-change composition (regression-guarded).
+    """
+    adapter_cls = get_adapter(adapter_slug)
+    adapter = adapter_cls()
+
+    judge_prompt = _compose_judge_prompt(rubric, result, extra_sections=extra_sections)
+
+    # Story 11.1 + 11.2 + 11.3 cross-LLM review lessons applied UPSTREAM:
+    # forward model + kwargs cleanly; defensive parse on response.
+    run_kwargs: dict[str, Any] = dict(adapter_kwargs)
+    if judge_model is not None:
+        run_kwargs["model"] = judge_model
+    judge_run = adapter.run(prompt=judge_prompt, **run_kwargs)
+
+    return _parse_judge_response(judge_run, rubric, rubric_source=rubric_source)
 
 
 _SYSTEM_PROMPT = (
@@ -315,17 +1010,38 @@ _SYSTEM_PROMPT = (
 )
 
 
-def _compose_judge_prompt(rubric: JudgeRubric, result: AgentRunResult) -> str:
-    """Assemble the single-shot prompt sent to the judge LLM."""
+def _compose_judge_prompt(
+    rubric: JudgeRubric,
+    result: AgentRunResult,
+    *,
+    extra_sections: tuple[tuple[str, str], ...] = (),
+) -> str:
+    """Assemble the single-shot prompt sent to the judge LLM.
+
+    ``extra_sections`` (add-judge-criteria-shortcuts D7) is a sequence of
+    ``(title, body)`` pairs rendered as ``# <title>`` blocks BETWEEN the rubric
+    and the agent response (e.g. ``# Question`` / ``# Context`` for presets).
+    Pure-additive: with the default empty sequence the output is byte-identical
+    to the pre-change composition, preserving Tier-2 seed+temperature=0
+    reproducibility for existing suites.
+    """
     parts: list[str] = [
         _SYSTEM_PROMPT,
         "",
         "# Rubric",
         rubric.raw_text.strip(),
-        "",
-        "# Agent Response",
-        result.response_text or "(empty response)",
     ]
+
+    for title, body in extra_sections:
+        parts.extend(["", f"# {title}", body])
+
+    parts.extend(
+        [
+            "",
+            "# Agent Response",
+            result.response_text or "(empty response)",
+        ]
+    )
 
     # Include a brief tool-call trajectory summary so the judge can score
     # behavioral criteria (not just text). Phase-1: just the tool names in order.
@@ -336,7 +1052,12 @@ def _compose_judge_prompt(rubric: JudgeRubric, result: AgentRunResult) -> str:
     return "\n".join(parts)
 
 
-def _parse_judge_response(judge_run: AgentRunResult, rubric: JudgeRubric) -> JudgeScore:
+def _parse_judge_response(
+    judge_run: AgentRunResult,
+    rubric: JudgeRubric,
+    *,
+    rubric_source: str = "file",
+) -> JudgeScore:
     """Parse the LLM judge response text as `JudgeScore` JSON.
 
     Phase-1: NO retry loop. If the LLM returns malformed JSON or missing
@@ -448,6 +1169,11 @@ def _parse_judge_response(judge_run: AgentRunResult, rubric: JudgeRubric) -> Jud
         reasoning=reasoning,
         criteria_breakdown=criteria_breakdown,
         cost_usd=cost_usd,
+        # add-judge-criteria-shortcuts D2: `calibrated` is never True in this
+        # change (nothing threads calibration evidence yet — `DF-JCS-S1` / C104);
+        # `rubric_source` records honest provenance.
+        calibrated=False,
+        rubric_source=rubric_source,
     )
 
 

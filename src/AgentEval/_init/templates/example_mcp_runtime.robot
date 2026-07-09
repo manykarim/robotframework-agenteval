@@ -1,29 +1,31 @@
 *** Settings ***
-Documentation    Example: drive the bundled echo MCP server (Epic 3 / Story 8b.1).
+Documentation    Example: call a tool on the bundled echo MCP server.
+...              Runs with no API keys — the echo server ships with agenteval
+...              and simply returns whatever text you send it.
 Library    AgentEval
-Suite Setup       Setup Bundled Echo
-Suite Teardown    Teardown Bundled Echo
+Suite Setup       Start Bundled Echo Server
+Suite Teardown    Stop Bundled Echo Server
 
 *** Variables ***
 ${HANDLE}    ${NONE}
 
 *** Test Cases ***
 Echo Tool Roundtrips A Message
-    [Documentation]    Calls the bundled `echo` tool + asserts the response.
-    ${result}=    MCP.Call Tool    ${HANDLE}    echo    message=hello
-    Should Be True    ${result.success}    msg=expected echo tool to succeed; got is_error=${result.is_error} (error=${result.error_message})
+    [Documentation]    Calls the bundled `echo_back` tool and checks the reply.
+    ${result}=    MCP.Call Tool    ${HANDLE}    echo_back    text=hello
+    Should Be Equal    ${result.is_error}    ${FALSE}
+    ...    msg=expected the echo tool to succeed (error=${result.error_message})
+    Should Contain    ${result.content}[0][text]    hello
 
 *** Keywords ***
-Setup Bundled Echo
-    # MCP.Start Server signature (mcp/library.py:195): keyword-only-style positional
-    # args mapped to (name, transport, command, args). Robot's keyword binding
-    # accepts either positional or `name=` form. The 2-step `Get Server Config`
-    # then `Start Server` was the original intent — corrected per Story 8b.1 v0.2.0
-    # kilo/minimax cross-LLM review FINDING-1 (the previous form passed the
-    # config path as `name` and "bundled-echo" as `transport`, which is not a
-    # valid Transport literal).
-    ${HANDLE}=    MCP.Start Server    bundled-echo    stdio    python    args=${{['-m','AgentEval.mcp.bundled.echo']}}
+Start Bundled Echo Server
+    # The bundled echo server runs as a subprocess over stdio. MCP.Start Server
+    # builds the connection handle; each tool call opens and closes its own
+    # session. Using the current interpreter keeps the example runnable from
+    # any environment where agenteval is installed.
+    ${handle}=    MCP.Start Server    bundled-echo    stdio    ${{ __import__('sys').executable }}
+    ...    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
     Set Suite Variable    ${HANDLE}
 
-Teardown Bundled Echo
+Stop Bundled Echo Server
     Run Keyword If    $HANDLE is not None    MCP.Stop Server    ${HANDLE}

@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "bundled-echo": {
-      "command": "python",
+      "command": "python3",
       "args": ["-m", "AgentEval.mcp.bundled.echo"],
       "transport": "stdio"
     }

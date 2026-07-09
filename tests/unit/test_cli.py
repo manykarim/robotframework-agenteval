@@ -54,7 +54,6 @@ def test_pinned_codes(error_code: str, expected_exit: int) -> None:
     ("error_code", "expected_exit"),
     [
         # Sysexits-aligned codes (AC-8a.1.7 #2).
-        ("SANDBOX_REQUIRED", 77),  # EX_NOPERM
         ("VALIDATE_OPERATOR_DISALLOWED", 77),  # EX_NOPERM — Story 6.3 IMPLEMENTED leaf
         ("RUNTIME_BUDGET_EXCEEDED", 75),  # EX_TEMPFAIL
         ("UNSUPPORTED_BINARY_VERSION", 78),  # EX_CONFIG
@@ -74,7 +73,7 @@ def test_pinned_codes(error_code: str, expected_exit: int) -> None:
     ],
 )
 def test_sysexits_aligned_codes(error_code: str, expected_exit: int) -> None:
-    """AC-8a.1.7 #2: sysexits-aligned codes for the remaining 16 leaves."""
+    """AC-8a.1.7 #2: sysexits-aligned codes for the remaining 15 leaves."""
     assert error_code_to_exit_code(error_code) == expected_exit
 
 
@@ -100,20 +99,14 @@ def test_adapter_version_drift_warning_exit_zero() -> None:
     assert error_code_to_exit_code("ADAPTER_VERSION_DRIFT") == 0
 
 
-def test_table_covers_all_21_error_classes() -> None:
-    """AC-8a.1.7 #6: coverage — table has all 21 leaves currently in errors.py.
+def test_table_covers_all_20_error_classes() -> None:
+    """AC-8a.1.7 #6: coverage — table has all 20 codes currently mapped.
 
-    Re-derived 2026-05-25 from `src/AgentEval/errors.py` `error_code` declarations
-    via `grep -nE '^    error_code: ClassVar\\[str\\] = ' src/AgentEval/errors.py`:
-    19 leaves in `errors.py` + `SANDBOX_REQUIRED` from
-    `src/AgentEval/security/policy.py` (or planned ADR-018 stub per
-    `error-class-hierarchy.md` L66) + `ADAPTER_VERSION_DRIFT` from contract L83
-    (no in-tree class until Epic 11 Story 11.3). Total: 21 codes.
-
-    `error-class-hierarchy.md` L52-L56 still says "19 leaves" — that count is
-    STALE; Story 7.2 added `InvalidSkillDiscoverabilityTasksError` +
-    `SkillDidNotActivateError` without amending the contract count.
-    Story 8a.1 self-review caught + amended (fix-the-losing-source-NOW).
+    Re-derived from `src/AgentEval/errors.py` `error_code` declarations plus the
+    warning-class `ADAPTER_VERSION_DRIFT` code. The planned-only
+    `SANDBOX_REQUIRED` row was removed by the `remove-dead-machinery` change
+    (the `security/` package + its `SandboxRequiredError` were never shipped and
+    are withdrawn pre-1.0 per `error-class-hierarchy.md`). Total: 20 codes.
 
     If a new leaf lands in errors.py without updating this test + the contract
     table, this test surfaces the gap (both `missing` and `extra` assertions
@@ -121,16 +114,11 @@ def test_table_covers_all_21_error_classes() -> None:
     """
     # Sources for the expected set (re-derive at test-author time, not at
     # runtime — runtime import would defeat the cross-check):
-    # - `error-class-hierarchy.md` L66 (`SANDBOX_REQUIRED`, planned).
-    # - `error-class-hierarchy.md` L67 (`VALIDATE_OPERATOR_DISALLOWED`).
-    # - `error-class-hierarchy.md` L73-L84 (10 Compat + Budget codes).
-    # - `error-class-hierarchy.md` L90-L99 (10 Integrity codes).
-    # - `errors.py` L849 + L884 (2 Story-7.2 additions; contract amended by
-    #   Story 8a.1 fix-the-losing-source-NOW 2026-05-25 — `error-class-
-    #   hierarchy.md` L100-L101 now lists them).
+    # - `error-class-hierarchy.md` (`VALIDATE_OPERATOR_DISALLOWED`).
+    # - `error-class-hierarchy.md` (Compat + Budget codes).
+    # - `error-class-hierarchy.md` (Integrity codes + 2 Story-7.2 additions).
     expected_codes = {
-        # Safety (2)
-        "SANDBOX_REQUIRED",
+        # Safety (1)
         "VALIDATE_OPERATOR_DISALLOWED",
         # Budget (2)
         "COST_EXCEEDED",
@@ -160,4 +148,4 @@ def test_table_covers_all_21_error_classes() -> None:
     extra = actual_codes - expected_codes
     assert not missing, f"missing from _ERROR_EXIT_CODES: {missing}"
     assert not extra, f"unexpected entries in _ERROR_EXIT_CODES: {extra}"
-    assert len(actual_codes) == 21
+    assert len(actual_codes) == 20
