@@ -106,7 +106,9 @@ def test_budget_breach_aborts_the_simulation(lib: ConversationLibrary, monkeypat
         )
 
 
-def test_cache_key_replays_and_disabled_status(lib: ConversationLibrary, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cache_key_replays_and_disabled_status(
+    lib: ConversationLibrary, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(cache_mod, "_resolve_output_dir", lambda: tmp_path)
     ctx.SIM_SCRIPT.extend(["cached msg <<GOAL_ACHIEVED>>"])
     # First run populates the cache.

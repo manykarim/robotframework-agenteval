@@ -343,9 +343,7 @@ class AgentRunMetadata:
     _VALID_MCP_COVERAGE: ClassVar[frozenset[str]] = frozenset(
         ("hosted_in_process", "subprocess_with_observer", "external_mixed")
     )
-    _VALID_CONTINUATION: ClassVar[frozenset[str]] = frozenset(
-        ("initial", "native_session", "replayed_history")
-    )
+    _VALID_CONTINUATION: ClassVar[frozenset[str]] = frozenset(("initial", "native_session", "replayed_history"))
 
     def __post_init__(self) -> None:
         if self.completeness not in self._VALID_COMPLETENESS:

@@ -305,10 +305,7 @@ class CohortHeatmap:
             agg.setdefault(key, []).append(1 if r.complied else 0)
         tasks = tuple(sorted(categories))
         models = tuple(sorted(adapters))
-        cells = tuple(
-            (category, adapter, sum(flags) / len(flags))
-            for (category, adapter), flags in agg.items()
-        )
+        cells = tuple((category, adapter, sum(flags) / len(flags)) for (category, adapter), flags in agg.items())
         # Red-team cells are ASR (higher = more compliance = WORSE), so flag the
         # reversed palette for `as_html` (fixes green-for-worst polarity bug).
         return cls(tasks=tasks, models=models, cells=cells, higher_is_worse=True)

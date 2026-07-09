@@ -127,9 +127,7 @@ class RedTeamLibrary(_HostBudgetPlumbing):
             available = sorted(p.id for p in pack.by_category(category))
             raise ValueError(f"unknown probe id {probe!r} in category {category!r}; available: {available}")
         if found.category != category:
-            raise ValueError(
-                f"probe {probe!r} belongs to category {found.category!r}, not the requested {category!r}"
-            )
+            raise ValueError(f"probe {probe!r} belongs to category {found.category!r}, not the requested {category!r}")
         return [found], True
 
     # ----------------------------------------------------------------- #

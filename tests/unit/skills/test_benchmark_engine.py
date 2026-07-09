@@ -196,9 +196,7 @@ def test_judge_pass_threshold_met_mapping(tmp_path: Path) -> None:
     """A judge score >= threshold → passed; below → fail (rubric threshold 7.0)."""
     rubric = (Path(__file__).parent.parent.parent / "fixtures" / "rubrics" / "skill-quality.md").resolve()
     tasks_yaml = tmp_path / "j.yaml"
-    tasks_yaml.write_text(
-        f"defaults:\n  rubric: {rubric}\ntasks:\n  - id: t1\n    prompt: do it\n", encoding="utf-8"
-    )
+    tasks_yaml.write_text(f"defaults:\n  rubric: {rubric}\ntasks:\n  - id: t1\n    prompt: do it\n", encoding="utf-8")
     register_adapter("eng_j_adapter", make_conditional_stub(with_skill_text="ok", without_skill_text="ok"))
     register_adapter("eng_j_judge_pass", make_judge_stub(score=9.0))
     result = _run("eng_j_adapter", judge_adapter="eng_j_judge_pass", tasks_path=tasks_yaml, trials=2)
@@ -222,7 +220,9 @@ def test_judge_prompt_carries_no_arm_metadata(tmp_path: Path) -> None:
     judge_prompts: list[str] = []
     # Adapter returns a NEUTRAL response with no skill name so the only place a
     # skill name could appear is if the harness leaked it — it must not.
-    register_adapter("eng_bl_adapter", make_conditional_stub(with_skill_text="neutral answer", without_skill_text="neutral answer"))
+    register_adapter(
+        "eng_bl_adapter", make_conditional_stub(with_skill_text="neutral answer", without_skill_text="neutral answer")
+    )
     register_adapter("eng_bl_judge", make_judge_stub(score=8.0, prompt_sink=judge_prompts))
     _run("eng_bl_adapter", judge_adapter="eng_bl_judge", tasks_path=tasks_yaml, trials=1)
 
@@ -287,8 +287,7 @@ def test_grading_order_is_seed_shuffled_across_arms(tmp_path: Path) -> None:
     rubric = (Path(__file__).parent.parent.parent / "fixtures" / "rubrics" / "skill-quality.md").resolve()
     tasks_yaml = tmp_path / "j.yaml"
     tasks_yaml.write_text(
-        f"defaults:\n  rubric: {rubric}\ntasks:\n"
-        + "".join(f"  - id: t{i}\n    prompt: p{i}\n" for i in range(4)),
+        f"defaults:\n  rubric: {rubric}\ntasks:\n" + "".join(f"  - id: t{i}\n    prompt: p{i}\n" for i in range(4)),
         encoding="utf-8",
     )
     register_adapter("eng_so_adapter", make_conditional_stub(with_skill_text="a", without_skill_text="a"))

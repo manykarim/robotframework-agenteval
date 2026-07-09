@@ -128,9 +128,7 @@ def extract_metrics(
     successes = sum(1 for r in results if pred(r))
 
     # --- Proportion: pass_rate ------------------------------------------- #
-    metrics["pass_rate"] = ProportionEvidence(
-        successes=successes, trials=trials, value=successes / trials, k=None
-    )
+    metrics["pass_rate"] = ProportionEvidence(successes=successes, trials=trials, value=successes / trials, k=None)
 
     # --- Proportion: pass_at_k ------------------------------------------- #
     for k in k_values:
@@ -138,9 +136,7 @@ def extract_metrics(
             omitted.append(f"pass_at_{k} (k={k} > trials={trials})")
             continue
         value = _compute_pass_at_k(successes, trials, k)
-        metrics[f"pass_at_{k}"] = ProportionEvidence(
-            successes=successes, trials=trials, value=value, k=k
-        )
+        metrics[f"pass_at_{k}"] = ProportionEvidence(successes=successes, trials=trials, value=value, k=k)
 
     # --- Continuous: cost + latency, from AgentRunResult payloads -------- #
     agent_results = [ar for r in results if (ar := _unwrap_agent_result(r)) is not None]

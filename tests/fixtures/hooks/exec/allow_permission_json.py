@@ -5,9 +5,5 @@ import json
 import sys
 
 if __name__ == "__main__":
-    sys.stdout.write(
-        json.dumps(
-            {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}
-        )
-    )
+    sys.stdout.write(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}))
     sys.exit(0)

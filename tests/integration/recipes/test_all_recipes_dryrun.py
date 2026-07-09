@@ -131,9 +131,7 @@ def extract_robotframework_blocks(path: Path) -> list[FencedRobotBlock]:
             continue
         block_lines.append(line)
     if in_block:
-        raise ValueError(
-            f"Unclosed ```robotframework block in {path} starting at line {open_line}"
-        )
+        raise ValueError(f"Unclosed ```robotframework block in {path} starting at line {open_line}")
     return blocks
 
 
@@ -166,10 +164,7 @@ def wrap_block_for_dryrun(block: FencedRobotBlock) -> str:
     has_test_cases = bool(_TEST_CASES_RE.search(block.raw))
     has_settings = bool(_SETTINGS_RE.search(block.raw))
     if not has_test_cases:
-        raise ValueError(
-            f"Block {block.test_id} is not dryrun-eligible "
-            "(no `*** Test Cases ***` header); cannot wrap."
-        )
+        raise ValueError(f"Block {block.test_id} is not dryrun-eligible (no `*** Test Cases ***` header); cannot wrap.")
     if has_settings:
         return block.raw
     return f"*** Settings ***\nLibrary    AgentEval\n\n{block.raw}"
@@ -266,10 +261,7 @@ def test_recipe_block_dryruns(block: FencedRobotBlock, tmp_path: Path) -> None:
     """For each fenced robotframework block: dryrun if eligible, else skip with reason."""
     cls = classify_block(block)
     if cls == "settings_only":
-        pytest.skip(
-            f"{block.test_id}: settings-only fragment (configuration example; "
-            "no testable surface to dryrun)."
-        )
+        pytest.skip(f"{block.test_id}: settings-only fragment (configuration example; no testable surface to dryrun).")
     if cls == "fragment":
         pytest.skip(
             f"{block.test_id}: documentation fragment (standalone keyword call "
@@ -339,12 +331,10 @@ def test_broken_block_rejected__get_from_dictionary_without_collections(
     )
     combined = (result.stdout or "") + "\n" + (result.stderr or "")
     assert result.returncode != 0, (
-        "Expected non-zero exit for `Get From Dictionary` without "
-        f"`Library Collections`; got 0:\n{combined}"
+        f"Expected non-zero exit for `Get From Dictionary` without `Library Collections`; got 0:\n{combined}"
     )
     assert "No keyword with name 'Get From Dictionary'" in combined, (
-        "Expected 'No keyword with name Get From Dictionary' in combined "
-        f"output; got:\n{combined}"
+        f"Expected 'No keyword with name Get From Dictionary' in combined output; got:\n{combined}"
     )
 
 
@@ -356,12 +346,8 @@ def test_broken_block_rejected__nonexistent_keyword(tmp_path: Path) -> None:
         "broken_nonexistent.robot",
     )
     combined = (result.stdout or "") + "\n" + (result.stderr or "")
-    assert result.returncode != 0, (
-        f"Expected non-zero exit for nonexistent keyword; got 0:\n{combined}"
-    )
-    assert "No keyword with name" in combined, (
-        f"Expected 'No keyword with name' in combined output; got:\n{combined}"
-    )
+    assert result.returncode != 0, f"Expected non-zero exit for nonexistent keyword; got 0:\n{combined}"
+    assert "No keyword with name" in combined, f"Expected 'No keyword with name' in combined output; got:\n{combined}"
 
 
 # ---------------------------------------------------------------------------
@@ -396,10 +382,7 @@ def test_extract_robotframework_blocks__counts_match_grep() -> None:
         )
         # grep -c with no match returns exit 1 + stdout "0\n"; treat as 0.
         grep_count = int(result.stdout.strip() or "0")
-        assert len(blocks) == grep_count, (
-            f"{md_path.name}: extracted {len(blocks)} blocks, grep counts "
-            f"{grep_count}."
-        )
+        assert len(blocks) == grep_count, f"{md_path.name}: extracted {len(blocks)} blocks, grep counts {grep_count}."
 
 
 def test_known_broken_blocks__matches_actual_failing_set(tmp_path: Path) -> None:
@@ -416,9 +399,7 @@ def test_known_broken_blocks__matches_actual_failing_set(tmp_path: Path) -> None
     actual_failing: set[str] = set()
     for block in _ELIGIBLE_BLOCKS:
         suite_text = wrap_block_for_dryrun(block)
-        suite_name = (
-            f"audit_{block.recipe.replace('.md', '')}_block_{block.block_index}.robot"
-        )
+        suite_name = f"audit_{block.recipe.replace('.md', '')}_block_{block.block_index}.robot"
         result = _run_robot_dryrun(suite_text, tmp_path, suite_name)
         combined = (result.stdout or "") + "\n" + (result.stderr or "")
         if result.returncode != 0 or "No keyword with name" in combined:
@@ -487,13 +468,8 @@ def test_extract_robotframework_blocks__raises_value_error_on_unclosed_block(
     """Opus MED-1: unclosed `robotframework` block raises ValueError."""
     md = tmp_path / "broken.md"
     md.write_text(
-        "# Bad recipe\n\n"
-        "```robotframework\n"
-        "*** Test Cases ***\n"
-        "Foo\n"
-        "    Log    hi\n"
+        "# Bad recipe\n\n```robotframework\n*** Test Cases ***\nFoo\n    Log    hi\n",
         # No closing fence.
-        ,
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="Unclosed"):

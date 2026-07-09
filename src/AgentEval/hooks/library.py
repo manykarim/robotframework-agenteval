@@ -191,11 +191,7 @@ class HooksLibrary:
         definitions (``type`` one of ``command`` / ``http`` / ``mcp_tool`` /
         ``prompt`` / ``agent``)::
 
-            {"hooks": {"PreToolUse": [
-                {"matcher": "Bash", "hooks": [
-                    {"type": "command", "command": "echo hi"}
-                ]}
-            ]}}
+            {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "echo hi"}]}]}}
 
         *Legacy flat input (DEPRECATED)* — an event-array item that is itself
         a flat entry with a ``command`` key and no ``hooks`` list. Still
@@ -504,9 +500,7 @@ class HooksLibrary:
         """
         record = self._coerce_record(result)
         if record.status != "completed":
-            raise AssertionError(
-                f"cannot assert output field: record status is {record.status!r} (not 'completed')."
-            )
+            raise AssertionError(f"cannot assert output field: record status is {record.status!r} (not 'completed').")
         if record.stdout_json is None:
             raise AssertionError(
                 f"cannot assert output field {field_path!r}: the hook produced no parseable stdout JSON "
@@ -521,9 +515,7 @@ class HooksLibrary:
                 )
             value = value[segment]
         if str(value) != str(expected):
-            raise AssertionError(
-                f"expected stdout JSON field {field_path!r} to be {expected!r} but got {value!r}."
-            )
+            raise AssertionError(f"expected stdout JSON field {field_path!r} to be {expected!r} but got {value!r}.")
 
     @keyword(name="Hook.Get Hooks For Event")
     @tier(1)

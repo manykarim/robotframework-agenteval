@@ -85,9 +85,7 @@ def test_corrupt_history_line_skipped(tmp_path: Path) -> None:
     assert len(series.points) == 2
 
 
-def test_malformed_metric_evidence_line_skipped_not_crashed(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_malformed_metric_evidence_line_skipped_not_crashed(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     # MED-2: a line that is valid JSON with schema_version:1 but malformed metric
     # evidence (successes="oops") passes top-level shape validation, then used to
     # crash Get Metric Trend in int()/float()/wilson coercion. It must instead be

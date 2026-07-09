@@ -127,8 +127,7 @@ def parse_rubric_text(raw_text: str, *, source: str) -> JudgeRubric:
     threshold_match = _THRESHOLD_RE.search(threshold_section)
     if threshold_match is None:
         raise InvalidJudgeRubricError(
-            f"Judge rubric `## Threshold` section is unparseable; expected "
-            f"`Pass if numeric_score >= <N>` ({source})",
+            f"Judge rubric `## Threshold` section is unparseable; expected `Pass if numeric_score >= <N>` ({source})",
             file_path=source,
             line_number=None,
             field_name="## Threshold",

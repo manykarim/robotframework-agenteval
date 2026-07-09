@@ -319,9 +319,7 @@ class CopilotCLIAdapter(SubprocessAdapter):
         if not session_root.exists():
             return None
         try:
-            candidates = [
-                p for p in session_root.iterdir() if p.is_dir() and p.name not in pre_existing
-            ]
+            candidates = [p for p in session_root.iterdir() if p.is_dir() and p.name not in pre_existing]
         except OSError:
             return None
         if not candidates:

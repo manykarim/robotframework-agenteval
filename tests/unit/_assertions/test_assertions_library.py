@@ -683,9 +683,7 @@ def test_latency_p95_should_be_below_multi_trial_matches_getter() -> None:
 
 def test_token_usage_should_be_below_under_passes() -> None:
     lib = AssertionsLibrary()
-    lib.token_usage_should_be_below(
-        _budget_result(usage=Usage(input_tokens=400, output_tokens=100)), 1000
-    )
+    lib.token_usage_should_be_below(_budget_result(usage=Usage(input_tokens=400, output_tokens=100)), 1000)
 
 
 def test_token_usage_should_be_below_over_fails_with_actual_threshold_unit() -> None:

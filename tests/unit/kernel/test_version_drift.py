@@ -333,9 +333,8 @@ def test_codex_cli_calls_drift_helper_in_init(monkeypatch: pytest.MonkeyPatch) -
     """Story 11.3 AC-11.3.2: `CodexCLIAdapter.__init__` MUST call
     `emit_adapter_version_drift_warning_if_applicable` after `_assert_binary_version`."""
     spy = MagicMock(return_value=False)
-    monkeypatch.setattr(
-        "AgentEval._kernel.version_drift.emit_adapter_version_drift_warning_if_applicable", spy
-    )
+    monkeypatch.setattr("AgentEval._kernel.version_drift.emit_adapter_version_drift_warning_if_applicable", spy)
+
     # Also mock the version probe so it doesn't shell out.
     def _fake_run(cmd: Any, **kwargs: Any) -> Any:
         if isinstance(cmd, list) and cmd[:2] == ["codex", "--version"]:
@@ -355,9 +354,7 @@ def test_codex_cli_calls_drift_helper_in_init(monkeypatch: pytest.MonkeyPatch) -
 def test_copilot_cli_calls_drift_helper_in_init(monkeypatch: pytest.MonkeyPatch) -> None:
     """Story 11.3 AC-11.3.2: same for CopilotCLIAdapter."""
     spy = MagicMock(return_value=False)
-    monkeypatch.setattr(
-        "AgentEval._kernel.version_drift.emit_adapter_version_drift_warning_if_applicable", spy
-    )
+    monkeypatch.setattr("AgentEval._kernel.version_drift.emit_adapter_version_drift_warning_if_applicable", spy)
 
     def _fake_run(cmd: Any, **kwargs: Any) -> Any:
         if isinstance(cmd, list) and cmd[:2] == ["copilot", "--version"]:
@@ -377,9 +374,7 @@ def test_copilot_cli_calls_drift_helper_in_init(monkeypatch: pytest.MonkeyPatch)
 def test_claude_code_cli_calls_drift_helper_in_init(monkeypatch: pytest.MonkeyPatch) -> None:
     """Story 11.3 AC-11.3.2: same for ClaudeCodeCLIAdapter."""
     spy = MagicMock(return_value=False)
-    monkeypatch.setattr(
-        "AgentEval._kernel.version_drift.emit_adapter_version_drift_warning_if_applicable", spy
-    )
+    monkeypatch.setattr("AgentEval._kernel.version_drift.emit_adapter_version_drift_warning_if_applicable", spy)
 
     def _fake_run(cmd: Any, **kwargs: Any) -> Any:
         if isinstance(cmd, list) and cmd[:2] == ["claude", "--version"]:

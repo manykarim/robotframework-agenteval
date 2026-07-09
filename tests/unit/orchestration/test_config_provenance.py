@@ -160,9 +160,7 @@ def test_unknown_env_key_warning_emitted_once_on_instantiation(
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         AgentEval()
-    provder_warnings = [
-        w for w in caught if "AGENTEVAL_PROVDER" in str(w.message) and "os.environ" in str(w.message)
-    ]
+    provder_warnings = [w for w in caught if "AGENTEVAL_PROVDER" in str(w.message) and "os.environ" in str(w.message)]
     assert len(provder_warnings) == 1, (
         f"expected exactly one unknown-key warning for the os.environ source; "
         f"got {[str(w.message) for w in provder_warnings]}"

@@ -78,6 +78,7 @@ def _agent_results_of(conversation: Any) -> list[AgentRunResult]:
         )
     return [t.result for t in turns if t.role == "agent" and t.result is not None]
 
+
 __all__ = ["MetricsLibrary", "Usage"]
 
 # Browser-Library-style docstring migration marker (Phase 3, 2026-05-26).

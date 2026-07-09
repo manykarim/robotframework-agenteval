@@ -86,9 +86,7 @@ def test_bad_alpha_rejected(lib: SkillsLibrary, alpha: float) -> None:
 @pytest.mark.parametrize("threshold", [-0.1, 1.5])
 def test_bad_obsolescence_threshold_rejected(lib: SkillsLibrary, threshold: float) -> None:
     with pytest.raises(ValueError, match="obsolescence_threshold"):
-        lib.compare_against_baseline(
-            skill=str(_SKILL), tasks=str(_TASKS_EC), obsolescence_threshold=threshold
-        )
+        lib.compare_against_baseline(skill=str(_SKILL), tasks=str(_TASKS_EC), obsolescence_threshold=threshold)
 
 
 def test_polling_rejected_before_any_adapter_construction(lib: SkillsLibrary) -> None:
@@ -116,9 +114,7 @@ def test_polling_rejected_before_any_adapter_construction(lib: SkillsLibrary) ->
 
     register_adapter("kw_tracker", _Tracker)
     with pytest.raises(PollingDisallowedError):
-        lib.compare_against_baseline(
-            skill=str(_SKILL), tasks=str(_TASKS_EC), adapter="kw_tracker", polling=1.0
-        )
+        lib.compare_against_baseline(skill=str(_SKILL), tasks=str(_TASKS_EC), adapter="kw_tracker", polling=1.0)
     assert constructed == []
 
 
@@ -201,9 +197,7 @@ def test_baseline_path_end_to_end(lib: SkillsLibrary) -> None:
 def test_heatmap_two_columns(lib: SkillsLibrary) -> None:
     pytest.importorskip("scipy")
     _register_helpful("kw_hm")
-    result = lib.compare_against_baseline(
-        skill=str(_SKILL), tasks=str(_TASKS_EC), adapter="kw_hm", trials=2
-    )
+    result = lib.compare_against_baseline(skill=str(_SKILL), tasks=str(_TASKS_EC), adapter="kw_hm", trials=2)
     data = result.heatmap.as_dict()
     assert len(data) == 4  # 4 tasks
     for _task, cols in data.items():

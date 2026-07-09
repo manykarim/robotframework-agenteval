@@ -129,7 +129,11 @@ def test_run_turn_degrades_to_replay_when_no_session_captured(monkeypatch: Any) 
     state2 = ConversationState(prior_turns=prior, session_ref=None)
     adapter.run_turn("second", conversation_state=state2)
     assert state2.continuation == "replayed_history"
-    assert "--resume" not in spawn_calls[1].get("_resume_session_id", "") if spawn_calls[1].get("_resume_session_id") else True
+    assert (
+        "--resume" not in spawn_calls[1].get("_resume_session_id", "")
+        if spawn_calls[1].get("_resume_session_id")
+        else True
+    )
     # The replay prompt contains the prior turns rendered as text.
     assert "first" in spawn_calls[1]["prompt"]
     assert "reply one" in spawn_calls[1]["prompt"]

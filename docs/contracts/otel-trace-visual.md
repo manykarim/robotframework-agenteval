@@ -1,5 +1,18 @@
 # OTel Trace Visualization
 
+## Scope
+
+Applies to the OTel/GenAI span hierarchy AgentEval emits and the JSONL trace artifact format, plus the documented paths for loading that artifact into Jaeger, Honeycomb, and Tempo. Covers the span shape and artifact schema, not the backends themselves.
+
+## Contract
+
+The span hierarchy and the JSONL artifact format documented below are the stable contract consumers may rely on when building visualizations or importers. Span attribute names and the JSONL line schema do not change without a Change Policy bump.
+
+## Change Policy
+
+Changes to the span hierarchy or JSONL artifact format follow the pre-1.0 stability rules in [`stability-surface.md`](./stability-surface.md).
+
+
 **Status:** Phase-1 stable (Story 8b.3 / FR58 — content authored 2026-05-25).
 **Owning epic:** Epic 8b Story 8b.3.
 **Related ADRs:** ADR-016 (MCP coverage detection), ADR-009 (per-test MCP scope), ADR-012 (catalog row: agentguard ADR-012 OTel RF Listener `adapt`).

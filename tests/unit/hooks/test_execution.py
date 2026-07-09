@@ -150,9 +150,7 @@ def test_payload_override_replaces_event_fields() -> None:
 
 def test_decision_exit_two_blocks_and_ignores_stdout() -> None:
     # Even with an allow stdout JSON, exit 2 → block.
-    decision, err = normalize_decision(
-        2, {"hookSpecificOutput": {"permissionDecision": "allow"}}
-    )
+    decision, err = normalize_decision(2, {"hookSpecificOutput": {"permissionDecision": "allow"}})
     assert decision == "block"
     assert err is None
 
@@ -416,21 +414,15 @@ def test_top_level_decision_block(lib: HooksLibrary) -> None:
 
 def test_headline_block_dangerous_bash(lib: HooksLibrary) -> None:
     """The differentiating capability: a real PreToolUse hook blocks `rm -rf`."""
-    config = _config(
-        {"type": "command", "matcher": "Bash", "command": _cmd("block_dangerous_bash.py")}
-    )
+    config = _config({"type": "command", "matcher": "Bash", "command": _cmd("block_dangerous_bash.py")})
 
     # Dangerous command → BLOCK (exit 2).
-    dangerous = lib.fire_hook_event(
-        config, "PreToolUse", tool_name="Bash", tool_input={"command": "rm -rf /"}
-    )
+    dangerous = lib.fire_hook_event(config, "PreToolUse", tool_name="Bash", tool_input={"command": "rm -rf /"})
     lib.decision_should_be(dangerous, "block")
     lib.exit_code_should_be(dangerous, 2)
 
     # Safe command → ALLOW/none (exit 0).
-    safe = lib.fire_hook_event(
-        config, "PreToolUse", tool_name="Bash", tool_input={"command": "ls -la"}
-    )
+    safe = lib.fire_hook_event(config, "PreToolUse", tool_name="Bash", tool_input={"command": "ls -la"})
     lib.decision_should_be(safe, "none")
     lib.exit_code_should_be(safe, 0)
 
@@ -507,9 +499,7 @@ def test_build_env_drops_lc_prefixed_secret_names(monkeypatch: pytest.MonkeyPatc
     assert env["LC_ALL"] == "en_US.UTF-8"
 
 
-def test_fire_env_drops_lc_prefixed_secret_end_to_end(
-    lib: HooksLibrary, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_fire_env_drops_lc_prefixed_secret_end_to_end(lib: HooksLibrary, monkeypatch: pytest.MonkeyPatch) -> None:
     """MED: a fired hook must not see an `LC_`-prefixed secret in its os.environ."""
     monkeypatch.setenv("LC_SECRET_TOKEN", "lc-secret")
     monkeypatch.setenv("LC_AWS_SECRET_ACCESS_KEY", "lc-aws-secret")

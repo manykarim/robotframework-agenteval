@@ -259,7 +259,9 @@ def test_bootstrap_reproducible_at_fixed_seed() -> None:
 
 
 def test_significance_fields_populated() -> None:
-    register_adapter("sv_sig", make_conditional_stub(with_skill_text="root cause runbook table order id", without_skill_text="x"))
+    register_adapter(
+        "sv_sig", make_conditional_stub(with_skill_text="root cause runbook table order id", without_skill_text="x")
+    )
     result = _run("sv_sig", trials=3)
     assert isinstance(result.mann_whitney, MannWhitneyResult)
     assert -1.0 <= result.cliffs_delta <= 1.0

@@ -405,7 +405,10 @@ def test_finalize_populates_cost_from_step_finish() -> None:
     """Unlike Codex, opencode surfaces per-step `cost`; `cost_usd` sums them."""
     step1 = OpenCodeEvent(
         event_type="step_finish",
-        raw={"type": "step_finish", "part": {"type": "step-finish", "reason": "tool-calls", "tokens": {}, "cost": 0.002}},
+        raw={
+            "type": "step_finish",
+            "part": {"type": "step-finish", "reason": "tool-calls", "tokens": {}, "cost": 0.002},
+        },
     )
     step2 = OpenCodeEvent(
         event_type="step_finish",

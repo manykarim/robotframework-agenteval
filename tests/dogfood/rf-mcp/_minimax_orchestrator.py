@@ -99,8 +99,7 @@ class MinimaxMcpOrchestrator:
             from robot.api.exceptions import SkipExecution
 
             raise SkipExecution(
-                "MINIMAX_API_KEY not set — skipping live-LLM E2E "
-                "(configure `.env` at repo root to enable)."
+                "MINIMAX_API_KEY not set — skipping live-LLM E2E (configure `.env` at repo root to enable)."
             )
 
     @keyword(name="Send Prompt With Mcp Tools")
@@ -132,9 +131,7 @@ class MinimaxMcpOrchestrator:
         base_url = os.environ.get("MINIMAX_BASE_URL", "https://api.minimax.io/v1")
         model_id = model or os.environ.get("MINIMAX_MODEL", "MiniMax-M2.7")
         if not api_key:
-            raise RuntimeError(
-                "MINIMAX_API_KEY not set; expected in `.env` at repo root or process env."
-            )
+            raise RuntimeError("MINIMAX_API_KEY not set; expected in `.env` at repo root or process env.")
 
         # Discover tools via the standard `mcp.lifecycle` accessor — same path the
         # MCPLibrary keywords use, so trajectory equivalence is preserved.

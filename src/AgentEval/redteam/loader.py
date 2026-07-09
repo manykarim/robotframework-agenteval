@@ -101,8 +101,7 @@ def _parse_probe(entry: Any, *, idx: int, file_path: str) -> Probe:
             file_path=file_path,
             field_name=f"probes[{idx}]",
             fix_suggestion=(
-                "Format each probe as a YAML mapping with "
-                "id/category/severity/source/expected_behavior/prompt."
+                "Format each probe as a YAML mapping with id/category/severity/source/expected_behavior/prompt."
             ),
         )
     for required in _REQUIRED_FIELDS:

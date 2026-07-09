@@ -406,9 +406,7 @@ def compare(
             continue
 
         if isinstance(base_ev, ProportionEvidence) and isinstance(curr_ev, ProportionEvidence):
-            comparisons.append(
-                _compare_proportion(metric, direction, base_ev, curr_ev, tol, confidence, emit)
-            )
+            comparisons.append(_compare_proportion(metric, direction, base_ev, curr_ev, tol, confidence, emit))
         elif isinstance(base_ev, ContinuousEvidence) and isinstance(curr_ev, ContinuousEvidence):
             comparisons.append(_compare_continuous(metric, direction, base_ev, curr_ev, tol, emit))
         else:

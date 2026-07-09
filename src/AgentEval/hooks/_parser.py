@@ -23,11 +23,7 @@ format-independent structure. Two input formats are accepted:
 group is an object with an optional `matcher` string and a required `hooks`
 list of typed hook definitions::
 
-    {"hooks": {"PreToolUse": [
-        {"matcher": "Bash", "hooks": [
-            {"type": "command", "command": "..."}
-        ]}
-    ]}}
+    {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "..."}]}]}}
 
 Five hook-definition types are recognized: `command`, `http`, `mcp_tool`,
 `prompt`, `agent`. `command` requires `command`; `http` requires `url`;
@@ -191,10 +187,7 @@ def parse_hook_config(path: str | Path) -> dict[str, list[dict[str, Any]]]:
             f"`hooks` must be a mapping; got {type(hooks_section).__name__}.",
             file_path=file_path_str,
             field_name="/hooks",
-            fix_suggestion=(
-                "Set `hooks` to a mapping of event name → list of matcher "
-                f"groups. {_REAL_SCHEMA_HINT}"
-            ),
+            fix_suggestion=(f"Set `hooks` to a mapping of event name → list of matcher groups. {_REAL_SCHEMA_HINT}"),
         )
 
     result: dict[str, list[dict[str, Any]]] = {}
@@ -294,8 +287,7 @@ def _process_event_item(
         return True, [entry]
 
     raise InvalidHookConfigError(
-        "Hook event item has neither a `hooks` list (matcher group) nor a "
-        "`command` (legacy flat entry).",
+        "Hook event item has neither a `hooks` list (matcher group) nor a `command` (legacy flat entry).",
         file_path=file_path_str,
         field_name=item_pointer,
         fix_suggestion=(f"Provide a matcher group with a `hooks` list. {_REAL_SCHEMA_HINT}"),
@@ -330,8 +322,7 @@ def _process_matcher_group(
             file_path=file_path_str,
             field_name=f"{group_pointer}/hooks",
             fix_suggestion=(
-                f"Set `{group_pointer}/hooks` to a JSON array of typed hook "
-                f"definitions. {_REAL_SCHEMA_HINT}"
+                f"Set `{group_pointer}/hooks` to a JSON array of typed hook definitions. {_REAL_SCHEMA_HINT}"
             ),
         )
 
@@ -389,9 +380,7 @@ def _validate_hook_definition(
 
     inline_skill: dict[str, Any] | None = None
     if hook_type == "command":
-        command = _validate_command_definition(
-            definition, file_path_str=file_path_str, def_pointer=def_pointer
-        )
+        command = _validate_command_definition(definition, file_path_str=file_path_str, def_pointer=def_pointer)
         inline_skill = _extract_inline_skill_frontmatter(command)
     elif hook_type == "http":
         _require_non_empty_str(
@@ -453,10 +442,7 @@ def _resolve_hook_type(
         "Hook definition missing required field `type`.",
         file_path=file_path_str,
         field_name=f"{def_pointer}/type",
-        fix_suggestion=(
-            'Add `type` (e.g. "command", "http", "mcp_tool", "prompt", "agent"). '
-            f"{_REAL_SCHEMA_HINT}"
-        ),
+        fix_suggestion=(f'Add `type` (e.g. "command", "http", "mcp_tool", "prompt", "agent"). {_REAL_SCHEMA_HINT}'),
     )
 
 

@@ -26,9 +26,7 @@ def _load_script_module() -> Any:
     `check-license-headers.py` precedent). Load it via importlib.util so the
     tests exercise the actual script code, not a copy.
     """
-    spec = importlib.util.spec_from_file_location(
-        "_check_catalog_references", SCRIPT_PATH
-    )
+    spec = importlib.util.spec_from_file_location("_check_catalog_references", SCRIPT_PATH)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -65,9 +63,7 @@ def tmp_empty_catalog(tmp_path: Path) -> Path:
 
 def test_regex_extracts_standard_df_reference(script_module: Any) -> None:
     """D-2: standard `DF-X.Y-SZ` (numeric story prefix) extracted."""
-    refs = script_module.extract_references_from_text(
-        "See DF-7.3-S1 for the carry-over."
-    )
+    refs = script_module.extract_references_from_text("See DF-7.3-S1 for the carry-over.")
     assert refs == {"DF-7.3-S1"}
 
 
@@ -78,31 +74,23 @@ def test_regex_extracts_epic_1b_alphanumeric_story_prefix(script_module: Any) ->
     The narrow `\\d+\\.\\d+` regex would silently miss this — the wider
     `[0-9a-z]+\\.[0-9a-z]+` regex covers it.
     """
-    refs = script_module.extract_references_from_text(
-        "Per `DF-1b.4-S1` (Epic 1b carry-over)."
-    )
+    refs = script_module.extract_references_from_text("Per `DF-1b.4-S1` (Epic 1b carry-over).")
     assert refs == {"DF-1b.4-S1"}
 
 
 def test_regex_extracts_multiple_references_per_line(script_module: Any) -> None:
-    refs = script_module.extract_references_from_text(
-        "Closes DF-4.4-S1 + DF-13.5-S1 + DF-1b.4-S1 in one line."
-    )
+    refs = script_module.extract_references_from_text("Closes DF-4.4-S1 + DF-13.5-S1 + DF-1b.4-S1 in one line.")
     assert refs == {"DF-4.4-S1", "DF-13.5-S1", "DF-1b.4-S1"}
 
 
-def test_catalog_rows_only_match_backticked_references(
-    script_module: Any, tmp_catalog_with_rows: Path
-) -> None:
+def test_catalog_rows_only_match_backticked_references(script_module: Any, tmp_catalog_with_rows: Path) -> None:
     """Verification regex requires backtick wrapping — prose mentions don't count."""
     cataloged = script_module.catalog_rows(tmp_catalog_with_rows)
     assert "DF-7.3-S1" in cataloged
     assert "DF-1b.4-S1" in cataloged
 
 
-def test_catalog_rows_skip_unbackticked_unbolded_mentions(
-    script_module: Any, tmp_path: Path
-) -> None:
+def test_catalog_rows_skip_unbackticked_unbolded_mentions(script_module: Any, tmp_path: Path) -> None:
     """A reference without backticks AND without bold-row prefix does NOT count.
 
     Prose mentions like "as discussed for DF-99.99-S99 above" must not
@@ -117,9 +105,7 @@ def test_catalog_rows_skip_unbackticked_unbolded_mentions(
     assert cataloged == set()
 
 
-def test_catalog_rows_bold_row_format_deferred_work(
-    script_module: Any, tmp_path: Path
-) -> None:
+def test_catalog_rows_bold_row_format_deferred_work(script_module: Any, tmp_path: Path) -> None:
     """deferred-work.md uses bold-row prefix `**DF-X.Y-SZ (...)**` format."""
     catalog = tmp_path / "deferred-work.md"
     catalog.write_text(
@@ -134,9 +120,7 @@ def test_catalog_rows_bold_row_format_deferred_work(
     assert "DF-4.2-S1" in cataloged
 
 
-def test_all_catalog_rows_unions_both_formats(
-    script_module: Any, tmp_path: Path
-) -> None:
+def test_all_catalog_rows_unions_both_formats(script_module: Any, tmp_path: Path) -> None:
     """all_catalog_rows unions backticked + bold-row across both catalog files."""
     backticked = tmp_path / "phase-1-5-carry-overs.md"
     backticked.write_text("| **C59** | (`DF-7.3-S1`) | ... |\n", encoding="utf-8")
@@ -146,9 +130,7 @@ def test_all_catalog_rows_unions_both_formats(
     assert cataloged == {"DF-7.3-S1", "DF-4.1-S2"}
 
 
-def test_find_missing_returns_empty_when_all_cataloged(
-    script_module: Any, tmp_catalog_with_rows: Path
-) -> None:
+def test_find_missing_returns_empty_when_all_cataloged(script_module: Any, tmp_catalog_with_rows: Path) -> None:
     """Positive: triples reference DF-7.3-S1, catalog has the row → no missing."""
     triples = [
         ("src/foo.py", 42, "# DF-7.3-S1 enforcement deferred"),
@@ -156,9 +138,7 @@ def test_find_missing_returns_empty_when_all_cataloged(
     assert script_module.find_missing_references(triples, [tmp_catalog_with_rows]) == []
 
 
-def test_find_missing_returns_uncataloged_references(
-    script_module: Any, tmp_empty_catalog: Path
-) -> None:
+def test_find_missing_returns_uncataloged_references(script_module: Any, tmp_empty_catalog: Path) -> None:
     """Mode B fixture: catalog empty, references present → missing list populated."""
     triples = [
         ("src/bar.py", 7, "# DF-99.99-S99 not catalogued"),
@@ -193,9 +173,7 @@ def test_main_mode_b_with_catalog_override_exits_1_on_missing(
         "scan_all_tracked",
         lambda: [("src/forged.py", 1, "# DF-99.99-S99 forged reference")],
     )
-    exit_code = script_module.main(
-        ["--all-tracked", "--catalog", str(tmp_empty_catalog)]
-    )
+    exit_code = script_module.main(["--all-tracked", "--catalog", str(tmp_empty_catalog)])
     assert exit_code == 1
 
 
@@ -234,9 +212,7 @@ def test_main_mode_a_blocks_forged_inline_reference(
 def test_is_self_excluded_catalog_files(script_module: Any) -> None:
     """Edge: the catalog file itself + the deferred-work file are self-excluded."""
     assert script_module.is_self_excluded("docs/phase-1-5-carry-overs.md")
-    assert script_module.is_self_excluded(
-        "_bmad-output/implementation-artifacts/deferred-work.md"
-    )
+    assert script_module.is_self_excluded("_bmad-output/implementation-artifacts/deferred-work.md")
     assert not script_module.is_self_excluded("src/AgentEval/foo.py")
 
 
@@ -333,9 +309,7 @@ def test_parse_unified_diff_no_newline_marker_doesnt_skew_lineno(
     triples = script_module._parse_unified_diff(diff_text)
     assert len(triples) == 2
     assert triples[0][1] == 11
-    assert triples[1][1] == 12, (
-        f"Expected line 12 but got {triples[1][1]} — backslash marker skewed lineno"
-    )
+    assert triples[1][1] == 12, f"Expected line 12 but got {triples[1][1]} — backslash marker skewed lineno"
 
 
 def test_main_returns_2_when_git_fails(
@@ -347,9 +321,7 @@ def test_main_returns_2_when_git_fails(
         raise script_module.GitInvocationError("not a git repository")
 
     monkeypatch.setattr(script_module, "scan_all_tracked", raise_git_error)
-    exit_code = script_module.main(
-        ["--all-tracked", "--catalog", str(tmp_empty_catalog)]
-    )
+    exit_code = script_module.main(["--all-tracked", "--catalog", str(tmp_empty_catalog)])
     assert exit_code == 2
 
 
@@ -363,9 +335,7 @@ def test_staged_diff_lines_raises_git_invocation_error_on_git_failure(
         stdout = ""
         stderr = "fatal: not a git repository"
 
-    monkeypatch.setattr(
-        script_module.subprocess, "run", lambda *a, **kw: _Result()
-    )
+    monkeypatch.setattr(script_module.subprocess, "run", lambda *a, **kw: _Result())
     with pytest.raises(script_module.GitInvocationError) as excinfo:
         script_module.staged_diff_lines()
     assert "not a git repository" in str(excinfo.value)

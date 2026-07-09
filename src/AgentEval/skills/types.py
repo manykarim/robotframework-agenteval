@@ -447,9 +447,7 @@ class SkillBenchmarkArmSummary:
 
     def __post_init__(self) -> None:
         if self.arm not in BENCHMARK_ARMS:
-            raise ValueError(
-                f"SkillBenchmarkArmSummary.arm must be one of {sorted(BENCHMARK_ARMS)}; got {self.arm!r}"
-            )
+            raise ValueError(f"SkillBenchmarkArmSummary.arm must be one of {sorted(BENCHMARK_ARMS)}; got {self.arm!r}")
         if not 0.0 <= self.pass_rate <= 1.0:
             raise ValueError(f"SkillBenchmarkArmSummary.pass_rate must be in [0.0, 1.0]; got {self.pass_rate!r}")
         # M_R6 defensive copy.

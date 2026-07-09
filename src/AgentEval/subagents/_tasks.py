@@ -177,8 +177,6 @@ def load_subagent_routing_tasks(path: str | Path) -> list[SubagentRoutingTask]:
                 fix_suggestion="Add a non-empty string `expected_subagent:` field to the task.",
             )
 
-        tasks.append(
-            SubagentRoutingTask(id=task_id, prompt=prompt, expected_subagent=expected_subagent)
-        )
+        tasks.append(SubagentRoutingTask(id=task_id, prompt=prompt, expected_subagent=expected_subagent))
 
     return tasks

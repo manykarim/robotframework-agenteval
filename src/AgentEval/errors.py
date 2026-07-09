@@ -1156,9 +1156,7 @@ class JudgeOutputParseError(AgentEvalCompatError):
 
     def __str__(self) -> str:
         message = Exception.__str__(self)
-        raw_preview = (
-            self.raw_response[:500] + "..." if len(self.raw_response) > 500 else (self.raw_response or "N/A")
-        )
+        raw_preview = self.raw_response[:500] + "..." if len(self.raw_response) > 500 else (self.raw_response or "N/A")
         return (
             f"{self.error_code}: {message}\n"
             f"  Parse error: {self.parse_error or 'N/A'}\n"
@@ -1252,11 +1250,7 @@ class ConversationContinuationUnsupportedError(AgentEvalCompatError):
 
     def __str__(self) -> str:
         base = Exception.__str__(self)
-        return (
-            f"{self.error_code}: {base}\n"
-            f"  Adapter: {self.adapter or 'N/A'}\n"
-            f"  Fix: {self.fix_suggestion or 'N/A'}"
-        )
+        return f"{self.error_code}: {base}\n  Adapter: {self.adapter or 'N/A'}\n  Fix: {self.fix_suggestion or 'N/A'}"
 
 
 # --------------------------------------------------------------------------- #

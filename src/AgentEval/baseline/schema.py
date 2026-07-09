@@ -139,8 +139,7 @@ def _validate_shape(data: Any, *, source: str) -> None:
             "baseline is missing the required 'schema_version' field",
             file_path=source,
             field_name="schema_version",
-            fix_suggestion="Re-generate via `Save Metrics Baseline` (current schema_version="
-            f"{SCHEMA_VERSION}).",
+            fix_suggestion=f"Re-generate via `Save Metrics Baseline` (current schema_version={SCHEMA_VERSION}).",
         )
     found = data["schema_version"]
     if found != SCHEMA_VERSION:
@@ -222,7 +221,9 @@ def _from_payload(data: dict[str, Any], *, source: str) -> MetricsBaseline:
             value = _as_float(_require(payload, name, "value", source), name, "value", source)
             if not (0 <= successes <= trials):
                 raise _schema_error(
-                    source, name, "successes",
+                    source,
+                    name,
+                    "successes",
                     f"metric {name!r} requires 0 <= successes <= trials; got successes={successes}, trials={trials}",
                 )
             if not (0.0 <= value <= 1.0):

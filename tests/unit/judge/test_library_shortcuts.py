@@ -58,7 +58,9 @@ def _judge_response(
     payload = {
         "numeric_score": numeric_score,
         "reasoning": reasoning,
-        "criteria_breakdown": criteria_breakdown if criteria_breakdown is not None else {"user_criteria": numeric_score},
+        "criteria_breakdown": criteria_breakdown
+        if criteria_breakdown is not None
+        else {"user_criteria": numeric_score},
     }
     return AgentRunResult(
         response_text=json.dumps(payload),

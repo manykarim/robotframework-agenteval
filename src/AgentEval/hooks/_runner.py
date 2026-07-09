@@ -117,6 +117,7 @@ def _looks_secret_bearing(name: str) -> bool:
     upper = name.upper()
     return any(marker in upper for marker in _ENV_DENY_SUBSTRINGS)
 
+
 # Decision vocabulary produced by `normalize_decision`.
 _PERMISSION_DECISION_MAP: dict[str, str] = {
     "deny": "block",

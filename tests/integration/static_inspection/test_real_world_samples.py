@@ -154,9 +154,7 @@ def test_subagent_optional_model_present(subagents: SubagentsLibrary) -> None:
 # --------------------------------------------------------------------------- #
 
 
-HOOK_REAL_WORLD_SAMPLE = (
-    Path(__file__).resolve().parents[2] / "fixtures" / "hooks" / "settings-real-world.json"
-)
+HOOK_REAL_WORLD_SAMPLE = Path(__file__).resolve().parents[2] / "fixtures" / "hooks" / "settings-real-world.json"
 
 
 def test_hook_get_config_three_events(hooks: HooksLibrary) -> None:

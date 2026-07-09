@@ -317,8 +317,7 @@ class BaselineLibrary:
 
         if report.regressed:
             lines = [
-                "Metrics regressed beyond tolerance vs the committed baseline "
-                f"({Path(baseline)}):",
+                f"Metrics regressed beyond tolerance vs the committed baseline ({Path(baseline)}):",
             ]
             for c in report.failures():
                 lines.append(f"  - {c.metric}: {c.reason}")

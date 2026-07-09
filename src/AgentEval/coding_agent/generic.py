@@ -257,7 +257,6 @@ class GenericAdapter(InProcessAdapter):
         )
         return result
 
-
     def run_turn(
         self,
         prompt: str,

@@ -260,13 +260,7 @@ def test_unknown_type_passes_through(lib: HooksLibrary, tmp_path: Path) -> None:
     f = _write(
         tmp_path,
         "unk.json",
-        {
-            "hooks": {
-                "PreToolUse": [
-                    {"matcher": "Bash", "hooks": [{"type": "some_future_type", "whatever": 1}]}
-                ]
-            }
-        },
+        {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "some_future_type", "whatever": 1}]}]}},
     )
     entry = lib.get_config(f)["PreToolUse"][0]
     assert entry["type"] == "some_future_type"
@@ -498,9 +492,7 @@ def test_reserved_inline_skill_key_rejected_nested_pointer(lib: HooksLibrary, tm
         "reserved.json",
         {
             "hooks": {
-                "PreToolUse": [
-                    {"hooks": [{"type": "command", "command": "x", "inline_skill": {"injected": "yes"}}]}
-                ]
+                "PreToolUse": [{"hooks": [{"type": "command", "command": "x", "inline_skill": {"injected": "yes"}}]}]
             }
         },
     )
@@ -604,9 +596,7 @@ def test_no_hooks_section_returns_empty_dict(lib: HooksLibrary, tmp_path: Path) 
 def test_bom_prefixed_json_parses(lib: HooksLibrary, tmp_path: Path) -> None:
     """`utf-8-sig` strips BOM transparently per Story 2.1 code-review fix pattern."""
     bom = tmp_path / "bom.json"
-    bom.write_bytes(
-        b'\xef\xbb\xbf{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "x"}]}]}}'
-    )
+    bom.write_bytes(b'\xef\xbb\xbf{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "x"}]}]}}')
     config = lib.get_config(bom)
     assert config["PreToolUse"][0]["command"] == "x"
 

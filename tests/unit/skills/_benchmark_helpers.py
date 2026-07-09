@@ -184,9 +184,7 @@ def make_content_sensitive_judge(
             if prompt_sink is not None:
                 prompt_sink.append(prompt)
             score = pass_score if pass_marker.lower() in prompt.lower() else fail_score
-            payload = json.dumps(
-                {"numeric_score": score, "reasoning": "graded", "criteria_breakdown": {}}
-            )
+            payload = json.dumps({"numeric_score": score, "reasoning": "graded", "criteria_breakdown": {}})
             return _result(payload)
 
     return _Judge

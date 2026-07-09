@@ -316,9 +316,7 @@ def _parse_benchmark_task(
                     field_name=f"{pointer_prefix}/expected_content/{j}",
                     fix_suggestion="Each `expected_content` entry must be a non-empty substring string.",
                 )
-        return SkillBenchmarkTask(
-            id=task_id, prompt=prompt, expected_content=tuple(expected_raw), rubric_path=None
-        )
+        return SkillBenchmarkTask(id=task_id, prompt=prompt, expected_content=tuple(expected_raw), rubric_path=None)
 
     if has_rubric:
         rubric = raw_task.get("rubric")

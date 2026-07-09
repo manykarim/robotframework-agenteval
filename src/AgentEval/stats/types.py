@@ -77,8 +77,7 @@ class MannWhitneyResult:
         # Permit nan + the [0, 1] range; reject anything else.
         if not (math.isnan(self.p_value) or 0.0 <= self.p_value <= 1.0):
             raise ValueError(
-                f"p_value must be in [0.0, 1.0] or nan (scipy identical-samples convention); "
-                f"got {self.p_value!r}"
+                f"p_value must be in [0.0, 1.0] or nan (scipy identical-samples convention); got {self.p_value!r}"
             )
 
 

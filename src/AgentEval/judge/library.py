@@ -273,9 +273,7 @@ class JudgeLibrary(_HostBudgetPlumbing):
             # would validate a different, under-specified task than the preset
             # scores (add-judge-criteria-shortcuts codex MED). Guard on a
             # non-empty prompt so a blank prompt never adds an empty section.
-            extra_sections: tuple[tuple[str, str], ...] = (
-                (("Input", row.prompt),) if row.prompt.strip() else ()
-            )
+            extra_sections: tuple[tuple[str, str], ...] = (("Input", row.prompt),) if row.prompt.strip() else ()
             judge_prompt = _compose_judge_prompt(parsed_rubric, synth_result, extra_sections=extra_sections)
             run_kwargs: dict[str, Any] = dict(adapter_kwargs)
             if judge_model is not None:
@@ -815,9 +813,7 @@ class JudgeLibrary(_HostBudgetPlumbing):
 # --------------------------------------------------------------------------- #
 
 
-_THRESHOLD_LINE_RE = re.compile(
-    r"Pass\s+if\s+numeric_score\s*>=\s*[0-9]+(?:\.[0-9]+)?", re.IGNORECASE
-)
+_THRESHOLD_LINE_RE = re.compile(r"Pass\s+if\s+numeric_score\s*>=\s*[0-9]+(?:\.[0-9]+)?", re.IGNORECASE)
 """Matches the `## Threshold` body line so a preset threshold override can be
 reflected in the synthesized `raw_text` shown to the judge (not just the
 `JudgeRubric.threshold` field used for `pass_threshold_met`)."""
@@ -950,9 +946,7 @@ def _agent_turns_of(conversation: Any) -> list[ConversationTurn]:
     """Extract the ordered agent turns from a live handle OR a frozen transcript."""
     turns = getattr(conversation, "turns", None)
     if turns is None:
-        raise TypeError(
-            f"expected a ConversationHandle or ConversationTranscript; got {type(conversation).__name__}"
-        )
+        raise TypeError(f"expected a ConversationHandle or ConversationTranscript; got {type(conversation).__name__}")
     return [t for t in turns if t.role == "agent"]
 
 

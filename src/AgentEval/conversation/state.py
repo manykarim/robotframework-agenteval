@@ -22,8 +22,7 @@ required Protocol surface — the Protocol still has a single `run()`).
 
 An adapter MAY implement::
 
-    def run_turn(self, prompt: str, *, conversation_state: ConversationState, **kwargs) -> AgentRunResult:
-        ...
+    def run_turn(self, prompt: str, *, conversation_state: ConversationState, **kwargs) -> AgentRunResult: ...
 
 Detection at `Start Conversation` time is
 ``callable(getattr(adapter, "run_turn", None))`` — the same

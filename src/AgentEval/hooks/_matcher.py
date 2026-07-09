@@ -148,6 +148,7 @@ def safe_search(
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous_handler)
 
+
 # Documented flavor divergence, echoed into `Validate Matcher Syntax` output.
 MATCHER_ENGINE_NOTE: str = (
     "Matchers are evaluated with Python `re` (unanchored `re.search`), NOT "

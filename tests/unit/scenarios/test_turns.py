@@ -99,7 +99,9 @@ class _RecProvider:
     def __init__(self) -> None:
         self.calls: list[list[tuple[str, Any]]] = []
 
-    def chat(self, messages: list[Message], tools: Any = None, *, stream: bool = False, model: Any = None, **kw: Any) -> ChatResponse:
+    def chat(
+        self, messages: list[Message], tools: Any = None, *, stream: bool = False, model: Any = None, **kw: Any
+    ) -> ChatResponse:
         self.calls.append([(m.role, m.content) for m in messages])
         last = next((m.content for m in reversed(messages) if m.role == "user"), "")
         return ChatResponse(text=f"echo:{last}", usage=ProviderUsage(input_tokens=1, output_tokens=1), cost_usd=0.01)

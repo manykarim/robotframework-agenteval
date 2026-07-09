@@ -212,9 +212,7 @@ def _validate_budget_threshold(threshold: float, *, unit: str) -> None:
     ordering principle as the Story 6.2 `mode`-validation fix).
     """
     if not math.isfinite(threshold) or threshold <= 0:
-        raise ValueError(
-            f"threshold must be a finite number greater than 0 (unit: {unit}); got {threshold!r}"
-        )
+        raise ValueError(f"threshold must be a finite number greater than 0 (unit: {unit}); got {threshold!r}")
 
 
 def _guard_non_empty_result(result: AgentRunResult | list[AgentRunResult]) -> None:
@@ -259,10 +257,7 @@ def _budget_pass_evidence(
     run_count: int,
 ) -> str:
     """Build the pass-side `robot.api.logger.info` evidence line (design D7 / AC-SIMPLICITY-01)."""
-    return (
-        f"{label} assertion passed: observed={observed} {unit}, "
-        f"threshold={threshold} {unit}, runs={run_count}"
-    )
+    return f"{label} assertion passed: observed={observed} {unit}, threshold={threshold} {unit}, runs={run_count}"
 
 
 def _compute_token_total(result: AgentRunResult) -> int:

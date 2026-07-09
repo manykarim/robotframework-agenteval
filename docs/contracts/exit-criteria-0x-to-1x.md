@@ -1,5 +1,10 @@
 # Exit Criteria: 0.x → 1.x
 
+## Contract
+
+The stable contract of this document is the **6 promotion criteria** enumerated below: 0.x → 1.x promotion requires every one of them to hold. The criteria list, its `accepted` status, and the 3-month-no-break window are the guarantees consumers may rely on; the coverage tables are supporting evidence.
+
+
 **Status:** accepted (Story 9.3 Phase-1 close, 2026-05-25 — concrete numeric bars finalized).
 **Owning epic:** Epic 9 Story 9.3 (final content); Story 1a.6 (initial stub).
 **Related ADRs:** none directly; informed by all Phase-1 ADRs as the documented "Phase 1 complete" gate.
