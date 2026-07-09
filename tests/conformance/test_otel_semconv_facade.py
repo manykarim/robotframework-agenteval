@@ -63,8 +63,8 @@ _SKIP_LINE_MARKER = "FACADE_GREP_SKIP"
 # `agenteval.tool_total_count` (FR55 cohort heatmap) would slip the guard.
 # Now matches the broad `gen_ai.<anything>` + `agenteval.<anything>` shape;
 # entry-point group names are excluded via `_ENTRY_POINT_GROUPS` exemption.
-_GEN_AI_RE = re.compile(r'"gen_ai\.[a-z_]+(?:[._][a-z_]+)*"')
-_AGENTEVAL_RE = re.compile(r'"agenteval\.[a-z_]+(?:[._][a-z_]+)*"')
+_GEN_AI_RE = re.compile(r'"gen_ai\.[a-z_]+(?:\.[a-z_]+)*"')
+_AGENTEVAL_RE = re.compile(r'"agenteval\.[a-z_]+(?:\.[a-z_]+)*"')
 
 # Entry-point group names governed by ADR-013, NOT the OTel facade.
 # Skip lines that ONLY mention these names + nothing else flagged.
