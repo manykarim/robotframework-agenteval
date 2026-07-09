@@ -118,6 +118,7 @@ _SUB_LIBRARIES: tuple[tuple[str, str], ...] = (
     ("AgentEval.subagents.library", "SubagentsLibrary"),  # compose-single-library-import (was Story 2.2 carve-out)
     ("AgentEval.mcp.library", "MCPLibrary"),  # compose-single-library-import (was Story 2.3 carve-out)
     ("AgentEval.conversation.library", "ConversationLibrary"),  # add-multi-turn-conversation-testing
+    ("AgentEval.redteam.library", "RedTeamLibrary"),  # add-red-team-probes
 )
 
 
@@ -338,7 +339,7 @@ class AgentEval(DynamicCore):  # type: ignore[misc]
             # `OrchestrationLibrary` so `AgentEval(provider="mock").send_prompt(...)`
             # actually routes through the mock provider. Pre-edit broke
             # PRD FR41 precedence at the orchestration boundary.
-            if cls_name in ("OrchestrationLibrary", "ConversationLibrary"):
+            if cls_name in ("OrchestrationLibrary", "ConversationLibrary", "RedTeamLibrary"):
                 # Story 14.6 (C26 closure): forward `max_cost_usd` +
                 # `max_runtime_seconds` for Tier-3 `@guarded_fanout`
                 # enforcement via the unified `_HostBudgetPlumbing` mixin

@@ -133,6 +133,8 @@ __all__ = [
     # add-multi-turn-conversation-testing (2):
     "ConversationClosedError",
     "ConversationContinuationUnsupportedError",
+    # add-red-team-probes (1):
+    "InvalidRedTeamProbeError",
     # Warnings (1):
     "DegradedTraceWarning",
 ]
@@ -1227,6 +1229,40 @@ class ConversationContinuationUnsupportedError(AgentEvalCompatError):
             f"  Adapter: {self.adapter or 'N/A'}\n"
             f"  Fix: {self.fix_suggestion or 'N/A'}"
         )
+
+
+# --------------------------------------------------------------------------- #
+# Red-team probe errors (add-red-team-probes — design D1/D2)                    #
+# Exactly ONE new leaf: probe-pack parse/schema validation (Tier-1 setup).      #
+# --------------------------------------------------------------------------- #
+
+
+class InvalidRedTeamProbeError(_FR59Tier1SetupFailureError):
+    """Raised when a red-team probe pack (bundled or user YAML) fails parse or schema validation.
+
+    add-red-team-probes Tier-1 setup-failure leaf (parallel to
+    `InvalidScenarioYAMLError` + `InvalidJudgeRubricError`). Raised by
+    `redteam/loader.load_pack()` / `load_bundled_pack()` when:
+        - A probe YAML file fails `yaml.safe_load()` (malformed YAML)
+        - A probe entry omits a required field (`id`, `category`, `severity`,
+          `source`, `expected_behavior`, `prompt`)
+        - A probe declares a `category` outside the four defensive-robustness
+          classes (`prompt_injection`, `jailbreak`, `pii_leakage`,
+          `encoding_obfuscation`)
+        - A probe `id` is duplicated within a pack OR across the bundled + a
+          user-supplied pack (silent override would corrupt attack-success-rate
+          accounting)
+        - A user-supplied file does not exist or is not `.yaml` / `.yml`
+        - The pack files disagree on `pack_version`
+
+    `field_name` names the offending probe id + field (e.g., `pi-003.category`)
+    so the operator can pinpoint the bad entry. Root-error case uses `""`.
+
+    `error_code = "INVALID_REDTEAM_PROBE"`; exit code 65 (EX_DATAERR; same
+    family as other Tier-1 setup-failure errors).
+    """
+
+    error_code: ClassVar[str] = "INVALID_REDTEAM_PROBE"
 
 
 # --------------------------------------------------------------------------- #

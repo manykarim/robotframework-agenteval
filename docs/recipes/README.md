@@ -1,6 +1,6 @@
 # Recipe Gallery
 
-Nine worked examples covering the agenteval keyword surface, spanning skill
+Worked examples covering the agenteval keyword surface, spanning skill
 authoring (validating skill `.md` files and measuring activation reliability),
 agent integration (building MCP servers, shipping custom adapters, porting
 downstream test corpora), and CI wiring (release gates, smoke checks,
@@ -19,6 +19,8 @@ conformance suites).
 | 7 | [First MCP server test (Tier-1)](./07-first-mcp-server-test-tier-1.md) | Static-inspection-only MCP config validation (`MCP.Get Server Config`) |
 | 8 | [CI integration](./08-ci-integration.md) | `dogfood-integration.yml` + `parity-suite-smoke` patterns + release-pending label gating |
 | 9 | [Testing Claude Code hooks](./09-testing-claude-code-hooks.md) | Fire synthetic hook events + assert block/allow decisions (`Hook.Fire Hook Event`, Tier-1, no API keys) |
+| 10 | [Multi-turn conversations](./10-multi-turn-conversations.md) | Scripted `Send Message` sequences + `Simulate User` (persona/goal) over a `ConversationHandle` |
+| 11 | [Red-team probes](./11-red-team-probes.md) | Defensive single-turn adversarial-robustness gate — `RedTeam.Run Probe` → attack-success-rate (lower is safer) |
 
 ## How to use
 

@@ -48,6 +48,9 @@ _NAMESPACED: dict[str, str] = {
     "MCPLibrary": "MCP",
     "StatsLibrary": "Stat",
     "JudgeLibrary": "Judge",
+    # add-red-team-probes: defensive adversarial-robustness engine — every
+    # keyword carries the `RedTeam.` prefix (post-dot portion multi-word).
+    "RedTeamLibrary": "RedTeam",
 }
 
 # Assertion-form keywords that intentionally carry NO namespace prefix even

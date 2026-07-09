@@ -108,11 +108,11 @@ Exit codes from `python -m AgentEval.conformance` follow the sysexits-style 24-l
 
 ## Keywords at a glance
 
-**90 keywords across 12 libraries — one import.** A single `Library    AgentEval` line composes every shipped sub-library (skills, subagents, hooks, MCP, stats, judge, plus the core run-measure-assert loop) and exposes all 90 keywords with no `WITH NAME` incantation. **Naming rule:** keywords that operate on a specific artifact or engine — skills, subagents, hooks, MCP servers, statistics, LLM-judge — carry that namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.`); the shared run-measure-assert loop (`Send Prompt`, `Get Tool Call Count`, `Trajectory Should Match`, `Get Effective Config`, …) is unprefixed. The tables below group the keywords by originating sub-library, but every one of them resolves under the single top-level import. Each sub-library remains importable standalone by module path (`Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0`) for per-library budget scoping — the baked prefixes make the call sites identical under both styles, so no `WITH NAME` is needed (and adding it produces a pointless double prefix like `Skill.Skill.Get Frontmatter`).
+**94 keywords across 13 libraries — one import.** A single `Library    AgentEval` line composes every shipped sub-library (skills, subagents, hooks, MCP, stats, judge, red-team, plus the core run-measure-assert loop) and exposes all 94 keywords with no `WITH NAME` incantation. **Naming rule:** keywords that operate on a specific artifact or engine — skills, subagents, hooks, MCP servers, statistics, LLM-judge, red-team probes — carry that namespace prefix (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.` / `RedTeam.`); the shared run-measure-assert loop (`Send Prompt`, `Get Tool Call Count`, `Trajectory Should Match`, `Get Effective Config`, …) is unprefixed. The tables below group the keywords by originating sub-library, but every one of them resolves under the single top-level import. Each sub-library remains importable standalone by module path (`Library    AgentEval.skills.library.SkillsLibrary    max_cost_usd=2.0`) for per-library budget scoping — the baked prefixes make the call sites identical under both styles, so no `WITH NAME` is needed (and adding it produces a pointless double prefix like `Skill.Skill.Get Frontmatter`).
 
-### `AgentEval` — core-loop keywords (60 of the 90)
+### `AgentEval` — core-loop keywords (60 of the 94)
 
-The composed `AgentEval` library holds all 90 keywords. The 60 below are the unprefixed run-measure-assert loop plus the `Stat.*`, `Judge.*`, and `Hook.*` keywords; the remaining 30 (`Skill.*`, `MCP.*`, `Subagent.*`) are listed in the sub-library sections further down and resolve under the same single import.
+The composed `AgentEval` library holds all 94 keywords. The 60 below are the unprefixed run-measure-assert loop plus the `Stat.*`, `Judge.*`, and `Hook.*` keywords; the remaining 34 (`Skill.*`, `MCP.*`, `Subagent.*`, `RedTeam.*`) are listed in the sub-library sections further down and resolve under the same single import.
 
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html](https://manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html)** (GitHub Pages) · local: [`docs/keywords/AgentEval.html`](./docs/keywords/AgentEval.html)
 
@@ -286,6 +286,21 @@ All composed into the top-level `AgentEval` library; every keyword resolves unde
 Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/HooksLibrary.html](https://manykarim.github.io/robotframework-agenteval/keywords/HooksLibrary.html)** (GitHub Pages) · local: [`docs/keywords/HooksLibrary.html`](./docs/keywords/HooksLibrary.html)
 
 `Hook.Get Config` — Claude Code `settings.json` hook configuration parsing. Composed into the top-level `AgentEval` library, so it resolves under a plain `Library    AgentEval` import.
+
+### `AgentEval.redteam.library.RedTeamLibrary` — 4 keywords
+
+Full libdoc: **[manykarim.github.io/robotframework-agenteval/keywords/RedTeamLibrary.html](https://manykarim.github.io/robotframework-agenteval/keywords/RedTeamLibrary.html)** (GitHub Pages) · local: [`docs/keywords/RedTeamLibrary.html`](./docs/keywords/RedTeamLibrary.html)
+
+**Defensive** single-turn adversarial-robustness testing of an agent you own — a curated, versioned probe pack (`prompt_injection` / `jailbreak` / `pii_leakage` / `encoding_obfuscation`, 24 attributed probes) plus keywords to run probes, detect refusals, and gate on an attack-success-rate. Composed into the top-level `AgentEval` library.
+
+| Keyword | Tier | Purpose |
+|---|---|---|
+| `RedTeam.Run Probe` | 3 | Run one probe (`probe=<id>`) or a whole category (`probe=all`) against an adapter; returns a structured `ProbeResult` / `list[ProbeResult]`. Fan-out honors `max_cost_usd`. |
+| `RedTeam.Should Refuse` | 2 | Assert a probe result is a refusal (the SAFE outcome); `strategy=pattern` (default, credential-free) / `judge` / `both`. |
+| `RedTeam.Get Attack Success Rate` | 1 | Reduce probe results to the attack-success-rate — compliance fraction, **lower is safer**, a fully-refusing agent scores `0.0` — with a Wilson CI reused from the Pass@k machinery. |
+| `RedTeam.Attack Success Rate Should Be Below` | 1 | CI-gating assertion: fail when the attack-success-rate is at or above a threshold. |
+
+Multi-turn / Crescendo-style escalating attacks are a documented future extension (they build on `ConversationLibrary`'s `Simulate User`). Extend the corpus without forking via `RedTeam.Run Probe    probe_pack=your-probes.yaml`.
 
 ## Keyword tiers
 

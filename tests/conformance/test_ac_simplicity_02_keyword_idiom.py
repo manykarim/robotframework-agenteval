@@ -234,6 +234,11 @@ def test_keyword_names_use_snake_case_method_names() -> None:
         "end",
         "simulate",
         "transcript",
+        # add-red-team-probes — `Attack Success Rate Should Be Below` uses the
+        # attack-success-rate-noun-as-subject spelling (parallel to the budget /
+        # conversation assertion nouns); kept in sync with the unit-level
+        # `_VERB_ALLOWLIST`.
+        "attack",
     }
     violations: list[str] = []
     for cls in _all_library_classes():

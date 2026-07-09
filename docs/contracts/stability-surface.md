@@ -228,6 +228,21 @@ then, only the discovery seam survives:
 
 Phase-3 sandbox backend implementations (Docker, ephemeral worktree, gVisor optionally) live in separate packages and manage their own stability.
 
+### Red-Team Probe Surface (OpenSpec `add-red-team-probes`)
+
+Defensive, single-turn adversarial-robustness testing of an agent the operator OWNS. Not an offensive tool.
+
+- `AgentEval.redteam.library.RedTeamLibrary` keywords — `experimental` label. Composed into the top-level `AgentEval` library via `_SUB_LIBRARIES` (namespaced `RedTeam.` prefix); inherits `_HostBudgetPlumbing` + accepts `default_provider` (auto-wired from the top-level config):
+  - `RedTeam.Run Probe` (Tier-3, `@guarded_fanout`) → runs one probe (`probe=<id>`) or a whole category (`probe=all`) against a registered adapter; returns a structured `ProbeResult` / `list[ProbeResult]`. `probe=all` fan-out honors `max_cost_usd` / `max_runtime_seconds`; single-probe runs are a 1-trial fan-out. Optional `probe_pack=<path>` merges user YAML with the bundled pack; `strategy=pattern|judge|both` sets the stored refusal verdict.
+  - `RedTeam.Should Refuse` (Tier-2) → asserts a `ProbeResult` is a refusal (SAFE); `strategy=pattern` (default, credential-free) / `judge` / `both` (refuse iff EITHER detects). Raises `AssertionError` on compliance.
+  - `RedTeam.Get Attack Success Rate` (Tier-1) → reduces `list[ProbeResult]` (or a single result) to an `AttackSuccessRate`; ASR = compliance fraction, **lower is safer** (fully-refusing agent = `0.0`), with a Wilson CI reused from `stats/wilson.py` (no second CI implementation).
+  - `RedTeam.Attack Success Rate Should Be Below` (Tier-1) → CI-gating assertion; strict `asr < threshold` (default `0.05`); on failure raises `AssertionError` reporting observed ASR + Wilson CI + threshold.
+- `AgentEval.redteam.schema.{Probe, ProbePack, ProbeResult, AttackSuccessRate}` frozen dataclasses — `experimental` label. `Probe(id, category, severity, source, expected_behavior, prompt)`; `ProbeResult(..., adapter, response_text, refused, refusal_strategy, result)` with a `complied` property (`not refused`); `AttackSuccessRate(asr, ci_lower, ci_upper, confidence, n, compliance_count, refusal_count)`. **ASR polarity is load-bearing: `asr` is the COMPLIANCE fraction; lower is safer.**
+- Bundled probe pack (`AgentEval/redteam/probes/*.yaml`, `pack_version="1.0.0"`, 24 probes) — `experimental` label. Four categories (`prompt_injection` / `jailbreak` / `pii_leakage` / `encoding_obfuscation`), 6 attributed probes each (public garak / DeepTeam / OWASP LLM Top 10 sources); non-weaponizable; NO DoS / resource-exhaustion probes. Each YAML carries a top-of-file VALIDATION-CEILING note. User-extensible via `RedTeam.Run Probe    probe_pack=<path>` (same schema; duplicate ids raise `InvalidRedTeamProbeError`).
+- `AgentEval._heatmap.models.CohortHeatmap.from_probe_results(results)` classmethod — `experimental` label. Projects probe results into the existing cohort-heatmap model as a probe-category × adapter grid (cell = ASR); reuses the existing `as_ascii` / `as_dict` / `as_html` renderers. NOTE: cell value is ASR — a HIGHER cell is WORSE (inverted vs Pass@k heatmaps).
+- Error `AgentEval.errors.InvalidRedTeamProbeError` — `experimental` label. Tier-1 setup-failure leaf (`error_code="INVALID_REDTEAM_PROBE"`, File/Line/Field/Fix layout) raised on probe-pack parse / schema / duplicate-id / bad-category failures.
+- **Deferred:** multi-turn / Crescendo-style escalating attacks (`DF-RTP-S1` / C108) — build on `ConversationLibrary`'s `Simulate User`; every shipped probe is single-turn.
+
 ## Change Policy
 
 This contract evolves per its own labels (the meta-rule: this contract is `stable` from Phase-1 onward). Adding new elements to the registry is minor-version-bump safe. Changing an existing element's label requires:

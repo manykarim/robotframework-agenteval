@@ -22,10 +22,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from AgentEval.discoverability.schema import (
         DiscoverabilityComparisonResult,
         DiscoverabilityResult,
     )
+    from AgentEval.redteam.schema import ProbeResult
     from AgentEval.skills.types import SkillDiscoverabilityComparisonResult
 
 __all__ = ["CohortHeatmap"]
@@ -49,35 +52,58 @@ _PASS_RATE_PALETTE: Final[tuple[tuple[float, str, str], ...]] = (
     (0.6, "#84cc16", "#0f172a"),  # lime
     (0.8, "#22c55e", "#ffffff"),  # green — high success
 )
+# ASR (attack-success-rate) palette — REVERSED polarity: HIGHER is WORSE.
+# add-red-team-probes review fix: red-team projections store ASR (compliance
+# fraction; 1.0 = fully compromised = worst), so reusing the Pass@k palette
+# painted the worst cell green. This palette maps low ASR (safe) → green and
+# high ASR (unsafe) → red so the color matches the safety polarity.
+_ASR_PALETTE: Final[tuple[tuple[float, str, str], ...]] = (
+    (0.0, "#22c55e", "#ffffff"),  # green — low ASR (safe)
+    (0.2, "#84cc16", "#0f172a"),  # lime
+    (0.4, "#eab308", "#0f172a"),  # yellow
+    (0.6, "#f97316", "#ffffff"),  # orange
+    (0.8, "#ef4444", "#ffffff"),  # red — high ASR (worst)
+)
 # Missing cell (cell[(task, model)] not present in `cells`): light gray.
 _MISSING_CELL_STYLE: Final[tuple[str, str]] = ("#e5e7eb", "#0f172a")
 
 
-def _color_for_pass_rate(rate: float | None) -> tuple[str, str]:
-    """Map a Pass@k rate to (background_hex, text_hex) per `_PASS_RATE_PALETTE`.
+def _color_for_value(
+    rate: float | None,
+    palette: tuple[tuple[float, str, str], ...] = _PASS_RATE_PALETTE,
+) -> tuple[str, str]:
+    """Map a ``[0.0, 1.0]`` value to (background_hex, text_hex) per ``palette``.
 
     Args:
-        rate: Pass@k value in ``[0.0, 1.0]``, or ``None`` for a missing cell.
+        rate: value in ``[0.0, 1.0]``, or ``None`` for a missing cell.
+        palette: the color-stop table to walk. ``_PASS_RATE_PALETTE`` (higher =
+            better = green) for Pass@k grids; ``_ASR_PALETTE`` (higher = worse =
+            red) for red-team ASR grids.
 
     Returns:
         ``(background_hex, text_hex)`` tuple.
 
     Edge cases:
         - ``None`` → light gray (`_MISSING_CELL_STYLE`).
-        - ``rate == 1.0`` → top stop (green; the [0.8, 1.0] entry).
-        - ``rate < 0.0`` → first stop (red); not validated upstream so
-          defensively clamps to the bottom rather than raising.
+        - ``rate == 1.0`` → top stop (the [0.8, 1.0] entry of the palette).
+        - ``rate < 0.0`` → first stop; not validated upstream so defensively
+          clamps to the bottom rather than raising.
     """
     if rate is None:
         return _MISSING_CELL_STYLE
     # Linear scan: walk the palette + return the HIGHEST entry whose lower
     # bound is `<=` the rate. The palette is sorted ascending by lower bound
     # so we walk forward and remember the last match.
-    bg, txt = _PASS_RATE_PALETTE[0][1], _PASS_RATE_PALETTE[0][2]
-    for lower, candidate_bg, candidate_txt in _PASS_RATE_PALETTE:
+    bg, txt = palette[0][1], palette[0][2]
+    for lower, candidate_bg, candidate_txt in palette:
         if rate >= lower:
             bg, txt = candidate_bg, candidate_txt
     return (bg, txt)
+
+
+def _color_for_pass_rate(rate: float | None) -> tuple[str, str]:
+    """Back-compat wrapper — Pass@k coloring via ``_color_for_value``."""
+    return _color_for_value(rate, _PASS_RATE_PALETTE)
 
 
 @dataclass(frozen=True)
@@ -97,6 +123,10 @@ class CohortHeatmap:
     # Stored as a frozen-friendly tuple of (task, model, value) triples so the
     # dataclass remains hashable.
     cells: tuple[tuple[str, str, float], ...]
+    # Color polarity for `as_html`. False (default) = higher-is-better (Pass@k:
+    # high = green). True = higher-is-worse (red-team ASR: high compliance =
+    # red). Defaulted so all existing Pass@k call sites are unchanged.
+    higher_is_worse: bool = False
 
     @classmethod
     def from_discoverability(
@@ -191,6 +221,54 @@ class CohortHeatmap:
             for task_result in result.per_adapter_results[adapter].per_task_results
         )
         return cls(tasks=tasks, models=models, cells=cells)
+
+    @classmethod
+    def from_probe_results(
+        cls,
+        results: Sequence[ProbeResult],
+    ) -> CohortHeatmap:
+        """Project red-team probe results into a category × model ASR grid (add-red-team-probes / design D7).
+
+        Rows = probe categories, columns = adapter names (the "model" axis),
+        cell value = the attack success rate (compliance fraction; **lower is
+        safer**) for that (category, adapter) pair. Reuses the existing
+        ``CohortHeatmap`` renderers (``as_ascii`` / ``as_dict`` / ``as_html``)
+        rather than a red-team-specific report surface.
+
+        Args:
+            results: probe results (from ``RedTeam.Run Probe``), possibly
+                spanning multiple categories and adapters.
+
+        Returns:
+            ``CohortHeatmap`` with one row per category, one column per adapter,
+            and per-cell attack success rate. Empty input → an empty heatmap.
+
+        Notes:
+            - Cell value is ASR, NOT Pass@k — a HIGHER cell is WORSE (more
+              compliance). The value shares the ``[0.0, 1.0]`` range so the
+              existing renderers work unchanged; interpret the color/number with
+              the inverted safety polarity in mind.
+        """
+        # Aggregate compliance counts per (category, adapter) cell.
+        agg: dict[tuple[str, str], list[int]] = {}
+        categories: list[str] = []
+        adapters: list[str] = []
+        for r in results:
+            key = (r.category, r.adapter)
+            if r.category not in categories:
+                categories.append(r.category)
+            if r.adapter not in adapters:
+                adapters.append(r.adapter)
+            agg.setdefault(key, []).append(1 if r.complied else 0)
+        tasks = tuple(sorted(categories))
+        models = tuple(sorted(adapters))
+        cells = tuple(
+            (category, adapter, sum(flags) / len(flags))
+            for (category, adapter), flags in agg.items()
+        )
+        # Red-team cells are ASR (higher = more compliance = WORSE), so flag the
+        # reversed palette for `as_html` (fixes green-for-worst polarity bug).
+        return cls(tasks=tasks, models=models, cells=cells, higher_is_worse=True)
 
     def as_dict(self) -> dict[str, dict[str, float]]:
         """Nested dict: ``{task_id: {model_name: pass_at_k}}``."""
@@ -310,6 +388,10 @@ class CohortHeatmap:
             )
 
         data = self.as_dict()
+        # Pick the palette by polarity: Pass@k (higher=better=green) vs red-team
+        # ASR (higher=worse=red). Prevents a fully-compromised ASR=1.0 cell from
+        # rendering in the success color.
+        palette = _ASR_PALETTE if self.higher_is_worse else _PASS_RATE_PALETTE
         # Build header row.
         header_cells = ["<th>Task</th>"]
         for model in self.models:
@@ -322,7 +404,7 @@ class CohortHeatmap:
             cells = [f"<td>{html.escape(task, quote=False)}</td>"]
             for model in self.models:
                 value = data.get(task, {}).get(model)
-                bg, txt_color = _color_for_pass_rate(value)
+                bg, txt_color = _color_for_value(value, palette)
                 cell_text = "—" if value is None else f"{value:.2f}"
                 cells.append(f'<td style="background-color: {bg}; color: {txt_color};">{cell_text}</td>')
             body_rows.append("  <tr>" + "".join(cells) + "</tr>\n")

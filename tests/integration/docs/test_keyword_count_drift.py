@@ -42,15 +42,15 @@ def _load_checker():
 
 def test_libdoc_derives_expected_count() -> None:
     checker = _load_checker()
-    # Composed `AgentEval` surface: 90 keywords after
-    # `add-multi-turn-conversation-testing` added 9 keywords (6 conversation
-    # lifecycle — `Start Conversation` / `Send Message` / `Get Conversation
-    # Transcript` / `End Conversation` / `Transcript Should Contain` /
-    # `Simulate User` — + the un-namespaced `Judge Turn Should Pass` on the
-    # judge library + `Get Conversation Results` / `Get Turn Count` on the
-    # metrics library) to the 81-keyword post-`add-judge-criteria-shortcuts`
-    # surface.
-    assert checker.derive_keyword_count() == 90
+    # Composed `AgentEval` surface: 94 keywords. `add-multi-turn-conversation-testing`
+    # added 9 keywords (6 conversation lifecycle — `Start Conversation` /
+    # `Send Message` / `Get Conversation Transcript` / `End Conversation` /
+    # `Transcript Should Contain` / `Simulate User` — + the un-namespaced
+    # `Judge Turn Should Pass` on the judge library + `Get Conversation Results` /
+    # `Get Turn Count` on the metrics library) to reach 90; `add-red-team-probes`
+    # then added the 4 `RedTeam.*` keywords (`Run Probe` / `Should Refuse` /
+    # `Get Attack Success Rate` / `Attack Success Rate Should Be Below`) → 94.
+    assert checker.derive_keyword_count() == 94
 
 
 def test_readme_and_index_counts_match_libdoc() -> None:

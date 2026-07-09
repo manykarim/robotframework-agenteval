@@ -105,6 +105,12 @@ _VERB_ALLOWLIST: frozenset[str] = frozenset(
         "end",
         "simulate",
         "transcript",
+        # add-red-team-probes — `Attack Success Rate Should Be Below` uses the
+        # attack-success-rate-noun-as-subject spelling (parallel to the budget /
+        # hook / conversation assertion nouns above). The name is load-bearing
+        # (the metric IS the attack success rate; garak/DeepTeam call it ASR)
+        # and can't be coerced into a generic verb without breaking it.
+        "attack",
     }
 )
 
