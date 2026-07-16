@@ -12,12 +12,12 @@
 
 ## 2. Surface libraries (on the spine, smallest first)
 
-- [ ] 2.1 `HooksLibrary` — port config parse (nested only; drop legacy-flat + deprecation path + inline-skill extraction), the shared matcher engine, subprocess firing (sanitized env, enforced timeout, normalized decisions), and the assertion keywords; collapse the triple env-sanitization to one allowlist; reduce the SIGALRM ReDoS guard to a length cap
-- [ ] 2.2 `HooksLibrary` — verify it loads and runs Tier-1 with zero LLM/MCP deps; port/rewrite its tests
-- [ ] 2.3 `SubagentsLibrary` — port frontmatter parse, `extract_delegations`, config-drift checks; merge near-duplicate tier keywords (raise-vs-return) into one parameterized keyword; route accuracy through one `_run_adapter_once`; port tests
-- [ ] 2.4 `SkillsLibrary` — port `_parser` + the Tier-1 getters/validator + activation/discoverability; collapse the 4× substring-activation heuristic into one helper; add the Tier-2 judge-based activation mode; port tests
-- [ ] 2.5 `MCPLibrary` — port config/schema getters + validate, lifecycle (slim `MCPLifecycleManager`, drop pabot/atexit ceremony), `Call Tool` (kwargs + dict, conflict = error), coverage metrics, and single-adapter discoverability; gate live keywords on `[mcp]`; port tests
-- [ ] 2.6 Run the full local CI gate green with all four libraries importable independently
+- [x] 2.1 `HooksLibrary` — port config parse (nested only; drop legacy-flat + deprecation path + inline-skill extraction), the shared matcher engine, subprocess firing (sanitized env, enforced timeout, normalized decisions), and the assertion keywords; collapse the triple env-sanitization to one allowlist; reduce the SIGALRM ReDoS guard to a length cap
+- [x] 2.2 `HooksLibrary` — verify it loads and runs Tier-1 with zero LLM/MCP deps; port/rewrite its tests
+- [x] 2.3 `SubagentsLibrary` — port frontmatter parse, `extract_delegations`, config-drift checks; merge near-duplicate tier keywords (raise-vs-return) into one parameterized keyword; route accuracy through one `_run_adapter_once`; port tests
+- [x] 2.4 `SkillsLibrary` — port `_parser` + the Tier-1 getters/validator + activation/discoverability; collapse the 4× substring-activation heuristic into one helper; add the Tier-2 judge-based activation mode; port tests
+- [x] 2.5 `MCPLibrary` — port config/schema getters + validate, lifecycle (slim `MCPLifecycleManager`, drop pabot/atexit ceremony), `Call Tool` (kwargs + dict, conflict = error), coverage metrics, and single-adapter discoverability; gate live keywords on `[mcp]`; port tests
+- [x] 2.6 Run the full local CI gate green with all four libraries importable independently
 
 ## 3. Delete dropped modules and their tests
 

@@ -16,7 +16,7 @@
 
 ### Requirement: Skill activation is testable in agent mode with pass@k
 
-`SkillsLibrary` SHALL provide agent-mode keywords that decide whether a skill activates for a given prompt, an activation pass@k over repeated trials, and a `Should Activate For` assertion. These keywords SHALL be Tier-3 and SHALL resolve their adapter through the shared spine. Activation detection SHALL be a single shared implementation, not per-keyword copies.
+`SkillsLibrary` SHALL provide agent-mode keywords that decide whether a skill activates for a given prompt (a `Get Activation Decision` and a `Should Activate For` assertion), plus an activation pass@k. The keywords that drive the agent SHALL be Tier-3 and SHALL resolve their adapter through the shared spine. The pass@k keyword aggregates over pre-collected trials (e.g. from `Stat.Run N Times`) and is therefore a pure Tier-1 computation. Activation detection SHALL be a single shared implementation, not per-keyword copies.
 
 #### Scenario: Assert a skill activates for a prompt
 
