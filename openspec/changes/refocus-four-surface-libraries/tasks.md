@@ -45,12 +45,12 @@
 
 ## 6. Spec baseline re-cut
 
-- [ ] 6.1 Confirm `openspec validate refocus-four-surface-libraries` passes with the final keyword surface
-- [ ] 6.2 Reconcile the shipped keyword names against the five new capability specs; fix any drift in the losing source
+- [x] 6.1 `openspec validate refocus-four-surface-libraries` passes.
+- [x] 6.2 Reconciled shipped keyword names against the five specs: no drift — every keyword named in a spec scenario ships, and MCP's coverage-metric keywords are exactly what mcp-testing requirement 3 describes. Shipped surface = 42 keywords (Hooks 8, MCP 15, Skills 10, Subagents 9).
 - [ ] 6.3 Archive the change (`/opsx:archive`) so the five new capabilities replace the 26-capability baseline
 
 ## 7. Final verification
 
-- [ ] 7.1 Run the complete local gate (ruff check + ruff format --check + mypy + license/contract/doc-count/catalog checks + pytest)
-- [ ] 7.2 Confirm the LOC reduction target (~37k → ~9k) and record the actual delta honestly
-- [ ] 7.3 Smoke-test each library from a real `.robot` suite: one Tier-1 test per surface + one Tier-3 test via the dogfood minimax/litellm path
+- [x] 7.1 Complete local gate green: ruff, ruff format, mypy (32 files), license (32), contract-sections (7), doc-keyword-count (42/4), catalog, pytest (198 passed).
+- [x] 7.2 LOC: src 36,988 -> 6,566 (82.2% reduction); _core spine 1,569 LOC; keyword surface 104 -> 42. Past the ~9k target.
+- [x] 7.3 Real `.robot` smoke suites under tests/robot/ - one Tier-1 suite per surface (import only that library) + a `Library AgentEval` composite suite: `robot tests/robot/` = 12 tests, 12 passed, 0 failed. NOTE: the Tier-3 live-model smoke is deferred (needs [llm] + provider credentials; the old dogfood minimax harness was deleted with the peripheral modules) - covered instead by the stub-adapter Tier-3 unit tests in tests/surfaces.

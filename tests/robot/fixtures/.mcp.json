@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "echo": {
+      "command": "node",
+      "args": ["server.js"],
+      "transport": "stdio",
+      "tools": {
+        "search": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            }
+          },
+          "required": ["query"]
+        }
+      }
+    }
+  }
+}
