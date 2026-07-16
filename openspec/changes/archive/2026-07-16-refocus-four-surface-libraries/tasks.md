@@ -47,7 +47,7 @@
 
 - [x] 6.1 `openspec validate refocus-four-surface-libraries` passes.
 - [x] 6.2 Reconciled shipped keyword names against the five specs: no drift — every keyword named in a spec scenario ships, and MCP's coverage-metric keywords are exactly what mcp-testing requirement 3 describes. Shipped surface = 42 keywords (Hooks 8, MCP 15, Skills 10, Subagents 9).
-- [ ] 6.3 Archive the change (`/opsx:archive`) so the five new capabilities replace the 26-capability baseline
+- [x] 6.3 Baseline re-cut: deleted all 26 old capability specs, added the 5 new ones (evaluation-core, hook-testing, mcp-testing, skills-testing, subagent-testing - all validate). Change archived as 2026-07-16-refocus-four-surface-libraries (--skip-specs; baseline reconciled directly since OpenSpec cannot empty a spec via REMOVED-all).
 
 ## 7. Final verification
 
