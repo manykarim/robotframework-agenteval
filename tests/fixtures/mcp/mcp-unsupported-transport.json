@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "future": {
-      "command": "ws-server",
-      "transport": "websocket"
-    }
-  }
-}

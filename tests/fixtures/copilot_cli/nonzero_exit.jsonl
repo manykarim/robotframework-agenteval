@@ -1,2 +1,0 @@
-{"type":"session.start","data":{"sessionId":"test-fail-001"}}
-{"type":"user.message","data":{"content":"x"}}

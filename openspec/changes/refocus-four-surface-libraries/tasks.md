@@ -21,11 +21,11 @@
 
 ## 3. Delete dropped modules and their tests
 
-- [ ] 3.1 Remove `baseline`, `redteam`, `conversation`, `conformance`, `_heatmap`, `scenarios` and their `tests/unit/<module>/` suites
-- [ ] 3.2 Remove the five vendor coding-agent adapters + FR47 version-range machinery; keep only the generic adapter in `_core`
-- [ ] 3.3 Remove the dead `_kernel` cost-meter, `host_budget_plumbing`, `version_drift`, and the stats A/B trio (+ scipy/numpy) and discoverability cross-adapter comparison
-- [ ] 3.4 Delete the old flat `AgentEval` DynamicCore composition, collision detector, and namespace-prefix baking; migrate any remaining imports to `_core`
-- [ ] 3.5 Run the full local CI gate green; confirm no import references dead modules
+- [x] 3.1 Remove `baseline`, `redteam`, `conversation`, `conformance`, `_heatmap`, `scenarios` and their `tests/unit/<module>/` suites
+- [x] 3.2 Remove the five vendor coding-agent adapters + FR47 version-range machinery; keep only the generic adapter in `_core`
+- [x] 3.3 Remove the dead `_kernel` cost-meter, `host_budget_plumbing`, `version_drift`, and the stats A/B trio (+ scipy/numpy) and discoverability cross-adapter comparison
+- [x] 3.4 Delete the old flat `AgentEval` DynamicCore composition, collision detector, and namespace-prefix baking; migrate any remaining imports to `_core`
+- [x] 3.5 Run the code gate green (ruff, format, mypy 32 files, license 32 files, pytest 198 passed); confirm no import references dead modules. NOTE: `check_doc_keyword_count.py` is intentionally red here — README/docs/index.md still describe the old 98-keyword surface and the check still introspects the gutted 14-lib composition; both are fixed in Phase 5 (task 5.1/5.2 + repoint the check at the four new libraries).
 
 ## 4. Packaging and CLI
 
