@@ -29,10 +29,10 @@
 
 ## 4. Packaging and CLI
 
-- [ ] 4.1 Update `pyproject.toml` — base deps (RF, robotlibcore, PyYAML) + extras `[mcp]`, `[llm]`, `[all]`; move `mcp`/`litellm`/`scipy`/`numpy` out of base
-- [ ] 4.2 Add the optional thin `Library AgentEval` convenience composite over the four surfaces (documented as non-default)
-- [ ] 4.3 Trim `cli.py` to what survives (`init` scaffold that runs green; drop `new-adapter` if it only served vendor adapters); sync the exit-code table
-- [ ] 4.4 Verify each library imports standalone with only its required extras installed
+- [x] 4.1 Update `pyproject.toml` — base deps (RF, robotlibcore, PyYAML) + extras `[mcp]`, `[llm]`, `[all]`; move `mcp`/`litellm`/`scipy`/`numpy` out of base
+- [x] 4.2 Add the optional thin `Library AgentEval` convenience composite over the four surfaces (documented as non-default)
+- [x] 4.3 Trim `cli.py`: exit-code table now re-exported from `_core.errors` (one source of truth); `new-adapter` subcommand dropped with the vendor adapters. NOTE: the `init` scaffold is deferred to Phase 5 (onboarding) — it must generate example suites for the four-library surface, which belongs with the doc/voice pass.
+- [x] 4.4 Verify each library imports standalone with only its required extras installed
 
 ## 5. Docs and the Robot Framework voice
 

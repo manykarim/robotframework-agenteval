@@ -32,5 +32,31 @@ convenience lands with the packaging pass.
 
 from __future__ import annotations
 
+from robotlibcore import DynamicCore
+
 __version__ = "0.0.1"
-__all__: list[str] = []
+__all__ = ["AgentEval"]
+
+
+class AgentEval(DynamicCore):  # type: ignore[misc]
+    """The optional one-import composite - every surface keyword in one library.
+
+    Prefer importing only what you test (``Library MCPLibrary``); reach for this
+    when you want them all at once:
+
+    | *** Settings ***  |
+    | Library    AgentEval |
+    """
+
+    def __init__(self) -> None:
+        # Imported lazily so `import AgentEval` (and the spine) stays cheap and
+        # circular-import-free - the surfaces only load when you use the composite.
+        from HooksLibrary import HooksLibrary
+        from MCPLibrary import MCPLibrary
+        from SkillsLibrary import SkillsLibrary
+        from SubagentsLibrary import SubagentsLibrary
+
+        DynamicCore.__init__(
+            self,
+            [HooksLibrary(), MCPLibrary(), SkillsLibrary(), SubagentsLibrary()],
+        )
