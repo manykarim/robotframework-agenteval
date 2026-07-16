@@ -15,9 +15,11 @@
 """Read and validate the YAML frontmatter at the head of a skill ``.md`` file.
 
 The frontmatter is the YAML block between the leading and trailing ``---``
-delimiters. A skill declares four required fields: ``name``, ``description``,
-``allowed-tools``, and ``disable-model-invocation``. Anything malformed raises
-``InvalidConfigError`` with the offending field and a fix suggestion.
+delimiters. A skill declares two required fields - ``name`` and ``description``
+- matching the Agent Skills spec. ``allowed-tools`` and
+``disable-model-invocation`` are optional; they are type-checked only when
+present. Anything malformed raises ``InvalidConfigError`` with the offending
+field and a fix suggestion.
 """
 
 from __future__ import annotations
@@ -36,11 +38,12 @@ __all__ = [
 ]
 
 
+# Per the Agent Skills spec only `name` + `description` are required. Real
+# published skills routinely omit `allowed-tools` / `disable-model-invocation`,
+# so those stay optional (type-checked when present, defaulted when absent).
 REQUIRED_FIELDS: tuple[str, ...] = (
     "name",
     "description",
-    "allowed-tools",
-    "disable-model-invocation",
 )
 
 
@@ -128,9 +131,12 @@ def validate_frontmatter_structure(
     *,
     file_path: str | None = None,
 ) -> None:
-    """Assert the four required fields are present with the right types.
+    """Assert the required fields are present and any optional fields are typed.
 
-    Raises ``InvalidConfigError`` naming the missing or mistyped field.
+    Required: ``name`` + ``description`` (both non-empty strings). Optional but
+    type-checked when present: ``allowed-tools`` (list of strings),
+    ``disable-model-invocation`` (bool). Raises ``InvalidConfigError`` naming the
+    missing or mistyped field.
     """
     missing = [field_name for field_name in REQUIRED_FIELDS if field_name not in frontmatter]
     if missing:
@@ -159,20 +165,22 @@ def validate_frontmatter_structure(
             fix="Set `description: <non-empty string>` in the YAML block.",
         )
 
-    allowed_tools = frontmatter["allowed-tools"]
-    if not isinstance(allowed_tools, list) or any(not isinstance(tool, str) for tool in allowed_tools):
-        raise InvalidConfigError(
-            f"`allowed-tools` must be a list of strings; got {type(allowed_tools).__name__}.",
-            file_path=file_path,
-            field="allowed-tools",
-            fix="Set `allowed-tools: [tool_a, tool_b]` as a YAML list of strings.",
-        )
+    if "allowed-tools" in frontmatter:
+        allowed_tools = frontmatter["allowed-tools"]
+        if not isinstance(allowed_tools, list) or any(not isinstance(tool, str) for tool in allowed_tools):
+            raise InvalidConfigError(
+                f"`allowed-tools` (optional) must be a list of strings; got {type(allowed_tools).__name__}.",
+                file_path=file_path,
+                field="allowed-tools",
+                fix="Set `allowed-tools: [tool_a, tool_b]` as a YAML list of strings, or omit the field.",
+            )
 
-    disable_model_invocation = frontmatter["disable-model-invocation"]
-    if not isinstance(disable_model_invocation, bool):
-        raise InvalidConfigError(
-            f"`disable-model-invocation` must be a bool; got {type(disable_model_invocation).__name__}.",
-            file_path=file_path,
-            field="disable-model-invocation",
-            fix="Set `disable-model-invocation: true` or `disable-model-invocation: false`.",
-        )
+    if "disable-model-invocation" in frontmatter:
+        disable_model_invocation = frontmatter["disable-model-invocation"]
+        if not isinstance(disable_model_invocation, bool):
+            raise InvalidConfigError(
+                f"`disable-model-invocation` (optional) must be a bool; got {type(disable_model_invocation).__name__}.",
+                file_path=file_path,
+                field="disable-model-invocation",
+                fix="Set `disable-model-invocation: true`/`false`, or omit the field.",
+            )

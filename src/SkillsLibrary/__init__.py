@@ -95,28 +95,30 @@ class SkillsLibrary:
     def get_allowed_tools(self, path: str | Path) -> list[str]:
         """Return the ``allowed-tools`` list from a skill ``.md`` file.
 
-        The list may be empty; a skill with no tool allowlist is still valid.
+        Optional field: a skill that omits it (or leaves it empty) is still
+        valid and yields an empty list.
         """
-        return list(self._read_and_validate(path)["allowed-tools"])
+        return list(self._read_and_validate(path).get("allowed-tools", []))
 
     @keyword(name="Skill.Get Disable Model Invocation")
     @tier(1)
     def get_disable_model_invocation(self, path: str | Path) -> bool:
         """Return the ``disable-model-invocation`` bool from a skill ``.md`` file.
 
-        Strict bool typing: unquoted YAML ``true``/``false`` parse to bool and are
-        accepted; ``1``/``0`` and quoted strings are rejected.
+        Optional field, defaulting to ``False`` when absent. Strict bool typing
+        when present: unquoted YAML ``true``/``false`` are accepted; ``1``/``0``
+        and quoted strings are rejected.
         """
-        return bool(self._read_and_validate(path)["disable-model-invocation"])
+        return bool(self._read_and_validate(path).get("disable-model-invocation", False))
 
     @keyword(name="Skill.Should Be Valid Frontmatter")
     @tier(1)
     def should_be_valid_frontmatter(self, frontmatter: dict[str, Any]) -> None:
-        """Assert a parsed frontmatter dict has the four required fields with correct types.
+        """Assert a parsed frontmatter dict is a valid skill.
 
-        Required: ``name`` (str), ``description`` (str), ``allowed-tools``
-        (list of str), ``disable-model-invocation`` (bool). Raises naming the
-        offending field.
+        Required: ``name`` (str) and ``description`` (str). Optional but
+        type-checked when present: ``allowed-tools`` (list of str),
+        ``disable-model-invocation`` (bool). Raises naming the offending field.
 
         Example:
         | ${fm}=    Skill.Get Frontmatter    ${CURDIR}/skills/example.md

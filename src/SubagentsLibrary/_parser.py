@@ -108,6 +108,14 @@ def parse_subagent_frontmatter(path: str | Path) -> dict[str, Any]:
             fix="Use `key: value` pairs inside the `---` delimiters.",
         )
 
+    # Claude Code's canonical subagent form writes `tools` as a comma-separated
+    # string (`tools: Read, Edit, Bash`). Normalize that (and `skills`) into a
+    # list so the rest of the library sees one shape.
+    for field in ("tools", "skills"):
+        value = parsed.get(field)
+        if isinstance(value, str):
+            parsed[field] = [item.strip() for item in value.split(",") if item.strip()]
+
     return parsed
 
 

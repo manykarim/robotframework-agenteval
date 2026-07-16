@@ -57,12 +57,18 @@ def test_should_be_valid_frontmatter_passes_on_valid(lib: SkillsLibrary, skill_f
 
 def test_invalid_frontmatter_names_missing_field(lib: SkillsLibrary) -> None:
     # Scenario: Invalid frontmatter fails validation -> the assertion fails and
-    # names the missing field.
-    broken = {"name": "web-search", "description": "x", "allowed-tools": []}
+    # names the missing REQUIRED field. Only name + description are required
+    # (Agent Skills spec); the other two are optional.
+    broken = {"name": "web-search", "allowed-tools": []}  # missing description
     with pytest.raises(InvalidConfigError) as excinfo:
         lib.should_be_valid_frontmatter(broken)
-    assert "disable-model-invocation" in str(excinfo.value)
-    assert excinfo.value.field == "disable-model-invocation"
+    assert "description" in str(excinfo.value)
+    assert excinfo.value.field == "description"
+
+
+def test_optional_fields_absent_is_valid(lib: SkillsLibrary) -> None:
+    # A skill with only the two required fields is valid (matches real skills).
+    lib.should_be_valid_frontmatter({"name": "web-search", "description": "x"})
 
 
 def test_get_description_fails_when_missing(lib: SkillsLibrary, tmp_path: Path) -> None:
