@@ -1,45 +1,45 @@
 # Running against a real model
 
-The scaffolded examples and every recipe run on the **mock provider** by
-default, so they need no API keys. When you are ready to evaluate a real model,
-switch the provider and supply an API key. This page shows the full switch.
+Tier-1 keywords are deterministic — they parse, inspect, and assert, and never
+touch a model. You can test MCP schemas, skill frontmatter, subagent config, and
+hook decisions with no API key at all.
 
-## 1. Pick a provider
+The LLM-judge (Tier-2) and coding-agent (Tier-3) keywords are different: they
+call a real model. Here's the switch.
 
-agenteval sends prompts through a *provider*. The default is `litellm`, which
-talks to 100+ hosted models (Anthropic, OpenAI, and more) behind one interface.
-The `mock` provider returns canned responses for keyless, deterministic tests.
+## 1. Install the `[llm]` extra
 
-Choose the provider in one of two ways:
+The base install stays deterministic. The judge and agent modes ride LiteLLM,
+which lives behind an extra:
 
-- **Per call** — pass `provider=` to the keyword:
-  `Send Prompt    provider=litellm    ...`
-- **Project-wide default** — set the `AGENTEVAL_PROVIDER` environment variable
-  (or `provider:` in `agenteval.yaml`). A per-call `provider=` always wins.
+```bash
+pip install 'robotframework-agenteval[llm]'
+```
 
-## 2. Choose a model string
+## 2. Point it at a model
 
-With the `litellm` provider, a model string is `<provider>/<model>`:
+The generic adapter reads the model string from `AGENTEVAL_MODEL`, or from a
+per-keyword `model=` argument (the keyword argument wins). Model strings are
+LiteLLM's `<provider>/<model>`:
 
 | Model string | Talks to |
 | --- | --- |
 | `anthropic/claude-sonnet-4-6` | Anthropic Claude |
 | `openai/gpt-4o` | OpenAI GPT-4o |
 
-Pass it with `model=`.
+```bash
+export AGENTEVAL_MODEL=anthropic/claude-sonnet-4-6
+```
 
 ## 3. Provide the API key
 
-`litellm` reads the API key from your environment. Each model provider has its
-own variable:
+LiteLLM reads the provider key from your environment. Each provider has its own
+variable — set it in your shell or a `.env` file, and never commit real keys:
 
-| Model provider | Environment variable |
+| Provider | Environment variable |
 | --- | --- |
 | Anthropic | `ANTHROPIC_API_KEY` |
 | OpenAI | `OPENAI_API_KEY` |
-
-Set the variable in your shell or in a `.env` file (see `.env.example`). Never
-commit real keys.
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -49,31 +49,28 @@ export ANTHROPIC_API_KEY=sk-ant-...
 
 ```robotframework
 *** Settings ***
-Library    AgentEval
+Library    SkillsLibrary
 
 *** Test Cases ***
-Agent Answers On A Real Model
-    ${result}=    Send Prompt
-    ...    adapter=generic
-    ...    provider=litellm
+Skill Activates On A Real Model
+    Skill.Should Activate For
+    ...    ${CURDIR}/skills/web-search.md
+    ...    Find the latest news about Robot Framework
     ...    model=anthropic/claude-sonnet-4-6
-    ...    prompt=Say hello in one word.
-    Should Not Be Empty    ${result.response_text}
-    Should Be True    ${result.cost_usd} > 0
 ```
 
-The same test on the mock provider reports `cost_usd == 0`; on a real model it
-reports the actual spend.
+Leave `model=` off and the keyword falls back to `AGENTEVAL_MODEL`. Without the
+`[llm]` extra installed, Tier-2/Tier-3 keywords fail loudly and tell you which
+extra to add.
 
 ## 5. Keep costs bounded
 
-Real models cost money. Stochastic fan-out keywords (Tier 3) enforce a cost
-budget: set `max_cost_usd` in `agenteval.yaml` (or via `AGENTEVAL_MAX_COST_USD`
-/ a keyword argument), and the run stops before a test exceeds it. Start with a
-small budget while you calibrate.
+Real models cost money, and Tier-3 fan-out multiplies the calls. Start small:
+run a handful of trials while you calibrate, and scale up once the numbers look
+stable. Keep the expensive, stochastic runs on a schedule — not on every push.
 
 ## See also
 
 - [`.env.example`](../.env.example) — where to put your API keys.
-- [Recipe #1: First eval in 5 minutes](./recipes/01-first-eval-in-five-minutes.md)
-  — the mock-provider starting point you switch from.
+- [First eval in five minutes](./recipes/01-first-eval-in-five-minutes.md) — the
+  keyless Tier-1 starting point.

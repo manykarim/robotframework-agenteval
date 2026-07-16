@@ -2,7 +2,12 @@
 
 **Status:** accepted
 **Date:** 2026-05-17
-**Renumbering history:** Originally proposed as ADR-011 in `_bmad-output/planning-artifacts/adr-backlog-from-prd.md` §ADR-011. Renumbered to ADR-008 per architecture.md project tree (L429-434, Hybrid scheme).
+
+> Superseded by the four-surface refocus (2026-07) only where the details drifted.
+> The decision stands: MCPLibrary checks the negotiated MCP spec version and fails
+> loud when it falls outside the supported range. Mentions of the retired
+> conformance suite and the old `IncompleteTraceError` companion gate no longer
+> apply.
 
 ## Context
 
@@ -15,20 +20,19 @@ MCP-spec drift is a high-likelihood risk on the existing project risk register. 
 The MCP observer validates the negotiated MCP spec version at session start. The validation runs on every observer attach:
 
 1. The observer reads the MCP protocol-version field from the initial `initialize` handshake exchange.
-2. If the negotiated version is outside agenteval's supported range (currently `mcp>=1.0,<2.0` — the major-version pin is the structural-stability gate), the observer raises `UnsupportedMCPVersionError` (a leaf of `AgentEvalCompatError` per ADR-014).
+2. If the negotiated version is outside agenteval's supported range (currently `mcp>=1.0,<2.0` — the major-version pin is the structural-stability gate), the observer raises an unsupported-version error carrying the `MCP_ERROR` code (see the error-class hierarchy, ADR-014).
 3. The error message includes the observed version, the supported range, and a pointer to the agenteval upgrade docs.
 
-The conformance suite (ADR-005) injects a "future-spec" mock MCP server that announces a version outside the supported range, and asserts the observer raises `UnsupportedMCPVersionError` rather than silently returning empty traces.
+A future-spec MCP server that announces a version outside the supported range trips this gate — the observer refuses loudly rather than silently returning empty traces.
 
-Each agenteval release pins the supported MCP spec version range explicitly in `pyproject.toml` (already done for the `mcp` package: `mcp==1.27.1`). The version-range gate in this ADR is the *semantic* gate: even if the `mcp` SDK accepts a future-spec server, the observer's parsing logic doesn't, and we surface that clearly.
+Each agenteval release pins the supported MCP spec version range explicitly in `pyproject.toml`. The version-range gate in this ADR is the *semantic* gate: even if the `mcp` SDK accepts a future-spec server, the observer's parsing logic doesn't, and agenteval surfaces that clearly.
 
 ## Consequences
 
 - Each agenteval release pins the supported MCP spec version range. Users on cutting-edge MCP servers get a clear error pointing to an agenteval upgrade path, not silent trace truncation.
-- This ADR is a forcing function for keeping agenteval current with the MCP spec: when MCP spec increments, the observer's range needs review + bump.
-- `UnsupportedMCPVersionError` joins the standard FR50 exit-code path (exit 3 via `AgentEvalCompatError`).
-- Conformance suite gains a "future-spec rejection" test that runs in every CI cycle, catching observer-parsing drift before it ships to users.
-- Combined with ADR-007 (mcp_coverage gating), agenteval has *two* MCP-side honesty gates: version (at session start) + coverage (at metric-keyword entry). Defense in depth.
+- This ADR is a forcing function for keeping agenteval current with the MCP spec: when the MCP spec increments, the observer's range needs review and a bump.
+- The unsupported-version error maps to the standard exit-code path via its `MCP_ERROR` code.
+- A "future-spec rejection" test runs in every CI cycle, catching observer-parsing drift before it ships to users.
 
 ## Alternatives
 
@@ -38,8 +42,6 @@ Each agenteval release pins the supported MCP spec version range explicitly in `
 
 ## References
 
-- PRD §`MCP Spec Compatibility` (sidecar source, 2026-05-15)
 - ADR-004 (Hosted-MCP Universal Trace Observation Pattern) — the observer is the entity that fires this gate
-- ADR-007 (mcp_coverage + IncompleteTraceError) — parallel honesty gate at metric-keyword entry
-- ADR-014 (Error-Class Hierarchy) — `UnsupportedMCPVersionError` is a leaf of `AgentEvalCompatError`
-- `mcp==1.27.1` pin in `pyproject.toml` — current supported spike-validated version
+- ADR-014 (Error-Class Hierarchy) — the `MCP_ERROR` leaf this gate raises
+- The `mcp` version pin in `pyproject.toml` — the currently supported range

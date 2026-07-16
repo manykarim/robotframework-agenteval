@@ -1,46 +1,93 @@
-# robotframework-agenteval — documentation index
+# robotframework-agenteval — documentation
 
-Robot Framework library for evaluating AI coding agents — skills, subagents, hooks, MCP servers, and tool calls.
+Test the agentic stack — MCP servers, Agent Skills, SubAgents, and Hooks —
+with Robot Framework. Deterministically, with an LLM judge, or by driving a
+real coding agent. You already know how to write Robot tests; now you can point
+them at the things your agents actually depend on.
 
-This site hosts the project's keyword reference + architectural decision records + doc contracts + recipes. The canonical README + install + status lives in the [GitHub repository](https://github.com/manykarim/robotframework-agenteval#readme).
+**42 keywords across 4 libraries.** Import only what you test.
 
-## Keyword reference (libdoc)
+## The four libraries
 
-14 libraries · 98 keywords total, all reachable through a single `Library    AgentEval` import. Regenerated per release via `python -m robot.libdoc`.
+Each library is imported on its own and namespaces its keywords, so there is no
+`WITH NAME` bookkeeping and no giant catch-all import to reason about.
 
-Since the `compose-single-library-import` change, every shipped sub-library is composed into the top-level `AgentEval` library via `_SUB_LIBRARIES`, so all 98 keywords are callable after one `Library    AgentEval` line — no `WITH NAME` needed. Each sub-library is still importable standalone (by module path) for per-library budget scoping; the baked namespace prefixes (`Skill.` / `Subagent.` / `Hook.` / `MCP.` / `Stat.` / `Judge.` / `RedTeam.`) make the call sites identical under both import styles.
+```robotframework
+*** Settings ***
+Library    HooksLibrary
+```
 
-| Library | Keywords | Reference |
+| Library | Keywords | Prefix | What it tests |
+| --- | --- | --- | --- |
+| [`MCPLibrary`](./keywords/MCPLibrary.html) | 15 | `MCP.` | MCP server config, tool schemas, live server lifecycle, and tool-call coverage |
+| [`SkillsLibrary`](./keywords/SkillsLibrary.html) | 10 | `Skill.` | Skill `.md` frontmatter, and whether a skill actually activates |
+| [`SubagentsLibrary`](./keywords/SubagentsLibrary.html) | 9 | `Subagent.` | SubAgent config drift and delegation routing |
+| [`HooksLibrary`](./keywords/HooksLibrary.html) | 8 | `Hook.` | Claude Code hook config, matcher rules, and real block/allow decisions |
+
+Want them all in one line? There is an optional composite:
+
+```robotframework
+*** Settings ***
+Library    AgentEval
+```
+
+Prefer importing the one surface you test. Reach for `AgentEval` only when a
+suite genuinely exercises several at once.
+
+## The three tiers — one honest label per keyword
+
+Every keyword declares how it runs. No surprises about what costs money.
+
+| Tier | Mode | Needs |
 | --- | --- | --- |
-| `AgentEval` (composed top-level — all 98 keywords) | 98 | [`AgentEval.html`](./keywords/AgentEval.html) |
-| `AgentEval.skills.library.SkillsLibrary` — `Skill.*` skill `.md` static + activation + discoverability + A/B benchmark | 11 | [`SkillsLibrary.html`](./keywords/SkillsLibrary.html) |
-| `AgentEval.mcp.library.MCPLibrary` — `MCP.*` server lifecycle + tool inspection | 10 | [`MCPLibrary.html`](./keywords/MCPLibrary.html) |
-| `AgentEval.judge.library.JudgeLibrary` — `Judge.*` LLM-judge scoring + rubric calibration + criteria/preset shortcuts | 8 | [`JudgeLibrary.html`](./keywords/JudgeLibrary.html) |
-| `AgentEval.subagents.library.SubagentsLibrary` — `Subagent.*` frontmatter static + delegation-routing + config-drift | 10 | [`SubagentsLibrary.html`](./keywords/SubagentsLibrary.html) |
-| `AgentEval.hooks.library.HooksLibrary` — `Hook.*` config parse + synthetic-event execution + matcher simulation | 8 | [`HooksLibrary.html`](./keywords/HooksLibrary.html) |
-| `AgentEval.redteam.library.RedTeamLibrary` — `RedTeam.*` defensive single-turn adversarial-robustness probes + attack-success-rate | 4 | [`RedTeamLibrary.html`](./keywords/RedTeamLibrary.html) |
-| `AgentEval.baseline.library.BaselineLibrary` — regression baseline snapshot + CI-overlap-aware regression gate + metric trend (unprefixed) | 3 | [`BaselineLibrary.html`](./keywords/BaselineLibrary.html) |
+| **Tier 1** | Deterministic — parse files, project traces, assert. No model in the loop. | Base install |
+| **Tier 2** | LLM judge — ask a model whether the output really did the thing. | `[llm]` extra |
+| **Tier 3** | Coding agent — drive a real agent and read back what it did. | `[llm]` extra |
 
-The composed `AgentEval` surface holds all 98 keywords; the per-sub-library rows show the same keywords available standalone (the counts overlap because the sub-libraries are composed into `AgentEval`, not additive to it).
+Some surfaces are Tier-1 all the way down. **Hooks are deterministic
+programs**, so `HooksLibrary` is **Tier-1 only** — it fires your hook scripts
+and checks their exit codes and decisions, no LLM, no API keys. We do not
+pretend a deterministic script needs a judge.
 
-## Architecture decisions
+## Install
 
-The architecture decision records cover adapter protocols, tier rules, MCP observation, coverage semantics, and the error hierarchy. See [`adr/`](./adr/) for the index.
+The base install covers deterministic (Tier-1) testing for all four libraries:
 
-## Doc contracts
+```bash
+pip install robotframework-agenteval
+```
 
-Stable doc contracts governing public surfaces. See [`contracts/`](./contracts/) for the index.
+Add extras when you need live servers or a model:
+
+| Extra | Adds | Unlocks |
+| --- | --- | --- |
+| `[mcp]` | the MCP SDK | live MCP server testing — start, connect, list, call |
+| `[llm]` | LiteLLM | Tier-2 judge mode + Tier-3 agent mode |
+| `[all]` | both | everything |
+
+```bash
+pip install 'robotframework-agenteval[all]'
+```
+
+The base dependencies are Robot Framework, robotlibcore, PyYAML, and
+jsonschema — nothing heavier until you ask for it.
 
 ## Recipes
 
-Worked examples of the keyword surface. See [`recipes/`](./recipes/) for the index.
+Worked examples, one per surface plus CI wiring. Start with the five-minute
+one. See [`recipes/`](./recipes/) for the full gallery.
 
-## Status + roadmap
+## Architecture decisions
 
-- **Phase 1 closed** 2026-05-25 — `0.0.1` feature-complete for the Phase 1 surface
-- **Phase 2 launched** — native Agent SDK adapters for Anthropic + OpenAI
-- **Pre-1.0** — see [`contracts/exit-criteria-0x-to-1x.md`](./contracts/exit-criteria-0x-to-1x.md) for the ratified promotion criteria
+The decision records cover the adapter seam, tier rules, MCP observation, and
+the error hierarchy. See [`adr/`](./adr/).
+
+## Doc contracts
+
+Stable contracts governing the public surfaces. See [`contracts/`](./contracts/).
 
 ## License
 
 [Apache 2.0](https://github.com/manykarim/robotframework-agenteval/blob/main/LICENSE).
+Built in the open — issues and pull requests welcome on
+[GitHub](https://github.com/manykarim/robotframework-agenteval).

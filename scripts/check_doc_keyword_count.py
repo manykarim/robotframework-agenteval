@@ -41,12 +41,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # The composed top-level library holds the entire unique callable surface
 # (compose-single-library-import change). Every sub-library is composed into
 # it, so counting `AgentEval` alone avoids the pre-change double-count.
-_COUNTED_LIBRARIES = ("AgentEval",)
+_COUNTED_LIBRARIES = ("HooksLibrary", "MCPLibrary", "SkillsLibrary", "SubagentsLibrary")
 
-# Number of sub-libraries composed into `AgentEval` via `_SUB_LIBRARIES`
-# (equals `len(AgentEval._SUB_LIBRARIES)`); all reachable through the single
-# `Library    AgentEval` import.
-_LIBRARY_COUNT = 14
+# The four surface libraries. Their keyword sets are disjoint (distinct
+# prefixes), so the sum is the unique total - the same number the optional
+# `Library    AgentEval` composite exposes.
+_LIBRARY_COUNT = 4
 
 
 def derive_keyword_count() -> int:

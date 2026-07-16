@@ -1,130 +1,106 @@
-# Recipe #1: First eval in 5 minutes
+# Recipe 1: First eval in five minutes
 
-**Use case:** run your first agenteval eval end-to-end — from install to an enriched JUnit-XML report.
-**Time budget:** <5 minutes.
-**Prerequisites:** `uv` ≥0.4 (or `pip` ≥24); Python ≥3.11.
+**I want to** write my first agent test and see it pass — no API keys, no
+model, no ceremony.
 
-## TL;DR
+**Time budget:** five minutes.
+**Prerequisites:** Python 3.11+ and `pip` (or `uv`).
 
-```bash
-uv add robotframework-agenteval
-agenteval init
-robot --listener AgentEval.telemetry.listener.Listener --xunit junit.xml tests/
-```
+The fastest way in is a Tier-1 test: deterministic, keyless, instant. We will
+validate a Skill's `.md` frontmatter — a real check you would run in CI to catch
+a broken skill before it ships.
 
-That's it — the third command runs three example tests (skill validation,
-MCP runtime, agent run) against the Mock provider (no API keys needed) and
-emits a JUnit-XML report enriched with `agenteval.*` properties.
-
-## Step-by-step
-
-### 1. Install
+## 1. Install
 
 ```bash
-uv add robotframework-agenteval
+pip install robotframework-agenteval
 ```
 
-### 2. Scaffold the example project
+The base install is enough for every Tier-1 keyword across all four libraries.
+No extras needed yet.
+
+## 2. Write a skill to test
+
+Save this as `skills/web-search.md`:
+
+```markdown
+---
+name: web-search
+description: Search the web for current information and cite the sources.
+allowed-tools: [WebSearch, WebFetch]
+disable-model-invocation: false
+---
+
+# Web Search
+
+Use this skill when the user asks about current events or anything you need to
+look up. Always cite your sources.
+```
+
+## 3. Write the suite
+
+Save this as `skill_validation.robot`:
+
+```robotframework
+*** Settings ***
+Library    SkillsLibrary
+
+*** Test Cases ***
+Web Search Skill Has Valid Frontmatter
+    ${fm}=    Skill.Get Frontmatter    ${CURDIR}/skills/web-search.md
+    Skill.Should Be Valid Frontmatter    ${fm}
+
+Web Search Skill Declares The Right Tools
+    ${tools}=    Skill.Get Allowed Tools    ${CURDIR}/skills/web-search.md
+    Should Contain    ${tools}    WebSearch
+    Should Contain    ${tools}    WebFetch
+
+Web Search Skill Stays Model-Invokable
+    ${disabled}=    Skill.Get Disable Model Invocation    ${CURDIR}/skills/web-search.md
+    Should Be Equal    ${disabled}    ${False}
+```
+
+## 4. Run it
 
 ```bash
-agenteval init
+robot skill_validation.robot
 ```
-
-This creates:
-
-```
-tests/
-├── example_skill_validation.robot
-├── example_mcp_runtime.robot
-├── example_agent_run.robot
-└── fixtures/
-    ├── example-skill.md
-    ├── .mcp.json
-    └── scenario.yaml
-agenteval.yaml
-README.md
-```
-
-To scaffold into a specific directory: `agenteval init --output-dir my-project/`.
-To overwrite existing files: pass `--force`.
-
-### 3. Run the tests
-
-```bash
-robot --listener AgentEval.telemetry.listener.Listener --xunit junit.xml tests/
-```
-
-Expected output:
 
 ```
 ==============================================================================
-Tests
+Skill Validation
 ==============================================================================
-Tests.Example Skill Validation                                              | PASS |
-Tests.Example Mcp Runtime                                                   | PASS |
-Tests.Example Agent Run                                                     | PASS |
+Web Search Skill Has Valid Frontmatter                                | PASS |
+Web Search Skill Declares The Right Tools                             | PASS |
+Web Search Skill Stays Model-Invokable                                | PASS |
 ------------------------------------------------------------------------------
+Skill Validation                                                      | PASS |
 3 tests, 3 passed, 0 failed
 ==============================================================================
 ```
 
-### 4. Inspect the enriched JUnit XML
+That is a real eval. No model was called, nothing left your machine, and the
+whole thing ran in well under a second — exactly what you want gating a pull
+request.
 
-```bash
-xmlstarlet sel -t -v "//testcase[@name='Mock Provider Returns A Response']/properties/property[@name='agenteval.adapter']/@value" junit.xml
-# → generic
+## What just happened
 
-xmlstarlet sel -t -v "//testcase[@name='Mock Provider Returns A Response']/properties/property[@name='agenteval.completeness']/@value" junit.xml
-# → complete
-```
+- `Skill.Get Frontmatter` parsed the YAML at the head of the `.md` file.
+- `Skill.Should Be Valid Frontmatter` enforced the four-field contract:
+  `name`, `description`, `allowed-tools`, and `disable-model-invocation`, with
+  the right types. Break any of them and the test fails, naming the culprit.
+- The typed getters (`Skill.Get Allowed Tools`, `Skill.Get Disable Model
+  Invocation`) let you assert on the details that matter to your project.
 
-The 9 ratified `agenteval.*` properties (`adapter`, `completeness`, `cost_usd`,
-`latency_seconds`, `mcp_coverage`, `model`, `tier_breakdown`, `total_tokens`,
-`trace_id`) populate when an agent keyword fires. See
-[`docs/contracts/junit-xml-enrichment.md`](../contracts/junit-xml-enrichment.md)
-for the full property table + value semantics.
-
-## Why the `Listener.Listener` class path?
-
-**The listener flag is REQUIRED.** Use the explicit `Module.Class` form:
-
-```
---listener AgentEval.telemetry.listener.Listener
-```
-
-The shorter `AgentEval.telemetry.listener` (module-path-only) form is accepted
-by RF without error but the listener's hooks (`start_suite`, `start_test`,
-`xunit_file`, `end_test`) do **not** fire on RF 7.x — RF takes the
-module-as-listener resolution path which expects a top-level
-`ROBOT_LISTENER_API_VERSION` attribute (not present at module scope).
-
-## What the listener does
-
-- **Captures OTel spans** per test for cost / latency / token usage / tier
-  breakdown projections.
-- **Records the `trace_id` tag** on every test in `output.xml` so CI
-  log spelunking can link RF reports to JSONL trace artifacts.
-- **Enriches the `--xunit junit.xml`** output with `agenteval.*` properties +
-  `<system-out>` evidence + `<system-err>` warnings.
-- **Cleans up per-test MCP servers** ([per-test MCP server scope](../adr/ADR-009-per-test-mcp-server-scope.md)).
-
-Without `--listener`, the library still works at the keyword level — but the
-xunit enrichment + output.xml trace_id linkage + JSONL trace backend are all
-inactive.
+Every keyword here is **Tier 1** — deterministic, keyless, fast.
 
 ## Next steps
 
-- **Pass@k over polling:** see Recipe #2.
-- **Tool Discoverability cohort:** see Recipe #3.
-- **Skill author stacked validation:** see Recipe #4.
-- **Custom adapter authoring:** see Recipe #6 + run `agenteval new-adapter`.
-- **CI integration:** see Recipe #8 for GitHub Actions / GitLab / Jenkins / Allure examples.
+- **Test an MCP server's config** — [Recipe 2](./07-first-mcp-server-test-tier-1.md).
+- **Ask a judge whether the skill actually fired** — [Recipe 3](./04-skill-author-stacked-validation.md) climbs into Tier 2 and Tier 3.
+- **Check your Claude Code hooks** — [Recipe 4](./09-testing-claude-code-hooks.md).
+- **Test SubAgent routing** — [Recipe 5](./10-subagent-config-drift-and-routing.md).
+- **Wire it into CI** — [Recipe 6](./08-ci-integration.md).
 
-## Troubleshooting
-
-| Symptom | Likely cause | Fix |
-| --- | --- | --- |
-| `agenteval init` exits with "file already exists" warnings | The target directory has prior files. | Re-run with `--force` to overwrite, or pick a fresh directory. |
-| `output.xml` has no `<tag>trace_id:...</tag>` | Used the module-path-only listener form. | Switch to `AgentEval.telemetry.listener.Listener` (explicit class path). |
-| `junit.xml` has no `agenteval.*` properties | Listener not loaded OR no agent keywords fired (only built-in `Log` keywords). | Verify the listener flag; check that at least one test calls an agent keyword (`Send Prompt`, `MCP.Call Tool`, etc.). |
-| Mock provider raises `AdapterDiscoveryError` | `agenteval` not installed in the active env. | `uv add robotframework-agenteval` or `pip install robotframework-agenteval`. |
+Going live? Tier-2 and Tier-3 keywords need the `[llm]` extra and a model —
+see the install matrix on the [docs home](../index.md).

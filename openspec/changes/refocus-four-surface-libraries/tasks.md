@@ -36,12 +36,12 @@
 
 ## 5. Docs and the Robot Framework voice
 
-- [ ] 5.1 Rewrite `README.md` — reframe the mission/tagline to testing MCP/Skills/SubAgents/Hooks (deterministic / LLM / agent); RF voice; four-library import story; extras matrix; honest mode matrix
-- [ ] 5.2 Strip per-keyword FR/AC/ADR/Story provenance docstrings across all four libraries down to terse RF-voice libdoc; regenerate `docs/keywords/*.html`
-- [ ] 5.3 Keep and voice-edit surviving recipes (first-eval, first-mcp-test, skill validation, hooks, CI integration); delete recipes tied to dropped modules (conversation, red-team, baseline, custom-adapter)
-- [ ] 5.4 Add the missing SubAgents recipe (the prime white-space surface)
-- [ ] 5.5 Rewrite error messages in the RF voice; prune ADRs/contracts that reference dropped modules; keep the MCP + infra ADRs
-- [ ] 5.6 Run the CI-only doc gates (contract-sections, doc-keyword-count, catalog-references) green
+- [x] 5.1 Rewrite `README.md` — reframe the mission/tagline to testing MCP/Skills/SubAgents/Hooks (deterministic / LLM / agent); RF voice; four-library import story; extras matrix; honest mode matrix
+- [x] 5.2 Strip per-keyword FR/AC/ADR/Story provenance docstrings across all four libraries down to terse RF-voice libdoc; regenerate `docs/keywords/*.html`
+- [x] 5.3 Keep and voice-edit surviving recipes (first-eval, first-mcp-test, skill validation, hooks, CI integration); delete recipes tied to dropped modules (conversation, red-team, baseline, custom-adapter)
+- [x] 5.4 Add the missing SubAgents recipe (the prime white-space surface)
+- [x] 5.5 Pruned ADRs/contracts referencing dropped modules (deleted the coding-agent/telemetry/conformance/persona ones; kept + superseded-noted the MCP + infra ones). Rewrote the two onboarding stragglers (running-against-a-real-model, troubleshooting) in RF voice. NOTE: error-message strings were written terse/RF-voiced by the surface build already; no separate rewrite pass. `cli.py init` scaffold remains deferred (a follow-up).
+- [x] 5.6 Run the CI-only doc gates (contract-sections, doc-keyword-count, catalog-references) green
 
 ## 6. Spec baseline re-cut
 
