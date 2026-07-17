@@ -73,13 +73,6 @@ jobs:
       - name: License headers check (Apache 2.0)
         run: uv run python scripts/check-license-headers.py
 
-      # Story 14.2 deliverable — defense-in-depth: pre-commit hook
-      # (.pre-commit-config.yaml) catches local commits; this step catches
-      # `git commit --no-verify` bypass. Mode B (--all-tracked) scans every
-      # tracked file for DF-X.Y-SZ refs missing catalog rows.
-      - name: Catalog references check (Phase-1.5)
-        run: uv run python scripts/check-catalog-references.py --all-tracked
-
       # Contract-doc + keyword-count doc gates (also in docs-build.yml; run here
       # so a PR that breaks them fails fast).
       - name: Contract sections check

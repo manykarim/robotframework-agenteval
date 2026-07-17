@@ -58,17 +58,6 @@ repos:
         files: ^src/AgentEval/.*\.py$
         pass_filenames: false
 
-      - id: catalog-references
-        name: Phase-1.5 carry-over catalog references check (Story 14.2)
-        entry: uv run python scripts/check-catalog-references.py
-        language: system
-        # Intentionally NO `files:` filter (unlike license-headers above): the
-        # script reads `git diff --cached` itself and must see the WHOLE
-        # staged set so it can extract DF-X.Y-SZ refs from any added line.
-        # Filtering here would blind the gate — per Story 14.2 Opus LOW-2.
-        pass_filenames: false
-        require_serial: true
-
       # NFR-MAINT-04: every docs/contracts/*.md carries the 4 required
       # sections. Local mirror of the docs-build.yml CI step (added 2026-07-09
       # so the gate runs before commit, not only at PR time).

@@ -70,3 +70,6 @@ pabot_results.html
 # Project-specific scratch
 /scratch/
 /tmp_*/
+
+# Runtime lock (machine/session-specific state)
+.claude/scheduled_tasks.lock
