@@ -35,10 +35,10 @@
 
 ## 7. Release
 
-- [ ] 7.1 PR `release/v0.1.0` → `main`; wait for CI green (test matrix + docs-build + CodeQL); merge.
-- [ ] 7.2 On updated `main`, confirm CI green, then create + push the tag: `git tag -a v0.1.0 -m "v0.1.0" && git push origin v0.1.0`.
-- [ ] 7.3 Watch the release workflow: confirm the GitHub Release is created (assets attached), and — if `TRUSTED_PUBLISHER_CONFIGURED` is set — the PyPI publish succeeds and `pip install robotframework-agenteval==0.1.0` resolves. Record dry-run vs live honestly.
+- [x] 7.1 PR #7 merged to main (CI green: test matrix + docs-build + CodeQL).
+- [x] 7.2 Tagged + pushed v0.1.0; release workflow ran green.
+- [x] 7.3 GitHub Release v0.1.0 created (pre-release, wheel+sdist attached). PyPI publish DRY-RAN honestly — TRUSTED_PUBLISHER_CONFIGURED is unset + no PyPI trusted-publisher claim yet, so no live publish (by design).
 
 ## 8. Spec archive
 
-- [ ] 8.1 `openspec validate prepare-v0-1-0-release` passes; archive the change so `release-packaging` + `documentation-rendering` join the baseline.
+- [x] 8.1 openspec validate passes; archiving now.
