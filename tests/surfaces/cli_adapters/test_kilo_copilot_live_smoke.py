@@ -53,9 +53,9 @@ def test_kilo_live_smoke() -> None:
         pytest.skip("kilo binary not on PATH")
     try:
         result = KiloAdapter().run(_SMOKE_PROMPT, timeout=180.0)
+        assert isinstance(result, AgentRunResult)
     except AdapterError as exc:  # missing credentials surface as a loud adapter error
         pytest.skip(f"kilo run unavailable: {exc}")
-    assert isinstance(result, AgentRunResult)
 
 
 @_LIVE
@@ -64,9 +64,9 @@ def test_copilot_live_smoke() -> None:
         pytest.skip("copilot binary not on PATH")
     try:
         result = CopilotAdapter().run(_SMOKE_PROMPT, timeout=180.0)
+        assert isinstance(result, AgentRunResult)
+        # copilot never reports USD cost - the ceiling must hold even live.
+        assert result.cost_usd == 0.0
+        assert result.metadata.metric_source == "none"
     except AdapterError as exc:
         pytest.skip(f"copilot run unavailable: {exc}")
-    assert isinstance(result, AgentRunResult)
-    # copilot never reports USD cost - the ceiling must hold even live.
-    assert result.cost_usd == 0.0
-    assert result.metadata.metric_source == "none"
