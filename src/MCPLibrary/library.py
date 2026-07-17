@@ -241,6 +241,30 @@ class MCPLibrary:
         )
         return result
 
+    @keyword(name="MCP.As Agent Toolset")
+    @tier(1)
+    def as_agent_toolset(self, handle: MCPServerHandle) -> Any:
+        """Expose a connected server's tools as a pydantic-ai toolset for the in-process agent.
+
+        Lists the tools on ``handle`` and wraps each as a pydantic-ai tool whose
+        execution routes back through ``MCP.Call Tool`` on this same library
+        instance - so a model driven by ``get_adapter("in-process",
+        toolsets=[...])`` runs the *real* server, and every call it makes lands
+        in both the agent's result and this library's recorder
+        (``MCP.Get Recorded Tool Calls``). Connect the handle first. Needs the
+        ``[agent]`` extra (pydantic-ai) on top of ``[mcp]``.
+
+        Example:
+        | ${h}=    MCP.Start Server    echo    in_memory    server_factory=${{build_echo_server}}
+        | MCP.Connect To Server    ${h}
+        | ${toolset}=    MCP.As Agent Toolset    ${h}
+        | ${agent}=    Evaluate    AgentEval._core.adapter.get_adapter('in-process', toolsets=[$toolset])
+        | ${result}=    Evaluate    $agent.run("Use echo_back on 'hi', then say DONE")
+        """
+        from MCPLibrary._agent_bridge import build_agent_toolset
+
+        return build_agent_toolset(handle, list_tools=self.list_tools, call_tool=self.call_tool)
+
     @keyword(name="MCP.Stop Server")
     @tier(1)
     def stop_server(self, handle: MCPServerHandle) -> None:

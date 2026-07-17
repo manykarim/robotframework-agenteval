@@ -12,6 +12,7 @@ Four libraries, one package. The base install is enough to test all four surface
 pip install robotframework-agenteval          # base — deterministic mode, all four surfaces
 pip install robotframework-agenteval[mcp]     # + live MCP server testing (spawn + handshake)
 pip install robotframework-agenteval[llm]     # + LLM-judge and coding-agent modes
+pip install robotframework-agenteval[agent]   # + the in-process agent adapter (measure on just an LLM key, no CLI)
 pip install robotframework-agenteval[all]     # everything
 ```
 
@@ -20,9 +21,10 @@ pip install robotframework-agenteval[all]     # everything
 | **base** | robotframework, robotlibcore, pyyaml, jsonschema | Deterministic (Tier-1) keywords for Hooks, MCP, Skills, SubAgents |
 | **`[mcp]`** | + the MCP SDK | Connecting to and calling a real MCP server |
 | **`[llm]`** | + litellm | The LLM judge (Tier-2) and driving a real coding agent (Tier-3) |
-| **`[all]`** | `[mcp]` and `[llm]` together | The full stack |
+| **`[agent]`** | + pydantic-ai + pydantic-ai-harness | The [in-process agent adapter](#in-process-agent-adapter-one-llm-key-no-cli) — real MCP tool calls, skill activation, and subagent routing on just an LLM key + base_url, no coding-agent CLI |
+| **`[all]`** | `[mcp]`, `[llm]`, and `[agent]` together | The full stack |
 
-HooksLibrary is deterministic through and through, so it never needs the `[mcp]` or `[llm]` extras — the base install covers it completely.
+HooksLibrary's command-hook keywords are deterministic through and through, so they never need the `[mcp]` or `[llm]` extras — the base install covers them completely. The one exception is `Hook.Get Tool Decisions` (a Tier-3 in-process PreToolUse-style tool gate), which drives a live model through the `[agent]` extra — see [In-process agent adapter](#in-process-agent-adapter-one-llm-key-no-cli) below.
 
 ## The four libraries
 
@@ -40,7 +42,7 @@ Prefer to grab them all at once? There's an optional composite that bundles ever
 Library    AgentEval
 ```
 
-Either way you get **55 keywords across 6 libraries** — the tables below list every one, with its test mode and what it does.
+Either way you get **64 keywords across 6 libraries** — the tables below list every one, with its test mode and what it does.
 
 ## Keyword documentation
 
@@ -54,11 +56,11 @@ Full, always-current keyword docs (arguments, tiers, examples) are published to 
 - 📖 [StatLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/StatLibrary.html)
 - 📖 [AgentEval](https://manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html) (the composite of all four surfaces)
 
-### HooksLibrary — 8 keywords
+### HooksLibrary — 11 keywords
 
 📖 [HooksLibrary keyword docs](https://manykarim.github.io/robotframework-agenteval/keywords/HooksLibrary.html)
 
-Hooks are deterministic programs: matchers, commands, exit codes, decisions. So everything here is Tier-1 — it runs without a model and gives the same answer every time.
+The command-hook keywords are deterministic programs: matchers, commands, exit codes, decisions — all Tier-1, no model, same answer every time. The three tool-gate keywords add a **PARTIAL, in-process** PreToolUse-style allow/deny gate over pydantic-ai tool-approval (Tier-3, `[agent]` extra) — a proxy for a generic agent's tool calls, not the Claude Code external-command hook runtime.
 
 | Keyword | Tier | What it does |
 |---|---|---|
@@ -70,8 +72,11 @@ Hooks are deterministic programs: matchers, commands, exit codes, decisions. So 
 | **Hook.Get Hooks For Event** | 1 | Report which hooks would fire — statically, no execution |
 | **Hook.Validate Matcher Syntax** | 1 | Check a matcher compiles, optionally whether it matches a subject |
 | **Hook.Command Should Exist** | 1 | Assert each hook command resolves to an executable on disk |
+| **Hook.Get Tool Decisions** | 3 | Drive a prompt through an in-process gated agent, recording every allow/deny (PARTIAL proxy, `[agent]`) |
+| **Hook.Tool Should Be Denied** | 1 | Assert a `Hook.Get Tool Decisions` report denied at least one call to a tool |
+| **Hook.Tool Should Be Allowed** | 1 | Assert a `Hook.Get Tool Decisions` report called a tool and never denied it |
 
-### MCPLibrary — 17 keywords
+### MCPLibrary — 18 keywords
 
 📖 [MCPLibrary keyword docs](https://manykarim.github.io/robotframework-agenteval/keywords/MCPLibrary.html)
 
@@ -86,6 +91,7 @@ Parse and validate a `.mcp.json` config with no server running, or spawn the rea
 | **MCP.Connect To Server** | 1 | Open a session, run the handshake, check the protocol version |
 | **MCP.List Tools** | 1 | List the tools a server advertises |
 | **MCP.Call Tool** | 1 | Call a tool by name and return its result |
+| **MCP.As Agent Toolset** | 1 | Expose a connected server's tools as a pydantic-ai toolset for the in-process agent |
 | **MCP.Stop Server** | 1 | Release the resources for a server handle |
 | **MCP.Get Recorded Tool Calls** | 1 | Return the trace list recorded from live `MCP.Call Tool` calls |
 | **MCP.Clear Recorded Tool Calls** | 1 | Drop all recorded `MCP.Call Tool` traces to reset between tests |
@@ -97,11 +103,11 @@ Parse and validate a `.mcp.json` config with no server running, or spawn the rea
 | **MCP.Was Tool Called** | 1 | Whether a tool was called, optionally with matching arguments |
 | **MCP.Get Tool Discoverability** | 3 | Drive an agent over a task set and score whether it picks the right tools |
 
-### SkillsLibrary — 10 keywords
+### SkillsLibrary — 13 keywords
 
 📖 [SkillsLibrary keyword docs](https://manykarim.github.io/robotframework-agenteval/keywords/SkillsLibrary.html)
 
-Static frontmatter checks need no model. Move up a tier to ask the judge whether a response actually applied a skill's guidance, or up another to drive an agent and measure whether the skill surfaces at all.
+Static frontmatter checks need no model. Move up a tier to ask the judge whether a response actually applied a skill's guidance, or up another to drive an agent and measure whether the skill surfaces at all. The three in-process bridge keywords load a `SKILL.md` as a deferred pydantic-ai capability so the in-process adapter can measure **real** activation (`[agent]` extra).
 
 | Keyword | Tier | What it does |
 |---|---|---|
@@ -115,12 +121,15 @@ Static frontmatter checks need no model. Move up a tier to ask the judge whether
 | **Skill.Should Activate For** | 3 | Assert the skill activates for a prompt; fail if it doesn't |
 | **Skill.Get Discoverability** | 3 | Score how well a skill's description surfaces it across a task set |
 | **Skill.Get Activation Pass At K** | 1 | Estimate activation pass@k over trials, with a Wilson confidence band |
+| **Skill.As Capability** | 1 | Load a `SKILL.md` into a deferred pydantic-ai `Capability` for the in-process adapter (`[agent]`) |
+| **Skill.Load Capabilities From Dir** | 1 | Load every skill `.md` under a directory into deferred `Capability` objects (`[agent]`) |
+| **Skill.Get Activated Skills** | 1 | Report which skill ids the model actually activated during an in-process run |
 
-### SubagentsLibrary — 9 keywords
+### SubagentsLibrary — 11 keywords
 
 📖 [SubagentsLibrary keyword docs](https://manykarim.github.io/robotframework-agenteval/keywords/SubagentsLibrary.html)
 
-Read the delegation trail straight out of a run result — that's deterministic. Or drive a live orchestrator and check where it actually routed the work.
+Read the delegation trail straight out of a run result — that's deterministic. Or drive a live orchestrator and check where it actually routed the work. The two in-process bridge keywords load Claude subagent `.md` files into a harness `SubAgents` capability and read back real `delegate_task` routing (`[agent]` extra).
 
 | Keyword | Tier | What it does |
 |---|---|---|
@@ -133,6 +142,8 @@ Read the delegation trail straight out of a run result — that's deterministic.
 | **Subagent.Should Delegate To** | 3 | Run a prompt once and assert the orchestrator delegated to the subagent |
 | **Subagent.Get Delegation Decision** | 3 | Run a prompt once and return a routing decision (fan-out composable) |
 | **Subagent.Get Routing Accuracy** | 3 | Run a routing-task cohort and report the fraction routed correctly |
+| **Subagent.Get Routed Subagents** | 1 | Report which named subagents an in-process run delegated to, with per-name counts |
+| **Subagent.As Subagents Capability** | 1 | Load a dir of Claude subagent `.md` into a harness `SubAgents` capability (`[agent]`) |
 
 ## Metrics & statistics
 
@@ -246,6 +257,33 @@ Instead of a hosted chat model, drive a real coding-agent binary. AgentEval shel
 **Read the fidelity column before trusting the numbers.** FULL adapters report tool calls, tokens, and cost straight from the run. PARTIAL adapters capture tool calls and tokens natively but *derive* cost from token counts. DEGRADED adapters (`kilo`, `copilot`) reconstruct metrics best-effort from probes or on-disk session logs — treat their tool-call, token, and cost numbers as lower-fidelity, not ground-truth. Derived (non-native) figures are flagged in the run metadata so a report never overstates them.
 
 The binaries are **not** packaged with AgentEval — install each one yourself, and the adapter fails loud with install guidance if it can't find the CLI. See [`docs/running-against-a-real-model.md`](./docs/running-against-a-real-model.md) for the per-CLI setup in full.
+
+### In-process agent adapter: one LLM key, no CLI
+
+Path A and Path B both make you either accept the LiteLLM one-shot's *requested*-only tool calls, or install a vendor CLI. The **in-process agent adapter** (`get_adapter("in-process")`, the `[agent]` extra) is a third way: it runs a real in-process agent loop — pydantic-ai against any OpenAI-compatible endpoint — so it **executes** tools, **activates** deferred skills, and **routes** to subagents, then normalizes all of it into the same `AgentRunResult` the metric keywords read. No coding-agent binary; just a model name, a `base_url`, and an API key.
+
+```bash
+pip install 'robotframework-agenteval[agent]'   # pulls in pydantic-ai + pydantic-ai-harness
+export AGENTEVAL_MODEL=MiniMax-M2.7                    # any OpenAI-compatible chat model
+export AGENTEVAL_BASE_URL=https://api.minimax.io/v1   # the endpoint's base_url
+export AGENTEVAL_API_KEY=sk-...                        # read from the environment, never a RF variable
+```
+
+```robotframework
+*** Settings ***
+Library    SkillsLibrary
+Library    MCPLibrary
+
+*** Test Cases ***
+Measure Real Skill Activation On Just An LLM
+    ${cap}=    Skill.As Capability    ${CURDIR}/skills/refunds.md
+    ${agent}=    Evaluate    AgentEval._core.adapter.get_adapter('in-process', capabilities=[$cap])
+    ${result}=    Evaluate    $agent.run("Is order #4821 eligible for a refund?")
+    ${activated}=    Skill.Get Activated Skills    ${result}
+    Should Contain    ${activated}    refunds
+```
+
+**It is a proxy, and the adapter says so.** Its `validation_ceiling` states plainly that it measures *a generic in-process agent*, **not** a specific coding agent's runtime — the skill/subagent frontmatter is mapped onto pydantic-ai's own mechanisms, and the Claude `allowed-tools` / `disable-model-invocation` fields are **NOT** enforced. Use it to measure how a competent generic agent treats your artifacts (discoverability, routing, tool execution, PreToolUse-style allow/deny) on nothing but an LLM key — not to claim "this is how Claude Code behaves." The Hooks tool gate (`Hook.Get Tool Decisions`) rides the same adapter and is labeled **PARTIAL** for the same reason: it gates in-process tool calls, not external `settings.json` command scripts. Full walkthrough: [`docs/recipes/12-in-process-agent-no-cli-metrics.md`](./docs/recipes/12-in-process-agent-no-cli-metrics.md).
 
 ## Documentation
 

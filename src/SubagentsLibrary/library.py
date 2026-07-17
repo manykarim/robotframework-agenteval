@@ -37,12 +37,14 @@ from AgentEval._core import (
     stats,
     tier,
 )
-from SubagentsLibrary._internal import extract_delegations, observed_subagents
+from SubagentsLibrary._agent_bridge import load_subagents_capability
+from SubagentsLibrary._internal import extract_delegations, extract_routed_subagents, observed_subagents
 from SubagentsLibrary._parser import parse_subagent_frontmatter, validate_subagent_structure
 from SubagentsLibrary._tasks import load_subagent_routing_tasks
 from SubagentsLibrary.types import (
     DelegationDecision,
     DelegationRecord,
+    RoutedSubagents,
     SubagentRoutingResult,
     SubagentRoutingSummary,
     SubagentRoutingTaskResult,
@@ -111,6 +113,63 @@ class SubagentsLibrary:
         | Length Should Be    ${dels}    2
         """
         return extract_delegations(result.tool_calls, _delegation_tools_arg(delegation_tool))
+
+    @keyword(name="Subagent.Get Routed Subagents")
+    @tier(1)
+    def get_routed_subagents(
+        self,
+        result: AgentRunResult,
+        delegation_tool: str = "delegate_task",
+        identity_key: str = "agent_name",
+    ) -> RoutedSubagents:
+        """Reads which subagents an in-process run delegated to, with per-name counts.
+
+        Pure projection of ``result.tool_calls`` for the harness ``SubAgents``
+        delegate tool (default name ``delegate_task``, matched case-insensitively),
+        reading each call's ``agent_name`` argument. Returns a ``RoutedSubagents``
+        with ``names`` (distinct, first-seen order), ``counts`` (name -> count), and
+        ``total`` (all delegate calls, so an unresolvable one stays visible). This
+        is the in-process counterpart to ``Subagent.Get Delegations`` (which reads
+        the Claude-Code ``Task`` / ``subagent_type`` shape).
+
+        Example:
+        | ${routed} =    Subagent.Get Routed Subagents    ${result}
+        | Should Contain    ${routed.names}    code-reviewer
+        | Should Be Equal As Integers    ${routed.counts}[code-reviewer]    1
+        """
+        return extract_routed_subagents(result.tool_calls, delegation_tool, identity_key)
+
+    @keyword(name="Subagent.As Subagents Capability")
+    @tier(1)
+    def as_subagents_capability(
+        self,
+        agents_dir: str | Path,
+        tool_resolver: Any = None,
+        tool_name: str = "delegate_task",
+        **kwargs: Any,
+    ) -> Any:
+        """Loads a dir of Claude subagent ``.md`` into a harness ``SubAgents`` capability.
+
+        Discovers every ``.md`` subagent definition (name/description/tools
+        frontmatter) under ``agents_dir`` and returns a ``SubAgents`` capability to
+        hand to the in-process adapter via
+        ``get_adapter("in-process", capabilities=[...])``. An absent directory or
+        one with no ``.md`` files raises ``InvalidConfigError`` (never a silently
+        empty capability). ``allowed-tools`` is NOT enforced - by default a no-op
+        resolver maps every declared tool name to zero toolsets, so a subagent is
+        routable without granting real tools; pass ``tool_resolver`` to attach
+        toolsets. Needs the ``[agent]`` extra.
+
+        Example:
+        | ${caps} =    Subagent.As Subagents Capability    ${CURDIR}/.claude/agents
+        | ${adapter} =    Get Adapter    in-process    capabilities=${caps}
+        """
+        return load_subagents_capability(
+            agents_dir,
+            tool_resolver=tool_resolver,
+            tool_name=tool_name,
+            **kwargs,
+        )
 
     @keyword(name="Subagent.Should Have Delegated To")
     @tier(1)

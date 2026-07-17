@@ -23,10 +23,33 @@ from typing import Any
 __all__ = [
     "DelegationRecord",
     "DelegationDecision",
+    "RoutedSubagents",
     "SubagentRoutingTaskResult",
     "SubagentRoutingSummary",
     "SubagentRoutingResult",
 ]
+
+
+@dataclass(frozen=True)
+class RoutedSubagents:
+    """Which named subagents an in-process run delegated to, with per-name counts.
+
+    Projected from an ``AgentRunResult`` by filtering the harness ``delegate_task``
+    tool calls and reading each call's ``agent_name`` argument. ``names`` is the
+    distinct subagent identities in first-seen order; ``counts`` maps each to how
+    many times it was delegated to; ``total`` is every delegate-tool call seen -
+    including any whose ``agent_name`` could not be resolved, so an unresolved
+    delegation is a visible gap (``total`` > ``sum(counts.values())``), never a
+    silent drop.
+    """
+
+    names: tuple[str, ...]
+    counts: Mapping[str, int]
+    total: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "names", tuple(self.names))
+        object.__setattr__(self, "counts", dict(self.counts))
 
 
 @dataclass(frozen=True)
