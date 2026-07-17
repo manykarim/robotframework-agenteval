@@ -40,7 +40,7 @@ Prefer to grab them all at once? There's an optional composite that bundles ever
 Library    AgentEval
 ```
 
-Either way you get **55 keywords across 6 libraries** — the tables below list every one, with its test mode and what it does.
+Either way you get **56 keywords across 6 libraries** — the tables below list every one, with its test mode and what it does.
 
 ## Keyword documentation
 
@@ -71,7 +71,7 @@ Hooks are deterministic programs: matchers, commands, exit codes, decisions. So 
 | **Hook.Validate Matcher Syntax** | 1 | Check a matcher compiles, optionally whether it matches a subject |
 | **Hook.Command Should Exist** | 1 | Assert each hook command resolves to an executable on disk |
 
-### MCPLibrary — 17 keywords
+### MCPLibrary — 18 keywords
 
 📖 [MCPLibrary keyword docs](https://manykarim.github.io/robotframework-agenteval/keywords/MCPLibrary.html)
 
@@ -86,6 +86,7 @@ Parse and validate a `.mcp.json` config with no server running, or spawn the rea
 | **MCP.Connect To Server** | 1 | Open a session, run the handshake, check the protocol version |
 | **MCP.List Tools** | 1 | List the tools a server advertises |
 | **MCP.Call Tool** | 1 | Call a tool by name and return its result |
+| **MCP.As Agent Toolset** | 1 | Expose a connected server's tools as a pydantic-ai toolset for the in-process agent |
 | **MCP.Stop Server** | 1 | Release the resources for a server handle |
 | **MCP.Get Recorded Tool Calls** | 1 | Return the trace list recorded from live `MCP.Call Tool` calls |
 | **MCP.Clear Recorded Tool Calls** | 1 | Drop all recorded `MCP.Call Tool` traces to reset between tests |

@@ -34,7 +34,9 @@ def test_slug_resolves_to_in_process_adapter() -> None:
 
 def test_map_agent_result_projects_tool_calls_and_activation() -> None:
     # A fake pydantic-ai run result: a load_capability activation + a plain tool call.
-    call_a = SimpleNamespace(part_kind="tool-call", tool_name="load_capability", args='{"id": "refunds"}', tool_call_id="1")
+    call_a = SimpleNamespace(
+        part_kind="tool-call", tool_name="load_capability", args='{"id": "refunds"}', tool_call_id="1"
+    )
     call_b = SimpleNamespace(part_kind="tool-call", tool_name="lookup", args={"order": "4821"}, tool_call_id="2")
     ret_b = SimpleNamespace(part_kind="tool-return", tool_call_id="2", content="eligible")
     msgs = [SimpleNamespace(parts=[call_a, call_b]), SimpleNamespace(parts=[ret_b])]
@@ -61,7 +63,10 @@ def test_live_skill_activation() -> None:
     from pydantic_ai.capabilities import Capability
 
     skill = Capability(
-        id="refunds", description="Use for refund eligibility questions.", instructions="Confirm the order ID.", defer_loading=True
+        id="refunds",
+        description="Use for refund eligibility questions.",
+        instructions="Confirm the order ID.",
+        defer_loading=True,
     )
     r = get_adapter("in-process", capabilities=[skill]).run("Is order #4821 eligible for a refund?")
     activated = [t.args.get("id") for t in r.tool_calls if t.name == "load_capability"]

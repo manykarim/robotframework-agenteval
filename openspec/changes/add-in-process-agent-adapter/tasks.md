@@ -7,8 +7,8 @@
 
 ## 2. MCP surface
 
-- [ ] 2.1 Attach an MCP server as an `MCPToolset`; prefer accepting an already-connected `MCPServerHandle` so MCPLibrary + MetricsLibrary reuse it. Executed calls → `ToolCallTrace` from message-history `ToolCallPart`/`ToolReturnPart`.
-- [ ] 2.2 Live MiniMax smoke (gated on creds): run a prompt that should call a tool; assert `AgentRunResult.tool_calls` is populated with the executed call + result; MetricsLibrary reads it.
+- [x] 2.1 Attach an MCP server as an `MCPToolset`; prefer accepting an already-connected `MCPServerHandle` so MCPLibrary + MetricsLibrary reuse it. Executed calls → `ToolCallTrace` from message-history `ToolCallPart`/`ToolReturnPart`. (Shape B: native `MCPServerStdio` is NOT importable in pydantic-ai 2.12; instead `MCP.As Agent Toolset` / `_agent_bridge.build_agent_toolset` lists the connected server's tools and wraps each as `Tool.from_schema` over a closure that runs the tool through `MCP.Call Tool` on the shared handle — one path feeds both pydantic-ai history and MCPLibrary's recorder. Bridge lives in MCPLibrary, not `_core`, honoring surface→`_core` dependency direction.)
+- [x] 2.2 Live MiniMax smoke (gated on creds): run a prompt that should call a tool; assert `AgentRunResult.tool_calls` is populated with the executed call + result; MetricsLibrary reads it. (`tests/surfaces/mcp/test_agent_bridge.py::test_live_in_process_agent_drives_mcp_tool_through_the_handle`; live MiniMax-M2.7 run executed `echo_back(text='mcp-works')`→`'mcp-works'`, recorder + `Metric.Get Tool Call Metrics` both saw count=1/passed=1.)
 
 ## 3. Skills surface — real activation
 
