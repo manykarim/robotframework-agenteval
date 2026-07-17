@@ -33,6 +33,7 @@ __all__ = [
     "JudgeOutputParseError",
     "MissingExtraError",
     "AdapterError",
+    "AdapterVersionDriftWarning",
     "TierViolationError",
     "IncompleteTraceError",
     "BudgetExceededError",
@@ -152,6 +153,16 @@ class AdapterError(AgentEvalError):
     """No adapter could be resolved, or a resolved adapter misbehaved."""
 
     error_code: ClassVar[str] = "ADAPTER_ERROR"
+
+
+class AdapterVersionDriftWarning(UserWarning):
+    """A CLI adapter detected a binary version outside its pinned tested range.
+
+    Warning, not error: the parse strategy still runs, but the detected version
+    was not the one the adapter's parse logic was verified against, so results
+    may drift. Subclasses ``UserWarning`` so it is visible by default and can be
+    escalated to an error with ``warnings.simplefilter("error", ...)`` in tests.
+    """
 
 
 class TierViolationError(AgentEvalError):

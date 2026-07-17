@@ -30,8 +30,10 @@ from AgentEval._core.adapter import (
     resolve_config,
     run_async,
 )
+from AgentEval._core.cli_adapter import SubprocessCLIAdapter
 from AgentEval._core.errors import (
     AdapterError,
+    AdapterVersionDriftWarning,
     AgentEvalError,
     BudgetExceededError,
     HookExecutionError,
@@ -79,6 +81,7 @@ __all__ = [
     # adapter
     "Adapter",
     "GenericAdapter",
+    "SubprocessCLIAdapter",
     "get_adapter",
     "resolve_config",
     "run_async",
@@ -99,6 +102,7 @@ __all__ = [
     "JudgeOutputParseError",
     "MissingExtraError",
     "AdapterError",
+    "AdapterVersionDriftWarning",
     "TierViolationError",
     "IncompleteTraceError",
     "BudgetExceededError",

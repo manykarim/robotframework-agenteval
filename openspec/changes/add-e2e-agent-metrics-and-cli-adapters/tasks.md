@@ -21,17 +21,17 @@
 
 ## 4. P2 — coding-agent CLI adapters
 
-- [ ] 4.1 `_core/cli_adapter.py`: `SubprocessCLIAdapter` base — `build_argv(prompt)` → `subprocess.run` (timeout, `start_new_session`, secrets from `os.environ` never logged, missing-binary fails loud with install guidance) → `parse_output(...)` → `AgentRunResult`; a `--version` probe into metadata + `AdapterVersionDriftWarning` outside a pinned range; a per-adapter `validation_ceiling` marker.
-- [ ] 4.2 `claude-code` adapter (reference, FULL): `claude -p --output-format stream-json`; parse tool_use/tool_result + native cost + full/cache tokens; live E2E smoke gated on the binary + `ANTHROPIC_API_KEY`.
-- [ ] 4.3 `gemini` (FULL) + `codex` (PARTIAL, de-cumulate turn tokens) + `opencode` (PARTIAL, native cost) adapters; register their slugs in `get_adapter`; each with a gated live E2E smoke. Confirm opencode's JSON field spellings by running it locally before committing the parser.
-- [ ] 4.4 `kilo` + `copilot` adapters, best-effort DEGRADED with a VALIDATION-CEILING marker (copilot: session-log fallback, no JSON stdout; kilo: probe fields at runtime). Confirm field spellings locally.
-- [ ] 4.5 End-to-end metrics recipe under `docs/recipes/`: a real agent run through a CLI adapter producing tool-call + token + cost metrics + a JSON export, RF voice, runnable.
+- [x] 4.1 `_core/cli_adapter.py`: `SubprocessCLIAdapter` base — `build_argv(prompt)` → `subprocess.run` (timeout, `start_new_session`, secrets from `os.environ` never logged, missing-binary fails loud with install guidance) → `parse_output(...)` → `AgentRunResult`; a `--version` probe into metadata + `AdapterVersionDriftWarning` outside a pinned range; a per-adapter `validation_ceiling` marker.
+- [x] 4.2 `claude-code` adapter (reference, FULL): `claude -p --output-format stream-json`; parse tool_use/tool_result + native cost + full/cache tokens; live E2E smoke gated on the binary + `ANTHROPIC_API_KEY`.
+- [x] 4.3 `gemini` (FULL) + `codex` (PARTIAL, de-cumulate turn tokens) + `opencode` (PARTIAL, native cost) adapters; register their slugs in `get_adapter`; each with a gated live E2E smoke. Confirm opencode's JSON field spellings by running it locally before committing the parser.
+- [x] 4.4 `kilo` + `copilot` adapters, best-effort DEGRADED with a VALIDATION-CEILING marker (copilot: session-log fallback, no JSON stdout; kilo: probe fields at runtime). Confirm field spellings locally.
+- [x] 4.5 End-to-end metrics recipe under `docs/recipes/`: a real agent run through a CLI adapter producing tool-call + token + cost metrics + a JSON export, RF voice, runnable.
 
 ## 5. Verification
 
-- [ ] 5.1 Full local gate green: ruff, format, mypy, license, contract-sections, doc-keyword-count, doc-rendering, keyword-examples, pytest, robot smoke.
-- [ ] 5.2 Live E2E smokes: run at least the `claude-code` (or an available) CLI adapter end-to-end and confirm a populated metrics record + JSON export with real tool-call + token + cost numbers; record which adapters were live-verified vs unverified honestly.
-- [ ] 5.3 Confirm DEGRADED adapters + derived (non-native) numbers are marked so real-world numbers are never overstated.
+- [x] 5.1 Full local gate green: ruff, format, mypy, license, contract-sections, doc-keyword-count, doc-rendering, keyword-examples, pytest, robot smoke.
+- [x] 5.2 Live E2E smokes: run at least the `claude-code` (or an available) CLI adapter end-to-end and confirm a populated metrics record + JSON export with real tool-call + token + cost numbers; record which adapters were live-verified vs unverified honestly.
+- [x] 5.3 Confirm DEGRADED adapters + derived (non-native) numbers are marked so real-world numbers are never overstated.
 
 ## 6. Release + archive
 

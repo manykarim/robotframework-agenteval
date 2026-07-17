@@ -33,11 +33,14 @@ import threading
 import time
 import uuid
 from collections.abc import Coroutine
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkable
 
 from AgentEval._core.errors import AdapterError, MissingExtraError
 from AgentEval._core.tier import enforce_no_model
 from AgentEval._core.types import AgentRunMetadata, AgentRunResult, ToolCallTrace, Usage
+
+if TYPE_CHECKING:
+    from AgentEval._core.cli_adapter import SubprocessCLIAdapter
 
 __all__ = [
     "Adapter",
@@ -242,21 +245,43 @@ def _as_int(value: Any) -> int:
 
 # Registry of built-in adapters by slug. The four surfaces resolve Tier-3
 # adapters through here; a caller may also hand a keyword its own adapter
-# object, which never touches this map.
+# object, which never touches this map. The six coding-agent CLI adapters
+# (claude-code, gemini, codex, opencode, kilo, copilot) resolve through
+# ``cli_adapters.SLUG_MAP``, imported lazily so the subprocess seam and its
+# concrete parse strategies stay off the hot import path of the four surfaces.
 _ADAPTERS: dict[str, type[Adapter]] = {"generic": GenericAdapter}
+
+
+def _cli_slug_map() -> dict[str, type[SubprocessCLIAdapter]]:
+    """Lazily import the CLI adapter registry to avoid heavy import at module load."""
+    from AgentEval._core.cli_adapters import SLUG_MAP
+
+    return dict(SLUG_MAP)
+
+
+def _resolve_adapter_class(name: str) -> type[Adapter] | None:
+    """Look up an adapter class by slug across built-ins and the CLI registry."""
+    adapter_cls = _ADAPTERS.get(name)
+    if adapter_cls is not None:
+        return adapter_cls
+    # SubprocessCLIAdapter satisfies the Adapter protocol structurally; mypy is
+    # conservative about type[Protocol] variance, so narrow explicitly.
+    return cast("type[Adapter] | None", _cli_slug_map().get(name))
 
 
 def get_adapter(name_or_adapter: str | Adapter = "generic", **kwargs: Any) -> Adapter:
     """Return an adapter instance.
 
-    Pass a slug (currently only ``"generic"``) to build a built-in adapter, or
-    pass an object that already satisfies the ``Adapter`` protocol to use it as
-    is. Unknown slugs raise ``AdapterError``.
+    Pass a slug - ``"generic"`` for the LiteLLM path, or one of the six coding-agent
+    CLI slugs (``claude-code``, ``gemini``, ``codex``, ``opencode``, ``kilo``,
+    ``copilot``) - to build a built-in adapter, or pass an object that already
+    satisfies the ``Adapter`` protocol to use it as is. Unknown slugs raise
+    ``AdapterError``.
     """
     if isinstance(name_or_adapter, str):
-        adapter_cls = _ADAPTERS.get(name_or_adapter)
+        adapter_cls = _resolve_adapter_class(name_or_adapter)
         if adapter_cls is None:
-            known = ", ".join(sorted(_ADAPTERS)) or "(none)"
+            known = ", ".join(sorted({*_ADAPTERS, *_cli_slug_map()})) or "(none)"
             raise AdapterError(f"unknown adapter {name_or_adapter!r}; known adapters: {known}")
         return adapter_cls(**kwargs)
     if isinstance(name_or_adapter, Adapter):
