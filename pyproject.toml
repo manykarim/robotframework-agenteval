@@ -76,6 +76,8 @@ packages = [
   "src/MCPLibrary",
   "src/SkillsLibrary",
   "src/SubagentsLibrary",
+  "src/MetricsLibrary",
+  "src/StatLibrary",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -85,6 +87,8 @@ include = [
   "src/MCPLibrary",
   "src/SkillsLibrary",
   "src/SubagentsLibrary",
+  "src/MetricsLibrary",
+  "src/StatLibrary",
   "README.md",
   "LICENSE",
   "CHANGELOG.md",

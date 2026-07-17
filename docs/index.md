@@ -5,7 +5,7 @@ with Robot Framework. Deterministically, with an LLM judge, or by driving a
 real coding agent. You already know how to write Robot tests; now you can point
 them at the things your agents actually depend on.
 
-**44 keywords across 4 libraries.** Import only what you test.
+**55 keywords across 6 libraries.** Import only what you test.
 
 ## The four libraries
 

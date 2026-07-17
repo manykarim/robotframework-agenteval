@@ -90,3 +90,14 @@ repos:
         always_run: true
         pass_filenames: false
         require_serial: true
+
+      # Every documented keyword example must reference only real shipped
+      # keywords: a namespaced example reference (e.g. `Stat.Run N Times`) that
+      # no shipped Library exports is a phantom that never reaches a user.
+      - id: keyword-examples
+        name: keyword-example phantom-reference check
+        entry: uv run python scripts/check-keyword-examples.py
+        language: system
+        always_run: true
+        pass_filenames: false
+        require_serial: true

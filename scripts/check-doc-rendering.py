@@ -26,7 +26,7 @@ exits non-zero naming the offending file/table/link, on any of:
 (c) internal doc links resolve: relative links (not http/https/mailto) in
     ``README.md`` and every ``docs/**/*.md`` point to an existing file (a bare
     ``#anchor`` is in-page and skipped);
-(d) exactly the five expected libdoc files exist and are non-empty.
+(d) exactly the seven expected libdoc files exist and are non-empty.
 
 Keyword-count correctness stays owned by ``check_doc_keyword_count.py``.
 """
@@ -48,6 +48,8 @@ EXPECTED_LIBDOCS = (
     "MCPLibrary",
     "SkillsLibrary",
     "SubagentsLibrary",
+    "MetricsLibrary",
+    "StatLibrary",
     "AgentEval",
 )
 

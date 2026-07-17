@@ -64,6 +64,10 @@ class ToolCallTrace:
     source: Literal["adapter", "hosted_mcp"] = "adapter"
     tool_call_id: str = ""
     sequence_index: int = 0
+    # Per-tool attribution, populated by adapters that can supply it (0 when unknown).
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "args", dict(self.args))
@@ -80,11 +84,17 @@ class AgentRunMetadata:
 
     completeness: Literal["complete", "truncated", "partial"] = "complete"
     mcp_coverage: Literal["hosted_in_process", "subprocess_with_observer", "external_mixed"] = "hosted_in_process"
+    # Where the cost/token numbers came from: reported by the provider (``native``),
+    # computed from tokens + a price table (``derived``), or absent (``none``).
+    metric_source: Literal["native", "derived", "none"] = "none"
+    # Agent binary/model version captured for drift tracking (empty when unknown).
+    agent_version: str = ""
 
     _VALID_COMPLETENESS: ClassVar[frozenset[str]] = frozenset(("complete", "truncated", "partial"))
     _VALID_MCP_COVERAGE: ClassVar[frozenset[str]] = frozenset(
         ("hosted_in_process", "subprocess_with_observer", "external_mixed")
     )
+    _VALID_METRIC_SOURCE: ClassVar[frozenset[str]] = frozenset(("native", "derived", "none"))
 
     def __post_init__(self) -> None:
         if self.completeness not in self._VALID_COMPLETENESS:
@@ -94,6 +104,10 @@ class AgentRunMetadata:
         if self.mcp_coverage not in self._VALID_MCP_COVERAGE:
             raise ValueError(
                 f"mcp_coverage must be one of {sorted(self._VALID_MCP_COVERAGE)}; got {self.mcp_coverage!r}"
+            )
+        if self.metric_source not in self._VALID_METRIC_SOURCE:
+            raise ValueError(
+                f"metric_source must be one of {sorted(self._VALID_METRIC_SOURCE)}; got {self.metric_source!r}"
             )
 
 

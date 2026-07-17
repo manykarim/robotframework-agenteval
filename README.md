@@ -40,7 +40,7 @@ Prefer to grab them all at once? There's an optional composite that bundles ever
 Library    AgentEval
 ```
 
-Either way you get **44 keywords across 4 libraries** — the tables below list every one, with its test mode and what it does.
+Either way you get **55 keywords across 6 libraries** — the tables below list every one, with its test mode and what it does.
 
 ## Keyword documentation
 
@@ -50,7 +50,9 @@ Full, always-current keyword docs (arguments, tiers, examples) are published to 
 - 📖 [MCPLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/MCPLibrary.html)
 - 📖 [SkillsLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/SkillsLibrary.html)
 - 📖 [SubagentsLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/SubagentsLibrary.html)
-- 📖 [AgentEval](https://manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html) (the composite of all four)
+- 📖 [MetricsLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/MetricsLibrary.html)
+- 📖 [StatLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/StatLibrary.html)
+- 📖 [AgentEval](https://manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html) (the composite of all four surfaces)
 
 ### HooksLibrary — 8 keywords
 
@@ -132,6 +134,39 @@ Read the delegation trail straight out of a run result — that's deterministic.
 | **Subagent.Get Delegation Decision** | 3 | Run a prompt once and return a routing decision (fan-out composable) |
 | **Subagent.Get Routing Accuracy** | 3 | Run a routing-task cohort and report the fraction routed correctly |
 
+## Metrics & statistics
+
+Two small utility libraries, imported on their own, turn a real agent run into numbers you can assert on — tool calls, tokens, cost, latency, and pass@k.
+
+### MetricsLibrary — 8 keywords
+
+📖 [MetricsLibrary keyword docs](https://manykarim.github.io/robotframework-agenteval/keywords/MetricsLibrary.html)
+
+Read metrics straight off an `AgentRunResult` (ground truth from the recorded trace, never the model's self-report), assert on budgets, and export a normalized metrics record to JSON.
+
+| Keyword | Tier | What it does |
+|---|---|---|
+| **Metric.Get Token Usage** | 1 | Token counts from the run (input, output, cached) |
+| **Metric.Get Cost USD** | 1 | The run's recorded cost in USD |
+| **Metric.Get Latency Seconds** | 1 | The run's wall-clock latency |
+| **Metric.Get Tool Call Metrics** | 1 | Per-task rollup + per-tool breakdown (count, passed, failed, tokens, cost, latency) |
+| **Metric.Tokens Used Should Be Below** | 1 | Assert total tokens used is below a threshold |
+| **Metric.Cost Should Be Below** | 1 | Assert the run's cost is below a threshold |
+| **Metric.Get Run Metrics** | 1 | Compute a normalized run-metrics record (with an expected-tool contract + hit rate) |
+| **Metric.Export Run Metrics** | 1 | Write a run-metrics record to JSON for real-world-number collection |
+
+### StatLibrary — 3 keywords
+
+📖 [StatLibrary keyword docs](https://manykarim.github.io/robotframework-agenteval/keywords/StatLibrary.html)
+
+Give stochastic runs (LLM judge, coding agent) statistical rigor — run N times, then reduce to pass@k with a confidence band.
+
+| Keyword | Tier | What it does |
+|---|---|---|
+| **Stat.Run N Times** | 3 | Run a keyword (or callable) N times; return per-trial outcomes |
+| **Stat.Get Pass At K** | 1 | Unbiased pass@k over the collected trials |
+| **Stat.Wilson Interval** | 1 | Wilson confidence interval for a binomial proportion |
+
 ## Three ways to test
 
 Every keyword carries a **tier** that tells you how it runs:
@@ -166,6 +201,51 @@ Skill Activates When It Should
     Skill.Should Activate For    ${CURDIR}/SKILL.md
     ...    prompt=Please refactor this module for readability
 ```
+
+## Running with a real LLM or coding agent
+
+Tier-2 and Tier-3 keywords call a real model. There are two ways to give them one: the **LiteLLM path** (point the built-in generic adapter at a hosted model) and the **coding-agent-CLI path** (drive a real agent binary you already have installed). Both feed the same metric keywords — token usage, tool-call counts, cost, latency — so a suite reads the same either way. The full walkthrough lives in [`docs/running-against-a-real-model.md`](./docs/running-against-a-real-model.md); here's the shape of it.
+
+### Path A — a hosted model via LiteLLM
+
+Add the `[llm]` extra, name a model, and export the provider's key. Nothing else changes in your suite.
+
+```bash
+pip install 'robotframework-agenteval[llm]'   # pulls in litellm
+export AGENTEVAL_MODEL=anthropic/claude-sonnet-4-6   # LiteLLM <provider>/<model>
+export ANTHROPIC_API_KEY=sk-ant-...                  # provider key, read from the environment
+```
+
+Keys are read straight from the process environment and never stored in Robot Framework variables (which would leak into `log.html`). Each provider has its own variable — `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and so on.
+
+```robotframework
+*** Settings ***
+Library    SkillsLibrary
+
+*** Test Cases ***
+Skill Activates On A Real Model
+    Skill.Should Activate For
+    ...    ${CURDIR}/skills/web-search.md
+    ...    Find the latest news about Robot Framework
+    ...    model=anthropic/claude-sonnet-4-6
+```
+
+### Path B — a coding-agent CLI
+
+Instead of a hosted chat model, drive a real coding-agent binary. AgentEval shells out to a CLI you install yourself, then normalizes its run into the same result shape. Each CLI has an **adapter slug** you name to select it, its own **install** step, and its own **credential** location — AgentEval reads whatever that CLI already reads (no keys pass through Robot Framework variables).
+
+| CLI | Adapter slug | Install | Credentials it reads | Fidelity |
+|---|---|---|---|---|
+| Claude Code | `claude-code` | `npm install -g @anthropic-ai/claude-code` | `claude login`, or `ANTHROPIC_API_KEY`; config under `~/.claude/` | **FULL** — native tool calls, tokens (with cache), and cost |
+| Gemini CLI | `gemini` | `npm install -g @google/gemini-cli` | `gemini` login, or `GEMINI_API_KEY`; config under `~/.gemini/` | **FULL** — native tool calls and tokens; cost derived |
+| Codex CLI | `codex` | `npm install -g @openai/codex` | `codex login`, or `OPENAI_API_KEY`; sessions under `~/.codex/` | **PARTIAL** — tool calls and tokens; cost derived |
+| opencode | `opencode` | `npm install -g opencode-ai` ([opencode.ai](https://opencode.ai)) | provider keys via `opencode auth login` | **PARTIAL** — native tool calls, tokens, and cost |
+| Kilo | `kilo` | see [kilocode.ai](https://kilocode.ai) | provider/router key in the Kilo config it reads | **DEGRADED** — best-effort; tool calls probed, tokens/cost estimated |
+| Copilot CLI | `copilot` | `npm install -g @github/copilot` | GitHub Copilot auth (`gh auth login` / `GITHUB_TOKEN`) | **DEGRADED** — best-effort; metrics reconstructed from the session log |
+
+**Read the fidelity column before trusting the numbers.** FULL adapters report tool calls, tokens, and cost straight from the run. PARTIAL adapters capture tool calls and tokens natively but *derive* cost from token counts. DEGRADED adapters (`kilo`, `copilot`) reconstruct metrics best-effort from probes or on-disk session logs — treat their tool-call, token, and cost numbers as lower-fidelity, not ground-truth. Derived (non-native) figures are flagged in the run metadata so a report never overstates them.
+
+The binaries are **not** packaged with AgentEval — install each one yourself, and the adapter fails loud with install guidance if it can't find the CLI. See [`docs/running-against-a-real-model.md`](./docs/running-against-a-real-model.md) for the per-CLI setup in full.
 
 ## Documentation
 
