@@ -9,8 +9,6 @@ extend-exclude = [
   ".venv",
   "build",
   "dist",
-  "_bmad-output/spikes",  # spike scratch — not in lint scope
-  "_bmad-output/implementation-artifacts",  # planning docs
 ]
 
 [lint]
