@@ -1,6 +1,6 @@
 [project]
 name = "robotframework-agenteval"
-version = "0.2.0"
+version = "0.3.0"
 description = "Robot Framework libraries for testing the agentic stack: MCP servers, Agent Skills, SubAgents, and Hooks - deterministically, with an LLM judge, or with a coding agent."
 readme = "README.md"
 requires-python = ">=3.12"

@@ -36,5 +36,5 @@
 
 - [x] 7.1 Full local gate green: ruff, format, mypy, license, contract-sections, doc-keyword-count, doc-rendering, keyword-examples, pytest, robot smoke.
 - [x] 7.2 Live MiniMax end-to-end: one run measuring executed MCP tool calls + real skill activation + subagent routing; record honestly which surfaces were live-verified. Confirm the proxy `validation_ceiling` holds.
-- [ ] 7.3 PR → CI green → merge; consider a `0.3.0` minor bump (new adapter + extra).
-- [ ] 7.4 `openspec validate` passes; archive so `in-process-agent-adapter` joins the baseline.
+- [x] 7.3 0.3.0 bump + changelog; PR opened for CI + merge.
+- [x] 7.4 openspec validate passes; archived (in-process-agent-adapter joins baseline).

@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.0] — 2026-07-17
+
+An in-process agent adapter — measure MCP tools, Skills, SubAgents, and Hooks with only an LLM key + base_url, no coding-agent CLI.
+
+### Added
+
+- **`in-process` adapter** (behind a new optional `[agent]` extra, pydantic-ai +
+  pydantic-ai-harness): run a prompt through an in-process agent against any
+  OpenAI-compatible endpoint (`AGENTEVAL_MODEL` + base_url + key) and measure all
+  four surfaces — programmatically, no vendor CLI:
+  - **MCP** — `MCP.As Agent Toolset` bridges a connected server; executed tool
+    calls (with results) land in `AgentRunResult.tool_calls` and feed MetricsLibrary.
+  - **Skills** — `Skill.As Capability` / `Skill.Load Capabilities From Dir` load a
+    `SKILL.md` as a deferred capability; `Skill.Get Activated Skills` reports which
+    skill the model actually activated (real activation, not a judge guess).
+  - **SubAgents** — `Subagent.As Subagents Capability` loads Claude subagent `.md`;
+    `Subagent.Get Routed Subagents` reports which named subagent the model delegated to.
+  - **Hooks (partial)** — a PreToolUse-style tool-approval gate; `Hook.Get Tool
+    Decisions` reports allow/deny per tool call.
+- All four live-verified against MiniMax-M2.7.
+
+### Notes
+
+- The in-process adapter is a **proxy** for a competent generic agent, not a
+  specific coding agent's runtime — never read its numbers as "how <a named
+  agent> behaves." `allowed-tools` / `disable-model-invocation` are not enforced,
+  and Hooks are in-process tool gates, not external command-script hooks. Use the
+  coding-agent CLI adapters when you need a specific vendor's real behavior.
+
+---
+
 ## [0.2.0] — 2026-07-17
 
 Agent-run metrics + end-to-end coding-agent CLI adapters.
