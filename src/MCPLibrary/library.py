@@ -72,6 +72,13 @@ class MCPLibrary:
 
     ROBOT_LIBRARY_SCOPE = "GLOBAL"
 
+    def __init__(self) -> None:
+        # Every ``MCP.Call Tool`` invocation is recorded here as a
+        # ``ToolCallTrace`` so the coverage keywords can score live calls
+        # natively (no hand-rolled projection). Reset with
+        # ``MCP.Clear Recorded Tool Calls``.
+        self._recorded_calls: list[ToolCallTrace] = []
+
     # ------------------------------------------------------------------ #
     # Schema keywords - Tier 1, no live server needed.                    #
     # ------------------------------------------------------------------ #
@@ -221,7 +228,18 @@ class MCPLibrary:
             )
         backend = _load_backend()
         effective = arguments if arguments is not None else (dict(kwargs) if kwargs else None)
-        return cast("MCPToolResult", backend.call_tool(handle, tool_name, effective))
+        result = cast("MCPToolResult", backend.call_tool(handle, tool_name, effective))
+        self._recorded_calls.append(
+            ToolCallTrace(
+                name=tool_name,
+                args=effective or {},
+                result=result.content,
+                error=result.error_message if result.is_error else None,
+                latency_ms=result.latency_ms,
+                source="hosted_mcp",
+            )
+        )
+        return result
 
     @keyword(name="MCP.Stop Server")
     @tier(1)
@@ -241,6 +259,37 @@ class MCPLibrary:
     # ------------------------------------------------------------------ #
     # Coverage keywords - Tier 1, over the shared trace projection.       #
     # ------------------------------------------------------------------ #
+
+    @keyword(name="MCP.Get Recorded Tool Calls")
+    @tier(1)
+    def get_recorded_tool_calls(self) -> list[ToolCallTrace]:
+        """Return the ``ToolCallTrace`` list recorded from live ``MCP.Call Tool`` calls.
+
+        Every ``MCP.Call Tool`` invocation on this library instance is captured
+        (``source="hosted_mcp"``), so the coverage keywords score live calls
+        directly - no hand-rolled projection. Names and arguments come from the
+        call inputs; ``result``/``error``/``latency_ms`` from its result. Reset
+        with ``MCP.Clear Recorded Tool Calls``.
+
+        Example:
+        | MCP.Call Tool    ${h}    search    query=robots
+        | ${calls}=    MCP.Get Recorded Tool Calls
+        | ${n}=    MCP.Get Tool Call Count    ${calls}
+        | Should Be Equal As Integers    ${n}    1
+        """
+        return list(self._recorded_calls)
+
+    @keyword(name="MCP.Clear Recorded Tool Calls")
+    @tier(1)
+    def clear_recorded_tool_calls(self) -> None:
+        """Drop all recorded ``MCP.Call Tool`` traces - call between tests to reset.
+
+        Example:
+        | MCP.Clear Recorded Tool Calls
+        | ${calls}=    MCP.Get Recorded Tool Calls
+        | Should Be Empty    ${calls}
+        """
+        self._recorded_calls.clear()
 
     @keyword(name="MCP.Get Tool Call Count")
     @tier(1)

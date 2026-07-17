@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -361,6 +362,73 @@ def test_command_should_exist_fails_for_missing_binary(lib: HooksLibrary, tmp_pa
     )
     with pytest.raises(AssertionError):
         lib.command_should_exist(lib.get_config(path))
+
+
+def test_command_should_exist_passes_when_target_script_exists(lib: HooksLibrary, tmp_path: Path) -> None:
+    """WHEN `<interpreter> "<path>"` and the script exists THEN the check passes."""
+    script = tmp_path / "hook.mjs"
+    script.write_text("// hook body\n", encoding="utf-8")
+    command = f"{shlex.quote(sys.executable)} {shlex.quote(str(script))}"
+    path = _write_config(tmp_path, {"PreToolUse": [{"hooks": [{"type": "command", "command": command}]}]})
+    lib.command_should_exist(lib.get_config(path))  # interpreter on disk + script exists
+
+
+def test_command_should_exist_fails_when_target_script_missing(lib: HooksLibrary, tmp_path: Path) -> None:
+    """WHEN the interpreter resolves but the script is absent THEN it fails, naming the script."""
+    missing = tmp_path / "does-not-exist.mjs"
+    command = f"{shlex.quote(sys.executable)} {shlex.quote(str(missing))}"
+    path = _write_config(tmp_path, {"PreToolUse": [{"hooks": [{"type": "command", "command": command}]}]})
+    with pytest.raises(AssertionError, match="does not exist"):
+        lib.command_should_exist(lib.get_config(path))
+
+
+def test_command_should_exist_checks_script_in_exec_form_args(lib: HooksLibrary, tmp_path: Path) -> None:
+    """WHEN an exec-form `args` array names a missing script THEN the check fails."""
+    missing = tmp_path / "missing-exec.mjs"
+    path = _write_config(
+        tmp_path,
+        {"PreToolUse": [{"hooks": [{"type": "command", "command": sys.executable, "args": [str(missing)]}]}]},
+    )
+    with pytest.raises(AssertionError, match="does not exist"):
+        lib.command_should_exist(lib.get_config(path))
+
+
+def test_command_should_exist_resolves_plugin_root_when_env_set(
+    lib: HooksLibrary, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """WHEN ${CLAUDE_PLUGIN_ROOT} is set and the script exists THEN the check passes."""
+    plugin_root = tmp_path / "plugin"
+    (plugin_root / "scripts").mkdir(parents=True)
+    (plugin_root / "scripts" / "x.mjs").write_text("// hook\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    command = f'{shlex.quote(sys.executable)} "${{CLAUDE_PLUGIN_ROOT}}/scripts/x.mjs"'
+    path = _write_config(tmp_path, {"PreToolUse": [{"hooks": [{"type": "command", "command": command}]}]})
+    lib.command_should_exist(lib.get_config(path))
+
+
+def test_command_should_exist_fails_when_plugin_root_unset(
+    lib: HooksLibrary, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """WHEN ${CLAUDE_PLUGIN_ROOT} is unset THEN the check fails, naming the variable."""
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    command = f'{shlex.quote(sys.executable)} "${{CLAUDE_PLUGIN_ROOT}}/scripts/x.mjs"'
+    path = _write_config(tmp_path, {"PreToolUse": [{"hooks": [{"type": "command", "command": command}]}]})
+    with pytest.raises(AssertionError, match=r"\$CLAUDE_PLUGIN_ROOT"):
+        lib.command_should_exist(lib.get_config(path))
+
+
+def test_build_hook_env_passes_plugin_root_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    """WHEN CLAUDE_PLUGIN_ROOT is set in the parent env THEN the hook subprocess env carries it."""
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "/opt/plugin")
+    env = build_hook_env(project_dir="/proj")
+    assert env["CLAUDE_PLUGIN_ROOT"] == "/opt/plugin"
+
+
+def test_build_hook_env_omits_plugin_root_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """WHEN CLAUDE_PLUGIN_ROOT is not set THEN it is absent from the hook subprocess env."""
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    env = build_hook_env(project_dir="/proj")
+    assert "CLAUDE_PLUGIN_ROOT" not in env
 
 
 # --------------------------------------------------------------------------- #

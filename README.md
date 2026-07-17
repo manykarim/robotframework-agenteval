@@ -40,7 +40,7 @@ Prefer to grab them all at once? There's an optional composite that bundles ever
 Library    AgentEval
 ```
 
-Either way you get **42 keywords across 4 libraries** — the tables below list every one, with its test mode and what it does.
+Either way you get **44 keywords across 4 libraries** — the tables below list every one, with its test mode and what it does.
 
 ### HooksLibrary — 8 keywords
 
@@ -57,7 +57,7 @@ Hooks are deterministic programs: matchers, commands, exit codes, decisions. So 
 | **Hook.Validate Matcher Syntax** | 1 | Check a matcher compiles, optionally whether it matches a subject |
 | **Hook.Command Should Exist** | 1 | Assert each hook command resolves to an executable on disk |
 
-### MCPLibrary — 15 keywords
+### MCPLibrary — 17 keywords
 
 Parse and validate a `.mcp.json` config with no server running, or spawn the real thing and call its tools. Tool discoverability drives a live agent to see whether it actually reaches for the right tools.
 
@@ -71,6 +71,8 @@ Parse and validate a `.mcp.json` config with no server running, or spawn the rea
 | **MCP.List Tools** | 1 | List the tools a server advertises |
 | **MCP.Call Tool** | 1 | Call a tool by name and return its result |
 | **MCP.Stop Server** | 1 | Release the resources for a server handle |
+| **MCP.Get Recorded Tool Calls** | 1 | Return the trace list recorded from live `MCP.Call Tool` calls |
+| **MCP.Clear Recorded Tool Calls** | 1 | Drop all recorded `MCP.Call Tool` traces to reset between tests |
 | **MCP.Get Tool Call Count** | 1 | Count tool calls in a run, a list of runs, or a trace |
 | **MCP.Get Tool Call Names** | 1 | Tool-call names in order, duplicates preserved |
 | **MCP.Get Tool Hit Rate** | 1 | Fraction of expected tools that were actually called |

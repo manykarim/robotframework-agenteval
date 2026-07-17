@@ -56,11 +56,20 @@ class AgentEvalError(Exception):
 
     error_code: ClassVar[str] = ""
 
+    def _context_suffix(self) -> str:
+        """Extra actionable context appended after the message.
+
+        Empty by default; leaves that store useful attributes (e.g. a config
+        file path) override this so ``str(exc)`` - which Robot Framework prints
+        to log/console - carries the context instead of dropping it.
+        """
+        return ""
+
     def __str__(self) -> str:
         message = super().__str__()
         if self.error_code:
-            return f"{self.error_code}: {message}"
-        return message
+            message = f"{self.error_code}: {message}"
+        return message + self._context_suffix()
 
 
 class InvalidConfigError(AgentEvalError):
@@ -84,6 +93,16 @@ class InvalidConfigError(AgentEvalError):
         self.file_path = file_path
         self.field = field
         self.fix = fix
+
+    def _context_suffix(self) -> str:
+        parts = []
+        if self.file_path:
+            parts.append(f"file: {self.file_path}")
+        if self.fix:
+            parts.append(f"fix: {self.fix}")
+        if not parts:
+            return ""
+        return f" ({'; '.join(parts)})"
 
 
 class InvalidRubricError(AgentEvalError):

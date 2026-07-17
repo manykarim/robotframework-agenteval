@@ -461,20 +461,29 @@ class HooksLibrary:
         nothing.
 
         For each ``type: "command"`` hook (optionally scoped to one ``event``),
-        takes the first ``shlex``-split token of the ``command`` string (or the
-        ``command`` itself in exec form), expands a literal
-        ``$CLAUDE_PROJECT_DIR`` / ``${CLAUDE_PROJECT_DIR}`` prefix against
-        ``project_dir``, and resolves it via ``shutil.which`` or a
-        path-existence-plus-executable-bit check. This is a heuristic checking
-        the FIRST TOKEN ONLY - not a full shell parse.
+        resolves the interpreter (the first ``shlex``-split token of the
+        ``command`` string, or the ``command`` itself in exec form) via
+        ``shutil.which`` or a path-existence-plus-executable-bit check. When the
+        command names a *target script* (a path-bearing argument such as
+        ``node "${CLAUDE_PLUGIN_ROOT}/scripts/x.mjs"`` or an exec-form ``args``
+        entry), that script's existence on disk is ALSO verified - so a hook
+        whose interpreter is installed but whose script is missing still fails.
+
+        Environment references are expanded first: ``$CLAUDE_PROJECT_DIR`` /
+        ``${CLAUDE_PROJECT_DIR}`` resolve against ``project_dir``; every other
+        ``$VAR`` / ``${VAR}`` (notably ``${CLAUDE_PLUGIN_ROOT}`` used by Claude
+        Code *plugin* hook configs) resolves from ``os.environ``. When a
+        variable needed to resolve a script path is unset, the check FAILS and
+        names that variable rather than passing vacuously.
 
         | =Arguments= | =Description= |
         | ``config`` | The parsed config dict from ``Hook.Get Config``. |
         | ``event`` | Optional event name to scope the check. When ``None``, checks every event. |
-        | ``project_dir`` | Value substituted for a ``$CLAUDE_PROJECT_DIR`` prefix. Defaults to the test's cwd. |
+        | ``project_dir`` | Value substituted for ``$CLAUDE_PROJECT_DIR``. Defaults to the test's cwd. |
 
-        Fails, naming every unresolved command, when any first token cannot be
-        resolved to an executable.
+        Fails, naming every unresolved command, when an interpreter cannot be
+        resolved to an executable, a target script does not exist, or an env var
+        needed to resolve a script path is unset.
 
         Example:
         | `Hook.Command Should Exist`    ${config}
@@ -493,13 +502,18 @@ class HooksLibrary:
                 if not isinstance(command, str) or not command:
                     continue
                 if entry.get("args"):
-                    token = command  # exec form: command is the executable
+                    interpreter = command  # exec form: command is the executable
+                    rest = [str(arg) for arg in entry["args"]]
                 else:
                     split = shlex.split(command)
-                    token = split[0] if split else ""
-                token = self._expand_project_dir(token, resolved_project_dir)
-                if not self._command_resolves(token):
-                    unresolved.append(f"{ev}: {command!r} (first token {token!r} not found on PATH or disk)")
+                    if not split:
+                        continue
+                    interpreter = split[0]
+                    rest = split[1:]
+
+                problem = self._resolve_command_problem(interpreter, rest, resolved_project_dir)
+                if problem is not None:
+                    unresolved.append(f"{ev}: {command!r} ({problem})")
 
         if unresolved:
             raise AssertionError(
@@ -507,13 +521,80 @@ class HooksLibrary:
                 + "\n  ".join(unresolved)
             )
 
+    @classmethod
+    def _resolve_command_problem(cls, interpreter: str, rest: list[str], project_dir: str) -> str | None:
+        """Return a human-readable problem string, or ``None`` when the command resolves.
+
+        Resolves the interpreter on PATH/disk (after env expansion) and, when a
+        path-bearing target script is present, verifies it exists on disk.
+        """
+        interp_expanded, interp_unset = cls._expand_env_vars(interpreter, project_dir)
+        if interp_unset:
+            return f"interpreter {interpreter!r} references unset env var(s): {cls._name_vars(interp_unset)}"
+        if not cls._command_resolves(interp_expanded):
+            return f"first token {interp_expanded!r} not found on PATH or disk"
+
+        script_token = cls._find_script_token(rest, project_dir)
+        if script_token is None:
+            return None
+        script_expanded, script_unset = cls._expand_env_vars(script_token, project_dir)
+        if script_unset:
+            return (
+                f"target script {script_token!r} cannot be resolved; unset env var(s): {cls._name_vars(script_unset)}"
+            )
+        if not Path(script_expanded).exists():
+            return f"target script {script_expanded!r} does not exist on disk"
+        return None
+
+    # Matches a ``${VAR}`` or ``$VAR`` environment reference.
+    _ENV_VAR_RE = re.compile(r"\$\{(\w+)\}|\$(\w+)")
+
+    @classmethod
+    def _expand_env_vars(cls, token: str, project_dir: str) -> tuple[str, list[str]]:
+        """Expand ``$VAR`` / ``${VAR}`` references, returning ``(expanded, unset_vars)``.
+
+        ``CLAUDE_PROJECT_DIR`` resolves against ``project_dir`` (falling back to
+        ``os.environ``); every other variable (e.g. ``CLAUDE_PLUGIN_ROOT``)
+        resolves from ``os.environ``. Names with no value are left literal and
+        collected so the caller can fail loud instead of passing vacuously.
+        """
+        unset: list[str] = []
+
+        def _replace(match: re.Match[str]) -> str:
+            name = match.group(1) or match.group(2)
+            if name == "CLAUDE_PROJECT_DIR":
+                value: str | None = project_dir if project_dir is not None else os.environ.get(name)
+            else:
+                value = os.environ.get(name)
+            if value is None:
+                if name not in unset:
+                    unset.append(name)
+                return match.group(0)
+            return value
+
+        return cls._ENV_VAR_RE.sub(_replace, token), unset
+
+    @classmethod
+    def _find_script_token(cls, rest: list[str], project_dir: str) -> str | None:
+        """Return the first path-bearing (non-flag) argument, or ``None``.
+
+        A token is path-bearing when, after env expansion, it contains a path
+        separator - covering both literal paths and ``${VAR}/...`` references
+        whose variable is unset (the literal ``${VAR}/`` still carries a ``/``,
+        so the unresolved variable is surfaced rather than silently skipped).
+        """
+        for token in rest:
+            if token.startswith("-"):
+                continue
+            expanded, _ = cls._expand_env_vars(token, project_dir)
+            if "/" in expanded or os.sep in expanded:
+                return token
+        return None
+
     @staticmethod
-    def _expand_project_dir(token: str, project_dir: str) -> str:
-        """Expand a literal ``$CLAUDE_PROJECT_DIR`` / ``${CLAUDE_PROJECT_DIR}`` prefix."""
-        for prefix in ("${CLAUDE_PROJECT_DIR}", "$CLAUDE_PROJECT_DIR"):
-            if token.startswith(prefix):
-                return project_dir + token[len(prefix) :]
-        return token
+    def _name_vars(names: list[str]) -> str:
+        """Render env-var names as a ``$NAME`` comma-joined list for error messages."""
+        return ", ".join(f"${name}" for name in names)
 
     @staticmethod
     def _command_resolves(token: str) -> bool:

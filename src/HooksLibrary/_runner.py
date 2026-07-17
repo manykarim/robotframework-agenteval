@@ -160,9 +160,11 @@ def build_hook_env(
     """Build the sanitized subprocess environment.
 
     Default-deny: only ``ENV_ALLOWLIST`` variables are copied from the parent
-    env, plus ``CLAUDE_PROJECT_DIR`` and any ``extra_env``. ``inherit_env=True``
-    starts from a full copy of the parent env instead (explicit opt-in). Values
-    are read via ``os.environ`` and never logged.
+    env, plus ``CLAUDE_PROJECT_DIR``, ``CLAUDE_PLUGIN_ROOT`` (when set in the
+    parent env - Claude Code *plugin* hook commands reference it), and any
+    ``extra_env``. ``inherit_env=True`` starts from a full copy of the parent
+    env instead (explicit opt-in). Values are read via ``os.environ`` and never
+    logged.
     """
     if inherit_env:
         env: dict[str, str] = dict(os.environ)
@@ -173,6 +175,9 @@ def build_hook_env(
             if value is not None:
                 env[key] = value
     env["CLAUDE_PROJECT_DIR"] = project_dir
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if plugin_root is not None:
+        env["CLAUDE_PLUGIN_ROOT"] = plugin_root
     if extra_env:
         env.update({str(k): str(v) for k, v in extra_env.items()})
     return env

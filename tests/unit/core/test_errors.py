@@ -87,3 +87,11 @@ def test_structured_config_error_context() -> None:
     assert exc.field == "/hooks/0"
     assert exc.fix == "fix it"
     assert str(exc).startswith("INVALID_CONFIG: ")
+
+
+def test_invalid_config_error_str_carries_context() -> None:
+    exc = InvalidConfigError("bad", file_path="/x.json", fix="fix it")
+    rendered = str(exc)
+    assert rendered.startswith("INVALID_CONFIG: ")
+    assert "/x.json" in rendered
+    assert "fix it" in rendered
