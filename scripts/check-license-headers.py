@@ -88,7 +88,8 @@ def main() -> int:
 
     if missing:
         print(
-            f"FAIL: {len(missing)} of {checked} .py files missing canonical Apache 2.0 license header at file prologue:",
+            f"FAIL: {len(missing)} of {checked} .py files missing canonical "
+            "Apache 2.0 license header at file prologue:",
             file=sys.stderr,
         )
         for path in missing:
