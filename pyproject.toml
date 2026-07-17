@@ -44,8 +44,10 @@ dependencies = [
 mcp = ["mcp==1.27.1", "anyio==4.13.0"]
 # LLM judge (Tier-2) + coding-agent (Tier-3) modes — the LiteLLM adapter.
 llm = ["litellm>=1.50,<2.0"]
+# In-process pydantic-ai agent adapter (measures MCP/Skills/SubAgents in-process on just an LLM key+base_url).
+agent = ["pydantic-ai==2.12.0", "pydantic-ai-harness==0.7.0"]
 # Everything.
-all = ["robotframework-agenteval[mcp,llm]"]
+all = ["robotframework-agenteval[mcp,llm,agent]"]
 dev = [
   "robotframework-agenteval[all]",  # dev/CI runs the full test suite (needs mcp + litellm)
   "pytest>=8.0,<9.0",

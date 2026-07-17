@@ -264,6 +264,12 @@ def _resolve_adapter_class(name: str) -> type[Adapter] | None:
     adapter_cls = _ADAPTERS.get(name)
     if adapter_cls is not None:
         return adapter_cls
+    # The in-process pydantic-ai adapter ([agent] extra), lazily imported so its
+    # dependency stays off the hot import path.
+    if name == "in-process":
+        from AgentEval._core.agent_adapter import InProcessAgentAdapter
+
+        return cast("type[Adapter]", InProcessAgentAdapter)
     # SubprocessCLIAdapter satisfies the Adapter protocol structurally; mypy is
     # conservative about type[Protocol] variance, so narrow explicitly.
     return cast("type[Adapter] | None", _cli_slug_map().get(name))
