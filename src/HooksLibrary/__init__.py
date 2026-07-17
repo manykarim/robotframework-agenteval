@@ -49,7 +49,7 @@ from HooksLibrary._matcher import (
     matcher_matches,
     validate_matcher,
 )
-from HooksLibrary._parser import parse_hook_config
+from HooksLibrary._parser import parse_hook_config, validate_event_name
 from HooksLibrary._payload import synthesize_payload
 from HooksLibrary._runner import (
     FireReport,
@@ -199,7 +199,7 @@ class HooksLibrary:
 
         | =Arguments= | =Description= |
         | ``config`` | The parsed config dict from ``Hook.Get Config`` (not a path). |
-        | ``event`` | Event name; ``PreToolUse`` / ``PostToolUse`` / ``Stop`` are pinned, others pass through. |
+        | ``event`` | An event in ``SUPPORTED_EVENTS``; an unknown name raises ``InvalidConfigError``. |
         | ``project_dir`` | Value for ``CLAUDE_PROJECT_DIR`` + the subprocess cwd. Defaults to the test's cwd. |
         | ``default_timeout`` | Per-hook timeout (s) when the entry has no ``timeout``. Default 30. |
         | ``inherit_env`` | ``True`` inherits the full parent env (opt-in). Default ``False``. |
@@ -213,8 +213,11 @@ class HooksLibrary:
         failures are recorded, not raised. Matching non-command hooks appear as
         ``skipped`` records.
 
-        Raises ``HookExecutionError`` when zero configured hooks match (an empty
-        report would let a decision assertion silently never run).
+        Raises ``InvalidConfigError`` when ``event`` is not a recognized Claude
+        Code hook event (a typo like ``PostToolusage`` would otherwise read as
+        "no hooks fire"). Raises ``HookExecutionError`` when zero configured
+        hooks match (an empty report would let a decision assertion silently
+        never run).
 
         Example:
         | ${config} =    `Hook.Get Config`    ${CURDIR}/.claude/settings.json
@@ -222,6 +225,7 @@ class HooksLibrary:
         | `Hook.Decision Should Be`    ${report}    block
         """
         config = self._require_config(config)
+        validate_event_name(event)
         entries = config.get(event, [])
         subject = self._resolve_subject(payload, event_fields)
 
@@ -406,13 +410,17 @@ class HooksLibrary:
 
         Returns the configured hook entries (source order) whose matcher matches
         ``tool_name`` - including non-command entries, which ``Hook.Fire Hook
-        Event`` would report as ``skipped``.
+        Event`` would report as ``skipped``. A recognized event with no hooks
+        configured returns an empty list; an *unknown* event name (a typo like
+        ``PostToolusage``) raises ``InvalidConfigError`` rather than returning an
+        empty list that reads as "no hooks fire".
 
         Example:
         | ${hooks} =    `Hook.Get Hooks For Event`    ${config}    PreToolUse    tool_name=Bash
         | Length Should Be    ${hooks}    1
         """
         config = self._require_config(config)
+        validate_event_name(event)
         entries = config.get(event, [])
         return [entry for entry in entries if self._matcher_matches_safe(entry.get("matcher"), tool_name)]
 

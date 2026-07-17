@@ -14,18 +14,37 @@
 
 """Live MCP server lifecycle over the MCP SDK - needs the ``[mcp]`` extra.
 
-A handle captures how to open a session; each operation re-opens a fresh
-session, runs the MCP handshake, does its work, and tears down. This keeps
-the sync keyword world free of a long-lived background event loop. Only
-``stdio`` and ``in_memory`` transports are wired; ``streamable_http`` is
+``Connect To Server`` opens a *warm* session: it spawns the server subprocess
+(or in-process server) once, runs the MCP handshake, and holds the SDK
+``ClientSession`` open on a dedicated background event-loop thread. Subsequent
+``List Tools`` / ``Call Tool`` operations dispatch onto that one warm session,
+so a connect + N ops reuse a single subprocess instead of cold-starting each
+time. ``Stop Server`` tears the session down (closes the session, terminates
+the subprocess, joins the thread).
+
+For backward compatibility, ``List Tools`` / ``Call Tool`` still work without a
+prior ``Connect To Server``: they fall back to a one-shot cold session that
+opens, runs the op, and tears down.
+
+Only ``stdio`` and ``in_memory`` transports are wired; ``streamable_http`` is
 rejected. Transport and handshake failures surface as ``MCPError``.
+
+The anyio SDK requires the task that *opens* a session's cancel scopes to be
+the same task that *closes* them. The warm session honors this by keeping open,
+serve, and teardown all inside one long-lived actor coroutine on the background
+loop - ops are marshalled in over a queue, never opened/closed across tasks.
 """
 
 from __future__ import annotations
 
+import asyncio
+import atexit
+import concurrent.futures
+import contextlib
+import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -56,12 +75,20 @@ __all__ = [
 # The MCP package version range this library is built and tested against.
 SUPPORTED_RANGE = "mcp>=1.0,<2.0"
 
+# Cross-thread wait budgets. Bounded so an un-stopped or wedged session can
+# never hang the RF run or the pytest suite indefinitely.
+_CONNECT_TIMEOUT_S = 30.0
+_OP_TIMEOUT_S = 120.0
+_STOP_TIMEOUT_S = 15.0
+
 
 @dataclass(frozen=True)
 class MCPServerHandle:
-    """Describes how to (re-)open a session to an MCP server.
+    """Describes how to open a session to an MCP server.
 
-    Holds connection parameters, not a live session - each operation re-opens.
+    Holds connection parameters, not a live session. ``Connect To Server`` pairs
+    a handle with a live warm session (tracked separately, keyed by handle
+    identity) that later operations reuse.
     """
 
     name: str
@@ -76,7 +103,9 @@ class MCPServerHandle:
 class MCPSession:
     """Handshake metadata captured after a successful ``Connect To Server``.
 
-    Not a live session - the underlying SDK session was already torn down.
+    Pure metadata (negotiated protocol version + server info). The live SDK
+    session it describes is held warm and reused until ``Stop Server``; this
+    object does not own it.
     """
 
     name: str
@@ -192,6 +221,26 @@ async def _initialize(ts: TransportSession) -> Any:
     return init_result
 
 
+def _build_session_meta(handle: MCPServerHandle, init_result: Any) -> MCPSession:
+    """Project an SDK ``InitializeResult`` into the ``MCPSession`` metadata."""
+    negotiated = getattr(init_result, "protocolVersion", None)
+    server_info_raw = getattr(init_result, "serverInfo", None)
+    if server_info_raw is None:
+        server_info: dict[str, Any] = {}
+    elif hasattr(server_info_raw, "model_dump"):
+        server_info = server_info_raw.model_dump()
+    elif isinstance(server_info_raw, dict):
+        server_info = dict(server_info_raw)
+    else:
+        server_info = {}
+    return MCPSession(
+        name=handle.name,
+        transport=handle.transport,
+        protocol_version=negotiated or "",
+        server_info=server_info,
+    )
+
+
 _CONNECTION_LOST_MARKERS: tuple[str, ...] = ("Connection closed", "Connection lost", "Stream closed")
 
 
@@ -220,63 +269,263 @@ def _representative_cause(exc: BaseException) -> BaseException:
     return exc
 
 
-def connect_to_server(handle: MCPServerHandle) -> MCPSession:
-    """Open a session, run the MCP handshake, version-gate, then tear down.
+async def _list_tools_op(ts: TransportSession, server_name: str) -> list[MCPTool]:
+    """List an already-initialized session's tools (paginated cursor loop)."""
+    try:
+        collected: list[Any] = []
+        cursor: str | None = None
+        while True:
+            page = await ts.session.list_tools(cursor=cursor)
+            collected.extend(getattr(page, "tools", None) or [])
+            cursor = getattr(page, "nextCursor", None)
+            if not cursor:
+                break
+        return [_map_tool(t) for t in collected]
+    except BaseException as exc:
+        if _is_connection_lost(exc):
+            raise MCPError(
+                f"MCP session for server {server_name!r} lost connection during list_tools"
+            ) from _representative_cause(exc)
+        raise
 
-    Returns handshake metadata (negotiated protocol version + server info).
+
+async def _call_tool_op(ts: TransportSession, server_name: str, tool_name: str, args: dict[str, Any]) -> MCPToolResult:
+    """Invoke a tool on an already-initialized session; map the result."""
+    try:
+        t0 = time.monotonic()
+        result = await ts.session.call_tool(tool_name, args)
+    except BaseException as exc:
+        if _is_connection_lost(exc):
+            raise MCPError(
+                f"MCP session for server {server_name!r} lost connection during call_tool({tool_name!r})"
+            ) from _representative_cause(exc)
+        raise
+    elapsed_ms = (time.monotonic() - t0) * 1000.0
+    return _map_call_result(result, latency_ms=elapsed_ms)
+
+
+# --------------------------------------------------------------------------- #
+# Warm session: one persistent server subprocess + client session.            #
+# --------------------------------------------------------------------------- #
+
+_STOP = object()
+
+# Keyed by ``id(handle)``. The ``WarmSession`` keeps a strong reference to its
+# handle, so the id cannot be recycled onto a different object while registered.
+_WARM_SESSIONS: dict[int, WarmSession] = {}
+_REGISTRY_LOCK = threading.Lock()
+
+# A queued op: (result future, coroutine factory taking the live session).
+_Request = tuple["concurrent.futures.Future[Any]", Callable[[TransportSession], Awaitable[Any]]]
+
+
+class WarmSession:
+    """A persistent MCP session held open on a dedicated event-loop thread.
+
+    The session is opened, served, and torn down entirely inside one actor
+    coroutine so the SDK's same-task cancel-scope invariant holds. Synchronous
+    keyword code submits ops over a queue and blocks (with a timeout) on a
+    ``concurrent.futures.Future`` for each result.
+    """
+
+    def __init__(self, handle: MCPServerHandle) -> None:
+        self._handle = handle
+        self._loop = asyncio.new_event_loop()
+        self._requests: asyncio.Queue[Any] = asyncio.Queue()
+        self._ready: concurrent.futures.Future[MCPSession] = concurrent.futures.Future()
+        self._state_lock = threading.Lock()
+        self._closed = False
+        # daemon=True is a defensive backstop: even if teardown wedges, the
+        # process can still exit. atexit teardown runs first and terminates the
+        # subprocess cleanly for the normal path.
+        self._thread = threading.Thread(
+            target=self._thread_main,
+            name=f"mcp-warm-{handle.name}",
+            daemon=True,
+        )
+        self.meta: MCPSession | None = None
+
+    # -- lifecycle ------------------------------------------------------- #
+
+    def start(self) -> MCPSession:
+        """Spawn the loop thread, open the session, and return handshake meta.
+
+        Blocks until the handshake completes or fails. On any failure the loop
+        thread is torn down before the exception propagates - no leaked thread
+        or subprocess.
+        """
+        self._thread.start()
+        try:
+            self.meta = self._ready.result(timeout=_CONNECT_TIMEOUT_S)
+        except concurrent.futures.TimeoutError as exc:
+            self.close()
+            raise MCPError(
+                f"MCP.Connect To Server for {self._handle.name!r} timed out after {_CONNECT_TIMEOUT_S}s"
+            ) from exc
+        except BaseException:
+            self.close()
+            raise
+        return self.meta
+
+    def _thread_main(self) -> None:
+        asyncio.set_event_loop(self._loop)
+        try:
+            self._loop.run_until_complete(self._actor())
+        except BaseException:  # noqa: BLE001 - loop-thread guard; never propagate off-thread
+            # Actor already reports open/handshake failures via `_ready`; this
+            # only guards a truly unexpected escape so the thread exits cleanly.
+            if not self._ready.done():
+                self._ready.set_exception(
+                    MCPError(f"MCP warm session for {self._handle.name!r} crashed during startup")
+                )
+        finally:
+            with contextlib.suppress(Exception):  # best-effort loop close
+                self._loop.close()
+
+    async def _actor(self) -> None:
+        """Open the session, serve queued ops, and tear down - all one task."""
+        try:
+            ts = await _open_session(self._handle)
+        except BaseException as exc:  # noqa: BLE001 - reported to the waiting caller
+            if not self._ready.done():
+                self._ready.set_exception(exc)
+            return
+        try:
+            try:
+                init_result = await _initialize(ts)
+                meta = _build_session_meta(self._handle, init_result)
+            except BaseException as exc:  # noqa: BLE001 - reported to the caller
+                if not self._ready.done():
+                    self._ready.set_exception(exc)
+                return
+            self._ready.set_result(meta)
+            await self._serve(ts)
+        finally:
+            with contextlib.suppress(BaseException):  # teardown is best-effort
+                await ts.stack.aclose()
+
+    async def _serve(self, ts: TransportSession) -> None:
+        while True:
+            req = await self._requests.get()
+            if req is _STOP:
+                return
+            fut, op = req
+            try:
+                res = await op(ts)
+            except BaseException as exc:  # noqa: BLE001 - marshalled back to caller
+                if not fut.done():
+                    fut.set_exception(exc)
+            else:
+                if not fut.done():
+                    fut.set_result(res)
+
+    def close(self, timeout: float = _STOP_TIMEOUT_S) -> None:
+        """Tear the session down: stop the actor, join the thread. Idempotent."""
+        with self._state_lock:
+            if self._closed:
+                return
+            self._closed = True
+        # Ask the actor to stop; it closes the stack (terminating the
+        # subprocess) in its own task before the loop unwinds.
+        with contextlib.suppress(RuntimeError):  # loop already stopped/closed
+            self._loop.call_soon_threadsafe(self._requests.put_nowait, _STOP)
+        self._thread.join(timeout=timeout)
+
+    # -- op dispatch ----------------------------------------------------- #
+
+    def _submit(self, op: Callable[[TransportSession], Awaitable[Any]], timeout: float) -> Any:
+        with self._state_lock:
+            if self._closed:
+                raise MCPError(
+                    f"MCP session for server {self._handle.name!r} is stopped; "
+                    "call MCP.Connect To Server again before using it"
+                )
+        fut: concurrent.futures.Future[Any] = concurrent.futures.Future()
+        try:
+            self._loop.call_soon_threadsafe(self._requests.put_nowait, (fut, op))
+        except RuntimeError as exc:
+            raise MCPError(f"MCP session for server {self._handle.name!r} is no longer running") from exc
+        try:
+            return fut.result(timeout=timeout)
+        except concurrent.futures.TimeoutError as exc:
+            raise MCPError(f"MCP operation on server {self._handle.name!r} timed out after {timeout}s") from exc
+
+    def list_tools(self) -> list[MCPTool]:
+        name = self._handle.name
+
+        async def op(ts: TransportSession) -> list[MCPTool]:
+            return await _list_tools_op(ts, name)
+
+        return list(self._submit(op, _OP_TIMEOUT_S))
+
+    def call_tool(self, tool_name: str, args: dict[str, Any]) -> MCPToolResult:
+        name = self._handle.name
+
+        async def op(ts: TransportSession) -> MCPToolResult:
+            return await _call_tool_op(ts, name, tool_name, args)
+
+        result: MCPToolResult = self._submit(op, _OP_TIMEOUT_S)
+        return result
+
+
+def _get_warm(handle: MCPServerHandle) -> WarmSession | None:
+    with _REGISTRY_LOCK:
+        return _WARM_SESSIONS.get(id(handle))
+
+
+@atexit.register
+def _close_all_warm_sessions() -> None:
+    """Best-effort teardown of any session left open at interpreter exit.
+
+    Runs before daemon loop threads are killed, so subprocesses are terminated
+    cleanly rather than orphaned.
+    """
+    with _REGISTRY_LOCK:
+        sessions = list(_WARM_SESSIONS.values())
+        _WARM_SESSIONS.clear()
+    for warm in sessions:
+        with contextlib.suppress(Exception):  # shutdown is best-effort
+            warm.close()
+
+
+def connect_to_server(handle: MCPServerHandle) -> MCPSession:
+    """Open and hold a warm session; run the handshake and version-gate.
+
+    Spawns the server once and keeps the SDK session open on a background
+    thread so later ``list_tools`` / ``call_tool`` reuse it. Returns handshake
+    metadata. Re-connecting an already-connected handle tears the old session
+    down first.
     """
     _validate_for_connect(handle)
 
-    async def _drive() -> MCPSession:
-        ts = await _open_session(handle)
-        try:
-            init_result = await _initialize(ts)
-            negotiated = getattr(init_result, "protocolVersion", None)
-            server_info_raw = getattr(init_result, "serverInfo", None)
-            if server_info_raw is None:
-                server_info: dict[str, Any] = {}
-            elif hasattr(server_info_raw, "model_dump"):
-                server_info = server_info_raw.model_dump()
-            elif isinstance(server_info_raw, dict):
-                server_info = dict(server_info_raw)
-            else:
-                server_info = {}
-            return MCPSession(
-                name=handle.name,
-                transport=handle.transport,
-                protocol_version=negotiated or "",
-                server_info=server_info,
-            )
-        finally:
-            await ts.stack.aclose()
+    with _REGISTRY_LOCK:
+        existing = _WARM_SESSIONS.pop(id(handle), None)
+    if existing is not None:
+        existing.close()
 
-    return run_async(_drive())
+    warm = WarmSession(handle)
+    meta = warm.start()  # tears itself down on failure before raising
+    with _REGISTRY_LOCK:
+        _WARM_SESSIONS[id(handle)] = warm
+    return meta
 
 
 def list_tools(handle: MCPServerHandle) -> list[MCPTool]:
-    """List the tools an MCP server advertises (paginated cursor loop)."""
+    """List the tools an MCP server advertises (paginated cursor loop).
+
+    Reuses the warm session when the handle is connected; otherwise opens a
+    one-shot cold session for backward compatibility.
+    """
     _validate_for_connect(handle)
+    warm = _get_warm(handle)
+    if warm is not None:
+        return warm.list_tools()
 
     async def _drive() -> list[MCPTool]:
         ts = await _open_session(handle)
         try:
-            try:
-                await _initialize(ts)
-                collected: list[Any] = []
-                cursor: str | None = None
-                while True:
-                    page = await ts.session.list_tools(cursor=cursor)
-                    collected.extend(getattr(page, "tools", None) or [])
-                    cursor = getattr(page, "nextCursor", None)
-                    if not cursor:
-                        break
-                return [_map_tool(t) for t in collected]
-            except BaseException as exc:
-                if _is_connection_lost(exc):
-                    raise MCPError(
-                        f"MCP session for server {handle.name!r} lost connection during list_tools"
-                    ) from _representative_cause(exc)
-                raise
+            await _initialize(ts)
+            return await _list_tools_op(ts, handle.name)
         finally:
             await ts.stack.aclose()
 
@@ -290,27 +539,21 @@ def call_tool(
 ) -> MCPToolResult:
     """Invoke a tool by name; return an ``MCPToolResult``.
 
-    Tool-level errors come back as ``is_error=True`` data; transport failures
-    raise ``MCPError``.
+    Reuses the warm session when the handle is connected; otherwise opens a
+    one-shot cold session for backward compatibility. Tool-level errors come
+    back as ``is_error=True`` data; transport failures raise ``MCPError``.
     """
     _validate_for_connect(handle)
     args = dict(arguments) if arguments is not None else {}
+    warm = _get_warm(handle)
+    if warm is not None:
+        return warm.call_tool(tool_name, args)
 
     async def _drive() -> MCPToolResult:
         ts = await _open_session(handle)
         try:
-            try:
-                await _initialize(ts)
-                t0 = time.monotonic()
-                result = await ts.session.call_tool(tool_name, args)
-            except BaseException as exc:
-                if _is_connection_lost(exc):
-                    raise MCPError(
-                        f"MCP session for server {handle.name!r} lost connection during call_tool({tool_name!r})"
-                    ) from _representative_cause(exc)
-                raise
-            elapsed_ms = (time.monotonic() - t0) * 1000.0
-            return _map_call_result(result, latency_ms=elapsed_ms)
+            await _initialize(ts)
+            return await _call_tool_op(ts, handle.name, tool_name, args)
         finally:
             await ts.stack.aclose()
 
@@ -318,8 +561,13 @@ def call_tool(
 
 
 def stop_server(handle: MCPServerHandle) -> None:
-    """Release per-handle resources. Sessions self-clean, so this is a no-op."""
-    _ = handle
+    """Tear down the handle's warm session (if any): close it, terminate the
+    subprocess, join the loop thread. A no-op when no session is held.
+    """
+    with _REGISTRY_LOCK:
+        warm = _WARM_SESSIONS.pop(id(handle), None)
+    if warm is not None:
+        warm.close()
 
 
 def _map_tool(tool: Any) -> MCPTool:

@@ -45,11 +45,26 @@ __all__ = [
     "REQUIRED_HOOK_FIELDS",
     "SUPPORTED_EVENTS",
     "parse_hook_config",
+    "validate_event_name",
 ]
 
-# The PRD-pinned trio. Documentation-only: the parser shape-validates every
-# event identically and passes unknown events through.
-SUPPORTED_EVENTS: tuple[str, ...] = ("PreToolUse", "PostToolUse", "Stop")
+# The full set of Claude Code hook events. The parser shape-validates every
+# event identically and passes unknown events through (a config may carry
+# events this version has not learned yet), but the query keywords
+# (`Get Hooks For Event` / `Fire Hook Event`) validate the queried name against
+# this set so a typo like ``PostToolusage`` fails loud instead of reading as
+# "no hooks fire".
+SUPPORTED_EVENTS: tuple[str, ...] = (
+    "PreToolUse",
+    "PostToolUse",
+    "UserPromptSubmit",
+    "Notification",
+    "Stop",
+    "SubagentStop",
+    "SessionStart",
+    "SessionEnd",
+    "PreCompact",
+)
 
 REQUIRED_HOOK_FIELDS: tuple[str, ...] = ("command",)
 
@@ -69,6 +84,23 @@ def _build_pointer(*segments: str | int) -> str:
         else:
             parts.append(seg.replace("~", "~0").replace("/", "~1"))
     return "/" + "/".join(parts)
+
+
+def validate_event_name(event: str) -> None:
+    """Reject an event name that is not a recognized Claude Code hook event.
+
+    A known event with no hooks configured is legitimate (the caller gets an
+    empty result). An *unknown* name - almost always a typo like
+    ``PostToolusage`` - is an error: querying it would otherwise silently read
+    as "no hooks fire" (a vacuous pass). Raises `InvalidConfigError` naming the
+    bad event and listing the valid ones.
+    """
+    if event not in SUPPORTED_EVENTS:
+        raise InvalidConfigError(
+            f"Unknown hook event {event!r}; not a recognized Claude Code hook event.",
+            field=event,
+            fix=f"Use one of the known events: {', '.join(SUPPORTED_EVENTS)}.",
+        )
 
 
 def parse_hook_config(path: str | Path) -> dict[str, list[dict[str, Any]]]:

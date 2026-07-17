@@ -343,6 +343,59 @@ def test_require_config_rejects_non_dict(lib: HooksLibrary) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Event-name validation (typo protection vs. legitimately-unconfigured event)
+# --------------------------------------------------------------------------- #
+
+
+def test_get_hooks_known_event_no_hooks_returns_empty(lib: HooksLibrary, tmp_path: Path) -> None:
+    """A KNOWN event with no hooks configured returns [] - legitimate, not an error."""
+    path = _write_config(
+        tmp_path,
+        {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "echo hi"}]}]},
+    )
+    config = lib.get_config(path)
+    # `Stop` is a recognized event that this config simply does not configure.
+    assert lib.get_hooks_for_event(config, "Stop") == []
+
+
+def test_get_hooks_unknown_event_raises_naming_it(lib: HooksLibrary, tmp_path: Path) -> None:
+    """A typo'd event name raises InvalidConfigError naming the bad event + valid ones."""
+    path = _write_config(
+        tmp_path,
+        {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "echo hi"}]}]},
+    )
+    config = lib.get_config(path)
+    with pytest.raises(InvalidConfigError) as exc:
+        lib.get_hooks_for_event(config, "PostToolusage")
+    assert "PostToolusage" in str(exc.value)
+    assert "PostToolUse" in (exc.value.fix or "")
+
+
+def test_fire_hook_unknown_event_raises(lib: HooksLibrary, tmp_path: Path) -> None:
+    """Fire Hook Event also rejects an unknown event name before matching."""
+    path = _write_config(
+        tmp_path,
+        {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "echo hi"}]}]},
+    )
+    config = lib.get_config(path)
+    with pytest.raises(InvalidConfigError) as exc:
+        lib.fire_hook_event(config, "PreToolUsage", project_dir=str(tmp_path), tool_name="Bash")
+    assert "PreToolUsage" in str(exc.value)
+
+
+def test_get_hooks_recognizes_userpromptsubmit(lib: HooksLibrary, tmp_path: Path) -> None:
+    """A real event beyond the old pinned trio (UserPromptSubmit) is now recognized."""
+    path = _write_config(
+        tmp_path,
+        {"UserPromptSubmit": [{"hooks": [{"type": "command", "command": "echo hi"}]}]},
+    )
+    config = lib.get_config(path)
+    hooks = lib.get_hooks_for_event(config, "UserPromptSubmit")
+    assert len(hooks) == 1
+    assert hooks[0]["command"] == "echo hi"
+
+
+# --------------------------------------------------------------------------- #
 # Command Should Exist
 # --------------------------------------------------------------------------- #
 
