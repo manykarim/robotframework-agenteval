@@ -27,16 +27,20 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import json
 import os
 import threading
 import time
 import uuid
 from collections.abc import Coroutine
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkable
 
 from AgentEval._core.errors import AdapterError, MissingExtraError
 from AgentEval._core.tier import enforce_no_model
-from AgentEval._core.types import AgentRunMetadata, AgentRunResult, Usage
+from AgentEval._core.types import AgentRunMetadata, AgentRunResult, ToolCallTrace, Usage
+
+if TYPE_CHECKING:
+    from AgentEval._core.cli_adapter import SubprocessCLIAdapter
 
 __all__ = [
     "Adapter",
@@ -145,28 +149,75 @@ def _map_completion(litellm: Any, response: Any, latency_seconds: float) -> Agen
             text = content
 
     usage_raw = _safe_get(response, "usage")
+    # cached-token count lives under prompt_tokens_details.cached_tokens on
+    # providers that report it (OpenAI/Anthropic prompt caching).
+    details = _safe_get(usage_raw, "prompt_tokens_details")
     usage = Usage(
         input_tokens=_as_int(_safe_get(usage_raw, "prompt_tokens")),
         output_tokens=_as_int(_safe_get(usage_raw, "completion_tokens")),
+        cached_input_tokens=_as_int(_safe_get(details, "cached_tokens")),
     )
 
+    tool_calls = _parse_tool_calls(message if choices else None)
+
     cost_usd = 0.0
+    metric_source: Literal["native", "derived", "none"] = "none"
     try:
         raw_cost = litellm.completion_cost(completion_response=response)
     except Exception:  # noqa: BLE001 - some providers publish no pricing metadata
         raw_cost = None
     if raw_cost is not None:
         cost_usd = float(raw_cost)
+        metric_source = "derived"  # litellm computes cost from tokens + its price table
 
     return AgentRunResult(
         response_text=text,
-        tool_calls=[],
+        tool_calls=tool_calls,
         usage=usage,
-        metadata=AgentRunMetadata(completeness="complete", mcp_coverage="hosted_in_process"),
+        metadata=AgentRunMetadata(
+            completeness="complete", mcp_coverage="hosted_in_process", metric_source=metric_source
+        ),
         cost_usd=cost_usd,
         latency_seconds=latency_seconds,
         trace_id=uuid.uuid4().hex,
     )
+
+
+def _parse_tool_calls(message: Any) -> list[ToolCallTrace]:
+    """Project a chat message's ``tool_calls`` into ``ToolCallTrace`` records.
+
+    These are the tool calls the model *requested* on this turn - a one-shot
+    completion does not execute them, so ``result`` stays ``None``. Arguments
+    arrive as a JSON string on ``function.arguments``; a non-JSON string is kept
+    verbatim under ``{"_raw": ...}`` rather than dropped.
+    """
+    raw_calls = _safe_get(message, "tool_calls") or []
+    traces: list[ToolCallTrace] = []
+    for index, call in enumerate(raw_calls):
+        fn = _safe_get(call, "function")
+        name = _safe_get(fn, "name") or ""
+        raw_args = _safe_get(fn, "arguments")
+        if isinstance(raw_args, str):
+            try:
+                args = json.loads(raw_args) if raw_args else {}
+            except json.JSONDecodeError:
+                args = {"_raw": raw_args}
+        elif isinstance(raw_args, dict):
+            args = raw_args
+        else:
+            args = {}
+        if not isinstance(args, dict):
+            args = {"_raw": args}
+        traces.append(
+            ToolCallTrace(
+                name=str(name),
+                args=args,
+                tool_call_id=str(_safe_get(call, "id") or ""),
+                sequence_index=index,
+                source="adapter",
+            )
+        )
+    return traces
 
 
 def _safe_get(obj: Any, key: str) -> Any:
@@ -194,21 +245,43 @@ def _as_int(value: Any) -> int:
 
 # Registry of built-in adapters by slug. The four surfaces resolve Tier-3
 # adapters through here; a caller may also hand a keyword its own adapter
-# object, which never touches this map.
+# object, which never touches this map. The six coding-agent CLI adapters
+# (claude-code, gemini, codex, opencode, kilo, copilot) resolve through
+# ``cli_adapters.SLUG_MAP``, imported lazily so the subprocess seam and its
+# concrete parse strategies stay off the hot import path of the four surfaces.
 _ADAPTERS: dict[str, type[Adapter]] = {"generic": GenericAdapter}
+
+
+def _cli_slug_map() -> dict[str, type[SubprocessCLIAdapter]]:
+    """Lazily import the CLI adapter registry to avoid heavy import at module load."""
+    from AgentEval._core.cli_adapters import SLUG_MAP
+
+    return dict(SLUG_MAP)
+
+
+def _resolve_adapter_class(name: str) -> type[Adapter] | None:
+    """Look up an adapter class by slug across built-ins and the CLI registry."""
+    adapter_cls = _ADAPTERS.get(name)
+    if adapter_cls is not None:
+        return adapter_cls
+    # SubprocessCLIAdapter satisfies the Adapter protocol structurally; mypy is
+    # conservative about type[Protocol] variance, so narrow explicitly.
+    return cast("type[Adapter] | None", _cli_slug_map().get(name))
 
 
 def get_adapter(name_or_adapter: str | Adapter = "generic", **kwargs: Any) -> Adapter:
     """Return an adapter instance.
 
-    Pass a slug (currently only ``"generic"``) to build a built-in adapter, or
-    pass an object that already satisfies the ``Adapter`` protocol to use it as
-    is. Unknown slugs raise ``AdapterError``.
+    Pass a slug - ``"generic"`` for the LiteLLM path, or one of the six coding-agent
+    CLI slugs (``claude-code``, ``gemini``, ``codex``, ``opencode``, ``kilo``,
+    ``copilot``) - to build a built-in adapter, or pass an object that already
+    satisfies the ``Adapter`` protocol to use it as is. Unknown slugs raise
+    ``AdapterError``.
     """
     if isinstance(name_or_adapter, str):
-        adapter_cls = _ADAPTERS.get(name_or_adapter)
+        adapter_cls = _resolve_adapter_class(name_or_adapter)
         if adapter_cls is None:
-            known = ", ".join(sorted(_ADAPTERS)) or "(none)"
+            known = ", ".join(sorted({*_ADAPTERS, *_cli_slug_map()})) or "(none)"
             raise AdapterError(f"unknown adapter {name_or_adapter!r}; known adapters: {known}")
         return adapter_cls(**kwargs)
     if isinstance(name_or_adapter, Adapter):

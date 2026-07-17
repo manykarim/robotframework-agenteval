@@ -87,6 +87,10 @@ class SkillsLibrary:
         """Return the ``description`` field from a skill ``.md`` file.
 
         Fails loud if the frontmatter is invalid or ``description`` is missing.
+
+        Example:
+        | ${desc}=    Skill.Get Description    ${CURDIR}/skills/web-search.md
+        | Should Contain    ${desc}    search
         """
         return str(self._read_and_validate(path)["description"])
 
@@ -97,6 +101,10 @@ class SkillsLibrary:
 
         Optional field: a skill that omits it (or leaves it empty) is still
         valid and yields an empty list.
+
+        Example:
+        | ${tools}=    Skill.Get Allowed Tools    ${CURDIR}/skills/web-search.md
+        | Should Contain    ${tools}    Read
         """
         return list(self._read_and_validate(path).get("allowed-tools", []))
 
@@ -108,6 +116,10 @@ class SkillsLibrary:
         Optional field, defaulting to ``False`` when absent. Strict bool typing
         when present: unquoted YAML ``true``/``false`` are accepted; ``1``/``0``
         and quoted strings are rejected.
+
+        Example:
+        | ${off}=    Skill.Get Disable Model Invocation    ${CURDIR}/skills/web-search.md
+        | Should Be Equal    ${off}    ${False}
         """
         return bool(self._read_and_validate(path).get("disable-model-invocation", False))
 
@@ -197,6 +209,10 @@ class SkillsLibrary:
         Activation is the shared substring heuristic: the skill's ``name`` appears
         (case-insensitively) in the agent response. Returns the decision plus the
         response text, cost, and latency.
+
+        Example:
+        | ${d}=    Skill.Get Activation Decision    ${CURDIR}/skills/web-search.md    Find recent Robot Framework news
+        | Should Be True    ${d.activated}
         """
         skill_name = self._skill_name(skill)
         adapter_obj = resolve_skill_adapter(adapter, model, kwargs)

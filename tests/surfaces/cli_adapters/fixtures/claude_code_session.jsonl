@@ -1,0 +1,4 @@
+{"type":"summary","summary":"List and inspect files","leafUuid":"u-0"}
+{"type":"assistant","uuid":"u-1","timestamp":"2026-07-16T10:00:01Z","message":{"role":"assistant","model":"claude-opus-4","content":[{"type":"text","text":"Listing now."},{"type":"tool_use","id":"toolu_A","name":"Bash","input":{"command":"pwd"}}],"usage":{"input_tokens":8,"cache_read_input_tokens":900,"output_tokens":15}}}
+{"type":"user","uuid":"u-2","timestamp":"2026-07-16T10:00:02Z","toolUseResult":"/home/u/work","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_A","content":"/home/u/work","is_error":false}]}}
+{"type":"assistant","uuid":"u-3","timestamp":"2026-07-16T10:00:03Z","message":{"role":"assistant","model":"claude-opus-4","content":[{"type":"text","text":"You are in /home/u/work."}],"usage":{"input_tokens":14,"cache_read_input_tokens":950,"output_tokens":9}}}

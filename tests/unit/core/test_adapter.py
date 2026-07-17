@@ -144,3 +144,29 @@ def test_run_async_from_running_loop() -> None:
         return run_async(inner())
 
     assert asyncio.run(outer()) == 7
+
+
+def test_generic_adapter_captures_tool_calls_and_cached_tokens() -> None:
+    """P0: _map_completion must project tool_calls + cached tokens, not drop them."""
+    from AgentEval._core.adapter import _map_completion
+
+    class D(dict):
+        def __getattr__(self, k):  # type: ignore[no-untyped-def]
+            return self[k]
+
+    msg = D(content="hi", tool_calls=[D(id="c1", function=D(name="search", arguments='{"q": "x"}'))])
+    resp = D(
+        choices=[D(message=msg)],
+        usage=D(prompt_tokens=100, completion_tokens=20, prompt_tokens_details=D(cached_tokens=40)),
+    )
+
+    class FakeLL:
+        def completion_cost(self, completion_response):  # type: ignore[no-untyped-def]
+            return 0.0012
+
+    r = _map_completion(FakeLL(), resp, 1.5)
+    assert [t.name for t in r.tool_calls] == ["search"]
+    assert r.tool_calls[0].args == {"q": "x"}
+    assert r.usage.cached_input_tokens == 40
+    assert r.cost_usd == 0.0012
+    assert r.metadata.metric_source == "derived"

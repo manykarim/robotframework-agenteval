@@ -15,6 +15,7 @@ New here? Start with the first one — it runs in five minutes with no API keys.
 | 4 | [Testing Claude Code hooks](./09-testing-claude-code-hooks.md) | Hooks | 1 |
 | 5 | [SubAgent config drift and routing](./10-subagent-config-drift-and-routing.md) | SubAgents | 1 + 3 |
 | 6 | [CI integration](./08-ci-integration.md) | all four | 1 + 2/3 |
+| 7 | [End-to-end agent metrics through a CLI adapter](./11-e2e-agent-metrics-cli-adapters.md) | Metrics + CLI adapters | 3 → 1 |
 
 ## The tiers, in one line each
 
