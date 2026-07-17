@@ -10,16 +10,12 @@
 # the setting, leaving 12 spike/skill alerts open.
 #
 # Paths ignored (rationale):
-# - _bmad-output/spikes/**: Epic 0 throwaway probe code; not shipped on PyPI.
-# - .claude/skills/**: 3rd-party BMad skill scripts; not our code.
-# - _bmad/**: BMad framework config + helper scripts; not our shippable surface.
+# - .claude/skills/**: 3rd-party skill scripts; not our code.
 
 name: "robotframework-agenteval CodeQL config"
 
 paths-ignore:
-  - "_bmad-output/spikes/**"
   - ".claude/skills/**"
-  - "_bmad/**"
 
 queries:
   - uses: security-and-quality
