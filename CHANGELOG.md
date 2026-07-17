@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.0] — 2026-07-17
+
+Agent-run metrics + end-to-end coding-agent CLI adapters.
+
+### Added
+
+- **MetricsLibrary** (8 keywords) — read tokens, cost, and latency off a real
+  agent run, get per-task **and per-tool** tool-call metrics (count, passed,
+  failed, tokens, cost, latency), assert on token/cost budgets, and export a
+  normalized run-metrics record (with an expected-tool contract + hit rate) to
+  JSON. All numbers are ground truth from the recorded trace, never self-report.
+- **StatLibrary** (3 keywords) — `Stat.Run N Times`, `Stat.Get Pass At K`,
+  `Stat.Wilson Interval` for statistical rigor over stochastic runs.
+- **Coding-agent CLI adapters** — run a prompt end-to-end through a real agent
+  CLI and gather its tool calls + token/cost usage: `claude-code` and `gemini`
+  (full metrics), `codex` and `opencode` (partial), and best-effort `kilo` +
+  `copilot` (degraded, with honest VALIDATION-CEILING markers that never
+  fabricate numbers). One `SubprocessCLIAdapter` seam, version-drift detection.
+- Per-tool token/cost attribution on `ToolCallTrace`; a `metric_source`
+  (native/derived) honesty field; a keyword-example gate ensuring every
+  documented example runs; a README setup section for live LLM + CLI-agent runs.
+
+### Fixed
+
+- `GenericAdapter` now captures the model's requested tool calls and cached
+  input tokens (previously it recorded zero tool calls), so real-model runs
+  produce real metrics.
+
+---
+
 ## [0.1.0] — 2026-07-17
 
 First published release — a from-scratch refocus into four independently

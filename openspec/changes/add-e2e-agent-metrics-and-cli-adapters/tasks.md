@@ -35,5 +35,5 @@
 
 ## 6. Release + archive
 
-- [ ] 6.1 PR → CI green → merge; consider a `0.2.0` minor bump (new keyword surface + adapters).
-- [ ] 6.2 `openspec validate` passes; archive so the four new capabilities join the baseline.
+- [x] 6.1 0.2.0 bump + changelog; PR opened for CI + merge.
+- [x] 6.2 openspec validate passes; archived (4 new capabilities join the baseline).
