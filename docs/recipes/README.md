@@ -16,6 +16,7 @@ New here? Start with the first one — it runs in five minutes with no API keys.
 | 5 | [SubAgent config drift and routing](./10-subagent-config-drift-and-routing.md) | SubAgents | 1 + 3 |
 | 6 | [CI integration](./08-ci-integration.md) | all four | 1 + 2/3 |
 | 7 | [End-to-end agent metrics through a CLI adapter](./11-e2e-agent-metrics-cli-adapters.md) | Metrics + CLI adapters | 3 → 1 |
+| 8 | [End-to-end agent metrics with no CLI (one LLM key)](./12-in-process-agent-no-cli-metrics.md) | MCP + Skills + SubAgents | 3 → 1 |
 
 ## The tiers, in one line each
 
@@ -24,7 +25,8 @@ New here? Start with the first one — it runs in five minutes with no API keys.
 - **Tier 2** — LLM judge. Ask a model whether the output really did the thing.
   Needs the `[llm]` extra.
 - **Tier 3** — coding agent. Drive a real agent and read back what it did. Needs
-  the `[llm]` extra.
+  the `[llm]` extra for a hosted model or a vendor CLI, or the `[agent]` extra to
+  drive the in-process adapter on just an LLM key ([recipe 8](./12-in-process-agent-no-cli-metrics.md)).
 
 Hooks are deterministic programs, so the hooks recipe is **Tier 1 only** — no
 judge, no agent, no keys.

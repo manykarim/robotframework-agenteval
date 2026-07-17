@@ -39,7 +39,8 @@ from typing import Any
 
 from robot.api.deco import keyword
 
-from AgentEval._core import Adapter, SkillDidNotActivateError, judge, stats, tier
+from AgentEval._core import Adapter, AgentRunResult, SkillDidNotActivateError, judge, stats, tier
+from SkillsLibrary._agent_bridge import load_capabilities_from_dir, skill_to_capability
 from SkillsLibrary._internal import (
     activation_pass_predicate,
     load_skill_discoverability_tasks,
@@ -317,3 +318,71 @@ class SkillsLibrary:
             trials=trials,
             k=k,
         )
+
+    # ------------------------------------------------------------------ #
+    # Tier 1 - in-process agent bridge (SKILL.md <-> pydantic-ai).        #
+    # ------------------------------------------------------------------ #
+
+    @keyword(name="Skill.As Capability")
+    @tier(1)
+    def as_capability(self, skill: str | Path) -> Any:
+        """Load a Claude-style ``SKILL.md`` into a deferred pydantic-ai ``Capability``.
+
+        Reuses this library's frontmatter parser to map name->id,
+        description->description, body->instructions, ``defer_loading=True``.
+        Hand the result to ``get_adapter("in-process", capabilities=[...])`` and
+        read back activations with `Skill.Get Activated Skills`.
+
+        VALIDATION CEILING: ``allowed-tools`` / ``disable-model-invocation`` are
+        NOT enforced - pydantic-ai capabilities have no equivalent, so this is a
+        discoverability proxy, not a Claude tool-permission sandbox. Needs the
+        ``[agent]`` extra (pydantic-ai).
+
+        Example:
+        | ${cap}=    Skill.As Capability    ${CURDIR}/skills/web-search.md
+        | ${agent}=    Evaluate    AgentEval._core.adapter.get_adapter('in-process', capabilities=[$cap])
+        """
+        return skill_to_capability(skill)
+
+    @keyword(name="Skill.Load Capabilities From Dir")
+    @tier(1)
+    def load_capabilities_from_dir(self, directory: str | Path, pattern: str = "*.md") -> list[Any]:
+        """Load every skill ``.md`` under ``directory`` into deferred ``Capability`` objects.
+
+        Globs ``directory`` (non-recursively) in sorted order and maps each file
+        through `Skill.As Capability`. Returns the list ready for
+        ``get_adapter("in-process", capabilities=[...])``. Same validation
+        ceiling as `Skill.As Capability`; needs the ``[agent]`` extra.
+
+        Example:
+        | ${caps}=    Skill.Load Capabilities From Dir    ${CURDIR}/skills
+        | ${agent}=    Evaluate    AgentEval._core.adapter.get_adapter('in-process', capabilities=$caps)
+        """
+        return load_capabilities_from_dir(directory, pattern=pattern)
+
+    @keyword(name="Skill.Get Activated Skills")
+    @tier(1)
+    def get_activated_skills(self, result: AgentRunResult) -> list[str]:
+        """Return the skill ids the model activated during an in-process agent run.
+
+        Reads ``result.tool_calls`` for the framework ``load_capability`` tool
+        calls and collects each call's ``args["id"]`` in call order (deduplicated,
+        first occurrence wins). A pure Tier-1 reader over an already-collected
+        ``AgentRunResult`` - no model call. Ids missing or non-string args are
+        skipped.
+
+        Example:
+        | ${cap}=    Skill.As Capability    ${CURDIR}/skills/refunds.md
+        | ${agent}=    Evaluate    AgentEval._core.adapter.get_adapter('in-process', capabilities=[$cap])
+        | ${r}=    Evaluate    $agent.run("Is order #4821 refundable?")
+        | ${activated}=    Skill.Get Activated Skills    ${r}
+        | Should Contain    ${activated}    refunds
+        """
+        activated: list[str] = []
+        for call in result.tool_calls:
+            if call.name != "load_capability":
+                continue
+            skill_id = call.args.get("id")
+            if isinstance(skill_id, str) and skill_id and skill_id not in activated:
+                activated.append(skill_id)
+        return activated

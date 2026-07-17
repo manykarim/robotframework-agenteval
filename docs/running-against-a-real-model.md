@@ -166,6 +166,50 @@ model or a coding-agent CLI. When you drive a DEGRADED adapter, cross-check the
 For a full worked run that produces tool-call, token, and cost numbers end to
 end, see the end-to-end metrics recipe under [`recipes/`](./recipes/).
 
+## The third path: the in-process agent adapter (no CLI, one LLM key)
+
+The LiteLLM path records only the tool calls a model *requests* (a one-shot),
+and the CLI path needs a vendor binary installed. The **in-process agent
+adapter** is a third option that needs neither: it runs a real in-process agent
+loop — [pydantic-ai](https://ai.pydantic.dev/) against any OpenAI-compatible
+endpoint — so it **executes** MCP tools, **activates** deferred skills, and
+**routes** to subagents, then normalizes the whole run into the same
+`AgentRunResult` every metric keyword already reads. All it needs is a model
+name, a `base_url`, and an API key.
+
+```bash
+pip install 'robotframework-agenteval[agent]'   # pulls in pydantic-ai + pydantic-ai-harness
+export AGENTEVAL_MODEL=MiniMax-M2.7                    # any OpenAI-compatible chat model
+export AGENTEVAL_BASE_URL=https://api.minimax.io/v1   # the endpoint's base_url
+export AGENTEVAL_API_KEY=sk-...                        # read from the environment, never a RF variable
+```
+
+Select it by the `in-process` adapter slug:
+
+```robotframework
+${agent}=    Evaluate    AgentEval._core.adapter.get_adapter('in-process')
+${result}=   Evaluate    $agent.run("List the files in the project root")
+```
+
+Because it executes tools (not just requests them), `AgentRunResult.tool_calls`
+carries each call's `result` / `error` / `latency_ms` — unlike the LiteLLM
+one-shot, which records only the requested call. Attach an MCP server with
+`MCP.As Agent Toolset`, load a `SKILL.md` with `Skill.As Capability`, or a
+subagent dir with `Subagent.As Subagents Capability`, and read back the real
+signal with `MCP.Get Tool Call Count`, `Skill.Get Activated Skills`, and
+`Subagent.Get Routed Subagents`.
+
+**It is a proxy — the adapter labels itself.** Its `validation_ceiling` states
+plainly that it measures *a generic in-process agent*, **not** a specific coding
+agent's runtime. Skill and subagent frontmatter is mapped onto pydantic-ai's own
+mechanisms, and the Claude `allowed-tools` / `disable-model-invocation` fields
+are **NOT** enforced. The Hooks tool gate (`Hook.Get Tool Decisions`) rides the
+same adapter and is labeled **PARTIAL**: it gates in-process tool CALLS, not the
+external `settings.json` command-hook runtime. Read
+`HooksLibrary.TOOL_GATE_CEILING` and the adapter's `validation_ceiling` before
+you quote any of its numbers as vendor-runtime truth. The full worked run is the
+[no-CLI in-process metrics recipe](./recipes/12-in-process-agent-no-cli-metrics.md).
+
 ## See also
 
 - [`.env.example`](../.env.example) — where to put your API keys.

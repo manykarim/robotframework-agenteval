@@ -44,6 +44,12 @@ from typing import Any
 from robot.api.deco import keyword
 
 from AgentEval._core import HookExecutionError, tier
+from HooksLibrary._agent_bridge import (
+    GUARD_CEILING,
+    PolicyFunc,
+    ToolPolicyReport,
+    run_tool_policy,
+)
 from HooksLibrary._matcher import (
     MATCHER_ENGINE_NOTE,
     matcher_matches,
@@ -613,3 +619,200 @@ class HooksLibrary:
             return True
         candidate = Path(token)
         return candidate.exists() and os.access(candidate, os.X_OK)
+
+    # ----------------------------------------------------------------- #
+    # In-process PreToolUse-style tool gate (PARTIAL - proxy, [agent] extra)
+    # ----------------------------------------------------------------- #
+
+    #: What the in-process tool gate does and does NOT measure (honest ceiling).
+    TOOL_GATE_CEILING = GUARD_CEILING
+
+    @keyword(name="Hook.Get Tool Decisions")
+    @tier(3)
+    def get_tool_decisions(
+        self,
+        prompt: str,
+        toolset: Any,
+        deny: Any = None,
+        allow: Any = None,
+        gated_tools: Any = None,
+        model: str | None = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        deny_reason: str = "denied by tool policy",
+        max_rounds: int = 12,
+        retries: int = 3,
+    ) -> ToolPolicyReport:
+        """Runs a prompt through an in-process gated agent, recording every allow/deny.
+
+        [Tier 3 - Coding Agent] Drives ``prompt`` through a real (OpenAI-compatible)
+        model whose tool calls must be *approved* in-process (pydantic-ai
+        tool-approval), applies an allow/deny policy at each approval point, and
+        returns a ``ToolPolicyReport`` of the decisions - the programmatic analog
+        of a PreToolUse allow/deny hook.
+
+        *CEILING (PARTIAL PROXY):* this measures allow/deny of the tool CALLS a
+        generic in-process agent makes; it is NOT the Claude Code external-command
+        hook runtime (no ``settings.json`` scripts, no PostToolUse/Stop events, no
+        stdout-JSON protocol, no ``allowed-tools`` enforcement). For real
+        command-hook scripts use ``Hook.Fire Hook Event``. Read
+        ``HooksLibrary.TOOL_GATE_CEILING`` for the full statement.
+
+        | =Arguments= | =Description= |
+        | ``prompt`` | The task to run the agent on. |
+        | ``toolset`` | A pydantic-ai toolset (e.g. an ``MCP.As Agent Toolset`` result). |
+        | ``deny`` | Tool name(s) to DENY - a list or a ``|``/``,``-separated string. |
+        | ``allow`` | Tool name(s) to ALLOW; any other gated tool is denied. Overrides ``deny``. |
+        | ``gated_tools`` | Restrict which tools require approval (default: every tool is gated + observed). |
+        | ``model`` | Model id (or ``AGENTEVAL_MODEL``). ``base_url``/``api_key`` fall back to env too. |
+        | ``deny_reason`` | Reason surfaced to the model + stored on a denial with no explicit reason. |
+        | ``max_rounds`` | Cap on approval pause/resume cycles before failing loud. Default 12. |
+
+        Requires the ``[agent]`` extra (raises ``MissingExtraError`` naming it if
+        absent). Raises ``HookExecutionError`` if the approval loop never converges.
+
+        Example:
+        | ${toolset} =    `MCP.As Agent Toolset`    ${handle}
+        | ${report} =    `Hook.Get Tool Decisions`    Delete every log file    ${toolset}    deny=delete_file
+        | `Hook.Tool Should Be Denied`    ${report}    delete_file
+        """
+        model_obj = self._build_agent_model(model, base_url, api_key)
+        policy = self._build_tool_policy(allow, deny)
+        return run_tool_policy(
+            model_obj,
+            prompt,
+            toolset=toolset,
+            policy=policy,
+            gated_tools=self._as_name_set(gated_tools),
+            default_deny_reason=deny_reason,
+            max_rounds=max_rounds,
+            retries=retries,
+        )
+
+    @keyword(name="Hook.Tool Should Be Denied")
+    @tier(1)
+    def tool_should_be_denied(self, report: ToolPolicyReport, tool_name: str) -> None:
+        """Asserts the gated run DENIED at least one call to ``tool_name``.
+
+        [Tier 1 - Deterministic] A pure projection over a ``Hook.Get Tool
+        Decisions`` report. Fails loud (naming what WAS observed) when the tool
+        was never called, or was called but allowed - so a policy that silently
+        fails open cannot pass this assertion.
+
+        | =Arguments= | =Description= |
+        | ``report`` | A ``Hook.Get Tool Decisions`` report. |
+        | ``tool_name`` | The tool that must have been denied at least once. |
+
+        Example:
+        | `Hook.Tool Should Be Denied`    ${report}    delete_file
+        """
+        report = self._require_report(report)
+        seen = report.decisions_for(tool_name)
+        if any(d.decision == "deny" for d in seen):
+            return
+        if not seen:
+            raise AssertionError(
+                f"expected a denial of tool {tool_name!r}, but the run never called it "
+                f"(tools decided: {[d.tool_name for d in report.decisions]})."
+            )
+        raise AssertionError(
+            f"expected a denial of tool {tool_name!r}, but every call to it was allowed "
+            f"({len(seen)} call(s) all allowed)."
+        )
+
+    @keyword(name="Hook.Tool Should Be Allowed")
+    @tier(1)
+    def tool_should_be_allowed(self, report: ToolPolicyReport, tool_name: str) -> None:
+        """Asserts the gated run ALLOWED ``tool_name`` and never denied it.
+
+        [Tier 1 - Deterministic] A pure projection over a ``Hook.Get Tool
+        Decisions`` report. Fails loud when the tool was never called, or when any
+        call to it was denied.
+
+        | =Arguments= | =Description= |
+        | ``report`` | A ``Hook.Get Tool Decisions`` report. |
+        | ``tool_name`` | The tool that must have been called and always allowed. |
+
+        Example:
+        | `Hook.Tool Should Be Allowed`    ${report}    read_file
+        """
+        report = self._require_report(report)
+        seen = report.decisions_for(tool_name)
+        if not seen:
+            raise AssertionError(
+                f"expected tool {tool_name!r} to be allowed, but the run never called it "
+                f"(tools decided: {[d.tool_name for d in report.decisions]})."
+            )
+        denied = [d for d in seen if d.decision == "deny"]
+        if denied:
+            raise AssertionError(
+                f"expected every call to tool {tool_name!r} to be allowed, but {len(denied)} "
+                f"of {len(seen)} was denied (reason: {denied[0].reason!r})."
+            )
+
+    @staticmethod
+    def _require_report(report: Any) -> ToolPolicyReport:
+        """Narrow the object passed to a decision assertion to a report."""
+        if isinstance(report, ToolPolicyReport):
+            return report
+        raise TypeError(f"expected a `Hook.Get Tool Decisions` report; got {type(report).__name__}.")
+
+    @staticmethod
+    def _as_name_set(names: Any) -> set[str] | None:
+        """Coerce a list or ``|``/``,``-separated string of names into a set (or None)."""
+        if names is None:
+            return None
+        if isinstance(names, str):
+            parts = [p.strip() for p in re.split(r"[|,]", names) if p.strip()]
+            return set(parts) or None
+        collected = {str(n).strip() for n in names if str(n).strip()}
+        return collected or None
+
+    @classmethod
+    def _build_tool_policy(cls, allow: Any, deny: Any) -> PolicyFunc | None:
+        """Build an allow/deny policy from name lists (allow-list wins if both given).
+
+        With an ``allow`` list, only those tools are allowed (every other gated
+        call is denied). With only a ``deny`` list, those tools are denied and the
+        rest allowed. With neither, returns ``None`` (allow all, still recorded).
+        """
+        allow_set = cls._as_name_set(allow)
+        deny_set = cls._as_name_set(deny)
+        if allow_set is not None:
+            return lambda name, args: (
+                (True, "") if name in allow_set else (False, f"{name!r} is not in the allow-list {sorted(allow_set)}")
+            )
+        if deny_set is not None:
+            return lambda name, args: (
+                (False, f"{name!r} is in the deny-list {sorted(deny_set)}") if name in deny_set else (True, "")
+            )
+        return None
+
+    @staticmethod
+    def _build_agent_model(model: str | None, base_url: str | None, api_key: str | None) -> Any:
+        """Build an OpenAI-compatible pydantic-ai model from kwargs/env (lazy import)."""
+        from AgentEval._core.adapter import resolve_config
+        from AgentEval._core.errors import MissingExtraError
+
+        try:
+            from pydantic_ai.models.openai import OpenAIChatModel
+            from pydantic_ai.providers.openai import OpenAIProvider
+        except ImportError as exc:
+            raise MissingExtraError(
+                "Hook.Get Tool Decisions needs pydantic-ai, which ships with the [agent] extra. "
+                "Install it with: pip install 'robotframework-agenteval[agent]'",
+                extra="agent",
+            ) from exc
+
+        model_name = resolve_config(model, env_var="AGENTEVAL_MODEL")
+        if not model_name:
+            raise MissingExtraError(
+                "Hook.Get Tool Decisions needs a model - pass model= or set AGENTEVAL_MODEL",
+                extra="agent",
+            )
+        resolved_base = resolve_config(base_url, env_var="AGENTEVAL_BASE_URL")
+        resolved_key = resolve_config(api_key, env_var="AGENTEVAL_API_KEY")
+        if resolved_base or resolved_key:
+            provider = OpenAIProvider(base_url=resolved_base, api_key=resolved_key)
+            return OpenAIChatModel(model_name, provider=provider)
+        return OpenAIChatModel(model_name)
