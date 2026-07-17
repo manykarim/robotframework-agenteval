@@ -42,7 +42,19 @@ Library    AgentEval
 
 Either way you get **44 keywords across 4 libraries** — the tables below list every one, with its test mode and what it does.
 
+## Keyword documentation
+
+Full, always-current keyword docs (arguments, tiers, examples) are published to GitHub Pages:
+
+- 📖 [HooksLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/HooksLibrary.html)
+- 📖 [MCPLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/MCPLibrary.html)
+- 📖 [SkillsLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/SkillsLibrary.html)
+- 📖 [SubagentsLibrary](https://manykarim.github.io/robotframework-agenteval/keywords/SubagentsLibrary.html)
+- 📖 [AgentEval](https://manykarim.github.io/robotframework-agenteval/keywords/AgentEval.html) (the composite of all four)
+
 ### HooksLibrary — 8 keywords
+
+📖 [HooksLibrary keyword docs](https://manykarim.github.io/robotframework-agenteval/keywords/HooksLibrary.html)
 
 Hooks are deterministic programs: matchers, commands, exit codes, decisions. So everything here is Tier-1 — it runs without a model and gives the same answer every time.
 
@@ -58,6 +70,8 @@ Hooks are deterministic programs: matchers, commands, exit codes, decisions. So 
 | **Hook.Command Should Exist** | 1 | Assert each hook command resolves to an executable on disk |
 
 ### MCPLibrary — 17 keywords
+
+📖 [MCPLibrary keyword docs](https://manykarim.github.io/robotframework-agenteval/keywords/MCPLibrary.html)
 
 Parse and validate a `.mcp.json` config with no server running, or spawn the real thing and call its tools. Tool discoverability drives a live agent to see whether it actually reaches for the right tools.
 
@@ -83,6 +97,8 @@ Parse and validate a `.mcp.json` config with no server running, or spawn the rea
 
 ### SkillsLibrary — 10 keywords
 
+📖 [SkillsLibrary keyword docs](https://manykarim.github.io/robotframework-agenteval/keywords/SkillsLibrary.html)
+
 Static frontmatter checks need no model. Move up a tier to ask the judge whether a response actually applied a skill's guidance, or up another to drive an agent and measure whether the skill surfaces at all.
 
 | Keyword | Tier | What it does |
@@ -91,7 +107,7 @@ Static frontmatter checks need no model. Move up a tier to ask the judge whether
 | **Skill.Get Description** | 1 | Return the `description` field |
 | **Skill.Get Allowed Tools** | 1 | Return the `allowed-tools` list |
 | **Skill.Get Disable Model Invocation** | 1 | Return the `disable-model-invocation` bool |
-| **Skill.Should Be Valid Frontmatter** | 1 | Assert the four required fields are present with correct types |
+| **Skill.Should Be Valid Frontmatter** | 1 | Assert `name` + `description` are present (optional fields type-checked if set) |
 | **Skill.Get Judge Activation Decision** | 2 | Ask the judge whether a response actually applied the skill's guidance |
 | **Skill.Get Activation Decision** | 3 | Drive an agent with a prompt and report whether the skill activated |
 | **Skill.Should Activate For** | 3 | Assert the skill activates for a prompt; fail if it doesn't |
@@ -99,6 +115,8 @@ Static frontmatter checks need no model. Move up a tier to ask the judge whether
 | **Skill.Get Activation Pass At K** | 1 | Estimate activation pass@k over trials, with a Wilson confidence band |
 
 ### SubagentsLibrary — 9 keywords
+
+📖 [SubagentsLibrary keyword docs](https://manykarim.github.io/robotframework-agenteval/keywords/SubagentsLibrary.html)
 
 Read the delegation trail straight out of a run result — that's deterministic. Or drive a live orchestrator and check where it actually routed the work.
 

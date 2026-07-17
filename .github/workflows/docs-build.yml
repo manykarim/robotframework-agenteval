@@ -24,11 +24,15 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "docs/contracts/**"
+      - "docs/**"
       - "src/AgentEval/**/*.py"
+      - "src/HooksLibrary/**/*.py"
+      - "src/MCPLibrary/**/*.py"
+      - "src/SkillsLibrary/**/*.py"
+      - "src/SubagentsLibrary/**/*.py"
       - "README.md"
-      - "docs/index.md"
       - "scripts/check_doc_keyword_count.py"
+      - "scripts/check-doc-rendering.py"
 
 permissions:
   contents: read
@@ -55,11 +59,13 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
 
-      # MED-4 fix (2026-05-17): sweep ALL submodules via pkgutil.walk_packages
-      # instead of only importing top-level AgentEval. Broken submodules (syntax
-      # errors, missing imports) are now caught before Story 1a.4 + Epic 1b add
-      # real RF Library keyword classes.
-      - name: Sweep-import all AgentEval submodules (Phase-1 libdoc placeholder)
+      # D4 (prepare-v0-1-0-release): sweep ALL FIVE shipped packages via
+      # pkgutil.walk_packages instead of only AgentEval. The four top-level
+      # surface libraries (HooksLibrary, MCPLibrary, SkillsLibrary,
+      # SubagentsLibrary) plus the AgentEval spine are import-walked so a broken
+      # import in ANY shipped surface library fails the docs build — not only a
+      # break under AgentEval.*.
+      - name: Sweep-import all shipped AgentEval packages
         run: |
           uv run python -c "
           import importlib
@@ -67,17 +73,34 @@ jobs:
           import sys
 
           import AgentEval
+          import HooksLibrary
+          import MCPLibrary
+          import SkillsLibrary
+          import SubagentsLibrary
+
+          packages = [
+              AgentEval,
+              HooksLibrary,
+              MCPLibrary,
+              SkillsLibrary,
+              SubagentsLibrary,
+          ]
 
           failures = []
           modules_imported = 0
-          for module_info in pkgutil.walk_packages(AgentEval.__path__, prefix='AgentEval.'):
-              try:
-                  importlib.import_module(module_info.name)
-                  modules_imported += 1
-              except Exception as exc:
-                  failures.append((module_info.name, type(exc).__name__, str(exc)))
+          for package in packages:
+              prefix = package.__name__ + '.'
+              # Import the top-level package itself (walk_packages only yields
+              # sub-modules, so a bare 'import Pkg' would otherwise be uncounted).
+              modules_imported += 1
+              for module_info in pkgutil.walk_packages(package.__path__, prefix=prefix):
+                  try:
+                      importlib.import_module(module_info.name)
+                      modules_imported += 1
+                  except Exception as exc:
+                      failures.append((module_info.name, type(exc).__name__, str(exc)))
 
-          print(f'AgentEval {AgentEval.__version__} — {modules_imported} submodules imported cleanly')
+          print(f'AgentEval {AgentEval.__version__} — swept 5 shipped packages, {modules_imported} modules imported cleanly')
           if failures:
               print('::error::Submodule import failures:')
               for name, exc_type, msg in failures:
@@ -90,6 +113,14 @@ jobs:
       # Fails the build when a new keyword ships without the docs being updated.
       - name: Assert documented keyword counts match libdoc
         run: uv run python scripts/check_doc_keyword_count.py
+
+      # D3 (prepare-v0-1-0-release): machine-check that the generated docs render
+      # correctly — well-formed HTML libdoc tables, well-formed README/index
+      # markdown tables, resolvable internal links, and the five expected libdoc
+      # files present + non-empty. "Render correctly" must be repeatable, not a
+      # one-time manual look.
+      - name: Assert generated docs render correctly
+        run: uv run python scripts/check-doc-rendering.py
 
       # MED-3 fix (2026-05-17): per-file 4-distinct-section assertion instead of
       # aggregate header count. Previous implementation summed header occurrences

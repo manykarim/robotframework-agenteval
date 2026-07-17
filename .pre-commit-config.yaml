@@ -78,3 +78,15 @@ repos:
         always_run: true
         pass_filenames: false
         require_serial: true
+
+      # Generated docs must render correctly: libdoc HTML tables well-formed,
+      # README + docs/index.md markdown tables balanced, internal links
+      # resolve, five expected libdoc files present (design D3,
+      # prepare-v0-1-0-release). Local mirror of the docs-build.yml step.
+      - id: doc-rendering
+        name: doc-rendering validation
+        entry: uv run python scripts/check-doc-rendering.py
+        language: system
+        always_run: true
+        pass_filenames: false
+        require_serial: true

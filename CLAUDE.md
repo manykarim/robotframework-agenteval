@@ -141,6 +141,7 @@ are the canonical source.
   uv run python scripts/check-license-headers.py  # CI-only gate (ci.yml)
   uv run python scripts/check-contract-sections.py # CI-only gate (docs-build.yml, NFR-MAINT-04)
   uv run python scripts/check_doc_keyword_count.py # CI-only gate (docs-build.yml)
+  uv run python scripts/check-doc-rendering.py     # CI-only gate (docs-build.yml)
   uv run pytest tests/
   ```
   The same set is wired into `.pre-commit-config.yaml` (`uv run pre-commit run
