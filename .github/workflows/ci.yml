@@ -80,82 +80,20 @@ jobs:
       - name: Catalog references check (Phase-1.5)
         run: uv run python scripts/check-catalog-references.py --all-tracked
 
-      # tests/acceptance/tier1 has real tests as of Story 1a.6 (FR42 acceptance
-      # test landed). EXECUTE the tests (not just collect) — exit-5 leniency
-      # removed for this dir per Story 1a.6 code-review HIGH-1.
-      - name: pytest tests/acceptance/tier1 (real tests)
-        run: uv run pytest tests/acceptance/tier1 -q
+      # Contract-doc + keyword-count doc gates (also in docs-build.yml; run here
+      # so a PR that breaks them fails fast).
+      - name: Contract sections check
+        run: uv run python scripts/check-contract-sections.py
 
-      # tests/acceptance/smoke has 1 .robot smoke test as of Story 1a.6
-      # (verifies Library AgentEval + Get Effective Config via RF static-library
-      # discovery). EXECUTE the smoke test via robot (not pytest).
-      - name: robot tests/acceptance/smoke (RF smoke tests)
-        run: uv run robot --output NONE --report NONE --log NONE tests/acceptance/smoke
+      - name: Doc keyword-count check
+        run: uv run python scripts/check_doc_keyword_count.py
 
-      # tests/unit has real kernel unit tests as of Story 1b.1 (54+ tests covering
-      # _kernel/{context, tier, run_async}.py) plus Story 1b.6's conventions
-      # tests (17 cases: 7 convention checks + 10 violation-detection per
-      # Blind#12 fake-green-prevention patch). EXECUTE the tests (not just
-      # collect) — exit-5 leniency retired for ALL of tests/unit per Story
-      # 1b.6 CI-log-forensics fix; the prior `--ignore=tests/unit/conventions`
-      # exclusion was a Story 1b.1 placeholder pending Story 1b.6 conventions
-      # implementation, now removed.
-      - name: pytest tests/unit (real tests)
-        run: uv run pytest tests/unit -q
+      # The full Python suite: the _core spine unit tests + the four surface
+      # libraries' tests (tests/unit/core + tests/surfaces).
+      - name: pytest (unit + surfaces)
+        run: uv run pytest tests/ -q
 
-      # Story 2.1: RF integration test for the `Skill` sub-library lives at
-      # tests/unit/skills/test_robot_integration.robot. pytest does not
-      # discover .robot files, so invoke `robot` explicitly so CI surfaces
-      # any regression in the DynamicCore-composed Skill keyword wiring.
-      # `--exclude` filter on directories without `.robot` files keeps the
-      # invocation focused; the AgentEval.skills.library.SkillsLibrary
-      # import path is the load-bearing assertion.
-      - name: robot tests/unit/skills (RF skills integration)
-        run: uv run robot --output NONE --report NONE --log NONE tests/unit/skills/test_robot_integration.robot
-
-      # Story 2.2: RF integration tests for the `Subagent` + `Hook`
-      # sub-libraries. Same pattern as Story 2.1 — pytest doesn't
-      # discover .robot files. CI surfaces regressions in
-      # AgentEval.subagents.library.SubagentsLibrary + AgentEval.hooks.library.HooksLibrary
-      # wiring (DynamicCore composition + standalone-import paths).
-      - name: robot tests/unit/subagents (RF subagent integration)
-        run: uv run robot --output NONE --report NONE --log NONE tests/unit/subagents/test_robot_integration.robot
-
-      - name: robot tests/unit/hooks (RF hook integration)
-        run: uv run robot --output NONE --report NONE --log NONE tests/unit/hooks/test_robot_integration.robot
-
-      # Story 2.3: RF integration test for the `MCP` sub-library.
-      # MCPLibrary is EXCLUDED from DynamicCore composition per Story 2.2
-      # collision-prevention norm; users access via `Library AgentEval.mcp.library.MCPLibrary
-      # WITH NAME MCP`. This step surfaces regressions in that pattern.
-      - name: robot tests/unit/mcp (RF mcp integration)
-        run: uv run robot --output NONE --report NONE --log NONE tests/unit/mcp/test_robot_integration.robot
-
-      # Story 2.4: conformance + integration tests against real-world /
-      # representative sample files.
-      #
-      # Story 2.4 code-review HIGH-1 fix (Blind + Auditor + Codex 3-way
-      # 2026-05-19): the pre-edit comment claimed
-      # `pytest tests/conformance -q` was "already an existing step" —
-      # it was NOT. Story 2.4's 22 static-inspection conformance cases +
-      # the un-skipped SIMPLICITY-02 introspection asserts were therefore
-      # UNGATED on PR. Added the explicit conformance step here so the
-      # Story 2.4 conformance suite runs in PR-gating CI. The
-      # release-only `conformance.yml` workflow keeps its separate role
-      # (adapter-conformance harness pinned per architecture L1174).
-      - name: pytest tests/conformance (Story 2.4 static-inspection fixtures + SIMPLICITY-02)
-        run: uv run pytest tests/conformance -q
-
-      # Story 2.4: integration tests against real-world / representative
-      # sample files. Picks up tests that exercise the keyword surface
-      # against the rf-mcp .mcp.json + synthetic Claude Code samples.
-      - name: pytest tests/integration/static_inspection (Story 2.4 real-world samples)
-        run: uv run pytest tests/integration/static_inspection -q
-
-      # Scaffold end-to-end smoke test: `agenteval init` in a temp dir, then run
-      # the scaffolded example suites with the documented run command (mock
-      # provider + bundled echo server — keyless + deterministic) and assert
-      # RF exits 0. Guards against scaffold rot (missing imports, wrong keyword
-      # shapes, invalid scenario.yaml) recurring silently.
-      - name: pytest tests/integration/test_init_scaffold_e2e.py (scaffold smoke)
-        run: uv run pytest tests/integration/test_init_scaffold_e2e.py -q
+      # End-to-end .robot smoke suites: each of the four libraries imported on
+      # its own + the AgentEval composite, run as real Robot Framework libraries.
+      - name: robot smoke suites (tests/robot)
+        run: uv run robot --output NONE --report NONE --log NONE tests/robot

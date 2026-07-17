@@ -1,21 +1,24 @@
-# ADR-016: MCP Coverage Detection Default — Trust-Floor with Adapter Contract
+# ADR-016: MCP Coverage Detection Default — Trust-Floor
 
 **Status:** accepted
 **Date:** 2026-05-17
-**Renumbering history:** Originally proposed as ADR-A6 in `_bmad-output/planning-artifacts/adr-backlog-from-architecture.md` §ADR-A6. Renumbered to ADR-016 per architecture.md project tree (`docs/adr/` subsection of the Complete Project Directory Structure).
+
+> Superseded by the four-surface refocus (2026-07) where the details drifted. The
+> trust-floor rule — report the strongest observation path that fired, degrade
+> loudly to `external_mixed` when the observer is blind — is still how MCPLibrary
+> reports coverage. What's gone: the fleet of vendor CLI adapters (Claude Code,
+> Copilot, Codex, Generic LiteLLM) that used to each own a slice of detection.
+> That responsibility now sits with MCPLibrary and the single coding-agent driver,
+> not a per-vendor split.
 
 ## Context
 
-`mcp_coverage` is a per-`AgentRunResult` field reflecting how completely the library observed a run's tool calls (FR36b / AC-MCP-OBSERVE-01). It takes values in the literal set `{"hosted_in_process", "subprocess_with_observer", "external_mixed"}`. Per-adapter detection of whether the run touched library-spawned vs external MCP servers requires reading external MCP configurations:
+`mcp_coverage` reflects how completely agenteval observed a run's tool calls. It takes values in the literal set `{"hosted_in_process", "subprocess_with_observer", "external_mixed"}`. Deciding which one to report means knowing whether the run touched agenteval-spawned MCP servers or external ones — and detection can fail (missing file, malformed JSON, permission denied, race mid-read). The safe default on detection failure is `external_mixed`: loud refusal beats a silent half-truth.
 
-- Claude Code CLI adapter: parse `~/.claude.json` + project `.mcp.json` before run.
-- Copilot CLI adapter: parse `~/.copilot/mcp-config.json`.
-- Generic LiteLLM adapter: trivially `"hosted_in_process"` (or `"external_mixed"`) since LiteLLM doesn't speak MCP.
+Two refinements shape the rule:
 
-Detection can fail (missing file, malformed JSON, permission denied, race mid-read). The original ADR-A6 (2026-05-15 draft) committed to `external_mixed` as the safe default on detection failure ("loud refusal beats silent half-truth"). Story 0.1 (Hosted-MCP Universal Observer Spike, 2026-05-17) empirically validated the field's semantics under dual-transport runs and surfaced two refinements that this ratification incorporates:
-
-- **D1 (trust-floor):** When BOTH `hosted_in_process` AND `subprocess_with_observer` paths fire successfully, the coverage field should report the STRONGER path that completed fully, not the weaker one. A more-instrumented run should get credit for being more-instrumented.
-- **D4 (adapter contract):** Detection responsibility is split — the observer is structurally blind to MCP servers it did NOT attach to; only the ADAPTER can detect external MCP configurations and signal degradation.
+- **D1 (trust-floor):** When BOTH `hosted_in_process` AND `subprocess_with_observer` paths fire successfully, the coverage field reports the STRONGER path that completed fully, not the weaker one. A more-instrumented run should get credit for being more-instrumented.
+- **D4 (detection is the caller's job, not the observer's):** The observer is structurally blind to MCP servers it did NOT attach to. Only the caller that configured those external servers can detect them and signal degradation via `mark_external_mixed(reason)`.
 
 ## Decision
 
@@ -35,23 +38,15 @@ A run that successfully observed BOTH `hosted_in_process` AND `subprocess_with_o
 
 Multiple `mark_external_mixed(reason)` calls accumulate reasons in the run's metadata (no overwrite — forensic trail is preserved). The `observed_paths` field in `AgentRunResult.metadata` MUST be ordered strongest-to-weakest (matching the trust ordering above) so downstream consumers can reconstruct the decision without rerunning the logic.
 
-**Adapter contract** — the observer is structurally blind to MCP servers it did NOT attach to. External-MCP detection is the **adapter's** responsibility, not the observer's. Adapters MUST implement detection per their CLI's config conventions:
+**Detection is the caller's job** — the observer is structurally blind to MCP servers it did NOT attach to. Whoever configured external MCP servers for a run is the only party that can detect them, and MUST call `mark_external_mixed(reason)` when any external MCP is present, regardless of whether it was actually used. Claiming full coverage without actually checking is the one unforgivable sin here: a false "all good" is worse than an honest "I couldn't see everything."
 
-- **Claude Code CLI adapter** (Epic 4 Story 4.2): parse `~/.claude.json` + project-local `.mcp.json` before run; call `observer.mark_external_mixed(reason)` when ANY external MCP is detected, regardless of whether the agent actually used it. False positives (claiming full coverage when adapter couldn't actually check) violate AC-MCP-OBSERVE-01's load-bearing principle.
-- **Copilot CLI adapter** (Phase 2 Story 11.2): parse `~/.copilot/mcp-config.json` similarly.
-- **Generic LiteLLM adapter** (Epic 4 Story 4.1): emit no signal — LiteLLM doesn't speak MCP, so the field is trivially `hosted_in_process` if the library spawned an MCP for the test, else `external_mixed` if no library-spawned MCP exists.
-
-**Kernel enforcement** at metric keyword entry point: `_kernel/coverage.py::_check_mcp_coverage(run)` MUST raise `IncompleteTraceError` per FR37 when `mcp_coverage == "external_mixed"` AND `allow_external_mcp_blind=False` (the default). The default-deny posture preserves "loud refusal beats silent half-truth."
-
-**Citation:** see `_bmad-output/spikes/spike-hosted-mcp-observer-findings.md` §`mcp_coverage` field semantic + §Related ADR-A6 amendment for the trust-floor empirical validation; the D2.3 handshake-race and D2.4 atexit findings from `_bmad-output/spikes/spike-per-test-mcp-cleanup-findings.md` are consistent with this semantic.
+**Enforcement** at the metric-keyword entry point: coverage of `external_mixed` raises `IncompleteTraceError` when `allow_external_mcp_blind=False` (the default). The default-deny posture preserves "loud refusal beats silent half-truth."
 
 ## Consequences
 
-- Adapter authors implement external-MCP detection per their CLI's config conventions; documentation contract `docs/contracts/mcp-coverage-detection.md` (Story 1a.4 owns the skeleton) MUST publish the trust-floor decision tree + the per-adapter detection responsibility.
-- Conformance suite (Epic 1b Story 1b.5 / Epic 8a) injects detection-failure scenarios — missing `~/.claude.json` permission, corrupt subprocess log, dual-transport happy-path — and asserts the expected `mcp_coverage` outcome per the decision tree above.
-- The kernel `_check_mcp_coverage` helper in `_kernel/coverage.py` (Epic 1b Story 1b.2 deliverable) MUST consult the trust ordering and raise `IncompleteTraceError` on `external_mixed` unless the caller opts in via `allow_external_mcp_blind=True`.
-- The `observed_paths` ordering convention requires the production observer (Epic 5 Story 5.2) to expose this field in trust order, not alphabetical (review F-blind-14 fix already applied in spike prototype).
-- Cross-cutting concern #9 from architecture's Project Context Analysis (adapter-emitted data contract). **Adds 1 new doc contract to NFR-MAINT-04's enumerated list** (`docs/contracts/mcp-coverage-detection.md`).
+- The trust-floor decision tree + the caller's detection responsibility are published in the companion contract `docs/contracts/mcp-coverage-detection.md`.
+- The coverage-check helper consults the trust ordering and raises `IncompleteTraceError` on `external_mixed` unless the caller opts in via `allow_external_mcp_blind=True`.
+- The `observed_paths` metadata is exposed in trust order (strongest first), not alphabetical, so downstream consumers can reconstruct the decision without rerunning the logic.
 
 ## Alternatives
 
@@ -64,9 +59,6 @@ Multiple `mark_external_mixed(reason)` calls accumulate reasons in the run's met
 
 ## References
 
-- Original proposed text: `_bmad-output/planning-artifacts/adr-backlog-from-architecture.md` §ADR-A6 (note: that text uses `library_only` as the success state; renamed to `hosted_in_process` per D1 rework).
-- D1 trust-floor + D4 adapter contract ratification: `_bmad-output/spikes/spike-hosted-mcp-observer-findings.md` §`mcp_coverage` field semantic + §Related ADR-A6 amendment.
-- Empirical validation: spike's `edge_cases/external_mixed_cases.py` 5/5 probes pass; `probe_dual_path_trust_floor` reports `hosted_in_process` when both paths fire (proves the trust-floor decision tree).
-- Independent reproduction: `_bmad-output/spikes/d5-reproduction-report.md` 3/3 agents confirm 5/5 edge-case pass.
-- Cross-spike confirmation: Story 0.2's per-test cleanup did NOT surface any additional ADR-A6 deltas — cross-cutting confirmation only (`spike-per-test-mcp-cleanup-findings.md` §Hand-off to Story 0.3 table row "ADR-A6 / ADR-A8 amendments needed? ✅ NO new amendments from Story 0.2").
-- Architecture context: `_bmad-output/planning-artifacts/architecture.md` project-tree `docs/adr/` subsection; FR36b + AC-MCP-OBSERVE-01 in PRD.
+- ADR-004 (Hosted-MCP Universal Trace Observation) — the observer whose output this field summarizes.
+- ADR-014 (Error-Class Hierarchy) — the `IncompleteTraceError` leaf this gate raises.
+- `docs/contracts/mcp-coverage-detection.md` — the companion contract publishing the decision tree.

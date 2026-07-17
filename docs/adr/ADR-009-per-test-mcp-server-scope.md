@@ -2,7 +2,12 @@
 
 **Status:** accepted
 **Date:** 2026-05-17
-**Renumbering history:** Originally proposed as ADR-012 in `_bmad-output/planning-artifacts/adr-backlog-from-prd.md` §ADR-012. Renumbered to ADR-009 per architecture.md project tree (L429-434, Hybrid scheme).
+
+> Superseded by the four-surface refocus (2026-07) only in its framing. The
+> per-test scoping decision is still exactly how MCPLibrary keeps parallel runs
+> from bleeding into each other. The old `AgentRunResult` plumbing is gone, but
+> the `test_id`-scoped server lifecycle and the SIGTERM/stderr teardown hardening
+> stand as written.
 
 ## Context
 

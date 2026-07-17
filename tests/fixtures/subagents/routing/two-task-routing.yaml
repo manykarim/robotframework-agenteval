@@ -1,9 +1,0 @@
-# Routing-tasks fixture for Subagent.Get Routing Accuracy unit tests.
-# Task 1 expects the subagent the stub always delegates to; task 2 does not.
-tasks:
-  - id: review-task
-    prompt: Review my open pull request for regressions
-    expected_subagent: code-reviewer
-  - id: test-task
-    prompt: Add unit tests for the new module
-    expected_subagent: test-writer

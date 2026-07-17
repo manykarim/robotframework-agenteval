@@ -3,6 +3,17 @@
 **Status:** accepted
 **Date:** 2026-05-17
 
+> Superseded by the four-surface refocus (2026-07) where the details drifted. The
+> decision that matters here is still true and still load-bearing: `robotframework-agentguard`
+> and the other projects below are influences, not dependencies — agenteval credits
+> them and owes them nothing. The catalog is kept as an honest record of what was
+> reviewed. Read it in the past tense: many of the "agenteval will do X" rationales
+> describe machinery that the refocus removed (the flat 14-library composition,
+> vendor CLI adapters, telemetry/OTLP export, judge calibration, cross-adapter
+> A/B stats). agenteval today is four libraries — HooksLibrary, MCPLibrary,
+> SkillsLibrary, SubagentsLibrary — testing the agentic stack deterministically,
+> with an LLM judge, or by driving a real coding agent.
+
 ## Context
 
 agenteval is a Robot Framework library for evaluating AI coding agents. Its architecture was informed by reviewing several reference projects + relevant industry standards. Without explicit documentation of which patterns were reviewed, agenteval risks:
@@ -31,7 +42,7 @@ The catalog lives in this ADR's `§Body` section. New entries (additional review
 
 - **Catalog is non-binding.** Per the §Scope + obligation framing section, no entry in this catalog creates an obligation for agenteval to track the source's future changes. Catalogued sources can evolve independently.
 - **Periodic review cadence.** At each major milestone (Phase 1 close, Phase 2 close), this catalog is reviewed against the source projects to determine whether any new patterns warrant inclusion or whether any existing decisions warrant amendment.
-- **Catalog drives ADR-001 evolution.** When Phase 1 ratifies subsequent ADRs (ADR-002 through ADR-018), each ADR that explicitly inherits a pattern cites the corresponding catalog row + decision. Cross-references resolve in both directions.
+- **Catalog drives ADR-001 evolution.** Each surviving ADR that inherits a pattern cites the corresponding catalog row + decision. Cross-references resolve in both directions.
 - **Amendments Log records ratifications.** Each newly-ratified ADR appends an entry to `§Amendments Log` explaining what was ratified and citing the evidence trail.
 
 ## Alternatives
@@ -49,7 +60,7 @@ Per the `feedback_agentguard_inspiration_not_dependency` project norm (ratified 
 
 - **`robotframework-agentguard` is one reviewed reference among several.** It is NOT a dependency, NOT a parent project, and NOT a roadmap obligation. agenteval can diverge from any agentguard pattern at any time.
 - **Competitor MCP-eval projects (`wolfeidau/mcp-evals`, `lastmile-ai/mcp-eval`) were reviewed as additional reference points.** Neither is a dependency.
-- **Industry standards (OpenTelemetry GenAI semantic conventions, Model Context Protocol specification) are treated as binding for the surfaces they govern.** When agenteval emits OTel spans, it follows the semantic conventions; when agenteval observes MCP traffic, it follows the protocol spec.
+- **The Model Context Protocol specification is treated as binding for the surface it governs.** When agenteval observes MCP traffic, it follows the protocol spec.
 
 Inclusion in this catalog does NOT imply agenteval has any obligation to the source's maintainers, license, governance, or evolution. agenteval's architectural choices are agenteval's own.
 
@@ -99,31 +110,17 @@ Reviewed 2026-05-17. No code clones; reviewed via published READMEs + ADRs (wher
 
 | Source | Reference | What it does | Decision | Rationale |
 | --- | --- | --- | --- | --- |
-| OpenTelemetry GenAI semantic conventions | https://opentelemetry.io/docs/specs/semconv/gen-ai/ | Defines span attribute conventions for LLM/agent telemetry. | `adopt-verbatim` | agenteval's OTel listener (Story 5.1) emits spans following the GenAI semconv; deviations require an ADR amendment + a span-conformance test. |
-| OpenTelemetry OTLP exporter (Python SDK) | https://opentelemetry.io/docs/languages/python/exporters/ | Canonical OpenTelemetry Protocol exporter implementations (HTTP/protobuf at port 4318; gRPC at port 4317). | `adopt-verbatim` | Story 13.2 ratifies the `[otlp]` optional extra (`opentelemetry-exporter-otlp>=1.27,<2.0`) shipping the `OTLPSpanExporter` from both `opentelemetry.exporter.otlp.proto.http` + `opentelemetry.exporter.otlp.proto.grpc`. Custom-implementing the OTLP wire format would diverge from `service.name="robotframework-agenteval"` resource conventions, break round-trip with `otel-cli` / `jq` tools documented in `docs/contracts/otel-trace-visual.md`, and duplicate ~500 LoC of well-tested SDK code. The PRD-locked Phase-2 commitment for FR33b is the exporter behind `[otlp]` extra — not a custom wire format. URL-scheme dispatch (`http://` / `https://` → HTTP exporter; `grpc://` / `grpcs://` → gRPC exporter) is the agenteval-specific layer over the canonical exporters; documented in `docs/contracts/stability-surface.md` (`### OTLP Trace Backend Surface`). |
 | Model Context Protocol specification | https://spec.modelcontextprotocol.io/ | Defines the MCP wire protocol + lifecycle. | `adopt-verbatim` | agenteval consumes MCP servers per the spec; spec-version validation (ADR-008) enforces conformance to the supported range (`mcp>=1.0,<2.0`). |
 
 ## §Amendments Log
 
-Date-ordered log of ratifications that amended catalog entries OR ratified ADRs that depend on catalog patterns. Story 0.3 (Epic 0) writes ratifications for the 3 spike-dependent ADRs (ADR-004, ADR-016, ADR-018) here.
+Date-ordered log of ratifications that amended catalog entries OR ratified ADRs
+that depend on catalog patterns. Only the ADRs that survive the four-surface
+refocus are listed; the entries for retired ADRs were removed alongside their
+files (2026-07).
 
-- **2026-05-17 — ADR-004 (renumbered from proposed ADR-007) ratified.** Hosted-MCP universal trace observation pattern accepted with empirical findings from Story 0.1 spike: handler-wrap at `Server.request_handlers[CallToolRequest]` validated across 3 transports (in-memory, stdio subprocess, streamable HTTP) under `pabot --processes 4` (75/75 runs clean). See `_bmad-output/spikes/spike-hosted-mcp-observer-findings.md` + `docs/adr/ADR-004-hosted-mcp-observation.md`.
-- **2026-05-17 — ADR-016 (renumbered from proposed ADR-A6) ratified.** `mcp_coverage` field semantics ratified with D1 trust-floor (strongest complete path wins) + D4 adapter contract (Claude Code CLI / Copilot CLI / Generic LiteLLM detection responsibility split). See `_bmad-output/spikes/spike-hosted-mcp-observer-findings.md` §Related ADR-A6 amendment + `_bmad-output/spikes/spike-per-test-mcp-cleanup-findings.md` (cross-cutting confirmation) + `docs/adr/ADR-016-mcp-coverage-detection-default.md`.
-- **2026-05-17 — ADR-018 (renumbered from proposed ADR-A8) ratified.** Sandbox Phase 1 policy + gate + Protocol accepted with NO spike-driven amendments to ADR-A8's substance. Story 0.2 confirmed cross-cuttingly (via the §Hand-off to Story 0.3 table row "ADR-A6 / ADR-A8 amendments needed? ✅ NO new amendments from Story 0.2") that per-test cleanup primitives do not conflict with the sandbox Protocol surface. Real sandbox subprocess lifecycle is a Phase-3 carry-over flagged in ADR-018 §Cross-cutting forward references. See `_bmad-output/spikes/spike-per-test-mcp-cleanup-findings.md` §Hand-off to Story 0.3 + `docs/adr/ADR-018-sandbox-phase-1-policy.md`.
-
-(Story 1a.3 may append further entries when ratifying the other 15 non-spike ADRs; each entry follows the pattern `YYYY-MM-DD — ADR-NNN ratified. <one-line summary>. See <evidence>.`)
-
-- **2026-05-17 — ADR-002 (renumbered from proposed PRD-ADR-005) ratified.** Tier-1 adapter ceiling rule formalized as "≤2 per vendor + 1 generic escape hatch" — principle-based, not number-based. See `docs/adr/ADR-002-tier-1-adapter-ceiling-rule.md`.
-- **2026-05-17 — ADR-003 (renumbered from proposed PRD-ADR-006) ratified.** CodingAgentAdapter Protocol with internal `InProcessAdapter` + `SubprocessAdapter` base-class split. See `docs/adr/ADR-003-coding-agent-adapter-protocol-internal-class-split.md`.
-- **2026-05-17 — ADR-005 (renumbered from proposed PRD-ADR-008) ratified.** Conformance suite ships golden-trace fixtures as fidelity oracles (deterministic mock agent + per-scenario JSON fixtures). See `docs/adr/ADR-005-conformance-suite-fidelity-oracles.md`.
-- **2026-05-17 — ADR-006 (renumbered from proposed PRD-ADR-009) ratified.** `AgentRunResult.metadata.completeness` field required (3-state: `complete`/`truncated`/`partial`). See `docs/adr/ADR-006-agent-run-result-completeness-field.md`.
-- **2026-05-17 — ADR-007 (renumbered from proposed PRD-ADR-010) ratified.** `AgentRunResult.metadata.mcp_coverage` field semantics + `IncompleteTraceError` enforcement gate. See `docs/adr/ADR-007-agent-run-result-mcp-coverage-incomplete-trace-error.md`.
-- **2026-05-17 — ADR-008 (renumbered from proposed PRD-ADR-011) ratified.** MCP spec version validation at session start; `UnsupportedMCPVersionError` on out-of-range. See `docs/adr/ADR-008-mcp-spec-version-validation.md`.
-- **2026-05-17 — ADR-009 (renumbered from proposed PRD-ADR-012) ratified.** Per-test MCP server scope via Listener v3 `test_id`; per-test SIGTERM-aware teardown. See `docs/adr/ADR-009-per-test-mcp-server-scope.md`.
-- **2026-05-17 — ADR-010 (renumbered from proposed PRD-ADR-013) ratified.** Copilot CLI adapter uses live JSONL streaming as primary + post-hoc session-state as fallback. See `docs/adr/ADR-010-copilot-cli-adapter-trace-extraction.md`.
-- **2026-05-17 — ADR-011 (renumbered from proposed PRD-ADR-014) ratified.** Three primary personas: QA Engineer, Agent Surface Author, Agent Developer; persona-split test rule for future proposals. See `docs/adr/ADR-011-three-persona-model.md`.
-- **2026-05-17 — ADR-012 (renumbered from proposed ADR-A1) ratified.** Async-to-sync bridge as single kernel module `_run_async` with worker-thread fallback for nested-loop contexts. See `docs/adr/ADR-012-async-to-sync-bridge-kernel-module.md`.
-- **2026-05-17 — ADR-013 (renumbered from proposed ADR-A2) ratified.** Entry-points discovery centralized at `_kernel/discovery.py`; 5 agenteval-owned groups + 1 RF-owned listener group + legacy adapters group; precedence: direct-args > plugins > entry-points > defaults. See `docs/adr/ADR-013-entry-points-discovery-infrastructure.md`.
-- **2026-05-17 — ADR-014 (renumbered from proposed ADR-A3) ratified.** Error-class hierarchy: `AgentEvalError` base + 4 semantic sub-bases + 9+ leaves with `error_code` class attributes for FR49/FR50. See `docs/adr/ADR-014-error-class-hierarchy.md`.
-- **2026-05-17 — ADR-015 (renumbered from proposed ADR-A5) ratified.** Cost + runtime guardrail as `@guarded_fanout` decorator at `_kernel/guardrails.py` with pre-flight estimation + mid-run metering. See `docs/adr/ADR-015-cost-runtime-guardrail-decorator.md`.
-- **2026-05-17 — ADR-017 (renumbered from proposed ADR-A7) ratified.** Conformance suite organization: per-AC test files + per-adapter parametrize via `adapter_registry` fixture; `python -m agenteval.conformance` entry point. See `docs/adr/ADR-017-conformance-suite-organization-per-ac-test-files.md`.
+- **2026-05-17 — ADR-004 ratified.** Hosted-MCP universal trace observation pattern accepted with empirical findings from the Story 0.1 spike: handler-wrap at `Server.request_handlers[CallToolRequest]` validated across three transports (in-memory, stdio subprocess, streamable HTTP) under `pabot --processes 4`. See `docs/adr/ADR-004-hosted-mcp-observation.md`.
+- **2026-05-17 — ADR-008 ratified.** MCP spec version validation at session start; the observer refuses loudly when the negotiated version falls outside the supported range. See `docs/adr/ADR-008-mcp-spec-version-validation.md`.
+- **2026-05-17 — ADR-009 ratified.** Per-test MCP server scope via Listener v3 `test_id`; per-test SIGTERM-aware teardown. See `docs/adr/ADR-009-per-test-mcp-server-scope.md`.
+- **2026-05-17 — ADR-014 ratified.** Error-class hierarchy: `AgentEvalError` base with per-leaf `error_code` attributes mapped to exit codes. See `docs/adr/ADR-014-error-class-hierarchy.md`.
+- **2026-05-17 — ADR-016 ratified.** `mcp_coverage` field semantics with the D1 trust-floor (strongest complete path wins). See `docs/adr/ADR-016-mcp-coverage-detection-default.md`.

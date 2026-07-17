@@ -2,13 +2,26 @@
 
 **Status:** accepted
 **Date:** 2026-05-17
-**Renumbering history:** Originally proposed as ADR-007 in `_bmad-output/planning-artifacts/adr-backlog-from-prd.md` §ADR-007. Renumbered to ADR-004 per architecture.md project tree (`docs/adr/` subsection of the Complete Project Directory Structure — Hybrid scheme: Architectural Influences Catalog occupies ADR-001, renumbered PRD sidecar ADRs land at ADR-002..018). See ADR-001 §Amendments Log entry for this ratification.
+
+> Superseded by the four-surface refocus (2026-07). The observer pattern here is
+> the still-true heart of MCPLibrary: agenteval controls the MCP server under
+> test and records every tool call server-side. The coding-agent-adapter framing
+> below (multiple vendor CLIs, `AgentRunResult`, cross-adapter fidelity) is gone —
+> MCPLibrary now tests MCP servers directly, and the Tier-3 coding-agent mode
+> drives one real agent. Read the Decision for the mechanism; ignore the adapter
+> scaffolding.
 
 ## Context
 
-Trace fidelity varies wildly across coding-agent adapters: structured-output SDKs (Claude Agent SDK, OpenAI Agents SDK) give well-formed traces; CLI agents (Claude Code CLI, Copilot CLI, Codex CLI) vary from structured JSON to free-form text; TUI-first agents (OpenCode) give none at all. The "agent-agnostic" claim that justifies the agenteval library's existence collapses without a per-agent guarantee mechanism for tool-call observation.
+Tool-call fidelity is the whole game for MCPLibrary. When you ask an agent whether
+it called the right tools, you cannot trust the agent to grade its own homework —
+its self-reported trace may be structured JSON, free-form text, or nothing at all.
+agenteval needs its own source of truth.
 
-The Model Context Protocol (MCP) provides a structural opportunity: when an agent invokes tools via MCP, the tool calls flow through a well-defined JSON-RPC boundary. If the library controls the MCP server the agent connects to, every `tools/call` is observable server-side, independently of the agent's own tracing capabilities.
+The Model Context Protocol (MCP) provides one. When something invokes a tool via
+MCP, the call flows through a well-defined JSON-RPC boundary. If agenteval controls
+the MCP server, every `tools/call` is observable server-side — independently of
+whatever is on the other end.
 
 Story 0.1 (Hosted-MCP Universal Observer Spike) was commissioned to empirically validate the observer pattern before Epic 5 commits to a production `mcp/observer.py` API surface. The spike additionally surfaced findings about (a) the specific observation hook available in the `mcp` Python SDK, (b) behavior under `pabot --processes 4` per-test scope concurrency, (c) cross-transport portability (in-memory + stdio subprocess + streamable HTTP), and (d) `mcp_coverage` field semantics (now ratified in ADR-016).
 
@@ -28,21 +41,13 @@ Empirical evidence captured on Linux 6.8 only; macOS validation is a Phase-1.5 c
 
 **Implementation contracts:**
 
-- Implementation must route stdio subprocess stderr to a real file (not `sys.stderr`) when running under Robot Framework — RF replaces `sys.stderr` with a non-fd capture buffer, breaking `mcp.client.stdio.stdio_client`'s default. See `docs/contracts/listener-integration.md` (Story 1a.4 skeleton) for the contributor-facing constraint.
-- Implementation accesses `Server.request_handlers` and `FastMCP._mcp_server` — both technically internal in the mcp SDK. An `AdapterVersionDriftWarning` MUST be added as part of Epic 5 Story 5.2 (per architecture.md project tree FR reference) to detect mcp SDK major-version bumps that could break this coupling. Recommend filing an upstream issue with mcp asking for a stable observer hook on `FastMCP`.
-- For stdio MCP servers the library spawns, observation requires a wrapper script that injects the observer at subprocess bootstrap (the `subprocess_observer_wrapper.py` pattern from the spike). For genuinely third-party stdio MCP binaries that the library cannot wrap, the observer is structurally blind and the run degrades to `mcp_coverage="external_mixed"` per ADR-016. Adapters MUST detect external/uninstrumented MCP configurations and signal via `observer.mark_external_mixed(reason)` per ADR-016's adapter contract.
+- The implementation must route stdio subprocess stderr to a real file (not `sys.stderr`) when running under Robot Framework — RF replaces `sys.stderr` with a non-fd capture buffer, which breaks `mcp.client.stdio.stdio_client`'s default.
+- The implementation reaches into `Server.request_handlers` and `FastMCP._mcp_server` — both technically internal in the mcp SDK. A version-drift warning guards against mcp SDK major bumps that could break this coupling. Filing an upstream issue asking for a stable observer hook on `FastMCP` is the polite long game.
+- For stdio MCP servers agenteval spawns, observation needs a wrapper script that injects the observer at subprocess bootstrap. For third-party stdio binaries agenteval cannot wrap, the observer is structurally blind and coverage degrades — see ADR-016 for how that honesty is reported.
 
-**Downstream story unblocks:**
+**Coverage semantics** ratified in ADR-016 are the enforcement contract on top of this observer.
 
-- Epic 5 Story 5.2 (`src/AgentEval/mcp/observer.py` production implementation): API surface drafted in spike findings doc §`_kernel/context.py` is the implementation contract.
-- Epic 1b Story 1b.2 (Trace + Observability Kernel): `mcp_coverage` semantics ratified in ADR-016 are the kernel-side enforcement contract.
-- Epic 3 Story 3.1 (MCP Server Lifecycle Keywords): RF-compat stderr fix MUST be wired into `mcp/transport.py`.
-
-**Production carry-overs (not blockers for ratification; tracked in `_bmad-output/implementation-artifacts/deferred-work.md`):**
-
-- macOS validation (D2.1 architect waiver — Phase-1.5).
-- `AdapterVersionDriftWarning` for mcp SDK version compatibility (Story 5.2 deliverable).
-- Upstream issue with mcp project requesting stable observer hook on FastMCP.
+**Carry-over:** macOS validation (Linux-only evidence at time of ratification).
 
 ## Alternatives
 

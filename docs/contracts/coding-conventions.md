@@ -1,9 +1,15 @@
 # Coding Conventions
 
-**Status:** accepted (Story 1a.5 ratification 2026-05-18).
-**Owning epic:** Story 1a.5
-**Related ADRs:** ADR-014 (Error-Class Hierarchy — FR59 error-format prose conventions); architecture Step-5 reference card style.
+**Status:** accepted.
+**Related ADRs:** ADR-014 (Error-Class Hierarchy).
 **Related references:** [`CONTRIBUTING.md`](../../CONTRIBUTING.md), `pyproject.toml` ruff + mypy configurations, `ruff.toml`, `mypy.ini`.
+
+> Superseded by the four-surface refocus (2026-07) only in its examples. The
+> conventions — naming, type annotations, Google docstrings, comment policy, import
+> ordering, test naming, license headers — are all still in force. A few illustrative
+> snippets below reference retired classes (the coding-agent adapter Protocol, the
+> sandbox error). Read those as style examples, not as a live API map; the four
+> libraries are HooksLibrary, MCPLibrary, SkillsLibrary, and SubagentsLibrary.
 
 ## Purpose
 
@@ -46,7 +52,7 @@ Documents agenteval's **coding conventions** as a side-by-side good / anti-patte
 
 **Top-level package exception (intentional convention deviation):**
 
-The Python package name `AgentEval` (PascalCase) intentionally deviates from PEP 8's lowercase_snake module/package convention. Rationale: agenteval is a Robot Framework Library, and RF Libraries are conventionally PascalCase (`BuiltIn`, `Collections`, `String`, `Process`, etc.) — matching this convention makes agenteval's `Library AgentEval` import feel native to RF users. The PyPI distribution name remains `robotframework-agenteval` (lowercase per PyPI convention). `ruff.toml` suppresses `N999` (invalid module name) with a comment documenting this rationale. All sub-modules under `AgentEval/` (e.g., `_kernel/`, `coding_agent/`, `mcp/`, `telemetry/`) follow lowercase_snake per PEP 8.
+The RF Library packages `HooksLibrary`, `MCPLibrary`, `SkillsLibrary`, `SubagentsLibrary`, and the composite `AgentEval` (all PascalCase) intentionally deviate from PEP 8's lowercase_snake module convention. Rationale: they are Robot Framework Libraries, and RF Libraries are conventionally PascalCase (`BuiltIn`, `Collections`, `String`, `Process`, etc.) — matching that convention makes `Library    MCPLibrary` feel native to RF users. The PyPI distribution name remains `robotframework-agenteval` (lowercase per PyPI convention). `ruff.toml` suppresses `N999` (invalid module name) with a comment documenting this rationale. Private sub-modules (e.g., `_core/`, `_lifecycle.py`) follow lowercase_snake per PEP 8.
 
 ### Type Annotations
 
@@ -55,7 +61,7 @@ The Python package name `AgentEval` (PascalCase) intentionally deviates from PEP
 | Public function | `def get_tool_calls(adapter: CodingAgentAdapter) -> list[ToolCallTrace]:` | `def get_tool_calls(adapter):` | mypy strict requires annotation on public surface |
 | Closed enum | `mcp_coverage: Literal["hosted_in_process", "subprocess_with_observer", "external_mixed"]` | `mcp_coverage: str` | matches ADR-016 ratified 3-value enum |
 | Optional | `prompt: str \| None = None` (3.10+ union syntax) | `prompt: Optional[str] = None` | pyproject.toml targets py3.12+; prefer modern syntax |
-| Structural typing | `class CodingAgentAdapter(Protocol): ...` | abstract base class for caller-facing contract | per ADR-003; ABCs reserved for `SubprocessAdapter` internal base |
+| Structural typing | `class SkillActivation(Protocol): ...` | abstract base class for a caller-facing contract | prefer `Protocol` for structural, duck-typed contracts; reserve ABCs for internal template-method bases |
 | Type alias | `type ToolCallList = list[ToolCallTrace]` (PEP 695, 3.12+) | `ToolCallList = List[ToolCallTrace]` | use modern PEP 695 since project pins py3.12+ |
 | TypedDict (configs) | `class MCPConfig(TypedDict, total=False): ...` | dict-of-Any | mypy can verify `total=False` partial dicts |
 
@@ -128,12 +134,12 @@ Every **Tier-1 setup-failure error** follows the FR59 format documented in [`err
 Implementation pattern:
 
 ```python
-class SandboxRequiredError(AgentEvalSafetyError):
-    error_code = "SANDBOX_REQUIRED"
+class InvalidConfigError(AgentEvalError):
+    error_code = "INVALID_CONFIG"
 
     def __init__(self, *, file: str, line: int | None, field: str | None, fix: str | None = None) -> None:
         msg_parts = [
-            f"{self.error_code}: Code-execution scenario requires a sandbox backend.",
+            "Configuration is invalid.",
             f"  File: {file}",
             f"  Line: {line if line is not None else 'N/A'}",
             f"  Field: {field or 'N/A'}",
@@ -143,7 +149,7 @@ class SandboxRequiredError(AgentEvalSafetyError):
         super().__init__("\n".join(msg_parts))
 ```
 
-Tier-2 + Tier-3 errors (runtime, not setup-failure) are NOT subject to FR59 — they format per their domain (cost / runtime / MCP-coverage contexts). See [`error-class-hierarchy.md`](error-class-hierarchy.md) for the 11-leaf table + per-leaf `error_code` + sysexits-style exit codes.
+Runtime errors (cost / runtime budgets, MCP-coverage) format per their own domain rather than the setup-failure shape. See [`error-class-hierarchy.md`](error-class-hierarchy.md) for the full leaf table + per-leaf `error_code` + exit codes.
 
 ### Comment Policy
 
@@ -204,7 +210,6 @@ from .helpers import _redact_credentials
 | Acceptance smoke | `tests/acceptance/smoke/test_<scenario>.py` | `test_<scenario>` |
 | Acceptance Tier-1 | `tests/acceptance/tier1/test_<ac_label>.py` | `test_<ac_label>` (matches AC label from PRD) |
 | Acceptance Tier-3 | `tests/acceptance/tier3/test_<scenario>.py` (pytest mark `@pytest.mark.live`) | `test_<scenario>` |
-| Conformance | `tests/conformance/test_ac_<ac_label>.py` (per ADR-017 — per-AC file + per-adapter parametrize) | `test_<assertion>` |
 | Integration (live LLM) | `tests/integration/test_<scenario>.py` (pytest mark `@pytest.mark.live`) | `test_<scenario>` |
 
 Unit-test naming example:

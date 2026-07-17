@@ -1,55 +1,30 @@
-# Recipe #7: First MCP server test (Tier-1 static inspection)
+# Recipe 2: First MCP server test
 
-**Use case:** you ship an MCP server and want deterministic (no LLM calls)
-validation of its `.mcp.json` config and tool schemas.
+**I want to** validate my MCP server — its `.mcp.json` config and its tool
+schemas — before I trust it in a live agent session.
 
-## TL;DR
+Start deterministic. Tier-1 MCP keywords parse the config and check schemas
+with **no server spawned and no model called** — perfect for a fast CI gate.
+Then, when you want it, the same library drives the real server.
 
-```robotframework
-*** Settings ***
-Library    AgentEval
+## The config
 
-*** Test Cases ***
-Echo Server Config Is Valid
-    ${servers}=    MCP.Get Server Config    ${CURDIR}/fixtures/.mcp.json
-    Should Be Equal As Strings    ${servers}[bundled-echo][command]    python
-    Should Be Equal As Strings    ${servers}[bundled-echo][transport]    stdio
-
-Echo Tool Schema Is Valid
-    ${schema}=    MCP.Get Tool Schema    ${CURDIR}/fixtures/.mcp.json    echo    bundled-echo
-    Should Be True    ${schema} is not None
-```
-
-## Why Tier-1 first?
-
-Tier-1 keywords are **deterministic** — they parse files and return structured
-data without any LLM call. Use them in your CI smoke suite to catch config
-drift before any Tier-2 / Tier-3 runtime call:
-
-| Keyword | Purpose |
-| --- | --- |
-| `MCP.Get Server Config` | Read + validate the server entries in `.mcp.json`. |
-| `MCP.Get Tool Schema` | Read a tool's JSON Schema. |
-| `MCP.Validate Tool Schema` | Strict-validation check (raises `InvalidMCPToolSchemaError` on failure). |
-
-## Step-by-step
-
-### 1. Place your `.mcp.json` config
+Save this as `.mcp.json`:
 
 ```json
 {
   "mcpServers": {
-    "bundled-echo": {
+    "search": {
       "command": "python",
-      "args": ["-m", "AgentEval.mcp.bundled.echo"],
+      "args": ["-m", "my_search_server"],
       "transport": "stdio",
       "tools": {
-        "echo": {
+        "web_search": {
           "type": "object",
           "properties": {
-            "message": {"type": "string"}
+            "query": {"type": "string"}
           },
-          "required": ["message"]
+          "required": ["query"]
         }
       }
     }
@@ -57,54 +32,82 @@ drift before any Tier-2 / Tier-3 runtime call:
 }
 ```
 
-### 2. Import the library
+## Tier 1 — static inspection, no server, no keys
 
 ```robotframework
-Library    AgentEval
+*** Settings ***
+Library    MCPLibrary
+
+*** Test Cases ***
+Search Server Config Is Well-Formed
+    ${servers}=    MCP.Get Server Config    ${CURDIR}/.mcp.json
+    Should Be Equal    ${servers}[search][command]      python
+    Should Be Equal    ${servers}[search][transport]    stdio
+
+Web Search Tool Schema Is Declared And Valid
+    ${schema}=    MCP.Get Tool Schema    ${CURDIR}/.mcp.json    web_search    search
+    Should Be Equal    ${schema}[type]    object
+    MCP.Validate Tool Schema    ${CURDIR}/.mcp.json    web_search    search
 ```
 
-`MCPLibrary` is composed into the top-level `AgentEval` library, and every MCP
-keyword bakes its `MCP.` prefix into its name — so a single `Library    AgentEval`
-import reaches `MCP.Get Server Config`, `MCP.Get Tool Schema`, and the rest. No
-`WITH NAME` needed.
+- `MCP.Get Server Config` parses `.mcp.json` into a `{server_name: entry}` dict.
+  A malformed config fails loud with a JSON Pointer to the offending field.
+- `MCP.Get Tool Schema` returns a declared tool's input JSON Schema. Leave the
+  server name off and every server is searched in order.
+- `MCP.Validate Tool Schema` checks the schema against JSON Schema Draft
+  2020-12 — a malformed schema fails, again pointing at the exact field.
 
-### 3. Read + assert the config
+These three run with no MCP SDK installed. Schema validity is a static property
+of the config, so this is the cheapest possible drift gate.
+
+## Tier 1, live — actually drive the server
+
+The live keywords need the `[mcp]` extra:
+
+```bash
+pip install 'robotframework-agenteval[mcp]'
+```
+
+They are still Tier 1 — deterministic, no model — but they spawn the real
+server and speak MCP to it:
 
 ```robotframework
-${servers}=    MCP.Get Server Config    ${CURDIR}/fixtures/.mcp.json
-Should Be Equal As Strings    ${servers}[bundled-echo][command]    python
+*** Settings ***
+Library    MCPLibrary
+
+*** Test Cases ***
+Search Server Advertises And Answers
+    ${handle}=    MCP.Start Server    search    stdio
+    ...    command=python    args=${{['-m', 'my_search_server']}}
+
+    ${session}=    MCP.Connect To Server    ${handle}
+    Should Not Be Empty    ${session.protocol_version}
+
+    @{tools}=    MCP.List Tools    ${handle}
+    Should Contain    ${{[t.name for t in $tools]}}    web_search
+
+    ${result}=    MCP.Call Tool    ${handle}    web_search    query=robot framework
+    Should Be Equal    ${result.is_error}    ${False}
+
+    [Teardown]    MCP.Stop Server    ${handle}
 ```
 
-`MCP.Get Server Config` returns a dict keyed by server name. If the config is
-malformed (missing required field, invalid transport, unknown JSON Pointer),
-`InvalidMCPServerConfigError` raises with a structured diagnostic message.
+`MCP.Start Server` builds a handle; nothing spawns until the first operation.
+`MCP.Connect To Server` runs the handshake and checks the negotiated protocol
+version. `MCP.List Tools` and `MCP.Call Tool` do what they say. Pass tool
+arguments inline (`query=robot framework`) for simple strings, or as a single
+`arguments=` dict for anything non-string.
 
-### 4. Read + assert the tool schema
+## Measuring tool coverage
 
-```robotframework
-${schema}=    MCP.Get Tool Schema    ${CURDIR}/fixtures/.mcp.json    echo    bundled-echo
-${has_message}=    Run Keyword And Return Status    Dictionary Should Contain Key    ${schema}[properties]    message
-Should Be True    ${has_message}
-```
+When you run an agent against the server (Tier 3), `MCPLibrary` also projects
+tool-call coverage out of the run: `MCP.Get Tool Call Count`, `MCP.Get Tool
+Call Names`, `MCP.Get Tool Hit Rate`, `MCP.Get Tool Success Rate`, `MCP.Get
+Unnecessary Call Rate`, and `MCP.Was Tool Called`. They answer "did the agent
+call the tools it should have, and nothing it shouldn't?" over a captured
+`AgentRunResult`.
 
-For strict validation (raises on failure), use `MCP.Validate Tool Schema`.
+## Next steps
 
-## What about runtime testing?
-
-Tier-1 keywords stop at static inspection. To actually drive the MCP server,
-use the runtime keywords:
-
-```robotframework
-${handle}=    MCP.Start Server    bundled-echo    stdio    python
-...    args=${{['-m', 'AgentEval.mcp.bundled.echo']}}
-${result}=    MCP.Call Tool    ${handle}    echo_back    text=hello
-[Teardown]    MCP.Stop Server    ${handle}
-```
-
-See Recipe #3 (Tool Discoverability cohort) for the full Tier-3 cohort
-evidence pattern.
-
-## Cross-references
-
-- [`docs/contracts/mcp-coverage-detection.md`](../contracts/mcp-coverage-detection.md)
-  — the `mcp_coverage` enum.
+- **Validate a Skill instead** — [Recipe 1](./01-first-eval-in-five-minutes.md).
+- **Wire this into CI** — [Recipe 6](./08-ci-integration.md).

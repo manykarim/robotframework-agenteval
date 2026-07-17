@@ -66,20 +66,25 @@ def has_header_at_prologue(body: list[str]) -> bool:
 
 def main() -> int:
     repo_root = Path(__file__).resolve().parent.parent
-    target_root = repo_root / "src" / "AgentEval"
+    src_root = repo_root / "src"
+    # Every shipped package under src/ carries the header: the AgentEval spine
+    # plus the four surface libraries (HooksLibrary, MCPLibrary, SkillsLibrary,
+    # SubagentsLibrary).
+    target_roots = sorted(p for p in src_root.iterdir() if p.is_dir())
 
-    if not target_root.is_dir():
-        print(f"ERROR: target directory {target_root} does not exist", file=sys.stderr)
+    if not target_roots:
+        print(f"ERROR: no packages found under {src_root}", file=sys.stderr)
         return 1
 
     checked = 0
     missing: list[Path] = []
-    for py_file in sorted(target_root.rglob("*.py")):
-        checked += 1
-        content = py_file.read_text(encoding="utf-8")
-        _prologue, body = split_prologue(content)
-        if not has_header_at_prologue(body):
-            missing.append(py_file.relative_to(repo_root))
+    for target_root in target_roots:
+        for py_file in sorted(target_root.rglob("*.py")):
+            checked += 1
+            content = py_file.read_text(encoding="utf-8")
+            _prologue, body = split_prologue(content)
+            if not has_header_at_prologue(body):
+                missing.append(py_file.relative_to(repo_root))
 
     if missing:
         print(

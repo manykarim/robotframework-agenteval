@@ -1,2 +1,0 @@
-{"type":"step_start","timestamp":1782340759165,"sessionID":"ses_trunc","part":{"id":"prt_a","messageID":"msg_a","sessionID":"ses_trunc","type":"step-start"}}
-{"type":"text","timestamp":1782340760785,"sessionID":"ses_trunc","part":{"id":"prt_b","messageID":"msg_a","sessionID":"ses_trunc","type":"text","text":"Starting work...","time":{"start":1782340760708,"end":1782340760771}}}

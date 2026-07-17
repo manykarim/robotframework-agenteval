@@ -28,92 +28,32 @@ classifiers = [
 #   future mcp SDK refactors that break the `request_handlers` dict-wrap pattern.
 # - litellm / opentelemetry / pyyaml / jsonschema are range-pinned with sane upper-bound caps;
 #   Phase 1 stories that exercise them (Epic 4 / Epic 5 / Epic 6) will tighten pins if needed.
+# Base install is deliberately tiny — deterministic (Tier-1) testing of all four
+# surfaces works with just these. LLM and live-MCP modes live behind extras below,
+# so `Library HooksLibrary` pulls nothing heavy.
 dependencies = [
-  "mcp==1.27.1",
   "robotframework==7.4.2",
-  "robotframework-pythonlibcore>=4.5",  # No upper bound per architecture L495 (Story 2.1 code-review A4 fix; pre-edit `<5.0` ceiling was unauthorized).
-  "anyio==4.13.0",
-  "litellm>=1.50,<2.0",
-  # Story 5.1 code-review Auditor H2 fix 2026-05-20: floor bumped 1.20 → 1.27
-  # to match PRD NFR-COMPAT-06 + architecture L337/L1638 ratified floors. The
-  # 1.20 floor was a draft holdover; ratified docs say 1.27. Resolved env
-  # ships 1.41.1 so the bump has no resolver impact.
-  "opentelemetry-api>=1.27,<2.0",
-  "opentelemetry-sdk>=1.27,<2.0",
+  "robotframework-pythonlibcore>=4.5",  # DynamicCore, for the optional `Library AgentEval` composite.
   "pyyaml>=6.0,<7.0",
-  "jsonschema>=4.0,<5.0",
-  # Story 6.3 (2026-05-20) — AssertionEngine adoption per ADR-019 + architecture L138/L1646.
-  # Wraps Story 6.2 `Should *` keywords + `Skill.Should Be Valid Frontmatter` through
-  # `_assertions/adapter.py` for polling-ban (FR28) + validate-gate (FR43) dispatch.
-  # Pre-approved via Story 6.2 epic L1629 amendment ("Story 6.3 will add the
-  # robotframework-assertion-engine>=4.0,<5.0 dep").
-  "robotframework-assertion-engine>=4.0,<5.0",
+  "jsonschema>=4.0,<5.0",  # MCP Tier-1 tool-schema validation (no live server needed).
 ]
 
 [project.optional-dependencies]
+# Live MCP server testing — the MCP SDK. Tier-1 schema validation does NOT
+# need this; Start Server / Connect / Call Tool / List Tools do.
+mcp = ["mcp==1.27.1", "anyio==4.13.0"]
+# LLM judge (Tier-2) + coding-agent (Tier-3) modes — the LiteLLM adapter.
+llm = ["litellm>=1.50,<2.0"]
+# Everything.
+all = ["robotframework-agenteval[mcp,llm]"]
 dev = [
+  "robotframework-agenteval[all]",  # dev/CI runs the full test suite (needs mcp + litellm)
   "pytest>=8.0,<9.0",
   "pytest-cov>=5.0,<7.0",
   "ruff>=0.6,<1.0",
   "mypy>=1.10,<2.0",
-  "robotframework-pabot==5.2.2",
-  "pre-commit>=3.0,<5.0",  # Story 1a.5 hygiene; `uv run pre-commit install` per CONTRIBUTING.md
+  "pre-commit>=3.0,<5.0",
 ]
-# Story 4.2 (Epic 4) — Claude Code CLI adapter optional-extras group.
-# No Python deps; the `claude` binary must be on `$PATH` (npm install -g
-# @anthropic-ai/claude-code). The group exists per FR13b spec for
-# documentation + future-compat when CC-CLI-specific Python deps land.
-claude-code = []
-# Story 10.1 (Epic 10) — Claude Agent SDK adapter (Phase 2, FR13c). Uses
-# Anthropic's purpose-built `claude-agent-sdk` PyPI package (distinct from
-# the LLM-only `anthropic` client) for native Agent SDK semantics + MCP.
-# Pre-1.0 SDK, so upper-bound is strict per FR60 binary-drift pattern.
-# `anyio` is already a base hard dep at L35 — not duplicated here
-# (Story 10.1 review LOW-1 patch).
-claude-sdk = ["claude-agent-sdk>=0.1.0,<1.0"]
-# Story 10.2 (Epic 10) — OpenAI Agents SDK adapter (Phase 2, FR13d). Uses
-# the `openai-agents` PyPI package (import path: `from agents import ...`)
-# — distinct from the bare `openai` LLM client. Pre-1.0 SDK, so upper-bound
-# is strict per FR60 binary-drift pattern.
-openai-agents = ["openai-agents>=0.1.0,<1.0"]
-# Story 11.1 (Epic 11) — Codex CLI adapter (Phase-2, FR13c). The `codex`
-# binary must be on `$PATH` (npm install -g @openai/codex). No Python
-# deps; mirrors `claude-code = []` pattern. Per ADR-002 (Tier-1 Adapter
-# Ceiling Rule), this is OpenAI's CLI-side ≤2-adapters slot; Codex SDK
-# adapter would be the in-process counterpart (`openai-agents`).
-codex = []
-# Story 11.2 (Epic 11) — Copilot CLI adapter (Phase-2, FR13d). The
-# `copilot` binary must be on `$PATH` (npm install -g @github/copilot).
-# No Python deps; mirrors the `codex` + `claude-code` pattern. Per
-# ADR-002 + ADR-010 (Copilot CLI version-pin original precedent), this
-# is GitHub Copilot's CLI-side ≤2-adapters slot.
-copilot = []
-# add-opencode-support (OpenSpec) — opencode CLI adapter (FR12/FR47/FR60).
-# The `opencode` binary must be on `$PATH` (https://opencode.ai install).
-# No Python deps; mirrors the `codex` + `copilot` pattern. opencode is the
-# open-source SST terminal coding agent — a new vendor (ADR-002 ≤2-per-vendor
-# ceiling not a constraint).
-opencode = []
-# Story 13.1 (Epic 13) — Advanced statistical primitives (FR29a/b/c).
-# Phase-2 keywords behind the `[agenteval-advanced]` extra:
-# `Stat.Mann Whitney U`, `Stat.Cliff Delta`,
-# `Stat.Bootstrap Confidence Interval`. scipy is the math reference
-# (math-equivalence unit tests vs `scipy.stats.mannwhitneyu` /
-# `scipy.stats.bootstrap`); numpy powers the seeded Bootstrap CI
-# resampler. Floors: scipy 1.11+ has Python 3.12 wheels + stable
-# `mannwhitneyu`/`bootstrap` APIs; numpy 2.x permitted (scipy 1.11+
-# supports). Pre-approved per epics.md L2153 verbatim.
-agenteval-advanced = ["scipy>=1.11,<2.0", "numpy>=1.26,<3.0"]
-# Story 13.2 (Epic 13) — OTLP trace exporter (FR33b). Phase-2 backend
-# behind the `[otlp]` extra: when `trace_backend="otlp"`, agenteval
-# spans export to a configured OTLP collector (Jaeger / Honeycomb /
-# Tempo / Grafana) via `BatchSpanProcessor(OTLPSpanExporter)`.
-# `opentelemetry-exporter-otlp` is a metapackage pulling both
-# HTTP/protobuf and gRPC transports; URL-scheme dispatch at
-# OTLPBackend.__init__ time chooses between them. Pinned ranges
-# mirror the existing `opentelemetry-api` / `opentelemetry-sdk` floors
-# (>=1.27,<2.0 per architecture L1638 + Story 5.1 review fix).
-otlp = ["opentelemetry-exporter-otlp>=1.27,<2.0"]
 
 [project.urls]
 Homepage = "https://github.com/manykarim/robotframework-agenteval"
@@ -125,76 +65,26 @@ Issues = "https://github.com/manykarim/robotframework-agenteval/issues"
 [project.scripts]
 agenteval = "AgentEval.cli:main"
 
-# Entry-point tables — 6 total. Count per ADR-013 (entry-points discovery; was ADR-A2;
-# ratification trajectory closes when Story 1a.3 ratifies the remaining non-spike ADRs):
-#
-#   4 `agenteval.*` discovery groups:
-#     - agenteval.coding_agents (Epic 4)
-#     - agenteval.providers (Epic 4)
-#     - agenteval.judges (Phase 2)
-#     - agenteval.sandboxes (5th group added by ADR-018; ratified 2026-05-17)
-#
-#   1 legacy `robotframework_agenteval.adapters` group per FR17a (agenteval-owned;
-#     pre-existed the agenteval.* naming convention; counts toward the
-#     5 "agenteval-owned" entry-point tables in ADR-018's reckoning).
-#
-#   1 RF-owned `robot.listener` group (RF Listener v3 entry point per FR33a).
-#
-# All tables START EMPTY in Story 1a.1; sub-libraries register entries when authored
-# (Epic 4 for coding_agents/providers; Epic 5 for telemetry/listener; Phase 2+ for
-# judges/sandboxes).
-[project.entry-points."agenteval.coding_agents"]
-# Story 4.1 (Epic 4) — Generic LiteLLM-backed CodingAgentAdapter.
-# Story 4.2 (Epic 4) — Claude Code CLI adapter (claude binary >=2.0.0,<3.0.0).
-generic = "AgentEval.coding_agent.generic:GenericAdapter"
-claude-code-cli = "AgentEval.coding_agent.claude_code_cli:ClaudeCodeCLIAdapter"
-# Story 10.1 (Epic 10) — Claude Agent SDK adapter under [claude-sdk] extra.
-claude-agent-sdk = "AgentEval.coding_agent.claude_agent_sdk:ClaudeAgentSDKAdapter"
-# Story 10.2 (Epic 10) — OpenAI Agents SDK adapter under [openai-agents] extra.
-openai-agents-sdk = "AgentEval.coding_agent.openai_agents:OpenAIAgentsSDKAdapter"
-# Story 11.1 (Epic 11) — Codex CLI adapter (codex binary >=0.100.0,<1.0).
-codex-cli = "AgentEval.coding_agent.codex_cli:CodexCLIAdapter"
-# Story 11.2 (Epic 11) — Copilot CLI adapter (copilot binary >=1.0.9,<2.0).
-copilot-cli = "AgentEval.coding_agent.copilot_cli:CopilotCLIAdapter"
-# add-opencode-support (OpenSpec) — opencode CLI adapter (opencode binary >=1.15.0,<2.0).
-opencode-cli = "AgentEval.coding_agent.opencode_cli:OpenCodeCLIAdapter"
-
-[project.entry-points."agenteval.providers"]
-# Story 4.1 (Epic 4) — LLMProviderAdapter implementations.
-# Both built-in providers are also registered in BUILTIN_PROVIDERS in
-# providers/factory.py so the factory works even when entry-points
-# haven't loaded (test-friendly). Entry-points OVERRIDE the built-in
-# registry per PRD FR17c.
-litellm = "AgentEval.providers.litellm_adapter:LiteLLMAdapter"
-mock = "AgentEval.providers.mock:MockProvider"
-
-[project.entry-points."agenteval.judges"]
-# Empty — Phase 2 (Epic 12).
-
-[project.entry-points."agenteval.sandboxes"]
-# Empty — Phase 3 (real sandbox backends ship; ADR-018 §Cross-cutting forward references).
-
-[project.entry-points."robot.listener"]
-# Populated by Epic 5 Story 5.1 (OTel listener). Canonical user-facing
-# invocation remains `robot --listener AgentEval.telemetry.listener tests/`
-# per `docs/contracts/listener-integration.md` L20 — RF does NOT auto-discover
-# from PyPA entry-points (empirically verified 2026-05-17). The entry-point
-# is provided for Phase-2 tooling that explicitly walks the listener group.
-agenteval = "AgentEval.telemetry.listener:Listener"
-
-[project.entry-points."robotframework_agenteval.adapters"]
-# Empty — FR17a registration mechanism; populated by Epic 4 adapter implementations.
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/AgentEval"]
+packages = [
+  "src/AgentEval",
+  "src/HooksLibrary",
+  "src/MCPLibrary",
+  "src/SkillsLibrary",
+  "src/SubagentsLibrary",
+]
 
 [tool.hatch.build.targets.sdist]
 include = [
   "src/AgentEval",
+  "src/HooksLibrary",
+  "src/MCPLibrary",
+  "src/SkillsLibrary",
+  "src/SubagentsLibrary",
   "README.md",
   "LICENSE",
   "CHANGELOG.md",
