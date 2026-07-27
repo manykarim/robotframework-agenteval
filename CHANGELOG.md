@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.0] — 2026-07-27
+
+In-process adapter overrides — drive real MCP servers on long scenarios and inject their own guidance.
+
+### Added
+
+- **In-process adapter usage-limit overrides.** `get_adapter("in-process", ...)`
+  and `.run()` accept `request_limit` (a shortcut) and `usage_limits` (the full
+  pydantic-ai `UsageLimits` escape hatch — token/tool-call caps) — keyword-only on
+  both. Precedence, one rule: run-level overrides `__init__` as a whole, and within
+  a level the full object beats the `request_limit` shortcut. This unblocks long
+  agentic scenarios that need more than pydantic-ai's default of 50 requests.
+- **In-process adapter instruction injection.** A new `instructions` argument
+  (on `__init__` and `.run()`) is surfaced to the model as run-level instructions —
+  e.g. an MCP server's own guidance — and **composes** with deferred skills (it does
+  not clobber `load_capability`). The adapter never auto-reads a server's
+  instructions; injection is caller-driven.
+- **`MCP.Get Server Instructions`** — a Tier-1 reader for the server's advertised
+  `instructions`, captured on connect into `MCPSession.instructions` (readable as
+  `${session.instructions}`). Useful for config-drift checks and to feed the
+  in-process adapter.
+
+### Notes
+
+- Purely additive and non-breaking — every new argument defaults to today's
+  behavior (`usage_limits`/`request_limit` unset ⇒ the library default of 50;
+  `instructions` unset ⇒ nothing injected).
+- The in-process adapter remains a **proxy**: injecting `instructions` makes it a
+  *steered* proxy, but `allowed-tools` / `disable-model-invocation` are still not
+  enforced. Use the coding-agent CLI adapters when you need a specific vendor's real
+  behavior.
+
+---
+
 ## [0.3.0] — 2026-07-17
 
 An in-process agent adapter — measure MCP tools, Skills, SubAgents, and Hooks with only an LLM key + base_url, no coding-agent CLI.
