@@ -36,7 +36,9 @@ That prints:
 > PROXY: measures a generic in-process pydantic-ai agent, NOT a specific coding
 > agent's runtime. Skill/subagent frontmatter maps onto pydantic-ai's model;
 > `allowed-tools` / `disable-model-invocation` are NOT enforced. Cost is derived,
-> not native.
+> not native. Caller-supplied `instructions` are injected only when passed
+> explicitly (a *steered* proxy); the adapter never auto-reads an MCP server's
+> instructions.
 
 So: use it to measure discoverability, routing, and tool execution on nothing but
 an LLM key — never to claim "this is how Claude Code behaves." The Hooks tool
@@ -231,6 +233,39 @@ unchanged — token usage and a per-tool rollup — with one honest caveat: cost
     ${tools}=    Metric.Get Tool Call Metrics    ${result}
     Log    per-task tool count: ${tools}[per_task][count]
 ```
+
+## Long scenarios and steering the agent
+
+The two knobs above cover discoverability and routing on short prompts. A
+*long* scenario — read + create + authenticate + delete against a real API
+server, with per-step assertions — can need far more model requests than the
+agent loop's default cap of **50**, and it will fail with
+`UsageLimitExceeded: The next request would exceed the request_limit of 50`.
+Raise it with `request_limit` (or hand a full `usage_limits` object for
+token/tool-call caps):
+
+```robotframework
+    # Give a long agentic workflow more turns than the default 50.
+    ${agent}=    Evaluate    AgentEval._core.adapter.get_adapter('in-process', toolsets=[$toolset], request_limit=120)
+    ${result}=   Evaluate    $agent.run("Read a booking, create one, authenticate, then delete it — assert each step.")
+```
+
+A compliant MCP client also surfaces the server's *own* `instructions` (its
+how-to-use-me guidance) to the model. The in-process adapter never auto-reads
+them — pass them explicitly so the run reflects a *steered* agent:
+
+```robotframework
+    ${session}=      MCP.Connect To Server    ${handle}
+    ${guide}=        MCP.Get Server Instructions    ${session}
+    ${agent}=        Evaluate    AgentEval._core.adapter.get_adapter('in-process', toolsets=[$toolset], instructions=$guide, request_limit=120)
+    ${result}=       Evaluate    $agent.run("...")
+```
+
+Both default to today's behavior when omitted: no `request_limit` means the
+library default (50), and no `instructions` means nothing is injected. The
+injected guidance composes with any loaded skills — it does not replace the
+`load_capability` teaching — so skill activation keeps working. It stays a
+proxy: `allowed-tools` / `disable-model-invocation` are still not enforced.
 
 ## What just happened
 

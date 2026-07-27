@@ -103,15 +103,20 @@ class MCPServerHandle:
 class MCPSession:
     """Handshake metadata captured after a successful ``Connect To Server``.
 
-    Pure metadata (negotiated protocol version + server info). The live SDK
-    session it describes is held warm and reused until ``Stop Server``; this
-    object does not own it.
+    Pure metadata (negotiated protocol version, server info, and the server's own
+    ``instructions`` when it advertises them). The live SDK session it describes is
+    held warm and reused until ``Stop Server``; this object does not own it.
+
+    ``instructions`` is the top-level guidance a server ships in its
+    ``InitializeResult`` - useful for Tier-1 config-drift checks and to feed the
+    in-process adapter (``get_adapter("in-process", instructions=session.instructions)``).
     """
 
     name: str
     transport: Transport
     protocol_version: str
     server_info: dict[str, Any]
+    instructions: str | None = None
 
 
 @dataclass(frozen=True)
@@ -233,11 +238,14 @@ def _build_session_meta(handle: MCPServerHandle, init_result: Any) -> MCPSession
         server_info = dict(server_info_raw)
     else:
         server_info = {}
+    instructions_raw = getattr(init_result, "instructions", None)
+    instructions = instructions_raw if isinstance(instructions_raw, str) else None
     return MCPSession(
         name=handle.name,
         transport=handle.transport,
         protocol_version=negotiated or "",
         server_info=server_info,
+        instructions=instructions,
     )
 
 
