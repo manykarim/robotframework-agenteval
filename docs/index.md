@@ -5,7 +5,7 @@ with Robot Framework. Deterministically, with an LLM judge, or by driving a
 real coding agent. You already know how to write Robot tests; now you can point
 them at the things your agents actually depend on.
 
-**64 keywords across 6 libraries.** Import only what you test.
+**65 keywords across 6 libraries.** Import only what you test.
 
 ## The four libraries
 
@@ -19,10 +19,10 @@ Library    HooksLibrary
 
 | Library | Keywords | Prefix | What it tests |
 | --- | --- | --- | --- |
-| [`MCPLibrary`](./keywords/MCPLibrary.html) | 17 | `MCP.` | MCP server config, tool schemas, live server lifecycle, and tool-call coverage |
-| [`SkillsLibrary`](./keywords/SkillsLibrary.html) | 10 | `Skill.` | Skill `.md` frontmatter, and whether a skill actually activates |
-| [`SubagentsLibrary`](./keywords/SubagentsLibrary.html) | 9 | `Subagent.` | SubAgent config drift and delegation routing |
-| [`HooksLibrary`](./keywords/HooksLibrary.html) | 8 | `Hook.` | Claude Code hook config, matcher rules, and real block/allow decisions |
+| [`MCPLibrary`](./keywords/MCPLibrary.html) | 19 | `MCP.` | MCP server config, tool schemas, live server lifecycle, and tool-call coverage |
+| [`SkillsLibrary`](./keywords/SkillsLibrary.html) | 13 | `Skill.` | Skill `.md` frontmatter, and whether a skill actually activates |
+| [`SubagentsLibrary`](./keywords/SubagentsLibrary.html) | 11 | `Subagent.` | SubAgent config drift and delegation routing |
+| [`HooksLibrary`](./keywords/HooksLibrary.html) | 11 | `Hook.` | Claude Code hook config, matcher rules, and real block/allow decisions |
 
 Want them all in one line? There is an optional composite:
 

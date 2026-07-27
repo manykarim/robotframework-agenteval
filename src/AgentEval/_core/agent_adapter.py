@@ -24,6 +24,11 @@ skills are therefore derivable from ``AgentRunResult.tool_calls``.
 This is a *proxy* for a competent generic agent, NOT a specific coding agent's
 runtime - ``validation_ceiling`` says so. It lives behind the ``[agent]`` extra;
 pydantic-ai is imported lazily with a clear ``MissingExtraError``.
+
+The caller may raise the agent loop's usage/request limit (``request_limit`` /
+``usage_limits``) and inject run-level ``instructions`` (e.g. an MCP server's own
+guidance, read from ``session.instructions``). Both default to today's behavior
+when unset; the adapter never auto-reads a server's instructions.
 """
 
 from __future__ import annotations
@@ -41,7 +46,9 @@ _CEILING = (
     "PROXY: measures a generic in-process pydantic-ai agent, NOT a specific coding "
     "agent's runtime. Skill/subagent frontmatter maps onto pydantic-ai's model; "
     "`allowed-tools` / `disable-model-invocation` are NOT enforced. Cost is derived, "
-    "not native."
+    "not native. Caller-supplied `instructions` are injected only when passed "
+    "explicitly (a *steered* proxy); the adapter never auto-reads an MCP server's "
+    "instructions."
 )
 
 
@@ -51,12 +58,55 @@ _MISSING_AGENT = (
 )
 
 
+def _resolve_usage_limits(
+    *,
+    run_usage_limits: Any | None,
+    run_request_limit: int | None,
+    init_usage_limits: Any | None,
+    init_request_limit: int | None,
+    usage_limits_cls: Any,
+) -> Any | None:
+    """Resolve the effective usage-limit object by precedence.
+
+    One rule: a value passed to ``run()`` overrides one passed to ``__init__`` as a
+    whole, and within a level the full ``usage_limits`` object beats the
+    ``request_limit`` shortcut. Everything unset returns ``None`` - the caller adds
+    no override and pydantic-ai's built-in default (``request_limit=50``) applies.
+    ``usage_limits_cls`` is pydantic-ai's ``UsageLimits``, passed in from ``run()``
+    after the lazy import so this helper stays free of the ``[agent]`` dependency.
+    ``request_limit`` is passed through unvalidated - the agent library owns its own
+    limit semantics.
+    """
+    if run_usage_limits is not None:
+        return run_usage_limits
+    if run_request_limit is not None:
+        return usage_limits_cls(request_limit=run_request_limit)
+    if init_usage_limits is not None:
+        return init_usage_limits
+    if init_request_limit is not None:
+        return usage_limits_cls(request_limit=init_request_limit)
+    return None
+
+
+def _resolve_instructions(run_instructions: str | None, init_instructions: str | None) -> str | None:
+    """Run-level instructions override ``__init__``-level; ``None`` means unset."""
+    return run_instructions if run_instructions is not None else init_instructions
+
+
 class InProcessAgentAdapter:
     """Drive a prompt through an in-process pydantic-ai agent (any OpenAI-compatible LLM).
 
     Configure ``model`` (or ``AGENTEVAL_MODEL``), ``base_url``, and ``api_key``.
     Pass ``capabilities`` (pydantic-ai ``Capability`` objects, e.g. deferred skills)
     and ``toolsets`` (e.g. an MCP toolset) to shape what the agent can do.
+
+    Raise the agent loop's usage limit with ``request_limit`` (a shortcut) or a full
+    ``usage_limits`` object (pydantic-ai ``UsageLimits`` - token limits, tool-call
+    limit, ...). Inject run-level ``instructions`` (a caller-composed string, e.g. an
+    MCP server's own guidance) that reach the model and compose with skills. Each of
+    these is accepted here and on ``run()``; a value passed to ``run()`` overrides the
+    one passed here, and within a level the full ``usage_limits`` object beats the
+    ``request_limit`` shortcut. All unset ⇒ pydantic-ai's defaults ⇒ non-breaking.
     """
 
     name = "in-process"
@@ -71,6 +121,9 @@ class InProcessAgentAdapter:
         capabilities: list[Any] | None = None,
         toolsets: list[Any] | None = None,
         retries: int = 3,
+        request_limit: int | None = None,
+        usage_limits: Any | None = None,
+        instructions: str | None = None,
         **kwargs: Any,
     ) -> None:
         self._model = model
@@ -79,6 +132,9 @@ class InProcessAgentAdapter:
         self._capabilities = capabilities or []
         self._toolsets = toolsets or []
         self._retries = retries
+        self._request_limit = request_limit
+        self._usage_limits = usage_limits
+        self._instructions = instructions
         self._extra_kwargs = dict(kwargs)
 
     def run(self, prompt: str, **kwargs: Any) -> AgentRunResult:
@@ -87,6 +143,7 @@ class InProcessAgentAdapter:
             from pydantic_ai import Agent
             from pydantic_ai.models.openai import OpenAIChatModel
             from pydantic_ai.providers.openai import OpenAIProvider
+            from pydantic_ai.usage import UsageLimits
         except ImportError as exc:
             raise MissingExtraError(_MISSING_AGENT, extra="agent") from exc
 
@@ -98,6 +155,15 @@ class InProcessAgentAdapter:
                 "InProcessAgentAdapter needs a model - pass model= or set AGENTEVAL_MODEL", extra="agent"
             )
 
+        usage_limits = _resolve_usage_limits(
+            run_usage_limits=kwargs.pop("usage_limits", None),
+            run_request_limit=kwargs.pop("request_limit", None),
+            init_usage_limits=self._usage_limits,
+            init_request_limit=self._request_limit,
+            usage_limits_cls=UsageLimits,
+        )
+        instructions = _resolve_instructions(kwargs.pop("instructions", None), self._instructions)
+
         provider = OpenAIProvider(base_url=base_url, api_key=api_key) if (base_url or api_key) else None
         model_obj = OpenAIChatModel(model_name, provider=provider) if provider else OpenAIChatModel(model_name)
         agent = Agent(
@@ -107,7 +173,12 @@ class InProcessAgentAdapter:
             retries=self._retries,
         )
 
-        result = run_async(agent.run(prompt))
+        # usage_limits=None reproduces pydantic-ai's default (request_limit=50);
+        # instructions is omitted entirely when unset so the default path is unchanged.
+        run_kwargs: dict[str, Any] = {"usage_limits": usage_limits}
+        if instructions is not None:
+            run_kwargs["instructions"] = instructions
+        result = run_async(agent.run(prompt, **run_kwargs))
         return _map_agent_result(result)
 
 

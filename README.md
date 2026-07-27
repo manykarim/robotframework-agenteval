@@ -42,7 +42,7 @@ Prefer to grab them all at once? There's an optional composite that bundles ever
 Library    AgentEval
 ```
 
-Either way you get **64 keywords across 6 libraries** — the tables below list every one, with its test mode and what it does.
+Either way you get **65 keywords across 6 libraries** — the tables below list every one, with its test mode and what it does.
 
 ## Keyword documentation
 
@@ -76,7 +76,7 @@ The command-hook keywords are deterministic programs: matchers, commands, exit c
 | **Hook.Tool Should Be Denied** | 1 | Assert a `Hook.Get Tool Decisions` report denied at least one call to a tool |
 | **Hook.Tool Should Be Allowed** | 1 | Assert a `Hook.Get Tool Decisions` report called a tool and never denied it |
 
-### MCPLibrary — 18 keywords
+### MCPLibrary — 19 keywords
 
 📖 [MCPLibrary keyword docs](https://manykarim.github.io/robotframework-agenteval/keywords/MCPLibrary.html)
 
@@ -89,6 +89,7 @@ Parse and validate a `.mcp.json` config with no server running, or spawn the rea
 | **MCP.Validate Tool Schema** | 1 | Check a tool's schema against JSON Schema Draft 2020-12 |
 | **MCP.Start Server** | 1 | Build a server handle for a later connect/list/call/stop |
 | **MCP.Connect To Server** | 1 | Open a session, run the handshake, check the protocol version |
+| **MCP.Get Server Instructions** | 1 | Return the server's advertised `instructions` (config-drift checks; feeds the in-process adapter) |
 | **MCP.List Tools** | 1 | List the tools a server advertises |
 | **MCP.Call Tool** | 1 | Call a tool by name and return its result |
 | **MCP.As Agent Toolset** | 1 | Expose a connected server's tools as a pydantic-ai toolset for the in-process agent |

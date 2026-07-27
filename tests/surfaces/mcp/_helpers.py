@@ -38,6 +38,19 @@ def build_echo_server() -> Any:
     return server
 
 
+def build_server_with_instructions(instructions: str = "Build a suite before deleting.") -> Any:
+    """Build a FastMCP server that advertises top-level ``instructions``."""
+    from mcp.server.fastmcp import FastMCP
+
+    server = FastMCP("mcplibrary-test-instructed", instructions=instructions)
+
+    @server.tool(description="Echo the input text verbatim.")
+    def echo_back(text: str) -> str:
+        return text
+
+    return server
+
+
 def build_error_server() -> Any:
     """Build a FastMCP server whose one tool always reports a tool-level error."""
     from mcp.server.fastmcp import FastMCP

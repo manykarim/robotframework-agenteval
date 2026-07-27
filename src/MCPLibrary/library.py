@@ -179,6 +179,24 @@ class MCPLibrary:
         backend = _load_backend()
         return cast("MCPSession", backend.connect_to_server(handle))
 
+    @keyword(name="MCP.Get Server Instructions")
+    @tier(1)
+    def get_server_instructions(self, session: MCPSession) -> str | None:
+        """Return the server's advertised ``instructions``, or ``None`` if it ships none.
+
+        The ``instructions`` field of the MCP handshake is a server's own
+        how-to-use-me guidance. A compliant client surfaces it to the model; read
+        it here to assert a server ships the expected guidance (config-drift), or to
+        inject it into the in-process adapter
+        (``get_adapter("in-process", instructions=${session.instructions})``).
+
+        Example:
+        | ${session}=    MCP.Connect To Server    ${h}
+        | ${guide}=    MCP.Get Server Instructions    ${session}
+        | Log    ${guide}
+        """
+        return session.instructions
+
     @keyword(name="MCP.List Tools")
     @tier(1)
     def list_tools(self, handle: MCPServerHandle) -> list[MCPTool]:

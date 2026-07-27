@@ -22,7 +22,7 @@ import MCPLibrary.library as library_module
 from AgentEval._core.errors import MCPError, MissingExtraError
 from MCPLibrary import MCPLibrary
 
-from ._helpers import build_echo_server, build_error_server
+from ._helpers import build_echo_server, build_error_server, build_server_with_instructions
 
 
 def test_start_server_needs_mcp_extra(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -66,6 +66,42 @@ def test_in_memory_connect_lists_and_calls_tools() -> None:
     assert "search" in names
 
     lib.stop_server(handle)
+
+
+def test_connect_captures_server_instructions() -> None:
+    lib = MCPLibrary()
+    handle = lib.start_server("guide", "in_memory", server_factory=build_server_with_instructions)
+    session = lib.connect_to_server(handle)
+    # Captured on the handshake and readable both ways.
+    assert session.instructions == "Build a suite before deleting."
+    assert lib.get_server_instructions(session) == "Build a suite before deleting."
+    lib.stop_server(handle)
+
+
+def test_connect_without_instructions_reports_none() -> None:
+    lib = MCPLibrary()
+    handle = lib.start_server("echo", "in_memory", server_factory=build_echo_server)
+    session = lib.connect_to_server(handle)
+    # A server that advertises no instructions yields None, not an error/placeholder.
+    assert session.instructions is None
+    assert lib.get_server_instructions(session) is None
+    lib.stop_server(handle)
+
+
+def test_build_session_meta_instructions_type_guard() -> None:
+    from types import SimpleNamespace
+
+    from MCPLibrary._lifecycle import _build_session_meta
+
+    handle = SimpleNamespace(name="s", transport="stdio")
+
+    def init_result(instructions: object) -> SimpleNamespace:
+        return SimpleNamespace(protocolVersion="2025-06-18", serverInfo={"name": "x"}, instructions=instructions)
+
+    assert _build_session_meta(handle, init_result("GUIDE")).instructions == "GUIDE"
+    assert _build_session_meta(handle, init_result("")).instructions == ""  # empty string is a set value, not None
+    assert _build_session_meta(handle, init_result(123)).instructions is None  # non-str -> None (isinstance guard)
+    assert _build_session_meta(handle, init_result(None)).instructions is None
 
 
 def test_call_tool_with_rf_kwargs_routes_arguments() -> None:
