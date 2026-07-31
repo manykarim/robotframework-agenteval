@@ -276,7 +276,7 @@ class MCPLibrary:
         | ${h}=    MCP.Start Server    echo    in_memory    server_factory=${{build_echo_server}}
         | MCP.Connect To Server    ${h}
         | ${toolset}=    MCP.As Agent Toolset    ${h}
-        | ${agent}=    Evaluate    AgentEval._core.adapter.get_adapter('in-process', toolsets=[$toolset])
+        | ${agent}=    Evaluate    AgentEval.get_adapter('in-process', toolsets=[$toolset])
         | ${result}=    Evaluate    $agent.run("Use echo_back on 'hi', then say DONE")
         """
         from MCPLibrary._agent_bridge import build_agent_toolset

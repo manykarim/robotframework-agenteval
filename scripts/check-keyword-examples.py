@@ -52,6 +52,7 @@ SHIPPED_LIBRARIES = (
     "SubagentsLibrary",
     "MetricsLibrary",
     "StatLibrary",
+    "AgentLibrary",
 )
 
 # The keyword-name prefixes each shipped Library bakes in (``@keyword(name=
@@ -59,7 +60,7 @@ SHIPPED_LIBRARIES = (
 # reference this gate must resolve - including prefixes of libraries that ship
 # zero keywords today (e.g. ``Metric.``), so a phantom into a not-yet-built
 # surface still fails rather than being silently skipped.
-NAMESPACE_PREFIXES = frozenset({"Hook", "MCP", "Skill", "Subagent", "Metric", "Stat"})
+NAMESPACE_PREFIXES = frozenset({"Hook", "MCP", "Skill", "Subagent", "Metric", "Stat", "Agent"})
 
 # A pipe-table cell that names a shipped-library keyword, e.g. ``Stat.Run N
 # Times`` or ``Skill.Get Activation Decision``. The prefix is captured so it can

@@ -50,6 +50,7 @@ EXPECTED_LIBDOCS = (
     "SubagentsLibrary",
     "MetricsLibrary",
     "StatLibrary",
+    "AgentLibrary",
     "AgentEval",
 )
 

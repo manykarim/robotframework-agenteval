@@ -80,6 +80,7 @@ packages = [
   "src/SubagentsLibrary",
   "src/MetricsLibrary",
   "src/StatLibrary",
+  "src/AgentLibrary",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -91,6 +92,7 @@ include = [
   "src/SubagentsLibrary",
   "src/MetricsLibrary",
   "src/StatLibrary",
+  "src/AgentLibrary",
   "README.md",
   "LICENSE",
   "CHANGELOG.md",

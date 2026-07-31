@@ -26,9 +26,9 @@ pip install robotframework-agenteval[all]     # everything
 
 HooksLibrary's command-hook keywords are deterministic through and through, so they never need the `[mcp]` or `[llm]` extras — the base install covers them completely. The one exception is `Hook.Get Tool Decisions` (a Tier-3 in-process PreToolUse-style tool gate), which drives a live model through the `[agent]` extra — see [In-process agent adapter](#in-process-agent-adapter-one-llm-key-no-cli) below.
 
-## The four libraries
+## The four surface libraries
 
-Each library imports on its own. Test only what you touch — no need to pull in the MCP machinery to check a hook config.
+Each library imports on its own. Test only what you touch — no need to pull in the MCP machinery to check a hook config. (Three more libraries — `MetricsLibrary`, `StatLibrary`, and `AgentLibrary` — support runs and metrics; all seven are listed under Keyword documentation below.)
 
 ```robotframework
 *** Settings ***
@@ -42,7 +42,7 @@ Prefer to grab them all at once? There's an optional composite that bundles ever
 Library    AgentEval
 ```
 
-Either way you get **65 keywords across 6 libraries** — the tables below list every one, with its test mode and what it does.
+Either way you get **67 keywords across 7 libraries** — the tables below list every one, with its test mode and what it does.
 
 ## Keyword documentation
 
@@ -179,6 +179,17 @@ Give stochastic runs (LLM judge, coding agent) statistical rigor — run N times
 | **Stat.Get Pass At K** | 1 | Unbiased pass@k over the collected trials |
 | **Stat.Wilson Interval** | 1 | Wilson confidence interval for a binomial proportion |
 
+### AgentLibrary — 2 keywords
+
+📖 [AgentLibrary keyword docs](https://manykarim.github.io/robotframework-agenteval/keywords/AgentLibrary.html)
+
+Construct and run an agent adapter — in-process (LLM key), one-shot LiteLLM, or a coding-agent CLI — with native keyword arguments, and get back a raw `AgentRunResult` the metric keywords read. One `skip_on=` argument centralizes the transient/budget skip taxonomy so tests stop string-matching exception names.
+
+| Keyword | Tier | What it does |
+|---|---|---|
+| **Agent.Get Adapter** | 1 | Build an adapter by slug (or pass through an adapter object) with native config args |
+| **Agent.Run Agent** | 3 | Run a prompt through an adapter; return the `AgentRunResult`; `skip_on=` turns transient/budget failures into skips |
+
 ## Three ways to test
 
 Every keyword carries a **tier** that tells you how it runs:
@@ -278,7 +289,7 @@ Library    MCPLibrary
 *** Test Cases ***
 Measure Real Skill Activation On Just An LLM
     ${cap}=    Skill.As Capability    ${CURDIR}/skills/refunds.md
-    ${agent}=    Evaluate    AgentEval._core.adapter.get_adapter('in-process', capabilities=[$cap])
+    ${agent}=    Evaluate    AgentEval.get_adapter('in-process', capabilities=[$cap])
     ${result}=    Evaluate    $agent.run("Is order #4821 eligible for a refund?")
     ${activated}=    Skill.Get Activated Skills    ${result}
     Should Contain    ${activated}    refunds
@@ -289,7 +300,7 @@ Measure Real Skill Activation On Just An LLM
 ## Documentation
 
 - **Recipes** — worked, runnable examples: [`docs/recipes/`](./docs/recipes/)
-- **Keyword reference** — full libdoc HTML for all four libraries: [`docs/keywords/`](./docs/keywords/)
+- **Keyword reference** — full libdoc HTML for all libraries: [`docs/keywords/`](./docs/keywords/)
 
 ## License
 

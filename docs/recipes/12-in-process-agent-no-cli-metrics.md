@@ -24,7 +24,7 @@ Library    Collections
 
 *** Test Cases ***
 Know What The Adapter Cannot Promise
-    ${adapter}=    Evaluate    AgentEval._core.adapter.get_adapter('in-process')
+    ${adapter}=    Evaluate    AgentEval.get_adapter('in-process')
     ${ceiling}=    Evaluate    $adapter.validation_ceiling
     Log    ${ceiling}
     Should Contain    ${ceiling}    PROXY
@@ -129,7 +129,7 @@ class inprocess_helpers:
     def run_in_process_agent(self, prompt, toolset, *capabilities):
         # Build the adapter with the bridged MCP toolset + the deferred skill and
         # subagent capabilities, then run one prompt. Secrets come from the env.
-        from AgentEval._core import get_adapter
+        from AgentEval import get_adapter
 
         adapter = get_adapter("in-process", toolsets=[toolset], capabilities=list(capabilities))
         return adapter.run(prompt)
@@ -185,7 +185,7 @@ Measure Real Skill Activation On A Skill-Centric Prompt
     # A prompt whose need matches the skill; an unrelated skill is loaded too.
     ${refunds}=    Skill.As Capability    ${CURDIR}/skills/refunds.md
     ${weather}=    Skill.As Capability    ${CURDIR}/skills/weather-lookup.md
-    ${agent}=    Evaluate    AgentEval._core.adapter.get_adapter('in-process', capabilities=[$refunds, $weather])
+    ${agent}=    Evaluate    AgentEval.get_adapter('in-process', capabilities=[$refunds, $weather])
     ${result}=    Evaluate    $agent.run("Is order #4821 eligible for a refund? Use the loaded skill to reason through the 30-day policy.")
 
     ${activated}=    Skill.Get Activated Skills    ${result}
@@ -246,7 +246,7 @@ token/tool-call caps):
 
 ```robotframework
     # Give a long agentic workflow more turns than the default 50.
-    ${agent}=    Evaluate    AgentEval._core.adapter.get_adapter('in-process', toolsets=[$toolset], request_limit=120)
+    ${agent}=    Evaluate    AgentEval.get_adapter('in-process', toolsets=[$toolset], request_limit=120)
     ${result}=   Evaluate    $agent.run("Read a booking, create one, authenticate, then delete it — assert each step.")
 ```
 
@@ -257,7 +257,7 @@ them — pass them explicitly so the run reflects a *steered* agent:
 ```robotframework
     ${session}=      MCP.Connect To Server    ${handle}
     ${guide}=        MCP.Get Server Instructions    ${session}
-    ${agent}=        Evaluate    AgentEval._core.adapter.get_adapter('in-process', toolsets=[$toolset], instructions=$guide, request_limit=120)
+    ${agent}=        Evaluate    AgentEval.get_adapter('in-process', toolsets=[$toolset], instructions=$guide, request_limit=120)
     ${result}=       Evaluate    $agent.run("...")
 ```
 

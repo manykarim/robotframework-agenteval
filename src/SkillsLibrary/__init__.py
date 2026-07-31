@@ -340,7 +340,7 @@ class SkillsLibrary:
 
         Example:
         | ${cap}=    Skill.As Capability    ${CURDIR}/skills/web-search.md
-        | ${agent}=    Evaluate    AgentEval._core.adapter.get_adapter('in-process', capabilities=[$cap])
+        | ${agent}=    Evaluate    AgentEval.get_adapter('in-process', capabilities=[$cap])
         """
         return skill_to_capability(skill)
 
@@ -356,7 +356,7 @@ class SkillsLibrary:
 
         Example:
         | ${caps}=    Skill.Load Capabilities From Dir    ${CURDIR}/skills
-        | ${agent}=    Evaluate    AgentEval._core.adapter.get_adapter('in-process', capabilities=$caps)
+        | ${agent}=    Evaluate    AgentEval.get_adapter('in-process', capabilities=$caps)
         """
         return load_capabilities_from_dir(directory, pattern=pattern)
 
@@ -373,7 +373,7 @@ class SkillsLibrary:
 
         Example:
         | ${cap}=    Skill.As Capability    ${CURDIR}/skills/refunds.md
-        | ${agent}=    Evaluate    AgentEval._core.adapter.get_adapter('in-process', capabilities=[$cap])
+        | ${agent}=    Evaluate    AgentEval.get_adapter('in-process', capabilities=[$cap])
         | ${r}=    Evaluate    $agent.run("Is order #4821 refundable?")
         | ${activated}=    Skill.Get Activated Skills    ${r}
         | Should Contain    ${activated}    refunds

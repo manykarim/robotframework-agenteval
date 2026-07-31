@@ -2,9 +2,7 @@
 
 ## Purpose
 The shared internal spine every surface rides - the tier model (deterministic/LLM/agent), the coding-agent adapter seam and single LiteLLM adapter, the LLM judge, the stats runner (run-N / pass@k / Wilson CI), the trace/evidence projection, the slim error hierarchy, the four-library packaging with dependency extras, and the Robot Framework voice.
-
 ## Requirements
-
 ### Requirement: Three test modes are encoded once via a tier marker
 
 The shared spine SHALL provide a single `@tier(1|2|3)` marker that classifies every public keyword as Tier-1 (deterministic — no model), Tier-2 (LLM judge), or Tier-3 (coding agent). Each of the four surface libraries SHALL reuse this one marker; no surface reimplements the mode concept. A `Get Keyword Tier` keyword SHALL report the tier of a named keyword.
@@ -21,7 +19,7 @@ The shared spine SHALL provide a single `@tier(1|2|3)` marker that classifies ev
 
 ### Requirement: One coding-agent adapter seam with a single generic adapter
 
-The spine SHALL define an `AgentRunResult` type and a `run(prompt) -> AgentRunResult` adapter protocol, and SHALL ship exactly one concrete adapter backed by LiteLLM. Vendor-specific CLI/SDK adapters SHALL NOT be shipped. Any surface keyword that drives an agent SHALL resolve its adapter through this one seam.
+The spine SHALL define an `AgentRunResult` type and a `run(prompt) -> AgentRunResult` adapter protocol, and SHALL ship the generic adapter backed by LiteLLM as the default. It MAY ship additional built-in adapters — the in-process pydantic-ai adapter and the coding-agent CLI adapters — provided every one satisfies the same protocol and resolves through this one seam. Any surface keyword that drives an agent SHALL resolve its adapter through this seam.
 
 #### Scenario: Agent-mode keyword runs through the generic adapter
 
@@ -32,6 +30,11 @@ The spine SHALL define an `AgentRunResult` type and a `run(prompt) -> AgentRunRe
 
 - **WHEN** a user passes an object exposing `run(prompt) -> AgentRunResult`
 - **THEN** the keyword uses it without requiring any vendor-specific base class
+
+#### Scenario: A built-in adapter is selected by slug through the one seam
+
+- **WHEN** a user resolves an adapter by a built-in slug (`generic`, `in-process`, or a coding-agent CLI)
+- **THEN** the seam returns a concrete adapter satisfying the protocol, and its result is a normalized `AgentRunResult`
 
 ### Requirement: The LLM judge is a lean rubric-to-score core
 
@@ -115,3 +118,29 @@ The distribution SHALL keep the `robotframework-agenteval` PyPI name and reframe
 
 - **WHEN** a user reads the README tagline
 - **THEN** it describes testing MCP servers, Skills, SubAgents, and Hooks deterministically, with an LLM, or with a coding agent
+
+### Requirement: The adapter seam is reachable via a stable public entrypoint
+
+The adapter factory (`get_adapter`) and the `Adapter` protocol SHALL be reachable
+from a stable, public import path (`AgentEval.get_adapter` / `AgentEval.Adapter`),
+not only from the internal `_core` namespace that the stability contract marks as
+non-public. The re-export SHALL NOT eagerly import the optional LLM/agent
+dependencies (they SHALL remain lazily imported at run time), and documentation and
+examples SHALL reference the public entrypoint or the `Agent.*` keywords rather than
+the `_core` path. The internal `_core` path SHALL continue to function so existing
+callers are not broken.
+
+#### Scenario: Public entrypoint resolves an adapter
+
+- **WHEN** a user imports `get_adapter` from the top-level `AgentEval` package and
+  requests an adapter by slug
+- **THEN** an adapter satisfying the `Adapter` protocol is returned, without the
+  LLM/agent extras being imported unless and until a run occurs
+
+#### Scenario: Docs no longer teach the internal path
+
+- **WHEN** the shipped documentation and keyword examples show how to obtain an
+  adapter
+- **THEN** they reference the stable public entrypoint (or the `Agent.*` keywords),
+  not `AgentEval._core.adapter.get_adapter`
+

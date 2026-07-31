@@ -5,12 +5,15 @@ with Robot Framework. Deterministically, with an LLM judge, or by driving a
 real coding agent. You already know how to write Robot tests; now you can point
 them at the things your agents actually depend on.
 
-**65 keywords across 6 libraries.** Import only what you test.
+**67 keywords across 7 libraries.** Import only what you test.
 
-## The four libraries
+## The four surface libraries
 
 Each library is imported on its own and namespaces its keywords, so there is no
-`WITH NAME` bookkeeping and no giant catch-all import to reason about.
+`WITH NAME` bookkeeping and no giant catch-all import to reason about. Three more
+libraries support runs and metrics — `MetricsLibrary` (read tokens/cost/latency off
+a run), `StatLibrary` (pass@k / Wilson bands), and `AgentLibrary` (construct and run
+an adapter) — for **67 keywords across 7 libraries** in total.
 
 ```robotframework
 *** Settings ***

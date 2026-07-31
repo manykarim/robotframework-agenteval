@@ -48,12 +48,12 @@ _COUNTED_LIBRARIES = (
     "SubagentsLibrary",
     "MetricsLibrary",
     "StatLibrary",
+    "AgentLibrary",
 )
 
-# The four surface libraries. Their keyword sets are disjoint (distinct
-# prefixes), so the sum is the unique total - the same number the optional
-# `Library    AgentEval` composite exposes.
-_LIBRARY_COUNT = 6
+# The shipped libraries. Their keyword sets are disjoint (distinct prefixes),
+# so the sum is the unique total.
+_LIBRARY_COUNT = 7
 
 
 def derive_keyword_count() -> int:

@@ -60,7 +60,7 @@ process, never passed on the command line:
 
 ```python
 from robot.api.deco import library, keyword
-from AgentEval._core import get_adapter
+from AgentEval import get_adapter
 
 
 @library(scope="GLOBAL")
