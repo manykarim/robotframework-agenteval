@@ -34,8 +34,15 @@ from __future__ import annotations
 
 from robotlibcore import DynamicCore
 
+# The stable, public entrypoint to the adapter seam. `_core` is internal (see
+# docs/contracts/stability-surface.md); re-export the factory + protocol here so
+# docs, tests, and the Agent.* keywords depend on `AgentEval.get_adapter`, not the
+# unstable path. The heavy LLM/agent extras stay lazily imported inside `run()`,
+# so this re-export adds no import cost.
+from AgentEval._core.adapter import Adapter, get_adapter
+
 __version__ = "0.0.1"
-__all__ = ["AgentEval"]
+__all__ = ["AgentEval", "Adapter", "get_adapter"]
 
 
 class AgentEval(DynamicCore):  # type: ignore[misc]

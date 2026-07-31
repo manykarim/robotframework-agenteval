@@ -187,7 +187,7 @@ export AGENTEVAL_API_KEY=sk-...                        # read from the environme
 Select it by the `in-process` adapter slug:
 
 ```robotframework
-${agent}=    Evaluate    AgentEval._core.adapter.get_adapter('in-process')
+${agent}=    Evaluate    AgentEval.get_adapter('in-process')
 ${result}=   Evaluate    $agent.run("List the files in the project root")
 ```
 
