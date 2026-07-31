@@ -136,6 +136,50 @@ def _iter_doc_html_strings(model: dict[str, object]):
 _LIBDOC_MODEL_RE = re.compile(r"libdoc = (\{.*?\})\n</script>", re.DOTALL)
 
 
+def _nested_type_has_null(type_node: object) -> bool:
+    """True if a ``null`` appears inside a type's ``nested`` chain.
+
+    RF's libdoc ``renderTypeInfo`` JS recurses into an argument type's ``nested``
+    list and reads ``.union`` on each entry; a ``null`` nested entry (e.g. the empty
+    param list of ``Callable[[], Any]``) throws ``Cannot read properties of null
+    (reading 'union')``, which blanks the ENTIRE page - the model is valid JSON, so
+    only a real render catches it. This guards that regression at model level. A
+    top-level ``None`` type (an untyped argument) is fine and not flagged.
+    """
+    if not isinstance(type_node, dict):
+        return False
+    for nested in type_node.get("nested") or []:
+        if nested is None:
+            return True
+        if isinstance(nested, dict) and _nested_type_has_null(nested):
+            return True
+    return False
+
+
+def check_renderable_arg_types(failures: list[str]) -> None:
+    """Fail if any keyword argument type would crash libdoc's client-side renderer."""
+    for name in EXPECTED_LIBDOCS:
+        path = KEYWORDS_DIR / f"{name}.html"
+        if not path.is_file():
+            continue
+        m = _LIBDOC_MODEL_RE.search(path.read_text(encoding="utf-8"))
+        if not m:
+            continue  # already reported by check_html_tables
+        try:
+            model = json.loads(m.group(1))
+        except json.JSONDecodeError:
+            continue  # already reported
+        for kw in model.get("keywords", []) or []:
+            for arg in kw.get("args", []) or []:
+                if _nested_type_has_null(arg.get("type")):
+                    failures.append(
+                        f"docs/keywords/{name}.html: keyword {kw.get('name')!r} argument "
+                        f"{arg.get('name')!r} ({arg.get('repr')!r}) has a null nested type that "
+                        f"crashes libdoc's renderTypeInfo and blanks the page. Rewrite the "
+                        f"annotation, e.g. `Callable[[], X]` -> `Callable[..., X]`."
+                    )
+
+
 def check_html_tables(failures: list[str]) -> None:
     for name in EXPECTED_LIBDOCS:
         path = KEYWORDS_DIR / f"{name}.html"
@@ -319,6 +363,7 @@ def main() -> int:
     failures: list[str] = []
     check_libdoc_files(failures)
     check_html_tables(failures)
+    check_renderable_arg_types(failures)
     check_markdown_tables(failures)
     check_internal_links(failures)
 
@@ -332,7 +377,8 @@ def main() -> int:
     print(
         "PASS: documentation renders correctly — "
         f"{len(EXPECTED_LIBDOCS)} libdoc HTML files parse with well-formed "
-        "keyword tables, README/docs/index.md markdown tables are balanced, "
+        "keyword tables, no argument type crashes the client-side renderer, "
+        "README/docs/index.md markdown tables are balanced, "
         "and all internal doc links resolve."
     )
     return 0

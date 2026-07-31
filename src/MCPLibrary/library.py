@@ -139,7 +139,7 @@ class MCPLibrary:
         command: str | None = None,
         args: list[str] | None = None,
         env: dict[str, str] | None = None,
-        server_factory: Callable[[], Any] | None = None,
+        server_factory: Callable[..., Any] | None = None,
     ) -> MCPServerHandle:
         """Build a server handle for a later connect/list/call/stop.
 

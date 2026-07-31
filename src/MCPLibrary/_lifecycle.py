@@ -96,7 +96,7 @@ class MCPServerHandle:
     command: str | None = None
     args: tuple[str, ...] = ()
     env: dict[str, str] | None = None
-    server_factory: Callable[[], Any] | None = None
+    server_factory: Callable[..., Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -151,7 +151,7 @@ def start_server(
     command: str | None = None,
     args: list[str] | None = None,
     env: dict[str, str] | None = None,
-    server_factory: Callable[[], Any] | None = None,
+    server_factory: Callable[..., Any] | None = None,
 ) -> MCPServerHandle:
     """Build an ``MCPServerHandle``. Pure - no subprocess is spawned yet."""
     if transport == "stdio":
