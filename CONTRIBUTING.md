@@ -45,6 +45,22 @@ uv run robot --listener AgentEval.telemetry.listener tests/
 
 **Phase-1 note:** several test directories are empty placeholders (Story 1a.1 created `.gitkeep` markers). Running `pytest` against them yields "no tests collected" which is acceptable for Phase 1 — the [`ci.yml`](.github/workflows/ci.yml) workflow handles this via the exit-5 leniency in its collect-only sweep step. Real tests land per-epic as fixtures are authored.
 
+### Docs render gate (headless browser)
+
+The keyword-doc pages (`docs/keywords/*.html`) render **client-side**, so a valid
+libdoc model can still render a blank page. `scripts/check-doc-render-headless.py`
+loads each page in a real headless browser and asserts the keywords render. It needs
+a browser once:
+
+```bash
+uv run playwright install chromium          # one-time
+uv run python scripts/check-doc-render-headless.py
+```
+
+It **skips locally** with an install hint if no browser is present, but runs (and
+fails on a render error) in `docs-build.yml`. The faster stdlib checks
+(`check-doc-rendering.py`, `check_doc_keyword_count.py`) still run without a browser.
+
 ## Pull Request Workflow
 
 ### Conventional Commits

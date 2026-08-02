@@ -55,6 +55,7 @@ dev = [
   "ruff>=0.6,<1.0",
   "mypy>=1.10,<2.0",
   "pre-commit>=3.0,<5.0",
+  "playwright>=1.40,<2.0",  # docs-build only: headless-render gate for keyword-doc HTML (browser via `playwright install chromium`)
 ]
 
 [project.urls]
