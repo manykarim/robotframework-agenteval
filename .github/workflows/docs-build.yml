@@ -33,6 +33,7 @@ on:
       - "README.md"
       - "scripts/check_doc_keyword_count.py"
       - "scripts/check-doc-rendering.py"
+      - "scripts/check-doc-render-headless.py"
 
 permissions:
   contents: read
@@ -121,6 +122,18 @@ jobs:
       # one-time manual look.
       - name: Assert generated docs render correctly
         run: uv run python scripts/check-doc-rendering.py
+
+      # The model-level check above validates the embedded libdoc JSON but the pages
+      # render CLIENT-SIDE, so a valid model can still render a blank page (e.g. a
+      # `Callable[[], Any]` null nested type crashed `renderTypeInfo`). This gate
+      # loads each page in a real headless browser and asserts the keywords render.
+      # `CI` is set on GitHub Actions, so a missing browser is a hard failure here
+      # (the gate never silently skips in CI).
+      - name: Install headless browser for the render gate
+        run: uv run playwright install --with-deps chromium
+
+      - name: Assert generated docs render in a headless browser
+        run: uv run python scripts/check-doc-render-headless.py
 
       # MED-3 fix (2026-05-17): per-file 4-distinct-section assertion instead of
       # aggregate header count. Previous implementation summed header occurrences
