@@ -135,6 +135,11 @@ gemini                       # first run walks OAuth; or: export GEMINI_API_KEY=
 npm install -g @openai/codex
 codex login                  # or: export OPENAI_API_KEY=sk-...
 #   session rollouts under ~/.codex/sessions/
+#   runs non-interactively in a bounded `workspace-write` sandbox by default
+#   (writes confined to the run's cwd). Pick another with
+#   get_adapter("codex", sandbox="read-only"), or opt into the unsandboxed
+#   full bypass only in an already-sandboxed environment with
+#   get_adapter("codex", dangerous_bypass=True).
 
 # opencode  (slug: opencode)  — PARTIAL
 npm install -g opencode-ai   # see https://opencode.ai for other installers

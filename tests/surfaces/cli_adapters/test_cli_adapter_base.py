@@ -280,3 +280,53 @@ def test_find_newest_session_file_none_when_missing_or_empty(tmp_path: Any) -> N
     assert SubprocessCLIAdapter.find_newest_session_file(None) is None
     assert SubprocessCLIAdapter.find_newest_session_file(tmp_path / "nope") is None
     assert SubprocessCLIAdapter.find_newest_session_file(tmp_path) is None
+
+
+# --------------------------------------------------------------------------- #
+# Fail loud on a failed invocation (no silent-empty result)                   #
+# --------------------------------------------------------------------------- #
+
+
+class _EmptyResultAdapter(_FakeCLIAdapter):
+    """An adapter whose parse yields nothing usable (simulates a refused CLI run)."""
+
+    slug = "empty-cli"
+
+    def parse_output(self, stdout: str, stderr: str, exit_code: int, session_dir: str | None) -> AgentRunResult:
+        return AgentRunResult(response_text="")  # no response, no tool calls, no tokens
+
+
+def test_failed_run_with_no_usable_output_raises_with_stderr(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_which(monkeypatch, "/usr/bin/fakebin")
+    _install_fake_subprocess(
+        monkeypatch,
+        main_stdout="",
+        main_stderr="Not inside a trusted directory and --skip-git-repo-check was not specified.",
+        returncode=1,
+    )
+    with pytest.raises(AdapterError, match=r"exited 1 with no usable output.*trusted directory"):
+        _EmptyResultAdapter().run("go")
+
+
+def test_failed_run_with_partial_but_usable_output_is_returned(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A non-zero exit that still parsed something usable is returned, not raised.
+    _install_which(monkeypatch, "/usr/bin/fakebin")
+    _install_fake_subprocess(monkeypatch, main_stdout="a partial answer", returncode=1)
+    result = _FakeCLIAdapter().run("go")
+    assert result.response_text == "a partial answer"
+
+
+def test_run_closes_child_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Non-interactive: the child must never block waiting on stdin.
+    seen: dict[str, Any] = {}
+
+    def fake_run(argv: list[str], **kwargs: Any) -> SimpleNamespace:
+        if "--version" in argv[1:]:
+            return SimpleNamespace(stdout="fakebin 1.5.0", stderr="", returncode=0)
+        seen["stdin"] = kwargs.get("stdin")
+        return SimpleNamespace(stdout="ok", stderr="", returncode=0)
+
+    _install_which(monkeypatch, "/usr/bin/fakebin")
+    monkeypatch.setattr(cli_adapter_mod.subprocess, "run", fake_run)
+    _FakeCLIAdapter().run("go")
+    assert seen["stdin"] is subprocess.DEVNULL

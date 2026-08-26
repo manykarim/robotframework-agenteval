@@ -152,6 +152,7 @@ class SubprocessCLIAdapter:
                 cwd=cwd,
                 env=run_env,
                 check=False,
+                stdin=subprocess.DEVNULL,  # non-interactive: never block waiting on stdin
             )
         except subprocess.TimeoutExpired as exc:
             raise AdapterError(f"{self.slug!r} CLI ({self.binary_name}) exceeded the {timeout:g}s timeout") from exc
@@ -162,6 +163,15 @@ class SubprocessCLIAdapter:
             completed.returncode,
             session_dir,
         )
+        # Fail loud on a failed invocation that produced nothing usable, surfacing
+        # the CLI's stderr - never return an empty/fake-green result. A partial-but-
+        # usable run (some output parsed) is still returned, marked not-complete.
+        if completed.returncode != 0 and _result_is_empty(result):
+            stderr_tail = (completed.stderr or "").strip()[:400]
+            raise AdapterError(
+                f"{self.slug!r} CLI ({self.binary_name}) exited {completed.returncode} with no usable output"
+                + (f": {stderr_tail}" if stderr_tail else "")
+            )
         return self._stamp_version(result, agent_version)
 
     # ------------------------------------------------------------------ #
@@ -306,3 +316,9 @@ def _parse_version(text: str) -> tuple[int, ...]:
         return ()
     parts = match.group(1).split(".")
     return tuple(int(p) for p in parts)
+
+
+def _result_is_empty(result: AgentRunResult) -> bool:
+    """True when a run produced nothing usable: no response, no tool calls, no tokens."""
+    usage = result.usage
+    return not result.response_text and not result.tool_calls and not (usage.input_tokens or usage.output_tokens)
