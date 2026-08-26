@@ -14,10 +14,14 @@
 
 """codex CLI adapter (fidelity PARTIAL).
 
-Invocation: ``codex exec "<prompt>" --json``. The CLI streams newline-delimited
-JSON (JSONL) events on stdout. ``item.completed`` events span several item
-types - assistant messages, ``command_execution`` shell runs, and
-``mcp_tool_call`` invocations - which we project into ``ToolCallTrace`` records.
+Invocation: ``codex exec "<prompt>" --json`` run non-interactively (see
+``build_argv``). The CLI streams newline-delimited JSON (JSONL) events on stdout.
+``item.completed`` events span several item types - assistant messages
+(``agent_message``), ``command_execution`` shell runs, and ``mcp_tool_call``
+invocations - which we project into ``ToolCallTrace`` records. Live-confirmed
+against codex 0.144.4: assistant text lands on ``item.type == "agent_message"``
+under ``text``, and cumulative token usage arrives under ``usage`` on
+``turn.completed`` events.
 
 Token usage is reported *cumulatively* across turns, so summing every usage
 event double-counts; we DE-CUMULATE (diff consecutive snapshots) to recover the
@@ -27,9 +31,9 @@ fall back to the newest on-disk rollout transcript under ``~/.codex/sessions/``.
 
 VALIDATION-CEILING: per-tool token attribution is not available (usage is
 run-level and cumulative, not per item); wall-clock latency is not reported in
-the JSONL, so ``latency_seconds`` stays 0 unless a duration is present; several
-field spellings (``assistant_message.text``, cumulative ``usage`` keys) are
-version-sensitive and marked as assumptions in code.
+the JSONL, so ``latency_seconds`` stays 0 unless a duration is present. The item
+type / usage spellings are confirmed for 0.144.4 but remain version-sensitive
+(``AdapterVersionDriftWarning`` fires outside the pinned range).
 """
 
 from __future__ import annotations
@@ -67,13 +71,42 @@ class CodexAdapter(SubprocessCLIAdapter):
         "wall-clock latency is not reported in the JSONL (stays 0)."
     )
     # Cumulative-token de-cumulation is the behavior for codex exec --json after
-    # the 2025-09 rework; pin generously and warn on drift outside it.
+    # the 2025-09 rework; pin generously and warn on drift outside it. Live-confirmed
+    # against codex 0.144.4 (agent_message text + turn.completed usage schema).
     pinned_version_range: ClassVar[tuple[str, str] | None] = ("0.2.0", "1.0.0")
     install_hint: ClassVar[str] = "Install with: npm install -g @openai/codex (see https://github.com/openai/codex)."
 
+    _SANDBOX_MODES: ClassVar[frozenset[str]] = frozenset(("read-only", "workspace-write", "danger-full-access"))
+
+    def __init__(self, *, sandbox: str = "workspace-write", dangerous_bypass: bool = False, **_kwargs: Any) -> None:
+        """Configure how codex runs non-interactively.
+
+        ``sandbox`` is the codex sandbox policy (``read-only`` / ``workspace-write``
+        / ``danger-full-access``); the default ``workspace-write`` lets a measurement
+        run write within its working directory without prompting. ``dangerous_bypass``
+        opts into ``--dangerously-bypass-approvals-and-sandbox`` (no sandbox at all,
+        EXTREMELY DANGEROUS - only for an already-externally-sandboxed environment).
+        """
+        if sandbox not in self._SANDBOX_MODES:
+            raise ValueError(f"sandbox must be one of {sorted(self._SANDBOX_MODES)}; got {sandbox!r}")
+        self._sandbox = sandbox
+        self._dangerous_bypass = dangerous_bypass
+
     def build_argv(self, prompt: str) -> list[str]:
-        """``codex exec "<prompt>" --json``. No secrets on argv."""
-        return [self.binary_name, "exec", prompt, "--json"]
+        """``codex exec "<prompt>" --json`` run non-interactively. No secrets on argv.
+
+        codex 0.144.4 needs ``--skip-git-repo-check`` (run outside a trusted git
+        dir) and a non-interactive execution mode, else it exits or waits for an
+        approval that never comes. The default is a bounded sandbox
+        (``--sandbox <mode>``) with ``approval_policy=never`` - NOT the dangerous
+        full bypass, which is opt-in via ``dangerous_bypass=True``.
+        """
+        argv = [self.binary_name, "exec", prompt, "--json", "--skip-git-repo-check"]
+        if self._dangerous_bypass:
+            argv.append("--dangerously-bypass-approvals-and-sandbox")
+        else:
+            argv += ["--sandbox", self._sandbox, "-c", "approval_policy=never"]
+        return argv
 
     def parse_output(
         self,

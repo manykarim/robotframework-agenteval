@@ -22,6 +22,7 @@ command/MCP tool-call projection, and the rollout-transcript fallback.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import types
 from pathlib import Path
@@ -76,9 +77,56 @@ def _stub_litellm(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "litellm", fake)
 
 
-def test_build_argv_uses_exec_and_json() -> None:
+def test_build_argv_runs_non_interactively_with_a_bounded_sandbox() -> None:
+    # codex 0.144.4+ needs --skip-git-repo-check and a non-interactive execution
+    # mode; the default is a bounded sandbox + approval_policy=never, NOT the
+    # dangerous full bypass.
     argv = CodexAdapter().build_argv("fix the bug")
-    assert argv == ["codex", "exec", "fix the bug", "--json"]
+    assert argv == [
+        "codex",
+        "exec",
+        "fix the bug",
+        "--json",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "workspace-write",
+        "-c",
+        "approval_policy=never",
+    ]
+    assert "--dangerously-bypass-approvals-and-sandbox" not in argv
+
+
+def test_build_argv_sandbox_mode_is_configurable() -> None:
+    argv = CodexAdapter(sandbox="read-only").build_argv("x")
+    assert "--sandbox" in argv and argv[argv.index("--sandbox") + 1] == "read-only"
+
+
+def test_build_argv_dangerous_bypass_is_opt_in() -> None:
+    argv = CodexAdapter(dangerous_bypass=True).build_argv("x")
+    assert "--dangerously-bypass-approvals-and-sandbox" in argv
+    # the sandbox flags are dropped when the full bypass is chosen
+    assert "--sandbox" not in argv and "approval_policy=never" not in argv
+
+
+def test_invalid_sandbox_mode_is_rejected() -> None:
+    with pytest.raises(ValueError, match="sandbox must be one of"):
+        CodexAdapter(sandbox="bogus")
+
+
+def test_parse_output_handles_live_0_144_schema() -> None:
+    # The exact shape captured live from codex 0.144.4/0.147.0: assistant text on
+    # item.type == "agent_message" and cumulative usage under turn.completed.
+    events = [
+        {"type": "thread.started", "thread_id": "01a0"},
+        {"type": "turn.started"},
+        {"type": "item.completed", "item": {"id": "item_0", "type": "agent_message", "text": "PONG"}},
+        {"type": "turn.completed", "usage": {"input_tokens": 14619, "cached_input_tokens": 9984, "output_tokens": 6}},
+    ]
+    result = CodexAdapter().parse_output("\n".join(json.dumps(e) for e in events), "", 0, None)
+    assert result.response_text == "PONG"
+    assert result.usage.input_tokens == 14619
+    assert result.usage.output_tokens == 6
+    assert result.usage.cached_input_tokens == 9984
 
 
 def test_parse_output_response_is_last_assistant_message() -> None:
@@ -203,3 +251,27 @@ def test_fidelity_and_ceiling_are_honest() -> None:
     ceiling = adapter.validation_ceiling.lower()
     assert "cumulative" in ceiling or "de-cumulate" in ceiling
     assert "derived" in ceiling
+
+
+# --------------------------------------------------------------------------- #
+# Live smoke - gated on the codex binary + explicit opt-in (spends credits).  #
+# --------------------------------------------------------------------------- #
+
+_LIVE = pytest.mark.skipif(
+    os.environ.get("AGENTEVAL_LIVE_CLI_SMOKE") != "1",
+    reason="set AGENTEVAL_LIVE_CLI_SMOKE=1 to run live codex smoke (spends credits)",
+)
+
+
+@_LIVE
+def test_codex_live_smoke() -> None:
+    import shutil
+    import tempfile
+
+    if shutil.which(CodexAdapter.binary_name) is None:
+        pytest.skip("codex binary not installed")
+    # Drives the real codex CLI end to end through the fixed non-interactive argv;
+    # must return a non-empty result (not the pre-fix silent-empty).
+    result = CodexAdapter().run("Reply with exactly one word: PONG", cwd=tempfile.mkdtemp(), timeout=200)
+    assert result.response_text.strip(), "codex returned an empty response"
+    assert result.usage.input_tokens > 0, "codex reported no token usage"

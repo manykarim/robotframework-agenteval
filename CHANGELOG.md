@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **`codex` CLI adapter now actually runs.** codex 0.144.4+ refused the old
+  `codex exec --json` invocation (exited outside a trusted git dir; hung waiting
+  for an approval that never came), so the adapter returned a silent-empty result.
+  It now drives codex non-interactively — `--skip-git-repo-check` + a bounded
+  `--sandbox` (default `workspace-write`) + `approval_policy=never`; the
+  EXTREMELY-DANGEROUS full bypass is opt-in via `get_adapter("codex",
+  dangerous_bypass=True)`. Live-confirmed end to end.
+- **A failed coding-agent CLI run no longer fails silently.** When a CLI exits
+  non-zero with no usable output, the adapter now raises `AdapterError` surfacing
+  the CLI's stderr instead of returning an empty/fake-green `AgentRunResult` (a
+  partial-but-usable run is still returned). CLI subprocesses also run with stdin
+  closed so they never block waiting on it.
+
+---
+
 ## [0.4.0] — 2026-07-27
 
 In-process adapter overrides — drive real MCP servers on long scenarios and inject their own guidance.
