@@ -71,6 +71,67 @@ def test_get_server_config_rejects_unsupported_transport(tmp_path: Path) -> None
     assert exc.value.field == "/mcpServers/echo/transport"
 
 
+# --- remote (http/sse) server entries (issues #16 / #17) --- #
+
+
+def test_get_server_config_parses_remote_http_entry(tmp_path: Path) -> None:
+    lib = MCPLibrary()
+    path = _write(
+        tmp_path,
+        {
+            "mcpServers": {
+                "api": {
+                    "type": "http",
+                    "url": "https://mcp.example.com/mcp",
+                    "headers": {"Authorization": "Bearer ${API_KEY}"},
+                }
+            }
+        },
+    )
+    api = lib.get_server_config(path)["api"]
+    assert api["type"] == "http"
+    assert api["url"] == "https://mcp.example.com/mcp"
+    # ${VAR} placeholder is returned unexpanded - the parser never resolves a secret.
+    assert api["headers"] == {"Authorization": "Bearer ${API_KEY}"}
+
+
+def test_get_server_config_parses_remote_sse_entry(tmp_path: Path) -> None:
+    lib = MCPLibrary()
+    path = _write(tmp_path, {"mcpServers": {"api": {"type": "sse", "url": "https://mcp.example.com/sse"}}})
+    assert lib.get_server_config(path)["api"]["type"] == "sse"
+
+
+def test_get_server_config_remote_missing_url_points_at_field(tmp_path: Path) -> None:
+    lib = MCPLibrary()
+    path = _write(tmp_path, {"mcpServers": {"api": {"type": "http"}}})
+    with pytest.raises(InvalidConfigError) as exc:
+        lib.get_server_config(path)
+    assert exc.value.field == "/mcpServers/api/url"
+
+
+def test_get_server_config_rejects_unknown_type(tmp_path: Path) -> None:
+    lib = MCPLibrary()
+    path = _write(tmp_path, {"mcpServers": {"api": {"type": "websocket", "url": "wss://x"}}})
+    with pytest.raises(InvalidConfigError) as exc:
+        lib.get_server_config(path)
+    assert exc.value.field == "/mcpServers/api/type"
+
+
+def test_get_server_config_remote_type_conflicts_with_local_transport(tmp_path: Path) -> None:
+    lib = MCPLibrary()
+    path = _write(tmp_path, {"mcpServers": {"api": {"type": "http", "url": "https://x", "transport": "stdio"}}})
+    with pytest.raises(InvalidConfigError) as exc:
+        lib.get_server_config(path)
+    assert exc.value.field == "/mcpServers/api/transport"
+
+
+def test_get_server_config_url_only_entry_is_remote(tmp_path: Path) -> None:
+    # A url-bearing entry with no command is treated as remote (lenient classification).
+    lib = MCPLibrary()
+    path = _write(tmp_path, {"mcpServers": {"api": {"url": "https://mcp.example.com/mcp"}}})
+    assert lib.get_server_config(path)["api"]["url"] == "https://mcp.example.com/mcp"
+
+
 def test_get_server_config_missing_file(tmp_path: Path) -> None:
     lib = MCPLibrary()
     with pytest.raises(InvalidConfigError):

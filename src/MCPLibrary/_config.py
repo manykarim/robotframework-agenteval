@@ -39,7 +39,13 @@ __all__ = [
 ]
 
 # The transport enum a `.mcp.json` server entry may declare.
-SUPPORTED_TRANSPORTS: tuple[str, ...] = ("stdio", "streamable_http", "in_memory")
+SUPPORTED_TRANSPORTS: tuple[str, ...] = ("stdio", "streamable_http", "sse", "in_memory")
+
+# Claude Code's ``.mcp.json`` entry ``type`` field (distinct from the library
+# ``transport`` enum above). ``http``/``sse`` are remote servers; ``stdio`` (or an
+# absent ``type``) is a local subprocess server.
+REMOTE_ENTRY_TYPES: frozenset[str] = frozenset({"http", "sse"})
+ACCEPTED_ENTRY_TYPES: frozenset[str] = frozenset({"http", "sse", "stdio"})
 
 
 def _pointer(*segments: str | int) -> str:
@@ -102,10 +108,13 @@ def _load_document(path: str | Path) -> tuple[dict[str, Any], str]:
 def parse_mcp_servers(path: str | Path) -> dict[str, dict[str, Any]]:
     """Parse a `.mcp.json` file into ``{server_name: entry}``.
 
-    Each entry has at least ``command``; optional ``args`` (list[str]),
+    A **local** entry has a ``command``; optional ``args`` (list[str]),
     ``env`` (dict[str, str]), ``transport`` (one of ``SUPPORTED_TRANSPORTS``),
-    and ``tools`` (a declarative ``{tool_name: json_schema}`` map). A missing
-    ``mcpServers`` section yields ``{}``.
+    and ``tools`` (a declarative ``{tool_name: json_schema}`` map). A **remote**
+    entry declares ``type: http``/``sse`` (or carries a ``url`` and no ``command``)
+    with a required ``url`` and optional ``headers`` (string map; ``${VAR}``
+    placeholders pass through unexpanded). A missing ``mcpServers`` section yields
+    ``{}``.
     """
     document, file_path_str = _load_document(path)
 
@@ -133,22 +142,69 @@ def parse_mcp_servers(path: str | Path) -> dict[str, dict[str, Any]]:
 
 
 def _validate_entry(entry: dict[str, Any], *, file_path_str: str, entry_pointer: str) -> dict[str, Any]:
-    """Validate one MCP-server entry and return a shallow copy of it."""
-    if "command" not in entry:
+    """Validate one MCP-server entry and return a shallow copy of it.
+
+    A **remote** entry (Claude Code's ``type: http`` / ``type: sse``, or leniently an
+    entry that carries a ``url`` and no ``command``) requires a non-empty ``url`` and
+    does not require ``command``; a default/``stdio`` entry keeps requiring
+    ``command``. Optional ``headers`` pass through with ``${VAR}`` placeholders
+    unexpanded - the parser never resolves or returns a secret.
+    """
+    entry_type = entry.get("type")
+    if entry_type is not None and (not isinstance(entry_type, str) or entry_type not in ACCEPTED_ENTRY_TYPES):
         raise InvalidConfigError(
-            "MCP server entry missing required field `command`.",
+            f"MCP server `type` must be one of {sorted(ACCEPTED_ENTRY_TYPES)!r}; got {entry_type!r}.",
             file_path=file_path_str,
-            field=f"{entry_pointer}/command",
-            fix="Add `command: <executable-name>` to the server entry.",
+            field=f"{entry_pointer}/type",
+            fix=f"Set `type` to one of {sorted(ACCEPTED_ENTRY_TYPES)!r}, or omit it for a local stdio server.",
         )
-    command = entry["command"]
-    if not isinstance(command, str) or not command:
-        raise InvalidConfigError(
-            f"MCP server `command` must be a non-empty string; got {type(command).__name__}.",
-            file_path=file_path_str,
-            field=f"{entry_pointer}/command",
-            fix="Set `command` to a non-empty executable name (e.g. `node`).",
-        )
+    is_remote = (isinstance(entry_type, str) and entry_type in REMOTE_ENTRY_TYPES) or (
+        "url" in entry and "command" not in entry
+    )
+
+    if is_remote:
+        url = entry.get("url")
+        if not isinstance(url, str) or not url:
+            raise InvalidConfigError(
+                "MCP remote server entry requires a non-empty `url`.",
+                file_path=file_path_str,
+                field=f"{entry_pointer}/url",
+                fix="Add `url: <endpoint>` to the remote (http/sse) server entry.",
+            )
+        if "headers" in entry:
+            headers = entry["headers"]
+            if not isinstance(headers, dict) or any(
+                not isinstance(k, str) or not isinstance(v, str) for k, v in headers.items()
+            ):
+                raise InvalidConfigError(
+                    f"MCP server `headers` must be a dict[str, str]; got {type(headers).__name__}.",
+                    file_path=file_path_str,
+                    field=f"{entry_pointer}/headers",
+                    fix="Set `headers` to a JSON object of string keys/values (`${VAR}` placeholders are fine).",
+                )
+        if entry.get("transport") in ("stdio", "in_memory"):
+            raise InvalidConfigError(
+                f"MCP remote `type: {entry_type}` conflicts with local `transport: {entry['transport']}`.",
+                file_path=file_path_str,
+                field=f"{entry_pointer}/transport",
+                fix="Omit `transport` on a remote http/sse entry, or set it to `streamable_http`/`sse`.",
+            )
+    else:
+        if "command" not in entry:
+            raise InvalidConfigError(
+                "MCP server entry missing required field `command`.",
+                file_path=file_path_str,
+                field=f"{entry_pointer}/command",
+                fix="Add `command: <executable-name>` to the server entry.",
+            )
+        command = entry["command"]
+        if not isinstance(command, str) or not command:
+            raise InvalidConfigError(
+                f"MCP server `command` must be a non-empty string; got {type(command).__name__}.",
+                file_path=file_path_str,
+                field=f"{entry_pointer}/command",
+                fix="Set `command` to a non-empty executable name (e.g. `node`).",
+            )
 
     if "args" in entry:
         args = entry["args"]

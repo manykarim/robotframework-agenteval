@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`MCPLibrary` supports remote (HTTP/SSE) MCP servers.** Tier-1 config parsing now
+  accepts a `.mcp.json` entry declared the way Claude Code documents a remote server
+  — `type: http`/`sse` with a `url` and optional auth `headers`, no `command` — and
+  the live keywords (`Connect To Server`, `List Tools`, `Call Tool`, `Get Server
+  Instructions`) reach it over Streamable HTTP or SSE via the pinned MCP SDK (no new
+  dependency). `MCP.Start Server` gains `url=`/`headers=`. Auth-header `${VAR}`
+  placeholders are expanded from the environment **only at connect time**, passed to
+  the transport client, and never returned, stored resolved, or logged (the handle
+  redacts header values in its repr). Previously both the config parser (required
+  `command` unconditionally) and the live keywords (rejected `streamable_http`) made
+  a remote server untestable.
 - **Prompt-cache *creation* (write) tokens are now captured.** `Usage` gains
   `cache_creation_input_tokens` plus its `cache_creation_1h_input_tokens` /
   `cache_creation_5m_input_tokens` ephemeral-TTL split (the 1h and 5m buckets price
