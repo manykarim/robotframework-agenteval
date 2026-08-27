@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`Hook.Command Should Exist` no longer misfires on inline interpreter scripts.**
+  An inline hook such as `node -e "...require('./x.json')..."` or `python -c
+  "...os.stat('/etc/hosts')..."` was wrongly reported as a missing target script
+  whenever its source contained a `/`. The check now recognizes inline-source
+  execution modes for the documented interpreters (`node -e`/`--eval`/`-p`,
+  `deno eval`, `python -c`, `sh`/`bash`/`zsh -c` incl. clusters like `-ec`, `pwsh
+  -c`/`-Command`, `ruby`/`perl -e`) and stops looking for a target script — the
+  trailing tokens are program arguments, not files. A genuine missing script after
+  a script-consuming interpreter still fails loud.
 - **`SkillsLibrary` accepts every spec form of `allowed-tools`.** The validator
   and getters previously required a YAML list and rejected the string forms. They
   now accept the space-separated string (the Agent Skills spec form, e.g.

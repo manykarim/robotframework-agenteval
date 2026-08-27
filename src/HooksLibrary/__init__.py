@@ -548,7 +548,7 @@ class HooksLibrary:
         if not cls._command_resolves(interp_expanded):
             return f"first token {interp_expanded!r} not found on PATH or disk"
 
-        script_token = cls._find_script_token(rest, project_dir)
+        script_token = cls._find_script_token(interp_expanded, rest, project_dir)
         if script_token is None:
             return None
         script_expanded, script_unset = cls._expand_env_vars(script_token, project_dir)
@@ -588,18 +588,80 @@ class HooksLibrary:
 
         return cls._ENV_VAR_RE.sub(_replace, token), unset
 
-    @classmethod
-    def _find_script_token(cls, rest: list[str], project_dir: str) -> str | None:
-        """Return the first path-bearing (non-flag) argument, or ``None``.
+    # Per-interpreter inline-source modes (flags whose next token is program
+    # source, not a path). Keys are normalized lowercase basenames; flag names
+    # are lowercase (PowerShell parameters are case-insensitive). When an inline
+    # mode is recognized, target-script scanning STOPS for that invocation: the
+    # remaining tokens are arguments to the inline program (or ``$0``/positionals
+    # for ``sh -c``), never script files.
+    _INLINE_SOURCE_FLAGS: dict[str, frozenset[str]] = {
+        "node": frozenset({"-e", "--eval", "-p", "--print"}),
+        "python": frozenset({"-c"}),
+        "sh": frozenset({"-c"}),
+        "bash": frozenset({"-c"}),
+        "zsh": frozenset({"-c"}),
+        "pwsh": frozenset({"-c", "-command", "-encodedcommand"}),
+        "powershell": frozenset({"-c", "-command", "-encodedcommand"}),
+        "ruby": frozenset({"-e"}),
+        "perl": frozenset({"-e"}),
+    }
+    # Shells where a clustered short-option group (e.g. ``-ec``, ``-lc``) still
+    # carries the ``c`` command flag whose argument is inline source.
+    _SHELL_CLUSTER_INTERPRETERS: frozenset[str] = frozenset({"sh", "bash", "zsh"})
+    # Interpreters whose inline source is an ``eval`` subcommand (``deno eval CODE``).
+    _EVAL_SUBCOMMAND_INTERPRETERS: frozenset[str] = frozenset({"deno"})
 
-        A token is path-bearing when, after env expansion, it contains a path
-        separator - covering both literal paths and ``${VAR}/...`` references
-        whose variable is unset (the literal ``${VAR}/`` still carries a ``/``,
-        so the unresolved variable is surfaced rather than silently skipped).
+    # Interpreter basename without a trailing version suffix (``python3.11`` -> ``python``).
+    _INTERPRETER_BASENAME_RE = re.compile(r"^([a-z_]+?)[0-9.]*$")
+
+    @classmethod
+    def _interpreter_basename(cls, interpreter: str) -> str:
+        """Normalize an interpreter to a lowercase basename without a version suffix."""
+        base = os.path.basename(interpreter).lower()
+        match = cls._INTERPRETER_BASENAME_RE.match(base)
+        return match.group(1) if match else base
+
+    @staticmethod
+    def _is_shell_command_cluster(token: str) -> bool:
+        """True for a shell short-option cluster that includes ``c`` (e.g. ``-ec``, ``-lc``)."""
+        if not token.startswith("-") or token.startswith("--"):
+            return False
+        body = token[1:]
+        if not body or not body.isalpha():
+            return False
+        return "c" in body
+
+    @classmethod
+    def _find_script_token(cls, interpreter: str, rest: list[str], project_dir: str) -> str | None:
+        """Return the first path-bearing target-script argument, or ``None``.
+
+        Recognizes the documented inline-source execution modes for ``interpreter``
+        (``node -e``/``--eval``/``-p``/``--print``, ``deno eval``, ``python -c``,
+        ``sh``/``bash``/``zsh -c`` incl. clusters like ``-ec``, ``pwsh
+        -c``/``-Command``/``-EncodedCommand``, ``ruby``/``perl -e``); when one is
+        seen, scanning STOPS (the trailing tokens are program arguments, not
+        scripts). Otherwise a token is path-bearing when, after env expansion, it
+        contains a path separator - covering literal paths and ``${VAR}/...``
+        references whose variable is unset (the literal ``${VAR}/`` still carries a
+        ``/``, so the unresolved variable is surfaced rather than silently skipped).
         """
+        base = cls._interpreter_basename(interpreter)
+        inline_flags = cls._INLINE_SOURCE_FLAGS.get(base, frozenset())
+        is_shell_cluster = base in cls._SHELL_CLUSTER_INTERPRETERS
+        expect_eval_subcommand = base in cls._EVAL_SUBCOMMAND_INTERPRETERS
+
         for token in rest:
             if token.startswith("-"):
+                if token.lower() in inline_flags:
+                    return None
+                if is_shell_cluster and cls._is_shell_command_cluster(token):
+                    return None
                 continue
+            # First non-flag token: for `deno`, an `eval` subcommand is inline source.
+            if expect_eval_subcommand:
+                if token.lower() == "eval":
+                    return None
+                expect_eval_subcommand = False
             expanded, _ = cls._expand_env_vars(token, project_dir)
             if "/" in expanded or os.sep in expanded:
                 return token
