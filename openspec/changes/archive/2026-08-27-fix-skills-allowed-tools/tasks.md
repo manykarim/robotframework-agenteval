@@ -17,5 +17,5 @@
 ## 3. Docs + close out
 
 - [x] 3.1 Note the widening in `CHANGELOG.md` (space/comma/list forms all accepted; comma is a documented compatibility extension; `provisional` minor bump).
-- [ ] 3.2 Full local gate (ruff / ruff format / mypy / license / contract-sections / doc-count / doc-render / keyword-examples / pytest / robot).
-- [ ] 3.3 `openspec validate fix-skills-allowed-tools --strict`; archive after implementation lands + gates green.
+- [x] 3.2 Full local gate (ruff / ruff format / mypy / license / contract-sections / doc-count / doc-render / keyword-examples / pytest). Robot dogfood is a separate live-LLM smoke, not affected by this Tier-1 parsing change.
+- [x] 3.3 `openspec validate fix-skills-allowed-tools --strict`; archive after implementation lands + gates green.
