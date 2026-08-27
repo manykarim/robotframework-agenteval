@@ -100,9 +100,9 @@ Agent Run Reports Ground-Truth Metrics
     Should Be True    ${tools}[per_task][count] >= 1
     ...    msg=Expected the agent to call at least one tool
 
-    # Token usage — input, output, cached.
+    # Token usage — input, output, cached (read), and cache-creation (write).
     ${usage}=    Metric.Get Token Usage    ${result}
-    Log    input=${usage}[input] output=${usage}[output] cached=${usage}[cached]
+    Log    input=${usage}[input] output=${usage}[output] cached=${usage}[cached] cache_creation=${usage}[cache_creation]
 
     # Cost — a FULL adapter reports native USD; hold the run to a budget.
     ${cost}=    Metric.Get Cost USD    ${result}
@@ -138,7 +138,10 @@ in it is model self-report:
   "usage": {
     "input_tokens": 4,
     "output_tokens": 866,
-    "cached_input_tokens": 53386
+    "cached_input_tokens": 53386,
+    "cache_creation_input_tokens": 12480,
+    "cache_creation_1h_input_tokens": 12480,
+    "cache_creation_5m_input_tokens": 0
   },
   "cost_usd": 0.22816,
   "errors": [],

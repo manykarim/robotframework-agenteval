@@ -32,7 +32,7 @@ from typing import Any
 import pytest
 
 from AgentEval._core import cli_adapter as cli_adapter_mod
-from AgentEval._core.cli_adapters.claude_code import ClaudeCodeAdapter
+from AgentEval._core.cli_adapters.claude_code import ClaudeCodeAdapter, _usage_from
 from AgentEval._core.types import AgentRunResult
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -114,6 +114,45 @@ def test_parse_stream_usage_uses_cache_read(adapter: ClaudeCodeAdapter) -> None:
     assert result.usage.input_tokens == 30
     assert result.usage.output_tokens == 83
     assert result.usage.cached_input_tokens == 2000
+    # Cache-creation (write) tokens are no longer dropped (issue #20).
+    assert result.usage.cache_creation_input_tokens == 300
+
+
+def test_usage_from_reads_cache_creation_ttl_split() -> None:
+    usage = _usage_from(
+        {
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "cache_read_input_tokens": 40000,
+            "cache_creation_input_tokens": 12000,
+            "cache_creation": {"ephemeral_1h_input_tokens": 9000, "ephemeral_5m_input_tokens": 3000},
+        }
+    )
+    assert usage.cache_creation_input_tokens == 12000
+    assert usage.cache_creation_1h_input_tokens == 9000
+    assert usage.cache_creation_5m_input_tokens == 3000
+
+
+def test_usage_from_derives_total_from_split_when_flat_absent() -> None:
+    usage = _usage_from({"cache_creation": {"ephemeral_1h_input_tokens": 9000, "ephemeral_5m_input_tokens": 3000}})
+    assert usage.cache_creation_input_tokens == 12000
+
+
+def test_usage_from_defaults_cache_creation_to_zero() -> None:
+    usage = _usage_from({"input_tokens": 10, "output_tokens": 5})
+    assert usage.cache_creation_input_tokens == 0
+    assert usage.cache_creation_1h_input_tokens == 0
+    assert usage.cache_creation_5m_input_tokens == 0
+
+
+def test_usage_from_rejects_split_that_contradicts_total() -> None:
+    with pytest.raises(ValueError, match="1h.5m split"):
+        _usage_from(
+            {
+                "cache_creation_input_tokens": 12000,
+                "cache_creation": {"ephemeral_1h_input_tokens": 9000, "ephemeral_5m_input_tokens": 1},
+            }
+        )
 
 
 def test_parse_stream_native_cost_and_latency(adapter: ClaudeCodeAdapter) -> None:

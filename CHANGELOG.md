@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Prompt-cache *creation* (write) tokens are now captured.** `Usage` gains
+  `cache_creation_input_tokens` plus its `cache_creation_1h_input_tokens` /
+  `cache_creation_5m_input_tokens` ephemeral-TTL split (the 1h and 5m buckets price
+  differently, so the split is needed to price cache writes; the total equals their
+  sum per Anthropic). The `claude-code` adapter previously read only cache-*read*
+  tokens and silently dropped the write count. `Metric.Get Token Usage` (short keys
+  `cache_creation`, `cache_creation_1h`, `cache_creation_5m`) and the exported
+  run-metrics JSON (long keys) surface them. A `0` on an adapter that does not report
+  an Anthropic-shaped count means "not reported." (`provisional`, minor shape change:
+  strict dict/JSON consumers gain keys.)
+
 ### Fixed
 
 - **`Hook.Command Should Exist` no longer misfires on inline interpreter scripts.**

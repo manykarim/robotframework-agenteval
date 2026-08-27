@@ -127,6 +127,9 @@ class RunMetrics:
                 "input_tokens": self.usage.input_tokens,
                 "output_tokens": self.usage.output_tokens,
                 "cached_input_tokens": self.usage.cached_input_tokens,
+                "cache_creation_input_tokens": self.usage.cache_creation_input_tokens,
+                "cache_creation_1h_input_tokens": self.usage.cache_creation_1h_input_tokens,
+                "cache_creation_5m_input_tokens": self.usage.cache_creation_5m_input_tokens,
             },
             "cost_usd": self.cost_usd,
         }
