@@ -73,8 +73,11 @@ class SkillsLibrary:
     def get_frontmatter(self, path: str | Path) -> dict[str, Any]:
         """Parse a skill ``.md`` file's YAML frontmatter into a dict.
 
-        Returns the raw parsed mapping. Use `Skill.Should Be Valid Frontmatter`
-        or the typed getters if you need the required-field contract enforced.
+        Returns the parsed mapping with ``allowed-tools`` normalized to a list of
+        tool strings (the space-separated spec form, the comma-separated
+        compatibility form, and the YAML-list form all yield the same list). Use
+        `Skill.Should Be Valid Frontmatter` or the typed getters if you need the
+        required-field contract enforced.
 
         Example:
         | ${fm}=    Skill.Get Frontmatter    ${CURDIR}/skills/example.md
@@ -101,7 +104,9 @@ class SkillsLibrary:
         """Return the ``allowed-tools`` list from a skill ``.md`` file.
 
         Optional field: a skill that omits it (or leaves it empty) is still
-        valid and yields an empty list.
+        valid and yields an empty list. The space-separated (spec), comma-separated
+        (compatibility), and YAML-list forms all normalize to the same list, with
+        tool-scoping tokens (e.g. ``Bash(git:*)``) preserved whole.
 
         Example:
         | ${tools}=    Skill.Get Allowed Tools    ${CURDIR}/skills/web-search.md
@@ -130,7 +135,9 @@ class SkillsLibrary:
         """Assert a parsed frontmatter dict is a valid skill.
 
         Required: ``name`` (str) and ``description`` (str). Optional but
-        type-checked when present: ``allowed-tools`` (list of str),
+        type-checked when present: ``allowed-tools`` (a space- or comma-separated
+        string, or a YAML list of strings — all accepted and normalized here too,
+        so a directly-built dict validates regardless of provenance),
         ``disable-model-invocation`` (bool). Raises naming the offending field.
 
         Example:

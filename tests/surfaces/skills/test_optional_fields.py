@@ -56,8 +56,49 @@ def test_absent_optional_fields_default(tmp_path: Path) -> None:
     assert lib.get_description(path) == "Parse Robot Framework output.xml into JSON summaries."
 
 
-def test_present_but_mistyped_optional_still_raises(tmp_path: Path) -> None:
+def _with_allowed_tools(value: str) -> str:
+    """Insert an ``allowed-tools`` line before the closing frontmatter delimiter."""
+    return MINIMAL.replace("---\n\n# Robot", f"allowed-tools: {value}\n---\n\n# Robot")
+
+
+def test_comma_string_allowed_tools_normalizes(tmp_path: Path) -> None:
+    # Previously this comma form was (wrongly) rejected; it is now accepted as a
+    # compatibility extension and normalized to a list.
     lib = SkillsLibrary()
-    body = MINIMAL.replace("---\n\n# Robot", "allowed-tools: Read, Write\n---\n\n# Robot")
+    path = _write(tmp_path, _with_allowed_tools("Read, Write"))
+    lib.should_be_valid_frontmatter(lib.get_frontmatter(path))  # must not raise
+    assert lib.get_allowed_tools(path) == ["Read", "Write"]
+
+
+def test_space_separated_allowed_tools_normalizes(tmp_path: Path) -> None:
+    # The Agent Skills spec form: space-separated, with tool-scoping syntax.
+    lib = SkillsLibrary()
+    path = _write(tmp_path, _with_allowed_tools("Bash(git:*) Bash(jq:*) Read"))
+    lib.should_be_valid_frontmatter(lib.get_frontmatter(path))
+    assert lib.get_allowed_tools(path) == ["Bash(git:*)", "Bash(jq:*)", "Read"]
+
+
+def test_scoped_token_with_internal_separator_is_preserved(tmp_path: Path) -> None:
+    lib = SkillsLibrary()
+    assert lib.get_allowed_tools(_write(tmp_path, _with_allowed_tools("Bash(git add:*)"))) == ["Bash(git add:*)"]
+    assert lib.get_allowed_tools(_write(tmp_path, _with_allowed_tools("WebFetch(a.com,b.com)"))) == [
+        "WebFetch(a.com,b.com)"
+    ]
+
+
+def test_standalone_validator_accepts_string_form(tmp_path: Path) -> None:
+    # `Should Be Valid Frontmatter` takes a caller-built dict directly (not via
+    # `Get Frontmatter`), so the validator must normalize the string forms itself.
+    lib = SkillsLibrary()
+    fm = {"name": "x", "description": "y", "allowed-tools": "Read, Grep"}
+    lib.should_be_valid_frontmatter(fm)  # must not raise
+
+
+def test_genuinely_mistyped_allowed_tools_still_raises(tmp_path: Path) -> None:
+    lib = SkillsLibrary()
+    body = _with_allowed_tools("5")  # YAML int, not a string or list
     with pytest.raises(InvalidConfigError):
         lib.should_be_valid_frontmatter(lib.get_frontmatter(_write(tmp_path, body)))
+    # A list containing a non-string element also still raises.
+    with pytest.raises(InvalidConfigError):
+        lib.should_be_valid_frontmatter({"name": "x", "description": "y", "allowed-tools": ["Read", 5]})

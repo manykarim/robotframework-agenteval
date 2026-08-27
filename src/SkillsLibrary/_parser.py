@@ -47,6 +47,42 @@ REQUIRED_FIELDS: tuple[str, ...] = (
 )
 
 
+def _normalize_allowed_tools(value: Any) -> Any:
+    """Normalize an ``allowed-tools`` value to a list of tool tokens.
+
+    Accepts the space-separated string (the Agent Skills spec form, e.g.
+    ``Bash(git:*) Bash(jq:*) Read``), the comma-separated string (accepted as a
+    compatibility extension), and the YAML-list forms. A string is tokenized by
+    splitting on whitespace or commas **only at parenthesis depth 0**, so a
+    tool-scoping token with an internal space or comma (``Bash(git add:*)``,
+    ``WebFetch(a.com,b.com)``) is preserved whole. Non-string values are returned
+    unchanged so the caller's type validation can still reject a genuinely mistyped
+    value (e.g. a number, or a list containing a non-string).
+    """
+    if not isinstance(value, str):
+        return value
+    tokens: list[str] = []
+    current: list[str] = []
+    depth = 0
+    for char in value:
+        if char == "(":
+            depth += 1
+            current.append(char)
+        elif char == ")":
+            if depth > 0:
+                depth -= 1
+            current.append(char)
+        elif depth == 0 and (char.isspace() or char == ","):
+            if current:
+                tokens.append("".join(current))
+                current = []
+        else:
+            current.append(char)
+    if current:
+        tokens.append("".join(current))
+    return [stripped for stripped in (token.strip() for token in tokens) if stripped]
+
+
 def parse_frontmatter(path: str | Path) -> dict[str, Any]:
     """Parse the YAML frontmatter block into a dict.
 
@@ -123,6 +159,12 @@ def parse_frontmatter(path: str | Path) -> dict[str, Any]:
             fix="Use `key: value` pairs inside the `---` delimiters.",
         )
 
+    # Normalize the string forms of `allowed-tools` on read, so every getter
+    # (and `Skill.Get Frontmatter`) sees the same list[str] and never a raw
+    # string or a character-split of one. Idempotent for the list form.
+    if "allowed-tools" in parsed:
+        parsed["allowed-tools"] = _normalize_allowed_tools(parsed["allowed-tools"])
+
     return parsed
 
 
@@ -166,13 +208,19 @@ def validate_frontmatter_structure(
         )
 
     if "allowed-tools" in frontmatter:
-        allowed_tools = frontmatter["allowed-tools"]
+        # Normalize the string forms here too: `Skill.Should Be Valid Frontmatter`
+        # accepts a caller-supplied dict directly (not only via `parse_frontmatter`),
+        # so the validator must itself accept the space/comma/list forms. Idempotent
+        # for a value already normalized on parse.
+        allowed_tools = _normalize_allowed_tools(frontmatter["allowed-tools"])
         if not isinstance(allowed_tools, list) or any(not isinstance(tool, str) for tool in allowed_tools):
             raise InvalidConfigError(
-                f"`allowed-tools` (optional) must be a list of strings; got {type(allowed_tools).__name__}.",
+                "`allowed-tools` (optional) must be a space- or comma-separated string "
+                f"or a list of strings; got {type(frontmatter['allowed-tools']).__name__}.",
                 file_path=file_path,
                 field="allowed-tools",
-                fix="Set `allowed-tools: [tool_a, tool_b]` as a YAML list of strings, or omit the field.",
+                fix="Set `allowed-tools: Read Grep` (space-separated), `allowed-tools: Read, Grep`, "
+                "or a YAML list of strings; or omit the field.",
             )
 
     if "disable-model-invocation" in frontmatter:

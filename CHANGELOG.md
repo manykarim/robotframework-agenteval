@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`SkillsLibrary` accepts every spec form of `allowed-tools`.** The validator
+  and getters previously required a YAML list and rejected the string forms. They
+  now accept the space-separated string (the Agent Skills spec form, e.g.
+  `Bash(git:*) Bash(jq:*) Read`), the comma-separated string (a compatibility
+  extension), and the YAML list — all normalized to the same list of tool tokens
+  via a parenthesis-aware split that preserves tool-scoping syntax. Normalization
+  runs in both `parse_frontmatter` and the validator, so `Skill.Should Be Valid
+  Frontmatter` accepts a directly-built dict too. A genuinely mistyped value still
+  fails. (`provisional`, minor.)
 - **`codex` CLI adapter now actually runs.** codex 0.144.4+ refused the old
   `codex exec --json` invocation (exited outside a trusted git dir; hung waiting
   for an approval that never came), so the adapter returned a silent-empty result.
