@@ -35,17 +35,45 @@ __all__ = [
 
 @dataclass(frozen=True)
 class Usage:
-    """Token counts for a run. All values must be non-negative integers."""
+    """Token counts for a run. All values must be non-negative integers.
+
+    ``cached_input_tokens`` are prompt-cache *read* tokens (served from cache this
+    run). ``cache_creation_input_tokens`` are prompt-cache *write* tokens; its 1h/5m
+    ephemeral buckets price differently (2x vs 1.25x the base input rate), so — per
+    Anthropic — the total equals ``cache_creation_1h_input_tokens +
+    cache_creation_5m_input_tokens`` when the split is reported. A ``0`` on an adapter
+    that does not report an Anthropic-shaped cache-creation count means "not
+    reported," not "no cache writes."
+    """
 
     input_tokens: int
     output_tokens: int
     cached_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+    cache_creation_1h_input_tokens: int = 0
+    cache_creation_5m_input_tokens: int = 0
 
     def __post_init__(self) -> None:
-        for name in ("input_tokens", "output_tokens", "cached_input_tokens"):
+        for name in (
+            "input_tokens",
+            "output_tokens",
+            "cached_input_tokens",
+            "cache_creation_input_tokens",
+            "cache_creation_1h_input_tokens",
+            "cache_creation_5m_input_tokens",
+        ):
             value: int = getattr(self, name)
             if value < 0:
                 raise ValueError(f"Usage.{name} must be non-negative; got {value!r}")
+        # When the cache-creation TTL split is reported alongside a total, they must
+        # reconcile (Anthropic: total == 1h + 5m); a mismatch fails rather than being
+        # silently accepted.
+        split = self.cache_creation_1h_input_tokens + self.cache_creation_5m_input_tokens
+        if split and self.cache_creation_input_tokens and self.cache_creation_input_tokens != split:
+            raise ValueError(
+                f"Usage.cache_creation_input_tokens ({self.cache_creation_input_tokens}) must equal the "
+                f"reported 1h+5m split ({split})"
+            )
 
 
 @dataclass(frozen=True)

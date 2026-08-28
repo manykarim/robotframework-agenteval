@@ -26,8 +26,10 @@ For backward compatibility, ``List Tools`` / ``Call Tool`` still work without a
 prior ``Connect To Server``: they fall back to a one-shot cold session that
 opens, runs the op, and tears down.
 
-Only ``stdio`` and ``in_memory`` transports are wired; ``streamable_http`` is
-rejected. Transport and handshake failures surface as ``MCPError``.
+Local (``stdio``, ``in_memory``) and remote (``streamable_http``, ``sse``)
+transports are wired; a remote transport requires a ``url`` and opens an HTTP
+session instead of spawning a subprocess. Transport and handshake failures surface
+as ``MCPError``.
 
 The anyio SDK requires the task that *opens* a session's cancel scopes to be
 the same task that *closes* them. The warm session honors this by keeping open,
@@ -41,6 +43,8 @@ import asyncio
 import atexit
 import concurrent.futures
 import contextlib
+import os
+import re
 import threading
 import time
 import uuid
@@ -49,6 +53,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import anyio
+import httpx
+from mcp.client.streamable_http import StreamableHTTPError
 from mcp.shared.exceptions import McpError
 
 from AgentEval._core import run_async
@@ -56,7 +62,9 @@ from AgentEval._core.errors import MCPError
 from MCPLibrary._transport import (
     Transport,
     TransportSession,
+    open_http_session,
     open_in_memory_session,
+    open_sse_session,
     open_stdio_session,
 )
 
@@ -97,6 +105,16 @@ class MCPServerHandle:
     args: tuple[str, ...] = ()
     env: dict[str, str] | None = None
     server_factory: Callable[..., Any] | None = None
+    url: str | None = None
+    headers: dict[str, str] | None = None
+
+    def __repr__(self) -> str:
+        # Redact header VALUES: they may carry bearer tokens / ${VAR} secrets.
+        redacted = dict.fromkeys(self.headers or {}, "***")
+        return (
+            f"MCPServerHandle(name={self.name!r}, transport={self.transport!r}, "
+            f"command={self.command!r}, url={self.url!r}, headers={redacted!r})"
+        )
 
 
 @dataclass(frozen=True)
@@ -152,19 +170,22 @@ def start_server(
     args: list[str] | None = None,
     env: dict[str, str] | None = None,
     server_factory: Callable[..., Any] | None = None,
+    url: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> MCPServerHandle:
-    """Build an ``MCPServerHandle``. Pure - no subprocess is spawned yet."""
+    """Build an ``MCPServerHandle``. Pure - no subprocess or connection yet."""
     if transport == "stdio":
         if not command:
             raise ValueError("stdio transport requires `command`")
     elif transport == "in_memory":
         if server_factory is None:
             raise ValueError("in_memory transport requires `server_factory`")
-    elif transport == "streamable_http":
-        pass
+    elif transport in ("streamable_http", "sse"):
+        if not url:
+            raise ValueError(f"{transport} transport requires `url`")
     else:
         raise ValueError(
-            f"unsupported transport {transport!r}; must be one of 'stdio' | 'streamable_http' | 'in_memory'"
+            f"unsupported transport {transport!r}; must be one of 'stdio' | 'streamable_http' | 'sse' | 'in_memory'"
         )
     return MCPServerHandle(
         name=name,
@@ -173,13 +194,46 @@ def start_server(
         args=tuple(args or ()),
         env=dict(env) if env is not None else None,
         server_factory=server_factory,
+        url=url,
+        headers=dict(headers) if headers is not None else None,
     )
 
 
+# Matches a ``${VAR}`` placeholder in a header value.
+_HEADER_VAR_RE = re.compile(r"\$\{(\w+)\}")
+
+
+def _resolve_headers(headers: dict[str, str] | None) -> dict[str, str] | None:
+    """Expand ``${VAR}`` placeholders in header values from ``os.environ``.
+
+    Connect-time only. Raises ``MCPError`` naming any unset variable - never its
+    value. The resolved dict is passed straight to the transport client and is never
+    returned to the caller, stored on the handle, or logged.
+    """
+    if not headers:
+        return None
+    missing: list[str] = []
+
+    def _sub(match: re.Match[str]) -> str:
+        name = match.group(1)
+        value = os.environ.get(name)
+        if value is None:
+            if name not in missing:
+                missing.append(name)
+            return match.group(0)
+        return value
+
+    resolved = {key: _HEADER_VAR_RE.sub(_sub, value) for key, value in headers.items()}
+    if missing:
+        names = ", ".join(f"${name}" for name in missing)
+        raise MCPError(f"MCP remote headers reference unset environment variable(s): {names}")
+    return resolved
+
+
 def _validate_for_connect(handle: MCPServerHandle) -> None:
-    """Reject ``streamable_http`` and verify transport-required handle params."""
-    if handle.transport == "streamable_http":
-        raise ValueError("streamable_http transport is not supported; use 'stdio' or 'in_memory'")
+    """Verify transport-required handle params (a remote transport needs ``url``)."""
+    if handle.transport in ("streamable_http", "sse") and not handle.url:
+        raise ValueError(f"{handle.transport} transport requires `url` on the handle")
     if handle.transport == "stdio" and not handle.command:
         raise ValueError("stdio transport requires `command` on the handle")
     if handle.transport == "in_memory" and handle.server_factory is None:
@@ -194,6 +248,12 @@ async def _open_session(handle: MCPServerHandle) -> TransportSession:
     if handle.transport == "in_memory":
         assert handle.server_factory is not None
         return await open_in_memory_session(handle.server_factory)
+    if handle.transport == "streamable_http":
+        assert handle.url is not None
+        return await open_http_session(url=handle.url, headers=_resolve_headers(handle.headers))
+    if handle.transport == "sse":
+        assert handle.url is not None
+        return await open_sse_session(url=handle.url, headers=_resolve_headers(handle.headers))
     raise ValueError(f"unsupported transport on handle: {handle.transport!r}")
 
 
@@ -257,6 +317,9 @@ def _is_connection_lost(exc: BaseException) -> bool:
     if isinstance(exc, (anyio.ClosedResourceError, anyio.BrokenResourceError, anyio.EndOfStream)):
         return True
     if isinstance(exc, (ConnectionError, BrokenPipeError)):
+        return True
+    # Remote (HTTP/SSE) transport-layer failures.
+    if isinstance(exc, (StreamableHTTPError, httpx.HTTPError)):
         return True
     if isinstance(exc, McpError):
         error_data = getattr(exc, "error", None)

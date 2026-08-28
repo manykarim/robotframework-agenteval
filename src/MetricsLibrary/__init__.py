@@ -70,7 +70,12 @@ class MetricsLibrary:
     @keyword(name="Metric.Get Token Usage")
     @tier(1)
     def get_token_usage(self, run: AgentRunResult) -> dict[str, int]:
-        """Token counts from the recorded run's ``usage`` (input, output, cached).
+        """Token counts from the recorded run's ``usage``.
+
+        Keys: ``input``, ``output``, ``cached`` (prompt-cache read), and the
+        prompt-cache *write* counts ``cache_creation`` (total) plus its
+        ``cache_creation_1h`` / ``cache_creation_5m`` TTL split. A ``0`` cache-creation
+        value on an adapter that does not report one means "not reported."
 
         Example:
         | ${usage}=    Metric.Get Token Usage    ${result}
@@ -81,6 +86,9 @@ class MetricsLibrary:
             "input": usage.input_tokens,
             "output": usage.output_tokens,
             "cached": usage.cached_input_tokens,
+            "cache_creation": usage.cache_creation_input_tokens,
+            "cache_creation_1h": usage.cache_creation_1h_input_tokens,
+            "cache_creation_5m": usage.cache_creation_5m_input_tokens,
         }
 
     @keyword(name="Metric.Get Cost USD")

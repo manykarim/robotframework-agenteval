@@ -9,8 +9,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`MCPLibrary` supports remote (HTTP/SSE) MCP servers.** Tier-1 config parsing now
+  accepts a `.mcp.json` entry declared the way Claude Code documents a remote server
+  — `type: http`/`sse` with a `url` and optional auth `headers`, no `command` — and
+  the live keywords (`Connect To Server`, `List Tools`, `Call Tool`, `Get Server
+  Instructions`) reach it over Streamable HTTP or SSE via the pinned MCP SDK (no new
+  dependency). `MCP.Start Server` gains `url=`/`headers=`. Auth-header `${VAR}`
+  placeholders are expanded from the environment **only at connect time**, passed to
+  the transport client, and never returned, stored resolved, or logged (the handle
+  redacts header values in its repr). Previously both the config parser (required
+  `command` unconditionally) and the live keywords (rejected `streamable_http`) made
+  a remote server untestable.
+- **Prompt-cache *creation* (write) tokens are now captured.** `Usage` gains
+  `cache_creation_input_tokens` plus its `cache_creation_1h_input_tokens` /
+  `cache_creation_5m_input_tokens` ephemeral-TTL split (the 1h and 5m buckets price
+  differently, so the split is needed to price cache writes; the total equals their
+  sum per Anthropic). The `claude-code` adapter previously read only cache-*read*
+  tokens and silently dropped the write count. `Metric.Get Token Usage` (short keys
+  `cache_creation`, `cache_creation_1h`, `cache_creation_5m`) and the exported
+  run-metrics JSON (long keys) surface them. A `0` on an adapter that does not report
+  an Anthropic-shaped count means "not reported." (`provisional`, minor shape change:
+  strict dict/JSON consumers gain keys.)
+
 ### Fixed
 
+- **`Hook.Command Should Exist` no longer misfires on inline interpreter scripts.**
+  An inline hook such as `node -e "...require('./x.json')..."` or `python -c
+  "...os.stat('/etc/hosts')..."` was wrongly reported as a missing target script
+  whenever its source contained a `/`. The check now recognizes inline-source
+  execution modes for the documented interpreters (`node -e`/`--eval`/`-p`,
+  `deno eval`, `python -c`, `sh`/`bash`/`zsh -c` incl. clusters like `-ec`, `pwsh
+  -c`/`-Command`, `ruby`/`perl -e`) and stops looking for a target script — the
+  trailing tokens are program arguments, not files. A genuine missing script after
+  a script-consuming interpreter still fails loud.
+- **`SkillsLibrary` accepts every spec form of `allowed-tools`.** The validator
+  and getters previously required a YAML list and rejected the string forms. They
+  now accept the space-separated string (the Agent Skills spec form, e.g.
+  `Bash(git:*) Bash(jq:*) Read`), the comma-separated string (a compatibility
+  extension), and the YAML list — all normalized to the same list of tool tokens
+  via a parenthesis-aware split that preserves tool-scoping syntax. Normalization
+  runs in both `parse_frontmatter` and the validator, so `Skill.Should Be Valid
+  Frontmatter` accepts a directly-built dict too. A genuinely mistyped value still
+  fails. (`provisional`, minor.)
 - **`codex` CLI adapter now actually runs.** codex 0.144.4+ refused the old
   `codex exec --json` invocation (exited outside a trusted git dir; hung waiting
   for an approval that never came), so the adapter returned a silent-empty result.

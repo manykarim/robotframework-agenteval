@@ -28,8 +28,11 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 import anyio
+import httpx
 from mcp import ClientSession
+from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.client.streamable_http import streamable_http_client
 from mcp.server.fastmcp import FastMCP
 from mcp.shared.memory import create_client_server_memory_streams
 
@@ -37,10 +40,12 @@ __all__ = [
     "Transport",
     "TransportSession",
     "open_stdio_session",
+    "open_http_session",
+    "open_sse_session",
     "open_in_memory_session",
 ]
 
-Transport = Literal["stdio", "streamable_http", "in_memory"]
+Transport = Literal["stdio", "streamable_http", "sse", "in_memory"]
 
 
 @dataclass
@@ -77,6 +82,47 @@ async def open_stdio_session(
         read_stream, write_stream = await stack.enter_async_context(stdio_client(params, errlog=errlog))
         session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
         return TransportSession(session=session, stack=stack, transport="stdio")
+    except BaseException:
+        await stack.aclose()
+        raise
+
+
+async def open_http_session(
+    *,
+    url: str,
+    headers: dict[str, str] | None = None,
+) -> TransportSession:
+    """Open an uninitialized session to a remote MCP server over Streamable HTTP.
+
+    Uses the SDK's non-deprecated ``streamable_http_client`` with a caller-owned
+    ``httpx.AsyncClient`` carrying any auth ``headers`` (the client is closed via the
+    stack; the SDK does not close a client it did not create). Initialization is left
+    to the caller, matching ``open_stdio_session``.
+    """
+    stack = AsyncExitStack()
+    try:
+        client = await stack.enter_async_context(httpx.AsyncClient(headers=headers or None))
+        read_stream, write_stream, _get_session_id = await stack.enter_async_context(
+            streamable_http_client(url, http_client=client)
+        )
+        session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
+        return TransportSession(session=session, stack=stack, transport="streamable_http")
+    except BaseException:
+        await stack.aclose()
+        raise
+
+
+async def open_sse_session(
+    *,
+    url: str,
+    headers: dict[str, str] | None = None,
+) -> TransportSession:
+    """Open an uninitialized session to a remote MCP server over the legacy SSE transport."""
+    stack = AsyncExitStack()
+    try:
+        read_stream, write_stream = await stack.enter_async_context(sse_client(url, headers=headers))
+        session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
+        return TransportSession(session=session, stack=stack, transport="sse")
     except BaseException:
         await stack.aclose()
         raise

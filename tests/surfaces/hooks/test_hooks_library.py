@@ -470,6 +470,74 @@ def test_command_should_exist_fails_when_plugin_root_unset(
         lib.command_should_exist(lib.get_config(path))
 
 
+# --- inline-source recognition (issue #18): no interpreter installs required --- #
+
+
+@pytest.mark.parametrize(
+    ("interpreter", "rest"),
+    [
+        ("node", ["-e", "const p=require('path'); p.join('./data/state.json')"]),
+        ("node", ["--eval", "console.log('/tmp/x')"]),
+        ("node", ["-p", "process.cwd()+'/x'"]),
+        ("/usr/bin/python3.11", ["-c", "import os; os.stat('/etc/hosts')"]),
+        ("python3", ["-c", "print('/')"]),
+        ("bash", ["-c", "cat /etc/hostname"]),
+        ("sh", ["-c", "ls /"]),
+        ("bash", ["-ec", "cat /etc/hostname"]),  # clustered short options
+        ("zsh", ["-lc", "echo /"]),
+        ("pwsh", ["-Command", "Get-Content ./x"]),  # case-insensitive
+        ("powershell", ["-c", "gc /tmp/x"]),
+        ("deno", ["eval", "Deno.readTextFile('./x')"]),
+        ("deno", ["--allow-read", "eval", "Deno.readTextFile('./x')"]),
+        ("ruby", ["-e", "File.read('/etc/hostname')"]),
+        ("perl", ["-e", "open(F, '/etc/hostname')"]),
+    ],
+)
+def test_find_script_token_ignores_inline_source(interpreter: str, rest: list[str], tmp_path: Path) -> None:
+    # Inline program text (even containing a slash) is NOT a target script.
+    assert HooksLibrary._find_script_token(interpreter, rest, str(tmp_path)) is None
+
+
+def test_find_script_token_stops_after_inline_source(tmp_path: Path) -> None:
+    # Tokens AFTER the inline source are program arguments, not scripts.
+    assert (
+        HooksLibrary._find_script_token("python", ["-c", "f(sys.argv[1])", "/tmp/not-created"], str(tmp_path)) is None
+    )
+    assert HooksLibrary._find_script_token("bash", ["-c", "run", "/tmp/nope.sh"], str(tmp_path)) is None
+
+
+def test_find_script_token_still_detects_real_paths(tmp_path: Path) -> None:
+    # A genuine script path after a script-consuming interpreter is still found.
+    assert HooksLibrary._find_script_token("bash", ["./scripts/foo.sh"], str(tmp_path)) == "./scripts/foo.sh"
+    assert HooksLibrary._find_script_token("npx", ["tsx", "./script.ts"], str(tmp_path)) == "./script.ts"
+    # deno's non-eval subcommands fall through to normal path scanning.
+    assert HooksLibrary._find_script_token("deno", ["run", "./server.ts"], str(tmp_path)) == "./server.ts"
+
+
+def test_command_should_exist_passes_for_inline_python(lib: HooksLibrary, tmp_path: Path) -> None:
+    """An inline `python -c "...'/...'"` hook resolves (interpreter on PATH, no target script)."""
+    command = f"{shlex.quote(sys.executable)} -c \"import os; os.stat('/etc/hostname')\""
+    path = _write_config(tmp_path, {"SessionStart": [{"hooks": [{"type": "command", "command": command}]}]})
+    lib.command_should_exist(lib.get_config(path))  # must not raise
+
+
+def test_command_should_exist_inline_ignores_trailing_arg(lib: HooksLibrary, tmp_path: Path) -> None:
+    """A path-shaped argument AFTER inline source is not treated as a missing script."""
+    command = f'{shlex.quote(sys.executable)} -c "import sys; print(sys.argv[1])" /tmp/not-created-xyz'
+    path = _write_config(tmp_path, {"SessionStart": [{"hooks": [{"type": "command", "command": command}]}]})
+    lib.command_should_exist(lib.get_config(path))  # must not raise
+
+
+def test_command_should_exist_passes_for_inline_node(
+    lib: HooksLibrary, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`node -e "...require('...')..."` passes when node resolves (node may be absent on CI)."""
+    monkeypatch.setattr(HooksLibrary, "_command_resolves", staticmethod(lambda token: True))
+    command = "node -e \"const fs=require('fs'); fs.existsSync('./data/state.json')\""
+    path = _write_config(tmp_path, {"SessionStart": [{"hooks": [{"type": "command", "command": command}]}]})
+    lib.command_should_exist(lib.get_config(path))  # must not raise
+
+
 def test_build_hook_env_passes_plugin_root_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
     """WHEN CLAUDE_PLUGIN_ROOT is set in the parent env THEN the hook subprocess env carries it."""
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "/opt/plugin")

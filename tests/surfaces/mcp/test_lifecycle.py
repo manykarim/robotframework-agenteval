@@ -135,8 +135,67 @@ def test_start_server_stdio_requires_command() -> None:
         lib.start_server("x", "stdio")
 
 
-def test_streamable_http_is_rejected_on_connect() -> None:
+def test_remote_transport_requires_url() -> None:
     lib = MCPLibrary()
-    handle = lib.start_server("x", "streamable_http")
-    with pytest.raises(ValueError):
-        lib.connect_to_server(handle)
+    for transport in ("streamable_http", "sse"):
+        with pytest.raises(ValueError, match="url"):
+            lib.start_server("x", transport)
+
+
+def test_remote_handle_builds_and_redacts_headers() -> None:
+    lib = MCPLibrary()
+    handle = lib.start_server(
+        "api",
+        "streamable_http",
+        url="https://host/mcp",
+        headers={"Authorization": "Bearer ${API_KEY}"},
+    )
+    assert handle.transport == "streamable_http"
+    assert handle.url == "https://host/mcp"
+    # The handle repr redacts header VALUES (never a bearer token / ${VAR}).
+    assert "Bearer" not in repr(handle)
+    assert "API_KEY" not in repr(handle)
+    assert "***" in repr(handle)
+
+
+def test_resolve_headers_expands_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    from MCPLibrary._lifecycle import _resolve_headers
+
+    monkeypatch.setenv("API_KEY", "sekret-123")
+    assert _resolve_headers({"Authorization": "Bearer ${API_KEY}"}) == {"Authorization": "Bearer sekret-123"}
+
+
+def test_resolve_headers_missing_var_fails_without_leaking(monkeypatch: pytest.MonkeyPatch) -> None:
+    from MCPLibrary._lifecycle import _resolve_headers
+
+    monkeypatch.delenv("MISSING_KEY", raising=False)
+    with pytest.raises(MCPError) as exc:
+        _resolve_headers({"Authorization": "Bearer ${MISSING_KEY}"})
+    assert "MISSING_KEY" in str(exc.value)
+
+
+def test_open_session_dispatches_http_with_resolved_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    import MCPLibrary._lifecycle as lifecycle
+
+    monkeypatch.setenv("API_KEY", "sekret-xyz")
+    captured: dict[str, object] = {}
+
+    async def fake_open_http_session(*, url: str, headers: dict[str, str] | None = None) -> str:
+        captured["url"] = url
+        captured["headers"] = headers
+        return "SESSION"
+
+    monkeypatch.setattr(lifecycle, "open_http_session", fake_open_http_session)
+    handle = lifecycle.start_server(
+        name="api",
+        transport="streamable_http",
+        url="https://host/mcp",
+        headers={"Authorization": "Bearer ${API_KEY}"},
+    )
+    result = asyncio.run(lifecycle._open_session(handle))
+    assert result == "SESSION"
+    assert captured["url"] == "https://host/mcp"
+    # Headers are resolved from env at connect time and passed to the transport only.
+    assert captured["headers"] == {"Authorization": "Bearer sekret-xyz"}

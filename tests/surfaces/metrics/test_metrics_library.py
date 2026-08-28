@@ -78,7 +78,14 @@ def _run() -> AgentRunResult:
 
 def test_get_token_usage_returns_ground_truth() -> None:
     usage = MetricsLibrary().get_token_usage(_run())
-    assert usage == {"input": 120, "output": 80, "cached": 30}
+    assert usage == {
+        "input": 120,
+        "output": 80,
+        "cached": 30,
+        "cache_creation": 0,
+        "cache_creation_1h": 0,
+        "cache_creation_5m": 0,
+    }
 
 
 def test_get_cost_usd_reads_recorded_value() -> None:
@@ -257,7 +264,14 @@ def test_export_run_metrics_writes_ground_truth_json(tmp_path: Path) -> None:
     assert data["errors"] == ["rate limited"]
     assert data["execution_time_seconds"] == pytest.approx(1.5)
     assert data["cost_usd"] == pytest.approx(0.0035)
-    assert data["usage"] == {"input_tokens": 120, "output_tokens": 80, "cached_input_tokens": 30}
+    assert data["usage"] == {
+        "input_tokens": 120,
+        "output_tokens": 80,
+        "cached_input_tokens": 30,
+        "cache_creation_input_tokens": 0,
+        "cache_creation_1h_input_tokens": 0,
+        "cache_creation_5m_input_tokens": 0,
+    }
     assert len(data["tool_calls"]) == 3
     first = data["tool_calls"][0]
     assert first["name"] == "search"

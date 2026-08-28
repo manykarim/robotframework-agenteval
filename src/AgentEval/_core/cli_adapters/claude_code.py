@@ -223,12 +223,28 @@ def _int(value: Any) -> int:
 
 
 def _usage_from(usage: dict[str, Any]) -> Usage:
-    """Map claude usage to ``Usage``; cached = cache-read tokens."""
+    """Map claude usage to ``Usage``; cached = cache-read, cache_creation = cache-write.
+
+    Reads the flat ``cache_creation_input_tokens`` and, when present, the
+    ``cache_creation`` TTL breakdown (``ephemeral_1h/5m_input_tokens``). When only
+    the split is reported the flat total is derived from it; a reported total that
+    contradicts the split fails in ``Usage.__post_init__``.
+    """
+    creation = usage.get("cache_creation")
+    creation_split = creation if isinstance(creation, dict) else {}
+    one_hour = _int(creation_split.get("ephemeral_1h_input_tokens"))
+    five_min = _int(creation_split.get("ephemeral_5m_input_tokens"))
+    total_creation = _int(usage.get("cache_creation_input_tokens"))
+    if not total_creation and (one_hour or five_min):
+        total_creation = one_hour + five_min
     return Usage(
         input_tokens=_int(usage.get("input_tokens")),
         output_tokens=_int(usage.get("output_tokens")),
         # cache_read_input_tokens = tokens served from the prompt cache this run.
         cached_input_tokens=_int(usage.get("cache_read_input_tokens")),
+        cache_creation_input_tokens=total_creation,
+        cache_creation_1h_input_tokens=one_hour,
+        cache_creation_5m_input_tokens=five_min,
     )
 
 

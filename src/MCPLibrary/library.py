@@ -88,9 +88,12 @@ class MCPLibrary:
     def get_server_config(self, path: str) -> dict[str, dict[str, Any]]:
         """Parse a ``.mcp.json`` file into a ``{server_name: entry}`` dict.
 
-        Pure file read and JSON parse - no server is spawned. Each entry has at
-        least ``command`` and may carry ``args``, ``env``, ``transport``, and a
-        declarative ``tools`` map.
+        Pure file read and JSON parse - no server is spawned. A local entry has a
+        ``command`` (plus optional ``args``, ``env``, ``transport``, ``tools``). A
+        remote entry declares ``type: http``/``sse`` with a ``url`` (and optional
+        ``headers``) and no ``command``. The entry ``type`` (Claude Code's field) is
+        distinct from the library ``transport`` enum. Header ``${VAR}`` placeholders
+        are returned **unexpanded** - this reader never resolves a secret.
 
         Example:
         | ${servers}=    MCP.Get Server Config    ${CURDIR}/.mcp.json
@@ -140,15 +143,24 @@ class MCPLibrary:
         args: list[str] | None = None,
         env: dict[str, str] | None = None,
         server_factory: Callable[..., Any] | None = None,
+        url: str | None = None,
+        headers: dict[str, str] | None = None,
     ) -> MCPServerHandle:
         """Build a server handle for a later connect/list/call/stop.
 
-        ``transport`` is ``stdio`` (needs ``command``/``args``/``env``) or
-        ``in_memory`` (needs ``server_factory``). Nothing is spawned yet - the
-        session opens on the first operation. Needs the ``[mcp]`` extra.
+        ``transport`` is ``stdio`` (needs ``command``/``args``/``env``),
+        ``in_memory`` (needs ``server_factory``), or a remote transport
+        ``streamable_http``/``sse`` (needs ``url``, optional ``headers``). Nothing is
+        spawned or connected yet - the session opens on the first operation. Auth
+        ``headers`` may carry ``${VAR}`` placeholders, expanded from the environment at
+        connect time and never logged. Needs the ``[mcp]`` extra.
 
-        Example:
+        Example (local stdio):
         | ${h}=    MCP.Start Server    echo    stdio    command=python    args=${{['-m', 'my.echo']}}
+
+        Example (remote http with an env-sourced auth header):
+        | ${headers}=    Create Dictionary    Authorization=Bearer ${API_KEY}
+        | ${h}=    MCP.Start Server    api    streamable_http    url=https://host/mcp    headers=${headers}
         """
         backend = _load_backend()
         return cast(
@@ -160,6 +172,8 @@ class MCPLibrary:
                 args=args,
                 env=env,
                 server_factory=server_factory,
+                url=url,
+                headers=headers,
             ),
         )
 
