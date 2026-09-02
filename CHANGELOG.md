@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-02
+
+Remote MCP servers and prompt-cache-creation metrics, plus the codex/CLI-failure and hook/skills Tier-1 fixes.
+
 ### Added
 
 - **`MCPLibrary` supports remote (HTTP/SSE) MCP servers.** Tier-1 config parsing now
